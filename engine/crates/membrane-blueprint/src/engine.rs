@@ -11,6 +11,7 @@ use crate::query;
 use crate::security::{canonical_root, is_confined_path};
 use crate::store::{self, Generation, StoreError};
 use serde_json::{json, Value};
+use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -32,6 +33,10 @@ impl BlueprintOperation for NativeBlueprintOperation {
         check_paths(request, &root)?;
         let db_path = store_path(&root);
         match request.method {
+            Operation::Init => crate::lib_operations_init::execute_init(request, &root),
+            Operation::Update => crate::lib_operations_update::execute_update(request, &root),
+            Operation::Doctor => doctor(request, &root),
+            Operation::Repair => repair(request, &root),
             Operation::Build | Operation::Refresh => {
                 if request.generation.is_some() || request.input.get("generation").and_then(Value::as_str).is_some() {
                     let current = load_current(&db_path)?;
@@ -53,6 +58,68 @@ impl BlueprintOperation for NativeBlueprintOperation {
                 let state_dir = root.join(".agent").join("blueprint").join("findings-baselines");
                 crate::findings::execute_findings(&generation, request, context, &state_dir)
             }
+            Operation::DocumentTruth => {
+                // Ported from blueprint/src/lib/application/service.mjs
+                // `documentTruth` (lane LIB5). Claims/edges/supersession are
+                // relational store rows the GraphGeneration query path does
+                // not carry, so this reads store::Generation directly, the
+                // same pattern FindingsGet uses above.
+                let connection = store::open_store_read_only(&db_path).map_err(store_error)?;
+                let generation = store::load_generation(&connection)
+                    .map_err(store_error)?
+                    .ok_or_else(|| BlueprintError::new("blueprint_store_missing", "no persisted Blueprint generation exists"))?;
+                crate::lib_application_document_truth::execute_document_truth(&generation, request)
+            }
+            Operation::SnapshotGet => {
+                let connection = store::open_store_read_only(&db_path).map_err(store_error)?;
+                let name = request.input.get("snapshot").or_else(|| request.input.get("node")).and_then(Value::as_str)
+                    .ok_or_else(|| BlueprintError::missing("input.snapshot"))?;
+                let (generation_id, snapshot) = {
+                    let generation = store::load_generation(&connection).map_err(store_error)?
+                        .ok_or_else(|| BlueprintError::new("blueprint_store_missing", "no persisted Blueprint generation exists"))?;
+                    (generation.generation_id().unwrap_or("").to_owned(), crate::lib_application_snapshots::get_snapshot(&connection, name)?)
+                };
+                Ok(json!({"schemaVersion": 1, "generationId": generation_id, "snapshot": snapshot}))
+            }
+            Operation::SnapshotList => {
+                let connection = store::open_store_read_only(&db_path).map_err(store_error)?;
+                let generation = store::load_generation(&connection).map_err(store_error)?
+                    .ok_or_else(|| BlueprintError::new("blueprint_store_missing", "no persisted Blueprint generation exists"))?;
+                let generation_id = generation.generation_id().unwrap_or("").to_owned();
+                let snapshots = crate::lib_application_snapshots::list_snapshots(&connection)?;
+                Ok(json!({"schemaVersion": 1, "generationId": generation_id, "snapshots": snapshots}))
+            }
+            Operation::Changes => {
+                let connection = store::open_store_read_only(&db_path).map_err(store_error)?;
+                let generation = store::load_generation(&connection).map_err(store_error)?
+                    .ok_or_else(|| BlueprintError::new("blueprint_store_missing", "no persisted Blueprint generation exists"))?;
+                let generation_id = generation.generation_id().unwrap_or("").to_owned();
+                let limit = request.input.get("limit").and_then(Value::as_u64).unwrap_or(100);
+                let snapshot = request.input.get("snapshot").and_then(Value::as_str);
+                let since_generation = request.input.get("sinceGeneration").and_then(Value::as_str);
+                let treeish = request.input.get("treeish");
+                let head = request.input.get("head").and_then(Value::as_str).unwrap_or("HEAD");
+                let treeish_pair = match treeish {
+                    Some(Value::String(base)) => Some((base.as_str(), head)),
+                    Some(Value::Object(map)) => {
+                        let base = map.get("base").or_else(|| map.get("from")).and_then(Value::as_str);
+                        let treeish_head = map.get("head").or_else(|| map.get("to")).and_then(Value::as_str).unwrap_or(head);
+                        base.map(|b| (b, treeish_head))
+                    }
+                    _ => None,
+                };
+                let mut result = crate::lib_application_snapshots::changes_since_reference(
+                    &connection, &root, snapshot, since_generation, treeish_pair, limit,
+                )?;
+                if let Value::Object(object) = &mut result {
+                    object.insert("generationId".into(), json!(generation_id));
+                }
+                Ok(result)
+            }
+            Operation::Federate => crate::lib_application_federate::execute_federate(request, &context.cancellation),
+            Operation::Architecture if request.input.get("view").and_then(Value::as_str) == Some("changes") => {
+                architecture_changes(request, context, &root, &db_path)
+            }
             Operation::Search | Operation::Resolve | Operation::Recall | Operation::Expand
             | Operation::Impact | Operation::Path | Operation::Architecture => {
                 let (generation, source_observation) = load_current_with_observation(&db_path)?;
@@ -64,6 +131,9 @@ impl BlueprintOperation for NativeBlueprintOperation {
                         object.insert("sourceObservation".into(), observation);
                     }
                 }
+                let indexed_paths = generation.files.iter().map(|file| file.path.as_str()).collect::<HashSet<_>>();
+                let receipt = freshness_receipt(&root, &generation.generation_id, result.get("sourceObservation"), Some(&indexed_paths));
+                if let Value::Object(object) = &mut result { object.insert("freshnessReceipt".into(), receipt); }
                 context.check()?;
                 Ok(result)
             }
@@ -117,13 +187,51 @@ fn build_and_publish(request: &BlueprintRequest, context: &RequestContext, root:
     let generation_id = graph.generation_id.clone();
     let mut connection = open_store(db_path)?;
     context.check()?;
+    // Gap 3 (lane STORE2): persist head/dirty with the generation at build
+    // time, matching legacy `identityFromStore`'s `envelope.sourceObservation`
+    // (`{ head, dirty }`), rather than leaving snapshot/changes callers to
+    // recompute git state live at query time.
+    //
+    // Lane WIRE2 (NCL-02, git-source-observation.mjs row): this used to call
+    // `lib_application_snapshots::current_git_identity`, a second,
+    // independently drifted git observer (different porcelain exclusion set,
+    // no statusDigest) -- exactly the split the legacy module's header
+    // comment warns against. Build time and freshness-receipt time must run
+    // the identical observer, so this now calls the canonical
+    // `git_source_observation` port directly and also persists its
+    // `statusDigest`, the bounded worktree fingerprint freshness comparisons
+    // are built on.
+    let git_identity = crate::git_source_observation::git_source_observation(&root.to_string_lossy());
     let observation = json!({
         "sourceClock": request.input.get("sourceClock").cloned().unwrap_or(Value::Null),
         "eventKind": request.input.get("eventKind").cloned().unwrap_or(Value::Null),
         "paths": request.input.get("paths").cloned().unwrap_or_else(|| json!([])),
+        "head": git_identity.as_ref().map(|observation| observation.head.clone()),
+        "dirty": git_identity.as_ref().map(|observation| observation.dirty),
+        "statusDigest": git_identity.as_ref().map(|observation| observation.status_digest.clone()),
     });
     store::save_generation(&mut connection, &to_store_generation(&graph, observation.clone()))
         .map_err(store_error)?;
+    // Gap 2 (lane STORE2): populate `generation_leaf` from the just-written
+    // `files` table so snapshot/changes leaf identity comes from the same
+    // table legacy's `identityFromStore` reads (`generation_leaf WHERE
+    // kind='file'`), instead of native callers reading `files` directly.
+    {
+        let mut statement = connection
+            .prepare("SELECT path, content_hash FROM files WHERE content_hash IS NOT NULL ORDER BY path")
+            .map_err(|error| BlueprintError::new("blueprint_build_failed", error.to_string()))?;
+        let rows = statement
+            .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))
+            .map_err(|error| BlueprintError::new("blueprint_build_failed", error.to_string()))?;
+        let mut leaf_files = Vec::new();
+        for row in rows {
+            let (path, content_hash) = row.map_err(|error| BlueprintError::new("blueprint_build_failed", error.to_string()))?;
+            leaf_files.push(crate::merkle_ledger::LedgerFile { path, content_digest: content_hash });
+        }
+        drop(statement);
+        crate::merkle_ledger::compute_full_ledger(&connection, &leaf_files)
+            .map_err(|error| BlueprintError::new("blueprint_build_failed", error.to_string()))?;
+    }
     bounded_generation_response(request, json!({
         "schemaVersion": 1,
         "operation": request.method.as_str(),
@@ -166,12 +274,12 @@ fn bounded_generation_response(request: &BlueprintRequest, mut value: Value) -> 
 fn status(request: &BlueprintRequest, context: &RequestContext, root: &Path, db_path: &Path) -> Result<Value, BlueprintError> {
     context.check()?;
     if !db_path.exists() {
-        return Ok(status_value(request, root, db_path, "missing", None, None));
+        return Ok(status_value(request, root, db_path, "missing", None, None, None));
     }
-    let generation = match load_current(db_path) {
+    let (generation, source_observation) = match load_current_with_observation(db_path) {
         Ok(value) => value,
         Err(error) if error.code == "blueprint_store_corrupt" => {
-            return Ok(status_value(request, root, db_path, "corrupt", None, Some(error.message)));
+            return Ok(status_value(request, root, db_path, "corrupt", None, Some(error.message), None));
         }
         Err(error) => return Err(error),
     };
@@ -184,10 +292,11 @@ fn status(request: &BlueprintRequest, context: &RequestContext, root: &Path, db_
         })?;
     context.check()?;
     let state = if generation.source_hash == current.source_hash { "fresh" } else { "stale" };
-    Ok(status_value(request, root, db_path, state, Some(&generation), None))
+    let indexed_paths = generation.files.iter().map(|file| file.path.as_str()).collect::<HashSet<_>>();
+    Ok(status_value(request, root, db_path, state, Some(&generation), None, Some(freshness_receipt(root, &generation.generation_id, source_observation.as_ref(), Some(&indexed_paths)))) )
 }
 
-fn status_value(request: &BlueprintRequest, root: &Path, db_path: &Path, state: &str, generation: Option<&GraphGeneration>, detail: Option<String>) -> Value {
+fn status_value(request: &BlueprintRequest, root: &Path, db_path: &Path, state: &str, generation: Option<&GraphGeneration>, detail: Option<String>, freshness: Option<Value>) -> Value {
     json!({
         "schemaVersion": 1,
         "operation": request.method.as_str(),
@@ -200,7 +309,93 @@ fn status_value(request: &BlueprintRequest, root: &Path, db_path: &Path, state: 
         "detail": detail,
         "complete": generation.map(|g| g.complete),
         "truncationReasons": generation.map(|g| g.truncation_reasons.clone()).unwrap_or_default(),
+        "freshnessReceipt": freshness,
     })
+}
+
+fn doctor(request: &BlueprintRequest, root: &Path) -> Result<Value, BlueprintError> {
+    let out_dir = request.input.get("outDir").and_then(Value::as_str).unwrap_or(".agent");
+    let diagnostics = crate::lib_operations_doctor::collect_map_diagnostics(root, out_dir);
+    Ok(json!({
+        "schemaVersion": diagnostics.schema_version,
+        "operation": request.method.as_str(),
+        "state": diagnostics.state,
+        "errors": diagnostics.errors,
+        "warnings": diagnostics.warnings,
+        "reasons": diagnostics.reasons.iter().map(|reason| json!({"code": reason.code, "severity": reason.severity, "message": reason.message})).collect::<Vec<_>>(),
+        "repoRoot": root.to_string_lossy(),
+        "outDir": out_dir,
+    }))
+}
+
+fn repair(request: &BlueprintRequest, root: &Path) -> Result<Value, BlueprintError> {
+    let out_dir = request.input.get("outDir").and_then(Value::as_str).unwrap_or(".agent");
+    let diagnostics = crate::lib_operations_doctor::collect_map_diagnostics(root, out_dir);
+    let reasons = diagnostics.reasons.iter().map(|reason| crate::lib_operations_repair::DoctorReason {
+        code: reason.code.clone(), severity: reason.severity.clone(),
+    }).collect::<Vec<_>>();
+    let plan = crate::lib_operations_repair::build_repair_plan(&root.to_string_lossy(), out_dir, &diagnostics.state, &reasons);
+    Ok(json!({
+        "schemaVersion": plan.schema_version,
+        "operation": request.method.as_str(),
+        "root": plan.root,
+        "outDir": out_dir,
+        "graphState": plan.graph_state,
+        "actions": plan.actions.iter().map(|action| json!({"id": action.id, "kind": action.kind, "command": action.command, "reversible": action.reversible, "reason": action.reason})).collect::<Vec<_>>(),
+    }))
+}
+
+fn architecture_changes(request: &BlueprintRequest, context: &RequestContext, root: &Path, db_path: &Path) -> Result<Value, BlueprintError> {
+    context.check()?;
+    let connection = store::open_store_read_only(db_path).map_err(store_error)?;
+    let (generation, source_observation) = load_current_with_observation(db_path)?;
+    ensure_generation(request, &generation)?;
+    let limit = request.input.get("limit").and_then(Value::as_u64).unwrap_or(100);
+    let snapshot = request.input.get("snapshot").and_then(Value::as_str);
+    let since_generation = request.input.get("sinceGeneration").and_then(Value::as_str);
+    let head = request.input.get("head").and_then(Value::as_str).unwrap_or("HEAD");
+    let treeish_pair = match request.input.get("treeish") {
+        Some(Value::String(base)) => Some((base.as_str(), head)),
+        Some(Value::Object(map)) => {
+            let base = map.get("base").or_else(|| map.get("from")).and_then(Value::as_str);
+            let treeish_head = map.get("head").or_else(|| map.get("to")).and_then(Value::as_str).unwrap_or(head);
+            base.map(|value| (value, treeish_head))
+        }
+        _ => None,
+    };
+    let mut value = crate::lib_application_snapshots::changes_since_reference(
+        &connection, root, snapshot, since_generation, treeish_pair, limit,
+    )?;
+    if let Value::Object(object) = &mut value {
+        object.insert("view".into(), json!("changes"));
+        object.insert("generationId".into(), json!(generation.generation_id.clone()));
+        let indexed_paths = generation.files.iter().map(|file| file.path.as_str()).collect::<HashSet<_>>();
+        object.insert("freshnessReceipt".into(), freshness_receipt(root, &generation.generation_id, source_observation.as_ref(), Some(&indexed_paths)));
+    }
+    context.check()?;
+    Ok(value)
+}
+
+/// Build query-time freshness evidence from the same persisted source
+/// observation captured at publication. Freshness is advisory state; graph
+/// generation pinning remains an independent fail-closed check.
+fn freshness_receipt(root: &Path, generation_id: &str, source_observation: Option<&Value>, indexed_paths: Option<&HashSet<&str>>) -> Value {
+    let indexed_revision = source_observation.and_then(|value| value.get("head")).and_then(Value::as_str).map(str::to_owned);
+    let indexed_fingerprint = source_observation.and_then(|value| value.get("statusDigest")).and_then(Value::as_str).map(str::to_owned);
+    let current = crate::freshness_observation::observe_current_vcs_state(root);
+    let basis = crate::freshness::GenerationFreshnessBasis { indexed_revision: indexed_revision.clone(), indexed_worktree_fingerprint: indexed_fingerprint.clone() };
+    let changed_basis = basis.clone();
+    let changed_current = current.clone();
+    let indexed = indexed_paths;
+    let receipt = crate::freshness_receipt::build_freshness_receipt(
+        Some(generation_id.to_owned()),
+        None,
+        basis,
+        current,
+        || crate::freshness_observation::changed_paths_for_freshness(root, &changed_basis, &changed_current),
+        |path| indexed.map_or(true, |paths| paths.contains(path)),
+    );
+    serde_json::to_value(receipt).unwrap_or_else(|_| json!({"schema":"BlueprintFreshnessReceiptV1","generationId":generation_id,"freshness":"unavailable"}))
 }
 
 fn open_store(path: &Path) -> Result<rusqlite::Connection, BlueprintError> {

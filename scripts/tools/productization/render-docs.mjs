@@ -4,8 +4,9 @@
 // Generated product, runtime-truth, operations, & protocol documents
 // are DERIVED artifacts: every claim in them (tool count, adapter list, platform
 // status) is rendered from the same product truth that
-// scripts/tools/productization/generate-product-truth.mjs computes from live source
-// (mcp/server.mjs + docs/membrane/capability-matrix.v1.json). Hand-edits are
+// scripts/tools/productization/generate-product-truth.mjs computes from native
+// source (the MCP conformance fixture + docs/membrane/capability-matrix.v1.json).
+// Hand-edits are
 // overwritten by regeneration; `node scripts/tools/productization/check-docs.mjs --check`
 // fails when any of these files is stale or a README link is broken.
 

@@ -1,0 +1,98 @@
+[
+  {
+    "legacyOp": "createBlueprintApplicationService().resolveCanonicalRoot",
+    "nativeOp": "engine/crates/membrane-blueprint/src/engine.rs:confined_root (via RootRegistry parity in lib_application_root_registry.rs)",
+    "evidence": "engine.rs confined_root() canonicalizes and confines repoRoot to context.scope.repo_root for every dispatched operation, the native analogue of resolveRoot()'s canonicalization. lib_application_root_registry.rs (ported by LIB2) independently covers RootRegistry.resolve()'s repoId/repoRoot enrollment-lookup semantics used when rootRegistry is supplied.",
+    "status": "equivalent"
+  },
+  {
+    "legacyOp": "createBlueprintApplicationService().refresh",
+    "nativeOp": "engine.rs: NativeBlueprintOperation::execute, Operation::Build | Operation::Refresh arm -> build_and_publish",
+    "evidence": "engine.rs lines ~35-41: `Operation::Build | Operation::Refresh => { ... build_and_publish(request, context, &root, &db_path) }`. Generation-coherence check (ensure_generation) runs first when a generation is pinned, mirroring service.mjs's assertGenerationCoherence gate.",
+    "status": "equivalent"
+  },
+  {
+    "legacyOp": "createBlueprintApplicationService().status",
+    "nativeOp": "engine.rs: Operation::Status | Operation::DbStatus arm -> status()",
+    "evidence": "engine.rs line ~42: `Operation::Status | Operation::DbStatus => status(request, context, &root, &db_path).and_then(...)`. Repository identity / manifest reporting matches service.mjs status()'s repositoryIdentity + graphStatus composition (watcher/freshness-overlay fields are host-owned, not part of the bounded one-shot contract).",
+    "status": "equivalent"
+  },
+  {
+    "legacyOp": "createBlueprintApplicationService().search",
+    "nativeOp": "engine.rs Operation::Search arm -> query.rs:execute_query",
+    "evidence": "engine.rs lines ~56-58 dispatch Search into query::execute_query(&generation, request, context), the native query surface confirmed against the full graph generation, load-current + ensure_generation matching service.mjs's withCurrentDb wrapping.",
+    "status": "equivalent"
+  },
+  {
+    "legacyOp": "createBlueprintApplicationService().resolve",
+    "nativeOp": "engine.rs Operation::Resolve arm -> query.rs:execute_query",
+    "evidence": "Same dispatch arm as search; query.rs implements node resolution over the loaded GraphGeneration with the same generation-coherence gate service.mjs's resolveAnchor/indexedResolve path uses.",
+    "status": "equivalent"
+  },
+  {
+    "legacyOp": "createBlueprintApplicationService().recall",
+    "nativeOp": "engine.rs Operation::Recall arm -> query.rs:execute_query",
+    "evidence": "Same dispatch arm; query.rs's recall path covers the candidate-set/recall-circuit computation service.mjs's recall() composes from executeRecallCircuit + recallCircuitToCandidateSet.",
+    "status": "equivalent"
+  },
+  {
+    "legacyOp": "createBlueprintApplicationService().expand",
+    "nativeOp": "engine.rs Operation::Expand arm -> query.rs:execute_query",
+    "evidence": "Same dispatch arm; query.rs's neighbor-traversal path covers boundedNeighbors.",
+    "status": "equivalent"
+  },
+  {
+    "legacyOp": "createBlueprintApplicationService().impact",
+    "nativeOp": "engine.rs Operation::Impact arm -> query.rs:execute_query",
+    "evidence": "Same dispatch arm; query.rs's impact path covers boundedImpact seed-envelope resolution and traversal budget/cursor handling.",
+    "status": "equivalent"
+  },
+  {
+    "legacyOp": "createBlueprintApplicationService().path",
+    "nativeOp": "engine.rs Operation::Path arm -> query.rs:execute_query",
+    "evidence": "Same dispatch arm; query.rs's path-finding covers boundedPath between two resolved anchors within maxDepth/budget bounds.",
+    "status": "equivalent"
+  },
+  {
+    "legacyOp": "createBlueprintApplicationService().architecture (summary view)",
+    "nativeOp": "engine.rs Operation::Architecture arm -> query.rs:execute_query",
+    "evidence": "Same dispatch arm; query.rs's architecture path covers the default 'summary' view (boundedArchitecture). The non-summary sub-views (flows/liveness/processes/contracts/signatures/orientation/projection/changes) are query.rs-internal view selection, read directly to confirm coverage during this lane.",
+    "status": "equivalent"
+  },
+  {
+    "legacyOp": "createBlueprintApplicationService().documentTruth",
+    "nativeOp": "engine.rs Operation::DocumentTruth arm -> lib_application_document_truth.rs:execute_document_truth (NEW, lane LIB5)",
+    "evidence": "Prior to this lane, Operation::DocumentTruth fell through engine.rs's catch-all `operation => Err(unsupported_operation)` arm despite claims/claimCodeEdges/documentSupersession already being fully persisted and loadable via store::Generation (store.rs load_claims/load_claim_code_edges/load_document_supersession) -- the gap was query.rs's GraphGeneration dropping those relational families on load (from_store_generation never copies them), not a missing store. Ported lib_application_document_truth.rs faithfully mirrors blueprint/src/graph/doc-truth-projection.mjs's projectDocumentTruth: grounding-state derivation (direct/indirect/unsupported/contradicted/ambiguous/stale), confidence redaction for EXTRACTED/DETERMINISTIC_EXTRACTION/AUTHORITATIVE_SEMANTIC confidenceClass edges, citation dedup, and per-state counts. Wired into engine.rs with one new match arm (reads store::Generation directly, same pattern as the pre-existing FindingsGet arm). Shipped callers confirmed: blueprint/scripts/cli/commands.mjs:176 (`service.documentTruth`), blueprint/scripts/blueprint-mcp.mjs:106 (`call: (service) => (input) => service.documentTruth(input)`).",
+    "status": "ported-now"
+  },
+  {
+    "legacyOp": "createBlueprintApplicationService().snapshot_get",
+    "nativeOp": "engine.rs Operation::SnapshotGet arm -> lib_application_snapshots.rs:get_snapshot (NEW, lane STORE1)",
+    "evidence": "Ported by lane STORE1 (r5 windows closure); four remaining gaps closed by lane STORE2 (same day). The named_snapshot table already existed in migrations.rs (schema version 17). lib_application_snapshots.rs adds create_snapshot/get_snapshot/list_snapshots/changes_since/changes_since_reference, faithfully mirroring blueprint/src/graph/snapshots.mjs identityFromStore/getSnapshot (name validation regex, snapshot_missing/snapshot_malformed typed errors). STORE2 closed both STORE1 scoped deviations: leaf digests are now read from generation_leaf WHERE kind='file' (engine.rs build_and_publish calls merkle_ledger::compute_full_ledger from the just-written files table on every publish, so generation_leaf is populated for the full-build path exactly as it already was for the incremental watch path), and sourceObservation.head/dirty is now persisted with the generation at build time (build_and_publish calls lib_application_snapshots::current_git_identity(root) once and stores {head,dirty} inside Generation::source_observation) and read back by identity_from_store rather than recomputed live. Covered by tests/parity_application_ops.rs, including new STORE2 tests generation_leaf_table_is_populated_on_publish_and_sourced_by_snapshots and snapshot_source_observation_is_persisted_not_recomputed_live.",
+    "status": "ported-now"
+  },
+  {
+    "legacyOp": "createBlueprintApplicationService().snapshot_list",
+    "nativeOp": "engine.rs Operation::SnapshotList arm -> lib_application_snapshots.rs:list_snapshots (NEW, lane STORE1)",
+    "evidence": "Ported by lane STORE1, same module as snapshot_get above (blueprint/src/graph/snapshots.mjs:listSnapshots); STORE2 closed the same generation_leaf/sourceObservation gaps documented on the snapshot_get row above (shared identity_from_store path). Covered by tests/parity_application_ops.rs (snapshot_list_returns_every_named_snapshot_sorted).",
+    "status": "ported-now"
+  },
+  {
+    "legacyOp": "createBlueprintApplicationService().changes",
+    "nativeOp": "engine.rs Operation::Changes arm -> lib_application_snapshots.rs:changes_since_reference (NEW, lane STORE1)",
+    "evidence": "Ported by lane STORE1 (blueprint/src/graph/snapshots.mjs:changesSinceReference); lane STORE2 closed the semanticDelta gap for the snapshot and generation reference kinds. lib_application_snapshots.rs now ports semantic_surface/evidence_citations/semantic_graph_from_generation (node/edge fingerprinting over the stored Generation body, mirroring semanticGraphFromGeneration) and semantic_delta (keyed added/removed/changed diff per kind, mirroring semanticDelta), and a snapshot's stored identity_json now carries its own semanticGraph so a later changes call against that snapshot has a real before-body to diff against the current generation's after-body. The snapshot and generation reference kinds report a populated semanticDelta; the treeish reference kind still reports semanticDelta: null with an explicit omissions entry -- materialising an arbitrary git treeish's blobs into a temp dir and re-running the full provider pipeline over them (treeishSemanticGraph) remains out of scope and is the one remaining named deviation. Leaf digests and sourceObservation now come from generation_leaf/persisted Generation::source_observation (see snapshot_get row). Covered by tests/parity_application_ops.rs, including new STORE2 tests changes_via_current_generation_reports_empty_semantic_delta_with_no_changes and the updated changes_since_snapshot_reports_added_modified_deleted_leaves assertions on a populated semanticDelta.",
+    "status": "ported-now"
+  },
+  {
+    "legacyOp": "createBlueprintApplicationService().federate",
+    "nativeOp": "engine.rs Operation::Federate arm -> lib_application_federate.rs:execute_federate (NEW, lane STORE1)",
+    "evidence": "Ported by lane STORE1 (blueprint/src/lib/federation/index.mjs:routeFederatedQuery/composeFederatedSlices); lane STORE2 closed the contract-bridge stitching gap. Each federated repository's own persisted generation (loaded read-only from that repo's own .agent/graph/graph.db, independent of the per-repo query-slice result) is converted into a contract_registry::Generation and run through the crate's own contract_registry::build_contract_registry, then every repo's registry is stitched together via contract_registry::stitch_contract_traces -- the same native port membrane-federation's lib_federation_index.rs already calls (membrane_blueprint::contract_registry::stitch_contract_traces). membrane-federation depends on membrane-blueprint, so lib_application_federate.rs calls contract_registry directly rather than through membrane-federation (a membrane-blueprint -> membrane-federation edge would be circular); a repo with no persisted generation contributes no contracts and gets a named repository_generation_unavailable omission instead of a fabricated pass. Legacy's named federation group config (defineFederationGroup) remains unaccepted (only explicit input.repositories, unchanged from STORE1). Covered by tests/parity_application_ops.rs, including new STORE2 test federate_stitches_contract_bridges_from_each_repos_own_generation.",
+    "status": "ported-now"
+  },
+  {
+    "legacyOp": "explorer/index.mjs startLocalExplorer",
+    "nativeOp": "MISSING (partially covered)",
+    "evidence": "startLocalExplorer composes ../http-server.mjs (socket bind/listen + bearer-token auth) with ../application/service.mjs (blocked above, mostly equivalent as of this lane but federate/snapshot/changes/documentTruth-callers within it were touched). LIB2 already ported the computational halves: lib_explorer_layout.rs (layout math) and lib_explorer_static.rs (static asset routing/headers), plus a concurrent lane's lib_http_server.rs (route_decision/resolve_route/session-verification, no live socket). No native code opens an actual TCP listener for this surface; that remains genuinely unbuilt. `grep -rln \"startLocalExplorer\\|startExplorerServer\" mcp/ apps/membrane-hub scripts/` was re-run this lane and found no additional shipped callers beyond blueprint's own dev tooling (blueprint/scripts/*), which is out of production-surface scope.",
+    "status": "missing"
+  }
+]

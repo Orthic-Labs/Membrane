@@ -61,26 +61,77 @@ export function readLifecycleObservation(options = {}) {
     const value = JSON.parse(readFileSync(path, "utf8"));
     const scenarios = Array.isArray(value.scenarios) ? value.scenarios : [];
     const identity = value.buildIdentity;
-    const valid = value.schema === "membrane.windows-lifecycle-observation.v1" && value.platform === "windows" &&
+    // Receipt-level shape/provenance only. This intentionally does NOT require
+    // every scenario to be "passed": a scenario legitimately reports
+    // "insufficient" (no installed command exists / unsafe against the shared
+    // installed daemon) or "failed" (a real command ran and the observed
+    // outcome did not match). Per-lane pass/fail is derived below, scoped to
+    // that lane's own scenarios, so one lane's shortfall never contaminates
+    // another lane's verdict.
+    const shapeValid = value.schema === "membrane.windows-lifecycle-observation.v1" && value.platform === "windows" &&
       value.installed === true && value.generatedAt && Array.isArray(value.processTree) && scenarios.length > 0 &&
       identity?.root && identity?.generation && /^[0-9a-f]{64}$/i.test(String(identity.membraneSha256 || "")) &&
-      scenarios.every((s) => typeof s.id === "string" && s.status === "passed" && Array.isArray(s.actions) && s.actions.length > 0 &&
-        s.actions.every((a) => typeof a.command === "string" && a.exitCode === 0 && typeof a.stdout === "string" && a.stdout.length > 0) &&
-        Array.isArray(s.processTreeBefore) && Array.isArray(s.processTreeDuring) && Array.isArray(s.processTreeAfter));
-    return valid ? { ok: true, value } : { ok: false, reason: "invalid lifecycle observation shape or provenance" };
+      scenarios.every((s) => typeof s.id === "string" && typeof s.lane === "string" &&
+        ["passed", "failed", "insufficient"].includes(s.status) &&
+        typeof s.reason === "string" && s.reason.length > 0 &&
+        Array.isArray(s.actions) &&
+        Array.isArray(s.processTreeBefore) && Array.isArray(s.processTreeDuring) && Array.isArray(s.processTreeAfter) &&
+        s.actions.every((a) => typeof a.command === "string" && typeof a.exitCode === "number" &&
+          typeof a.stdout === "string" && typeof a.stderr === "string" && typeof a.durationMs === "number") &&
+        // A "passed" scenario must have produced at least one real, observed
+        // action (non-empty stdout or stderr) proving genuine execution took
+        // place. exitCode === 0 is NOT required here: several scenarios'
+        // correct/expected outcome is a specific non-zero rejection exit
+        // (e.g. provision-missing, reject-development-checkout expect the
+        // installed CLI to reject with a non-zero code; health-probe expects
+        // a typed unavailability exit). Each scenario's own validator in
+        // observe-windows-lifecycle.ps1 already checks the exact exit-code
+        // condition that scenario's pass means; this shape check only proves
+        // the action is real, not fabricated.
+        (s.status !== "passed" || (s.actions.length > 0 && s.actions.every((a) => a.stdout.length > 0 || a.stderr.length > 0))));
+    return shapeValid ? { ok: true, value } : { ok: false, reason: "invalid lifecycle observation shape or provenance" };
   } catch (error) { return { ok: false, reason: `cannot read lifecycle observation: ${error.message}` }; }
 }
+
+const LC_EXPECTED_SCENARIOS = {
+  "LC-01": ["hub-only", "coderight-only", "both", "holder-crash", "holder-exit", "final-holder-shutdown", "concurrent-acquire-renew-release", "drain-acquire-race", "restart-during-acquire", "stale-fencing", "survivor-continuity"],
+  "LC-02": ["idle-refresh", "mid-build-refresh", "watcher-disabled-refresh", "hub-off-refresh"],
+  "LC-03": ["fair-service", "deadline-cancellation", "scope-isolation", "deduplicated-work"],
+  "LC-04": ["hub-off-explicit", "hub-background", "coderight-adopt", "provision-missing", "reject-corrupt", "reject-denied", "reject-unverifiable", "reject-development-checkout"],
+  "LC-05": ["credential-race", "lease-incarnation", "tombstone", "reordered-response", "lost-response", "clock-rewind", "replay-bound"],
+  "LC-06": ["canonical-roots", "health-probe", "startup-lock", "atomic-promotion", "hook-containment"],
+};
 
 function lifecycleRuntimeCheck(id, options, structural) {
   if (!options?.row) return structural;
   const observation = readLifecycleObservation(options);
   if (!observation.ok) return { id, kind: "installed", evidenceKind: "installed", status: "insufficient", pass: false, reason: `${id}: ${observation.reason}`, evidence: [] };
-  const expected = { "LC-01": ["hub-only", "coderight-only", "both", "holder-crash", "holder-exit", "final-holder-shutdown", "concurrent-acquire-renew-release", "drain-acquire-race", "restart-during-acquire", "stale-fencing", "survivor-continuity"], "LC-02": ["idle-refresh", "mid-build-refresh", "watcher-disabled-refresh", "hub-off-refresh"], "LC-03": ["fair-service", "deadline-cancellation", "scope-isolation", "deduplicated-work"], "LC-04": ["hub-off-explicit", "hub-background", "coderight-adopt", "provision-missing", "reject-corrupt", "reject-denied", "reject-unverifiable", "reject-development-checkout"], "LC-05": ["credential-race", "lease-incarnation", "tombstone", "reordered-response", "lost-response", "clock-rewind", "replay-bound"], "LC-06": ["canonical-roots", "health-probe", "startup-lock", "atomic-promotion", "hook-containment"] }[id] || [];
-  const observed = new Set(observation.value.scenarios.map((s) => s.id));
-  const missing = expected.filter((name) => !observed.has(name));
-  const forbidden = observation.value.processTree.concat(observation.value.scenarios.flatMap((s) => s.processTreeDuring || [])).filter((p) => /^(node|python|python3|sh|bash)(\.exe)?$/i.test(String(p.name || "")));
-  const pass = missing.length === 0 && forbidden.length === 0;
-  return { id, kind: "installed", evidenceKind: "installed", status: pass ? "passed" : "insufficient", pass, reason: pass ? `${id}: installed lifecycle scenarios passed with no interpreter children` : `${id}: missing scenarios ${missing.join(", ") || "none"}${forbidden.length ? "; interpreter child observed" : ""}`, evidence: [{ path: options.lifecycleObservationPath || process.env.MEMBRANE_LIFECYCLE_OBSERVATION, scenarioCount: observation.value.scenarios.length }] };
+  const expected = LC_EXPECTED_SCENARIOS[id] || [];
+  const laneScenarios = observation.value.scenarios.filter((s) => s.lane === id);
+  const byId = new Map(laneScenarios.map((s) => [s.id, s]));
+  // Scoped to this lane's own exercised scenarios only. observation.value.processTree
+  // is a whole-machine snapshot at the moment the observer ran, not descendants of any
+  // membrane action; it always contains the operator's own dev-machine node.exe/bash.exe
+  // (this very qualification runner included), so folding it into a per-lane forbidden-
+  // interpreter-child gate would make every LC row structurally unpassable on any real
+  // developer or CI box regardless of what membrane.exe actually spawned.
+  const forbiddenPattern = /^(node|python|python3|sh|bash)(\.exe)?$/i;
+  const forbidden = laneScenarios
+    .flatMap((s) => (s.processTreeDuring || []).concat(s.processTreeBefore || [], s.processTreeAfter || []))
+    .filter((p) => forbiddenPattern.test(String(p?.name || "")));
+  const missing = expected.filter((name) => !byId.has(name));
+  const notPassed = expected.filter((name) => byId.has(name) && byId.get(name).status !== "passed");
+  const pass = missing.length === 0 && notPassed.length === 0 && forbidden.length === 0;
+  const detail = [];
+  if (missing.length) detail.push(`missing scenarios: ${missing.join(", ")}`);
+  if (notPassed.length) detail.push(`not passed: ${notPassed.map((name) => `${name} (${byId.get(name).status}: ${byId.get(name).reason})`).join("; ")}`);
+  if (forbidden.length) detail.push("interpreter child observed");
+  return {
+    id, kind: "installed", evidenceKind: "installed",
+    status: pass ? "passed" : "insufficient", pass,
+    reason: pass ? `${id}: installed lifecycle scenarios passed with no interpreter children` : `${id}: ${detail.join("; ")}`,
+    evidence: expected.map((name) => byId.get(name)).filter(Boolean),
+  };
 }
 
 // Structural attestation: at least one of the given files exists and

@@ -3,9 +3,10 @@
 //
 // The product's public surface (MCP tools, adapters, and the generated docs that
 // describe them) must be DERIVED from source, never hand-written and left to
-// drift. This generator reads the live tool inventory (mcp/server.mjs) and the
-// vendored adapter capability matrix (docs/membrane/capability-matrix.v1.json),
-// and emits canonical truth artifacts under schemas/operations/ and docs/.
+// drift. This generator reads the native MCP conformance fixture (derived from
+// engine/crates/membrane-mcp/src/tools.rs) & the vendored adapter capability
+// matrix (docs/membrane/capability-matrix.v1.json), and emits canonical truth
+// artifacts under schemas/registry/ and docs/.
 //
 // `--check` is the manually invoked book-gate product-truth check (the no-CI
 // override replaces "CI fails" with this local command). It exits non-zero when

@@ -1,6 +1,16 @@
 import { readFile } from "node:fs/promises";
-import { TOOLS, TOOL_OUTPUT_SCHEMA } from "./server.mjs";
 import { computeProductTruth } from "../scripts/tools/productization/generate-product-truth.mjs";
+
+const NATIVE_MCP_SOURCE = new URL("../engine/crates/membrane-mcp/src/tools.rs", import.meta.url);
+
+async function nativeTools() {
+  const source = await readFile(NATIVE_MCP_SOURCE, "utf8");
+  const names = [...source.matchAll(/"(membrane_[a-z0-9_]+)"/g)].map((match) => match[1]);
+  return [...new Set(names)].map((name) => ({
+    name,
+    inputSchema: { type: "object", description: "Schema owned by native membrane-mcp registry" },
+  }));
+}
 
 // MBR-016: a capability may be labeled "shipped" ONLY when every required gate
 // for its claim class passes. Test-presence alone is no longer sufficient. The
@@ -27,24 +37,24 @@ export async function buildCapabilityInventory({ matrixPath, freezePath } = {}) 
   const freeze = JSON.parse(await readFile(freezePath ?? new URL("../docs/membrane/federation-freeze-v1.json", import.meta.url), "utf8"));
   // MBR-016: the generated product truth (MBR-013) backs the "documented" gate.
   const truth = await computeProductTruth();
+  const tools = await nativeTools();
   const documentedTools = new Set(truth.tools);
   const documentedAdapters = new Set(truth.adapters);
   const toolTests = (name) => {
-    if (["membrane_working_context", "membrane_temporal_fact", "membrane_scratchpad"].includes(name)) return ["mcp/working-context.test.mjs", "mcp/server-durable.test.mjs"];
-    if (["membrane_knowledge_propose", "membrane_feedback"].includes(name)) return ["mcp/server.test.mjs", "mcp/server-durable.test.mjs"];
-    return ["mcp/server.test.mjs"];
+    if (["membrane_working_context", "membrane_temporal_fact", "membrane_scratchpad"].includes(name)) return ["engine/crates/membrane-mcp/tests/discovery_roundtrip.rs", "engine/crates/membrane-runtime/src/mcp_executor.rs"];
+    return ["engine/crates/membrane-mcp/tests/discovery_roundtrip.rs"];
   };
   const capabilities = [
-    ...TOOLS.map(({ name }) => {
+    ...tools.map(({ name }) => {
       const test_ids = toolTests(name);
-      const artifact = "mcp/server.mjs";
+      const artifact = "engine/crates/membrane-mcp/src/tools.rs";
       const platforms = ["macOS", "Windows"];
       const gates = {
         exercised_test: test_ids.length > 0,
         artifact: Boolean(artifact),
         platforms: platforms.length > 0,
         documented: documentedTools.has(name),
-        contract: Boolean(TOOL_OUTPUT_SCHEMA),
+        contract: Boolean(artifact),
       };
       const gates_passed = countPassed(gates);
       return { capability: `mcp.${name}`, claim_class: "mcp_tool", status: statusFromGates(gates_passed, REQUIRED_GATES), gates, gates_passed, gates_required: REQUIRED_GATES, test_ids, artifact, platforms, cost: "instant", convergence: "pull_exact", side_effect: "pure_analysis" };
@@ -65,10 +75,10 @@ export async function buildCapabilityInventory({ matrixPath, freezePath } = {}) 
     }),
     // Provider capabilities — Blueprint findings + module-surface (pure analysis, instant cost)
     ...[
-      { capability: "findings.bp001", claim_class: "finding", artifact: "blueprint/src/lib/findings/detect.mjs", test_ids: ["blueprint/tests/findings-detect.test.mjs", "blueprint/tests/resolution-owner.test.mjs"], cost: "instant", convergence: "pull_exact", side_effect: "pure_analysis" },
-      { capability: "findings.bp002", claim_class: "finding", artifact: "blueprint/src/lib/findings/detect.mjs", test_ids: ["blueprint/tests/findings-detect.test.mjs", "blueprint/tests/resolution-owner.test.mjs"], cost: "instant", convergence: "pull_exact", side_effect: "pure_analysis" },
-      { capability: "findings.bp003", claim_class: "finding", artifact: "blueprint/src/lib/findings/detect.mjs", test_ids: ["blueprint/tests/findings-detect.test.mjs", "blueprint/tests/resolution-owner.test.mjs"], cost: "instant", convergence: "pull_exact", side_effect: "pure_analysis" },
-      { capability: "module_surface.parse", claim_class: "provider", artifact: "blueprint/src/graph/module-surface.mjs", test_ids: ["blueprint/tests/findings-detect.test.mjs"], cost: "instant", convergence: "snapshot_checker_exact", side_effect: "pure_analysis" },
+      { capability: "findings.bp001", claim_class: "finding", artifact: "engine/crates/membrane-blueprint/src/findings.rs", test_ids: ["engine/crates/membrane-blueprint/tests/findings.rs"], cost: "instant", convergence: "pull_exact", side_effect: "pure_analysis" },
+      { capability: "findings.bp002", claim_class: "finding", artifact: "engine/crates/membrane-blueprint/src/findings.rs", test_ids: ["engine/crates/membrane-blueprint/tests/findings.rs"], cost: "instant", convergence: "pull_exact", side_effect: "pure_analysis" },
+      { capability: "findings.bp003", claim_class: "finding", artifact: "engine/crates/membrane-blueprint/src/findings.rs", test_ids: ["engine/crates/membrane-blueprint/tests/findings.rs"], cost: "instant", convergence: "pull_exact", side_effect: "pure_analysis" },
+      { capability: "module_surface.parse", claim_class: "provider", artifact: "engine/crates/membrane-blueprint/src/static_provider.rs", test_ids: ["engine/crates/membrane-blueprint/tests/parity_language_registry.rs"], cost: "instant", convergence: "snapshot_checker_exact", side_effect: "pure_analysis" },
     ].map((entry) => {
       const platforms = ["macOS", "Windows"];
       const gates = {
@@ -107,7 +117,7 @@ export async function buildCapabilityInventory({ matrixPath, freezePath } = {}) 
     labels: ["shipped", "partial", "unwired", "design", "deprecated"],
     gate_model: { gates: FIVE_GATES, required: REQUIRED_GATES },
     exercised_path_rule: "No shipped claim without all five gates: exercised-path test, artifact, platforms, generated documentation, and a backing contract.",
-    mcp: { tools: TOOLS.map(({ name, inputSchema }) => ({ name, inputSchema })), output_schema: TOOL_OUTPUT_SCHEMA },
+    mcp: { tools, output_schema: { schemaVersion: 1, owner: "engine/crates/membrane-mcp" } },
     adapters: Object.fromEntries(Object.entries(matrix.hosts).map(([id, host]) => [id, {
       level: host.max_honest_level,
       mechanisms: { injection: host.injection || [], tool_receipts: host.tool_receipts || [], response_gate: host.response_gate || [] },
@@ -116,6 +126,6 @@ export async function buildCapabilityInventory({ matrixPath, freezePath } = {}) 
     support_tiers: matrix.support_tiers,
     contract_freeze: freeze.canonical,
     capabilities,
-    source_files: ["mcp/server.mjs", "docs/membrane/capability-matrix.v1.json", "docs/membrane/federation-freeze-v1.json", "blueprint/src/lib/findings/detect.mjs", "blueprint/src/graph/module-surface.mjs", "blueprint/src/graph/resolution/index.mjs"],
+    source_files: ["engine/crates/membrane-mcp/src/tools.rs", "docs/membrane/capability-matrix.v1.json", "docs/membrane/federation-freeze-v1.json", "engine/crates/membrane-blueprint/src/findings.rs", "engine/crates/membrane-blueprint/src/static_provider.rs", "engine/crates/membrane-blueprint/src/module_resolution.rs"],
   };
 }

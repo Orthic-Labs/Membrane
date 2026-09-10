@@ -192,7 +192,11 @@ fn make_nullable(db: &rusqlite::Transaction<'_>, table: &str, temp: &str) -> Res
             .collect::<Result<Vec<_>, _>>()?;
         rows
     };
-    let notnull = info.iter().find(|(n, _)| n == "confidence").map(|(_, n)| *n).unwrap_or(0);
+    // Legacy parity: a table with no `confidence` column at all is a schema
+    // mismatch (confidence_migration_schema_mismatch), never a silent no-op.
+    let Some(notnull) = info.iter().find(|(n, _)| n == "confidence").map(|(_, n)| *n) else {
+        return Err(MigrationError::Failed { from: 19, to: 20, detail: format!("confidence_migration_schema_mismatch: {table} has no confidence column") });
+    };
     if notnull == 0 { return Ok(()); }
     let nullable = sql.replacen("confidence REAL NOT NULL", "confidence REAL", 1);
     if nullable == sql { return Err(MigrationError::Failed { from: 19, to: 20, detail: format!("unrecognized {table} definition") }); }

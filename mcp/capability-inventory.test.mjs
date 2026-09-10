@@ -7,6 +7,8 @@ test("capability inventory is generated from live MCP, adapter, and contract sur
   assert.equal(inventory.schema, "membrane.capability-inventory.v1");
   assert.deepEqual(inventory.labels, ["shipped", "partial", "unwired", "design", "deprecated"]);
   assert.ok(inventory.mcp.tools.some((tool) => tool.name === "membrane_context"));
+  assert.ok(inventory.mcp.tools.every((tool) => tool.inputSchema.description.includes("native membrane-mcp")));
+  assert.ok(inventory.source_files.every((file) => !file.startsWith("blueprint/") && file !== "mcp/server.mjs"));
   assert.equal(inventory.adapters.codex_cli.level, "L2");
   assert.equal(inventory.adapters.generic_mcp.level, "L0");
   assert.match(inventory.contract_freeze["context-contracts.schema.json"], /^[a-f0-9]{64}$/);

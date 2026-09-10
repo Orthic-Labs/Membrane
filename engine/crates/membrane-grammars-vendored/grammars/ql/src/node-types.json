@@ -1,0 +1,2267 @@
+[
+  {
+    "type": "DOT",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "aggid",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "AVG",
+          "named": true
+        },
+        {
+          "type": "CONCAT",
+          "named": true
+        },
+        {
+          "type": "COUNT",
+          "named": true
+        },
+        {
+          "type": "MAX",
+          "named": true
+        },
+        {
+          "type": "MIN",
+          "named": true
+        },
+        {
+          "type": "RANK",
+          "named": true
+        },
+        {
+          "type": "STRICTCONCAT",
+          "named": true
+        },
+        {
+          "type": "STRICTCOUNT",
+          "named": true
+        },
+        {
+          "type": "STRICTSUM",
+          "named": true
+        },
+        {
+          "type": "SUM",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "aggorderby",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "ASC",
+          "named": true
+        },
+        {
+          "type": "DESC",
+          "named": true
+        },
+        {
+          "type": "expr",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "aggorderbys",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "COMMA",
+          "named": true
+        },
+        {
+          "type": "aggorderby",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "aggregation",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "BAR",
+          "named": true
+        },
+        {
+          "type": "BY",
+          "named": true
+        },
+        {
+          "type": "CBLOCK",
+          "named": true
+        },
+        {
+          "type": "CPAR",
+          "named": true
+        },
+        {
+          "type": "OBLOCK",
+          "named": true
+        },
+        {
+          "type": "OPAR",
+          "named": true
+        },
+        {
+          "type": "ORDER",
+          "named": true
+        },
+        {
+          "type": "aggid",
+          "named": true
+        },
+        {
+          "type": "aggorderbys",
+          "named": true
+        },
+        {
+          "type": "as_exprs",
+          "named": true
+        },
+        {
+          "type": "expr",
+          "named": true
+        },
+        {
+          "type": "formula",
+          "named": true
+        },
+        {
+          "type": "var_decls",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "alias",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "CLASS",
+          "named": true
+        },
+        {
+          "type": "EQ",
+          "named": true
+        },
+        {
+          "type": "MODULE",
+          "named": true
+        },
+        {
+          "type": "PREDICATE",
+          "named": true
+        },
+        {
+          "type": "SEMI",
+          "named": true
+        },
+        {
+          "type": "SLASH",
+          "named": true
+        },
+        {
+          "type": "annotation",
+          "named": true
+        },
+        {
+          "type": "classname",
+          "named": true
+        },
+        {
+          "type": "int",
+          "named": true
+        },
+        {
+          "type": "literalId",
+          "named": true
+        },
+        {
+          "type": "moduleId",
+          "named": true
+        },
+        {
+          "type": "modulename",
+          "named": true
+        },
+        {
+          "type": "predicateRef",
+          "named": true
+        },
+        {
+          "type": "type",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "annotation",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "argsAnnotation",
+          "named": true
+        },
+        {
+          "type": "simpleAnnotation",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "any",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "ANY",
+          "named": true
+        },
+        {
+          "type": "BAR",
+          "named": true
+        },
+        {
+          "type": "CPAR",
+          "named": true
+        },
+        {
+          "type": "OPAR",
+          "named": true
+        },
+        {
+          "type": "expr",
+          "named": true
+        },
+        {
+          "type": "formula",
+          "named": true
+        },
+        {
+          "type": "var_decls",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "argsAnnotation",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "CBLOCK",
+          "named": true
+        },
+        {
+          "type": "COMMA",
+          "named": true
+        },
+        {
+          "type": "OBLOCK",
+          "named": true
+        },
+        {
+          "type": "variable",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "as_expr",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "AS",
+          "named": true
+        },
+        {
+          "type": "expr",
+          "named": true
+        },
+        {
+          "type": "simpleId",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "as_exprs",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "COMMA",
+          "named": true
+        },
+        {
+          "type": "as_expr",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "binop",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "MINUS",
+          "named": true
+        },
+        {
+          "type": "MOD",
+          "named": true
+        },
+        {
+          "type": "PLUS",
+          "named": true
+        },
+        {
+          "type": "SLASH",
+          "named": true
+        },
+        {
+          "type": "STAR",
+          "named": true
+        },
+        {
+          "type": "expr",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "call",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "CPAR",
+          "named": true
+        },
+        {
+          "type": "DOT",
+          "named": true
+        },
+        {
+          "type": "OPAR",
+          "named": true
+        },
+        {
+          "type": "closure",
+          "named": true
+        },
+        {
+          "type": "exprs",
+          "named": true
+        },
+        {
+          "type": "predicateName",
+          "named": true
+        },
+        {
+          "type": "predicateRef",
+          "named": true
+        },
+        {
+          "type": "primary",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "callwithresults",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "call",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "cast",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "CPAR",
+          "named": true
+        },
+        {
+          "type": "OPAR",
+          "named": true
+        },
+        {
+          "type": "expr",
+          "named": true
+        },
+        {
+          "type": "type",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "character",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "CBRACE",
+          "named": true
+        },
+        {
+          "type": "CPAR",
+          "named": true
+        },
+        {
+          "type": "OBRACE",
+          "named": true
+        },
+        {
+          "type": "OPAR",
+          "named": true
+        },
+        {
+          "type": "annotation",
+          "named": true
+        },
+        {
+          "type": "classname",
+          "named": true
+        },
+        {
+          "type": "formula",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "class",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "CBRACE",
+          "named": true
+        },
+        {
+          "type": "CLASS",
+          "named": true
+        },
+        {
+          "type": "COMMA",
+          "named": true
+        },
+        {
+          "type": "EXTENDS",
+          "named": true
+        },
+        {
+          "type": "OBRACE",
+          "named": true
+        },
+        {
+          "type": "annotation",
+          "named": true
+        },
+        {
+          "type": "classname",
+          "named": true
+        },
+        {
+          "type": "member",
+          "named": true
+        },
+        {
+          "type": "type",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "classname",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "upperId",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "closure",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "PLUS",
+          "named": true
+        },
+        {
+          "type": "STAR",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "comparison",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "compop",
+          "named": true
+        },
+        {
+          "type": "expr",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "compop",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "EQ",
+          "named": true
+        },
+        {
+          "type": "GE",
+          "named": true
+        },
+        {
+          "type": "GT",
+          "named": true
+        },
+        {
+          "type": "LE",
+          "named": true
+        },
+        {
+          "type": "LT",
+          "named": true
+        },
+        {
+          "type": "NE",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "conjunction",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "AND",
+          "named": true
+        },
+        {
+          "type": "formula",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "dbasetype",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "atlowerId",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "disjunction",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "OR",
+          "named": true
+        },
+        {
+          "type": "formula",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "dontcare",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "UNDERSCORE",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "eparen",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "CPAR",
+          "named": true
+        },
+        {
+          "type": "OPAR",
+          "named": true
+        },
+        {
+          "type": "expr",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "expr",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "binop",
+          "named": true
+        },
+        {
+          "type": "cast",
+          "named": true
+        },
+        {
+          "type": "dontcare",
+          "named": true
+        },
+        {
+          "type": "primary",
+          "named": true
+        },
+        {
+          "type": "unop",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "exprs",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "COMMA",
+          "named": true
+        },
+        {
+          "type": "expr",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "field",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "SEMI",
+          "named": true
+        },
+        {
+          "type": "annotation",
+          "named": true
+        },
+        {
+          "type": "var_decl",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "float",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "formula",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "call",
+          "named": true
+        },
+        {
+          "type": "comparison",
+          "named": true
+        },
+        {
+          "type": "conjunction",
+          "named": true
+        },
+        {
+          "type": "disjunction",
+          "named": true
+        },
+        {
+          "type": "fparen",
+          "named": true
+        },
+        {
+          "type": "ifthen",
+          "named": true
+        },
+        {
+          "type": "implies",
+          "named": true
+        },
+        {
+          "type": "inrange",
+          "named": true
+        },
+        {
+          "type": "instanceof",
+          "named": true
+        },
+        {
+          "type": "negated",
+          "named": true
+        },
+        {
+          "type": "quantified",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "fparen",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "CPAR",
+          "named": true
+        },
+        {
+          "type": "OPAR",
+          "named": true
+        },
+        {
+          "type": "formula",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "head",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "CPAR",
+          "named": true
+        },
+        {
+          "type": "OPAR",
+          "named": true
+        },
+        {
+          "type": "PREDICATE",
+          "named": true
+        },
+        {
+          "type": "predicateName",
+          "named": true
+        },
+        {
+          "type": "type",
+          "named": true
+        },
+        {
+          "type": "var_decls",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "ifthen",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "ELSE",
+          "named": true
+        },
+        {
+          "type": "IF",
+          "named": true
+        },
+        {
+          "type": "THEN",
+          "named": true
+        },
+        {
+          "type": "formula",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "implies",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "IMPLIES",
+          "named": true
+        },
+        {
+          "type": "formula",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "import",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "AS",
+          "named": true
+        },
+        {
+          "type": "IMPORT",
+          "named": true
+        },
+        {
+          "type": "annotation",
+          "named": true
+        },
+        {
+          "type": "moduleId",
+          "named": true
+        },
+        {
+          "type": "modulename",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "inrange",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "IN",
+          "named": true
+        },
+        {
+          "type": "expr",
+          "named": true
+        },
+        {
+          "type": "range",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "instanceof",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "INSTANCEOF",
+          "named": true
+        },
+        {
+          "type": "expr",
+          "named": true
+        },
+        {
+          "type": "type",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "int",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "literal",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "FALSE",
+          "named": true
+        },
+        {
+          "type": "TRUE",
+          "named": true
+        },
+        {
+          "type": "float",
+          "named": true
+        },
+        {
+          "type": "int",
+          "named": true
+        },
+        {
+          "type": "string",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "literalId",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "ANY",
+          "named": true
+        },
+        {
+          "type": "NONE",
+          "named": true
+        },
+        {
+          "type": "atlowerId",
+          "named": true
+        },
+        {
+          "type": "lowerId",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "member",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "character",
+          "named": true
+        },
+        {
+          "type": "field",
+          "named": true
+        },
+        {
+          "type": "predicate",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "module",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "CBRACE",
+          "named": true
+        },
+        {
+          "type": "MODULE",
+          "named": true
+        },
+        {
+          "type": "OBRACE",
+          "named": true
+        },
+        {
+          "type": "annotation",
+          "named": true
+        },
+        {
+          "type": "moduleBody",
+          "named": true
+        },
+        {
+          "type": "modulename",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "moduleBody",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "alias",
+          "named": true
+        },
+        {
+          "type": "class",
+          "named": true
+        },
+        {
+          "type": "import",
+          "named": true
+        },
+        {
+          "type": "module",
+          "named": true
+        },
+        {
+          "type": "predicate",
+          "named": true
+        },
+        {
+          "type": "select",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "moduleId",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "SELECTION",
+          "named": true
+        },
+        {
+          "type": "moduleId",
+          "named": true
+        },
+        {
+          "type": "qualId",
+          "named": true
+        },
+        {
+          "type": "simpleId",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "modulename",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "simpleId",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "negated",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "NOT",
+          "named": true
+        },
+        {
+          "type": "formula",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "optbody",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "CBRACE",
+          "named": true
+        },
+        {
+          "type": "COMMA",
+          "named": true
+        },
+        {
+          "type": "CPAR",
+          "named": true
+        },
+        {
+          "type": "EQ",
+          "named": true
+        },
+        {
+          "type": "OBRACE",
+          "named": true
+        },
+        {
+          "type": "OPAR",
+          "named": true
+        },
+        {
+          "type": "SEMI",
+          "named": true
+        },
+        {
+          "type": "SLASH",
+          "named": true
+        },
+        {
+          "type": "exprs",
+          "named": true
+        },
+        {
+          "type": "formula",
+          "named": true
+        },
+        {
+          "type": "int",
+          "named": true
+        },
+        {
+          "type": "literalId",
+          "named": true
+        },
+        {
+          "type": "predicateRef",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "orderby",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "ASC",
+          "named": true
+        },
+        {
+          "type": "DESC",
+          "named": true
+        },
+        {
+          "type": "simpleId",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "orderbys",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "COMMA",
+          "named": true
+        },
+        {
+          "type": "orderby",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "postfix_cast",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "CPAR",
+          "named": true
+        },
+        {
+          "type": "DOT",
+          "named": true
+        },
+        {
+          "type": "OPAR",
+          "named": true
+        },
+        {
+          "type": "primary",
+          "named": true
+        },
+        {
+          "type": "type",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "predicate",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "annotation",
+          "named": true
+        },
+        {
+          "type": "head",
+          "named": true
+        },
+        {
+          "type": "optbody",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "predicateName",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "lowerId",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "predicateRef",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "SELECTION",
+          "named": true
+        },
+        {
+          "type": "literalId",
+          "named": true
+        },
+        {
+          "type": "moduleId",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "primary",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "aggregation",
+          "named": true
+        },
+        {
+          "type": "any",
+          "named": true
+        },
+        {
+          "type": "callwithresults",
+          "named": true
+        },
+        {
+          "type": "eparen",
+          "named": true
+        },
+        {
+          "type": "literal",
+          "named": true
+        },
+        {
+          "type": "postfix_cast",
+          "named": true
+        },
+        {
+          "type": "range",
+          "named": true
+        },
+        {
+          "type": "super_expr",
+          "named": true
+        },
+        {
+          "type": "variable",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "ql",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "moduleBody",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "qualId",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "DOT",
+          "named": true
+        },
+        {
+          "type": "qualId",
+          "named": true
+        },
+        {
+          "type": "simpleId",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "quantified",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "BAR",
+          "named": true
+        },
+        {
+          "type": "CPAR",
+          "named": true
+        },
+        {
+          "type": "EXISTS",
+          "named": true
+        },
+        {
+          "type": "FORALL",
+          "named": true
+        },
+        {
+          "type": "FOREX",
+          "named": true
+        },
+        {
+          "type": "OPAR",
+          "named": true
+        },
+        {
+          "type": "expr",
+          "named": true
+        },
+        {
+          "type": "formula",
+          "named": true
+        },
+        {
+          "type": "var_decls",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "range",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "CBLOCK",
+          "named": true
+        },
+        {
+          "type": "OBLOCK",
+          "named": true
+        },
+        {
+          "type": "RANGE",
+          "named": true
+        },
+        {
+          "type": "expr",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "select",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "BY",
+          "named": true
+        },
+        {
+          "type": "FROM",
+          "named": true
+        },
+        {
+          "type": "ORDER",
+          "named": true
+        },
+        {
+          "type": "SELECT",
+          "named": true
+        },
+        {
+          "type": "WHERE",
+          "named": true
+        },
+        {
+          "type": "as_exprs",
+          "named": true
+        },
+        {
+          "type": "formula",
+          "named": true
+        },
+        {
+          "type": "orderbys",
+          "named": true
+        },
+        {
+          "type": "var_decls",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "simpleAnnotation",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "simpleId",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "lowerId",
+          "named": true
+        },
+        {
+          "type": "upperId",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "source_file",
+    "named": true,
+    "root": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "ql",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "string",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "super_expr",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "DOT",
+          "named": true
+        },
+        {
+          "type": "SUPER",
+          "named": true
+        },
+        {
+          "type": "type",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "type",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "BOOLEAN",
+          "named": true
+        },
+        {
+          "type": "DATE",
+          "named": true
+        },
+        {
+          "type": "FLOAT",
+          "named": true
+        },
+        {
+          "type": "INT",
+          "named": true
+        },
+        {
+          "type": "SELECTION",
+          "named": true
+        },
+        {
+          "type": "STRING",
+          "named": true
+        },
+        {
+          "type": "classname",
+          "named": true
+        },
+        {
+          "type": "dbasetype",
+          "named": true
+        },
+        {
+          "type": "moduleId",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "unop",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "MINUS",
+          "named": true
+        },
+        {
+          "type": "PLUS",
+          "named": true
+        },
+        {
+          "type": "expr",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "var_decl",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "simpleId",
+          "named": true
+        },
+        {
+          "type": "type",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "var_decls",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "COMMA",
+          "named": true
+        },
+        {
+          "type": "var_decl",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "variable",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "RESULT",
+          "named": true
+        },
+        {
+          "type": "THIS",
+          "named": true
+        },
+        {
+          "type": "varname",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "varname",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "simpleId",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "\"",
+    "named": false
+  },
+  {
+    "type": ".",
+    "named": false
+  },
+  {
+    "type": "AND",
+    "named": true
+  },
+  {
+    "type": "ANY",
+    "named": true
+  },
+  {
+    "type": "AS",
+    "named": true
+  },
+  {
+    "type": "ASC",
+    "named": true
+  },
+  {
+    "type": "AVG",
+    "named": true
+  },
+  {
+    "type": "BAR",
+    "named": true
+  },
+  {
+    "type": "BOOLEAN",
+    "named": true
+  },
+  {
+    "type": "BY",
+    "named": true
+  },
+  {
+    "type": "CBLOCK",
+    "named": true
+  },
+  {
+    "type": "CBRACE",
+    "named": true
+  },
+  {
+    "type": "CLASS",
+    "named": true
+  },
+  {
+    "type": "COMMA",
+    "named": true
+  },
+  {
+    "type": "CONCAT",
+    "named": true
+  },
+  {
+    "type": "COUNT",
+    "named": true
+  },
+  {
+    "type": "CPAR",
+    "named": true
+  },
+  {
+    "type": "DATE",
+    "named": true
+  },
+  {
+    "type": "DESC",
+    "named": true
+  },
+  {
+    "type": "ELSE",
+    "named": true
+  },
+  {
+    "type": "EQ",
+    "named": true
+  },
+  {
+    "type": "EXISTS",
+    "named": true
+  },
+  {
+    "type": "EXTENDS",
+    "named": true
+  },
+  {
+    "type": "FALSE",
+    "named": true
+  },
+  {
+    "type": "FLOAT",
+    "named": true
+  },
+  {
+    "type": "FORALL",
+    "named": true
+  },
+  {
+    "type": "FOREX",
+    "named": true
+  },
+  {
+    "type": "FROM",
+    "named": true
+  },
+  {
+    "type": "GE",
+    "named": true
+  },
+  {
+    "type": "GT",
+    "named": true
+  },
+  {
+    "type": "IF",
+    "named": true
+  },
+  {
+    "type": "IMPLIES",
+    "named": true
+  },
+  {
+    "type": "IMPORT",
+    "named": true
+  },
+  {
+    "type": "IN",
+    "named": true
+  },
+  {
+    "type": "INSTANCEOF",
+    "named": true
+  },
+  {
+    "type": "INT",
+    "named": true
+  },
+  {
+    "type": "LE",
+    "named": true
+  },
+  {
+    "type": "LT",
+    "named": true
+  },
+  {
+    "type": "MAX",
+    "named": true
+  },
+  {
+    "type": "MIN",
+    "named": true
+  },
+  {
+    "type": "MINUS",
+    "named": true
+  },
+  {
+    "type": "MOD",
+    "named": true
+  },
+  {
+    "type": "MODULE",
+    "named": true
+  },
+  {
+    "type": "NE",
+    "named": true
+  },
+  {
+    "type": "NONE",
+    "named": true
+  },
+  {
+    "type": "NOT",
+    "named": true
+  },
+  {
+    "type": "OBLOCK",
+    "named": true
+  },
+  {
+    "type": "OBRACE",
+    "named": true
+  },
+  {
+    "type": "OPAR",
+    "named": true
+  },
+  {
+    "type": "OR",
+    "named": true
+  },
+  {
+    "type": "ORDER",
+    "named": true
+  },
+  {
+    "type": "PLUS",
+    "named": true
+  },
+  {
+    "type": "PREDICATE",
+    "named": true
+  },
+  {
+    "type": "RANGE",
+    "named": true
+  },
+  {
+    "type": "RANK",
+    "named": true
+  },
+  {
+    "type": "RESULT",
+    "named": true
+  },
+  {
+    "type": "SELECT",
+    "named": true
+  },
+  {
+    "type": "SELECTION",
+    "named": true
+  },
+  {
+    "type": "SEMI",
+    "named": true
+  },
+  {
+    "type": "SLASH",
+    "named": true
+  },
+  {
+    "type": "STAR",
+    "named": true
+  },
+  {
+    "type": "STRICTCONCAT",
+    "named": true
+  },
+  {
+    "type": "STRICTCOUNT",
+    "named": true
+  },
+  {
+    "type": "STRICTSUM",
+    "named": true
+  },
+  {
+    "type": "STRING",
+    "named": true
+  },
+  {
+    "type": "SUM",
+    "named": true
+  },
+  {
+    "type": "SUPER",
+    "named": true
+  },
+  {
+    "type": "THEN",
+    "named": true
+  },
+  {
+    "type": "THIS",
+    "named": true
+  },
+  {
+    "type": "TRUE",
+    "named": true
+  },
+  {
+    "type": "UNDERSCORE",
+    "named": true
+  },
+  {
+    "type": "WHERE",
+    "named": true
+  },
+  {
+    "type": "\\",
+    "named": false
+  },
+  {
+    "type": "abstract",
+    "named": false
+  },
+  {
+    "type": "atlowerId",
+    "named": true
+  },
+  {
+    "type": "bindingset",
+    "named": false
+  },
+  {
+    "type": "cached",
+    "named": false
+  },
+  {
+    "type": "comment",
+    "named": true,
+    "extra": true
+  },
+  {
+    "type": "deprecated",
+    "named": false
+  },
+  {
+    "type": "external",
+    "named": false
+  },
+  {
+    "type": "final",
+    "named": false
+  },
+  {
+    "type": "language",
+    "named": false
+  },
+  {
+    "type": "library",
+    "named": false
+  },
+  {
+    "type": "lowerId",
+    "named": true
+  },
+  {
+    "type": "monotonicAggregates",
+    "named": false
+  },
+  {
+    "type": "noinline",
+    "named": false
+  },
+  {
+    "type": "nomagic",
+    "named": false
+  },
+  {
+    "type": "noopt",
+    "named": false
+  },
+  {
+    "type": "override",
+    "named": false
+  },
+  {
+    "type": "pragma",
+    "named": false
+  },
+  {
+    "type": "private",
+    "named": false
+  },
+  {
+    "type": "query",
+    "named": false
+  },
+  {
+    "type": "transient",
+    "named": false
+  },
+  {
+    "type": "upperId",
+    "named": true
+  }
+]

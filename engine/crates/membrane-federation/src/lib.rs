@@ -45,3 +45,9 @@ pub use requirements::{
     AcquisitionPlanV1, CandidateJourneyV1, EvidenceRequirementSetV1,
     RequirementEvidenceMapV1, RequirementFactV1,
 };
+pub mod lib_federation_index;
+
+pub use lib_federation_index::{
+    compose_federated_slices, define_federation_group, is_repo_allowed,
+    route_federated_query, route_native_federated_query, NativeBlueprintFederator,
+};

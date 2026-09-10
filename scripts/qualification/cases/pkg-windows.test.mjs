@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import test from 'node:test';
 import { runRegistryQualification } from '../run.mjs';
-import { PKG_01, PKG_02, PKG_03, PKG_04, PKG_05, queryInstalledControllerIdentity } from './pkg-windows.mjs';
+import { PKG_01, PKG_02, PKG_03, PKG_04, PKG_05, parseControllerProbeFailure, queryInstalledControllerIdentity } from './pkg-windows.mjs';
 
 const workspaceRoot = resolve(new URL('../../../', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1'));
 
@@ -219,6 +219,40 @@ test('PKG_04: fails when HEAD does not include the qualified sourceRevision', as
   const result = await PKG_04({ row: { qualifiedSourceRevision: '0'.repeat(40) }, workspaceRoot });
   assert.equal(result.status, 'failed');
   assert.match(result.reason, /does not include qualified sourceRevision/);
+});
+
+test('parseControllerProbeFailure: extracts the typed blueprint-watcher reason from a non-200 cli health body', () => {
+  const stdout = JSON.stringify({
+    ok: false,
+    blueprintWatcher: {
+      watcherState: 'watcher_unavailable',
+      watcherDetail: 'resident Blueprint watcher D:\\Claude\\membrane: Degraded: rebuild callback failed: deadline_exceeded: request deadline exceeded',
+    },
+    dailyAnalysis: { status: 'unavailable', reason: 'missing_output' },
+  });
+  const parsed = parseControllerProbeFailure({ status: 2, stdout, stderr: 'membrane: installed health returned HTTP 503\n' });
+  assert.equal(parsed.exitStatus, 2);
+  assert.equal(parsed.stderr, 'membrane: installed health returned HTTP 503');
+  assert.equal(parsed.blueprintWatcherState, 'watcher_unavailable');
+  assert.match(parsed.blueprintWatcherDetail, /deadline_exceeded/);
+  assert.deepEqual(parsed.dailyAnalysis, { status: 'unavailable', reason: 'missing_output' });
+  assert.equal(parsed.ok, false);
+});
+
+test('parseControllerProbeFailure: never throws and degrades to null fields on unparseable stdout', () => {
+  const parsed = parseControllerProbeFailure({ status: 1, stdout: 'not json', stderr: '' });
+  assert.equal(parsed.exitStatus, 1);
+  assert.equal(parsed.stderr, null);
+  assert.equal(parsed.blueprintWatcherDetail, null);
+  assert.equal(parsed.blueprintWatcherState, null);
+  assert.equal(parsed.dailyAnalysis, null);
+  assert.equal(parsed.ok, null);
+});
+
+test('parseControllerProbeFailure: tolerates entirely missing input', () => {
+  const parsed = parseControllerProbeFailure();
+  assert.equal(parsed.exitStatus, null);
+  assert.equal(parsed.stderr, null);
 });
 
 test('queryInstalledControllerIdentity: never fabricates a value when no root is configured', () => {

@@ -30,10 +30,6 @@ test("candidate handoff accepts exact archive & rejects changed bytes", { skip: 
     writeFileSync(join(payload, "hook"), "process.exit(0);\n");
     mkdirSync(join(payload, "runtime"));
     writeFileSync(join(payload, "runtime", "runtime.json"), bytes);
-    for (const name of ["mcp/install.mjs", "mcp/project-registry.mjs", "mcp/installation-binding.mjs", "mcp/repository-catalog.mjs", "mcp/blueprint-readiness.mjs"]) {
-      mkdirSync(dirname(join(payload, name)), { recursive: true });
-      writeFileSync(join(payload, name), bytes);
-    }
     for (const name of ["plugin.json", "mcp.json", ".claude-plugin/plugin.json", ".codex-plugin/plugin.json", ".antigravity-plugin/plugin.json"]) {
       mkdirSync(dirname(join(payload, name)), { recursive: true });
       writeFileSync(join(payload, name), bytes);

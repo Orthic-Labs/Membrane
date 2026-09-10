@@ -36,7 +36,7 @@ else
   cargo build --manifest-path engine/Cargo.toml --locked --package membrane-runtime --example hub_runtime_test_host
 fi
 pnpm test
-node --test blueprint/tests/one-shot-transport.test.mjs
+node --test tests/compat/mcp-discovery.test.mjs
 RIGHT_RELEASE_OFFLINE=1 pnpm --dir apps/membrane-hub test
 node --test scripts/release/*.test.mjs
 pnpm test:random

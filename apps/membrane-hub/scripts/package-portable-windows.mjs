@@ -116,21 +116,6 @@ cpSync(join(descriptorRoot, "skills", "membrane"), join(payload, ".agents", "ski
 cpSync(join(descriptorRoot, ".antigravity-plugin"), join(payload, ".antigravity-plugin"), { recursive: true });
 mkdirSync(join(payload, ".antigravity-plugin", "skills"), { recursive: true });
 cpSync(join(descriptorRoot, "skills", "membrane"), join(payload, ".antigravity-plugin", "skills", "membrane"), { recursive: true });
-// Enrollment remains product authority; only obsolete JS hook execution moved
-// into membrane.exe. These files let installed clients register repositories.
-const enrollmentFiles = [
-  "mcp/install.mjs",
-  "mcp/project-registry.mjs",
-  "mcp/installation-binding.mjs",
-  "mcp/repository-catalog.mjs",
-  "mcp/blueprint-readiness.mjs",
-];
-for (const file of enrollmentFiles) {
-  const source = join(projectionRoot, file);
-  if (!existsSync(source)) throw new Error(`installed enrollment projection file missing: ${source}`);
-  mkdirSync(join(payload, file, ".."), { recursive: true });
-  cpSync(source, join(payload, file));
-}
 // A prepared candidate root carries these beside the payload; the repository
 // root carries LICENSE and the canonical notices under docs/product/legal.
 cpSync(join(projectionRoot, "LICENSE"), join(payload, "LICENSE"));

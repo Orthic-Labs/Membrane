@@ -94,6 +94,16 @@ test("runtime closure records native sidecars, installed Blueprint & six axes", 
   assert.match(releaseConfig, /\.\.\/\.\.\/schemas\/\*\*/);
 });
 
+test("runtime inventory rejects Blueprint Node-runtime source paths", () => {
+  const { root } = fixture();
+  try {
+    assert.throws(
+      () => runtimeInventory({ hubDir: root, specs: [{ id: "blueprint-node", component: "blueprint", delivery: "resource", path: "blueprint/server.mjs" }] }),
+      /retired Blueprint Node runtime/,
+    );
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
 test("runtime inventory accepts Windows x64 & macOS arm64 targets, rejecting mismatches", () => {
   assert.equal(runtimeTarget("x86_64-pc-windows-msvc"), "x86_64-pc-windows-msvc");
   assert.equal(runtimeTarget("aarch64-apple-darwin"), "aarch64-apple-darwin");

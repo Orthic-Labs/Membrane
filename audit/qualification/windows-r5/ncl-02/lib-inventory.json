@@ -1,0 +1,849 @@
+[
+  {
+    "file": "blueprint/src/lib/admission.mjs",
+    "exports": [
+      "ADMISSION_SCHEMA_VERSION",
+      "DECISION_ACTIONS",
+      "decision",
+      "claimBoundaryFor",
+      "pathsFromCandidateSet",
+      "scopesFromPaths",
+      "createAdmission",
+      "recall",
+      "expand",
+      "status",
+      "revoke"
+    ],
+    "nativeEquivalent": {
+      "exists": true,
+      "location": "engine/crates/membrane-blueprint/src/lib_admission.rs",
+      "notes": "Lane LIB4 2026-09-10: ported to engine/crates/membrane-blueprint/src/lib_admission.rs with parity tests in engine/crates/membrane-blueprint/tests/parity_lib_admission.rs; -p membrane-blueprint full suite passes locally via rightkit cargo."
+    },
+    "shippedCallers": [
+      "blueprint/src/lib/application/service.mjs (per prior audit note; needs live re-check)"
+    ]
+  },
+  {
+    "file": "blueprint/src/lib/application/errors.mjs",
+    "exports": [
+      "BlueprintError",
+      "fail"
+    ],
+    "nativeEquivalent": {
+      "exists": true,
+      "location": "engine/crates/membrane-blueprint/src/lib_application_errors.rs (BlueprintError, fail, ERROR_METADATA)",
+      "notes": "LANE LIB2 (2026-09-10): ported faithfully as a standalone module (no prior native equivalent existed for this exact code-to-metadata lookup table; crate::api::BlueprintError is a different, mostly-disjoint error type used by the native dispatch path and is not a substitute). Line-by-line comparison: every ERROR_METADATA entry (retryable/summary/nextOperation for all ~30 codes) ported verbatim; BlueprintError construction order (explicit details.remediation wins over table lookup) matches. Proven by engine/crates/membrane-blueprint/tests/parity_lib_application_errors_normalize.rs (4 cases): known retryable code, known non-retryable code with no remediation, unknown code defaults, explicit details.remediation preserved. Compiles and passes via rightkit.cmd cargo test -p membrane-blueprint --test parity_lib_application_errors_normalize."
+    },
+    "shippedCallers": [
+      "Not conclusively determined within lane time budget -- generic basename grep across blueprint/scripts, mcp/, apps/ produced too many false-positive matches (common words) to report reliably without per-hit manual review. See audit clusters.json note: 'Caller cutover is not observed for this cluster' -- scripts/run-m0-baseline-current.mjs still runs 'pnpm --dir blueprint test:all', so the whole blueprint/src/lib tree remains live-called via the legacy test/build path regardless of per-file specifics."
+    ]
+  },
+  {
+    "file": "blueprint/src/lib/application/normalize.mjs",
+    "exports": [
+      "clampInt",
+      "normalizeQueryInput",
+      "normalizeAnchorInput"
+    ],
+    "nativeEquivalent": {
+      "exists": true,
+      "location": "engine/crates/membrane-blueprint/src/lib_application_normalize.rs (clamp_int, normalize_query_input, normalize_anchor_input)",
+      "notes": "LANE LIB2 (2026-09-10): ported faithfully; no prior native equivalent found. clampInt's Number()/Number.isFinite/Math.trunc/clamp semantics reproduced (Math.trunc, not round, verified by a 12.9 to 12 test case); normalizeQueryInput's query-or-task fallback, trim, and query_required failure reproduced; normalizeAnchorInput's anchor_required failure and depth/budget/direction/cursor defaults reproduced. Proven by parity_lib_application_errors_normalize.rs (4 cases covering clamp bounds/fallback, query_required, task fallback, anchor_required plus defaults). Passing."
+    },
+    "shippedCallers": [
+      "Not conclusively determined within lane time budget -- generic basename grep across blueprint/scripts, mcp/, apps/ produced too many false-positive matches (common words) to report reliably without per-hit manual review. See audit clusters.json note: 'Caller cutover is not observed for this cluster' -- scripts/run-m0-baseline-current.mjs still runs 'pnpm --dir blueprint test:all', so the whole blueprint/src/lib tree remains live-called via the legacy test/build path regardless of per-file specifics."
+    ]
+  },
+  {
+    "file": "blueprint/src/lib/application/root-registry.mjs",
+    "exports": [
+      "RootRegistry"
+    ],
+    "nativeEquivalent": {
+      "exists": true,
+      "location": "engine/crates/membrane-blueprint/src/lib_application_root_registry.rs (RootRegistry::new/add/resolve/list)",
+      "notes": "LANE LIB2 (2026-09-10): ported faithfully; no prior native equivalent found (grepped for RootRegistry/root_not_enrolled/root_escape across the crate -- no hits before this port). Uses crate::identity::repository_identity (confirmed exact native counterpart of the legacy repositoryIdentity import from graph/static-provider.mjs) for installationId derivation. D06 resolution order preserved: explicit repoRoot not enrolled always fails even if repoId also resolves; single-entry fallback only applies with no explicit selector; repoId+repoRoot pointing at different enrollments raises root_escape; disabled entries never resolve. Proven by engine/crates/membrane-blueprint/tests/parity_lib_application_root_registry.rs, porting 7 of the 9 platform-independent scenarios from blueprint/tests/root-registry.test.mjs verbatim (enrollment, resolve-by-repoId, resolve-by-root, single-entry fallback, root_not_enrolled remediation shape, root_escape, disabled entries). The two skipped legacy scenarios (macOS /var symlink aliasing, symlink-escape-not-enrolled) are platform/filesystem-specific edge cases of the same canonicalization path already exercised by the other 7; not reproduced to avoid non-portable symlink test setup, not because behavior differs. All 7 pass."
+    },
+    "shippedCallers": [
+      "Not conclusively determined within lane time budget -- generic basename grep across blueprint/scripts, mcp/, apps/ produced too many false-positive matches (common words) to report reliably without per-hit manual review. See audit clusters.json note: 'Caller cutover is not observed for this cluster' -- scripts/run-m0-baseline-current.mjs still runs 'pnpm --dir blueprint test:all', so the whole blueprint/src/lib tree remains live-called via the legacy test/build path regardless of per-file specifics."
+    ]
+  },
+  {
+    "file": "blueprint/src/lib/application/service.mjs",
+    "exports": [
+      "createBlueprintApplicationService"
+    ],
+    "nativeEquivalent": {
+      "exists": true,
+      "location": "engine/crates/membrane-blueprint/src/engine.rs (NativeBlueprintOperation::execute) + query.rs + lib_application_document_truth.rs (new, lane LIB5)",
+      "notes": "LANE LIB5 (2026-09-10) operation-by-operation audit closing LIB2's blocker: see audit/qualification/windows-r5/ncl-02/application-parity.json for the full per-operation table. Of 16 enumerated operations on the returned service object: 10 confirmed EQUIVALENT (resolveCanonicalRoot, refresh, status, search, resolve, recall, expand, impact, path, architecture-summary -- all route through engine.rs's NativeBlueprintOperation::execute, a genuine behavioral match: generation-coherence checked via ensure_generation, dispatched into query::execute_query, mirroring createBlueprintApplicationService's withCurrentDb/assertGenerationCoherence pattern). 1 PORTED-NOW this lane: documentTruth -- previously fell into engine.rs's `unsupported_operation` catch-all despite claims/claimCodeEdges/documentSupersession already being fully persisted in store.rs (load_claims/load_claim_code_edges/load_document_supersession); the gap was query.rs's GraphGeneration dropping those families on load. New file lib_application_document_truth.rs faithfully ports doc-truth-projection.mjs's projectDocumentTruth (grounding-state derivation, confidence redaction, citation dedup, per-state counts), wired into engine.rs with one new Operation::DocumentTruth match arm reading store::Generation directly (same pattern as the existing FindingsGet arm); 5 unit tests pass (crate test suite). 4 remain genuinely MISSING with confirmed shipped callers, each individually named and evidenced in application-parity.json rather than ported speculatively: snapshot_get and snapshot_list (blueprint/src/graph/snapshots.mjs reads/writes a `named_snapshot` SQLite table that does not exist anywhere in engine/crates/membrane-blueprint/src/store.rs -- confirmed by direct grep, zero hits), changes (same named_snapshot dependency plus git-treeish diffing with no native counterpart), and federate (blueprint/src/lib/federation/index.mjs cross-repo routing; Operation::Federate is declared in model.rs's Operation enum but has no engine.rs dispatch arm, and porting it safely depends on the same missing snapshot/changes infrastructure plus per-repo RootRegistry wiring, which this lane's remaining budget could not also stand up without risking new SQLite schema conflicts with concurrently-editing lanes touching store.rs). NOT re-verified this lane (LIB2's original findings stand, not contradicted): build-singleflight join semantics, the resident WAL-pinned openFreshnessSession BEGIN/ROLLBACK snapshot lifecycle, and architecture flow-cursor pagination beyond the summary view -- these are one-shot-vs-resident lifecycle concerns orthogonal to the operation-parity question this lane was scoped to answer."
+    },
+    "shippedCallers": [
+      "Not conclusively determined within lane time budget -- generic basename grep across blueprint/scripts, mcp/, apps/ produced too many false-positive matches (common words) to report reliably without per-hit manual review. See audit clusters.json note: 'Caller cutover is not observed for this cluster' -- scripts/run-m0-baseline-current.mjs still runs 'pnpm --dir blueprint test:all', so the whole blueprint/src/lib tree remains live-called via the legacy test/build path regardless of per-file specifics."
+    ]
+  },
+  {
+    "file": "blueprint/src/lib/comment-claims.mjs",
+    "exports": [
+      "COMMENT_CLAIM_KINDS",
+      "extractCommentClaims"
+    ],
+    "nativeEquivalent": {
+      "exists": true,
+      "location": "engine/crates/membrane-blueprint/src/lib_comment_claims.rs",
+      "notes": "Lane LIB4 2026-09-10: ported to engine/crates/membrane-blueprint/src/lib_comment_claims.rs with parity tests in engine/crates/membrane-blueprint/tests/parity_lib_comment_claims.rs; -p membrane-blueprint full suite passes locally via rightkit cargo. Lane CRYPTO 2026-09-10: replaced the hand-rolled FIPS 180-4 SHA-1 (written because LIB4 believed no SHA-1 crate was available) with ring::digest::SHA1_FOR_LEGACY_USE_ONLY; the two constructions agreed byte-for-byte (no bug found), confirmed by a new known-answer test in parity_lib_comment_claims.rs cross-checked against Node's createHash(\"sha1\")."
+    },
+    "shippedCallers": [
+      "blueprint findings pipeline (per prior audit note)"
+    ]
+  },
+  {
+    "file": "blueprint/src/lib/contracts/catalog.mjs",
+    "exports": [
+      "CONTRACT_CATALOG",
+      "contractByName"
+    ],
+    "nativeEquivalent": {
+      "exists": false,
+      "location": null,
+      "notes": "No file-level native mapping confirmed. audit/qualification/windows-r5/ncl-02/clusters.json (blueprint-repair) records this subfolder generically as 'no file-level mapping confirmed' for engine/crates/membrane-blueprint (20 src files vs 234 legacy files). Targeted symbol-name grep (snake_case conversions of exported functions) against membrane-blueprint/src/*.rs and membrane-runtime/src/*.rs found no exact match. Not exhaustively verified per-symbol within this lane's time budget -- treat as best-effort 'no equivalent found', not a proven negative."
+    },
+    "shippedCallers": [
+      "Not conclusively determined within lane time budget -- generic basename grep across blueprint/scripts, mcp/, apps/ produced too many false-positive matches (common words) to report reliably without per-hit manual review. See audit clusters.json note: 'Caller cutover is not observed for this cluster' -- scripts/run-m0-baseline-current.mjs still runs 'pnpm --dir blueprint test:all', so the whole blueprint/src/lib tree remains live-called via the legacy test/build path regardless of per-file specifics."
+    ]
+  },
+  {
+    "file": "blueprint/src/lib/contracts/validate.mjs",
+    "exports": [
+      "contractError",
+      "validateContract",
+      "validateContractResult",
+      "schemaDirectory"
+    ],
+    "nativeEquivalent": {
+      "exists": false,
+      "location": null,
+      "notes": "No file-level native mapping confirmed. audit/qualification/windows-r5/ncl-02/clusters.json (blueprint-repair) records this subfolder generically as 'no file-level mapping confirmed' for engine/crates/membrane-blueprint (20 src files vs 234 legacy files). Targeted symbol-name grep (snake_case conversions of exported functions) against membrane-blueprint/src/*.rs and membrane-runtime/src/*.rs found no exact match. Not exhaustively verified per-symbol within this lane's time budget -- treat as best-effort 'no equivalent found', not a proven negative."
+    },
+    "shippedCallers": [
+      "Not conclusively determined within lane time budget -- generic basename grep across blueprint/scripts, mcp/, apps/ produced too many false-positive matches (common words) to report reliably without per-hit manual review. See audit clusters.json note: 'Caller cutover is not observed for this cluster' -- scripts/run-m0-baseline-current.mjs still runs 'pnpm --dir blueprint test:all', so the whole blueprint/src/lib tree remains live-called via the legacy test/build path regardless of per-file specifics."
+    ]
+  },
+  {
+    "file": "blueprint/src/lib/evidence-pack.mjs",
+    "exports": [
+      "buildEvidencePack",
+      "evidencePackToMarkdown"
+    ],
+    "nativeEquivalent": {
+      "exists": true,
+      "location": "engine/crates/membrane-blueprint/src/export.rs, findings.rs (build_evidence_pack)",
+      "notes": "Confirmed by audit/qualification/windows-r5/ncl-02/clusters.json misc-bucket analysis; native tests in tests/export.rs."
+    },
+    "shippedCallers": [
+      "Not conclusively determined within lane time budget -- generic basename grep across blueprint/scripts, mcp/, apps/ produced too many false-positive matches (common words) to report reliably without per-hit manual review. See audit clusters.json note: 'Caller cutover is not observed for this cluster' -- scripts/run-m0-baseline-current.mjs still runs 'pnpm --dir blueprint test:all', so the whole blueprint/src/lib tree remains live-called via the legacy test/build path regardless of per-file specifics."
+    ]
+  },
+  {
+    "file": "blueprint/src/lib/explorer/index.mjs",
+    "exports": [
+      "startLocalExplorer"
+    ],
+    "nativeEquivalent": {
+      "exists": false,
+      "location": null,
+      "notes": "LANE LIB2 (2026-09-10) BLOCKED -- not ported. This 7-line file composes two dependencies, both out of reach: ../http-server.mjs (an actual Node HTTP server bind/listen/auth-token implementation, not one of this lane's 12 input files and with no native equivalent found) and ../application/service.mjs (blocked above, see that row). The pure computational logic explorer/index.mjs's server delegates to for rendering IS ported and proven: layout math to lib_explorer_layout.rs, static asset routing/headers to lib_explorer_static.rs (both below). Porting startLocalExplorer itself would require also porting http-server.mjs's socket-binding/bearer-token-auth logic, which is outside this lane's scope; recorded as blocked rather than a stub wrapper with no real server behind it. UPDATE (LIB2, same session, later pass): another concurrent lane landed engine/crates/membrane-blueprint/src/lib_http_server.rs (route_decision, resolve_route, session-verification helper, bearer-prefix helper), a genuine native counterpart for http-server.mjs routing/auth decision logic, with its own passing tests/parity_lib_http_server.rs (10 cases). This narrows but does not close the gap for explorer/index.mjs: the routing/auth half of its http-server.mjs dependency is now natively covered; the remaining blocker is application/service.mjs (still blocked, see that row) plus actual server listener composition, which this lane did not additionally attempt given remaining time budget. Left as BLOCKED rather than reclassified, since startLocalExplorer itself -- the file under review -- was not ported."
+    },
+    "shippedCallers": [
+      "Not conclusively determined within lane time budget -- generic basename grep across blueprint/scripts, mcp/, apps/ produced too many false-positive matches (common words) to report reliably without per-hit manual review. See audit clusters.json note: 'Caller cutover is not observed for this cluster' -- scripts/run-m0-baseline-current.mjs still runs 'pnpm --dir blueprint test:all', so the whole blueprint/src/lib tree remains live-called via the legacy test/build path regardless of per-file specifics."
+    ]
+  },
+  {
+    "file": "blueprint/src/lib/explorer/layout.mjs",
+    "exports": [
+      "sphericalLayout",
+      "projectOrb"
+    ],
+    "nativeEquivalent": {
+      "exists": false,
+      "location": "engine/crates/membrane-blueprint/src/lib_explorer_layout.rs (spherical_layout, project_orb) -- newly ported by this lane, not a pre-existing native module",
+      "notes": "LANE LIB2 (2026-09-10): ported faithfully; no prior native equivalent found (grepped for sphericalLayout/projectOrb/GOLDEN_ANGLE -- no hits before this port). Golden-angle spherical placement, deterministic id-sort-then-place ordering, and the yaw/pitch/distance orb projection math reproduced formula-for-formula. Proven by engine/crates/membrane-blueprint/tests/parity_lib_explorer.rs, porting blueprint/tests/explorer-layout.test.mjs's 'spherical layout is deterministic and bounded' test verbatim (determinism, sorted id order, radius bound, projectOrb count). Passing."
+    },
+    "shippedCallers": [
+      "Not conclusively determined within lane time budget -- generic basename grep across blueprint/scripts, mcp/, apps/ produced too many false-positive matches (common words) to report reliably without per-hit manual review. See audit clusters.json note: 'Caller cutover is not observed for this cluster' -- scripts/run-m0-baseline-current.mjs still runs 'pnpm --dir blueprint test:all', so the whole blueprint/src/lib tree remains live-called via the legacy test/build path regardless of per-file specifics."
+    ]
+  },
+  {
+    "file": "blueprint/src/lib/explorer/static.mjs",
+    "exports": [
+      "serveExplorerAsset"
+    ],
+    "nativeEquivalent": {
+      "exists": false,
+      "location": "engine/crates/membrane-blueprint/src/lib_explorer_static.rs (explorer_asset, serve_explorer_asset, EXPLORER_CSP) -- newly ported by this lane",
+      "notes": "LANE LIB2 (2026-09-10): ported faithfully; no prior native equivalent found. Byte-identical HTML/CSS/JS payloads (first-party Blueprint source, verbatim copy) and identical routing (/, /index.html, /explorer.css, /explorer.js, 404 otherwise) plus identical response headers (content-type, cache-control: no-store, CSP, X-Content-Type-Options) reproduced. The actual Node http.ServerResponse write is abstracted as a transport-agnostic ExplorerResponse{status,headers,body} struct rather than writing to a live socket, since this lane does not own an HTTP server binding layer (see explorer/index.mjs row) -- the header/body/status decision logic itself is unchanged. Proven by parity_lib_explorer.rs (4 cases: shell HTML at / and /index.html, CSS content-type, JS content-type, 404 for unknown paths)."
+    },
+    "shippedCallers": [
+      "Not conclusively determined within lane time budget -- generic basename grep across blueprint/scripts, mcp/, apps/ produced too many false-positive matches (common words) to report reliably without per-hit manual review. See audit clusters.json note: 'Caller cutover is not observed for this cluster' -- scripts/run-m0-baseline-current.mjs still runs 'pnpm --dir blueprint test:all', so the whole blueprint/src/lib tree remains live-called via the legacy test/build path regardless of per-file specifics."
+    ]
+  },
+  {
+    "file": "blueprint/src/lib/federation/index.mjs",
+    "exports": [
+      "defineFederationGroup",
+      "composeFederatedSlices",
+      "isRepoAllowed",
+      "routeFederatedQuery"
+    ],
+    "nativeEquivalent": {
+      "exists": false,
+      "location": "engine/crates/membrane-federation/src/lib_federation_index.rs (define_federation_group, compose_federated_slices, is_repo_allowed, route_federated_query) -- newly ported by this lane",
+      "notes": "LANE LIB2 (2026-09-10): ported faithfully; no prior native equivalent found (grepped defineFederationGroup/composeFederatedSlices/routeFederatedQuery/federation_* error codes across membrane-federation and membrane-blueprint -- no hits before this port). Same validation order and error codes (federation_group_name_invalid, federation_bounds_invalid 1..16, repository_duplicate, slice_incomplete, generation_ambiguity, federation_operation_invalid, repository_not_allowed), same output envelope shape (schemaVersion/kind/groupName/repos/plannerAuthority/selection/slices/results/contractBridges/traces). Contract stitching delegates to membrane_blueprint::contract_registry::stitch_contract_traces, itself the confirmed native port of graph/contract-registry.mjs's stitchContractTraces that the legacy federation module calls -- so the exact-key-only bridging semantics are inherited, not reimplemented. Simplification: routeFederatedQuery's per-slice async querySlice callback is represented as a synchronous closure rather than threading an async runtime through this narrow composition seam; the validation/composition logic itself (the part with actual behavior to prove) is unchanged, only the I/O calling convention. Proven by engine/crates/membrane-federation/tests/parity_lib_federation_index.rs, porting all 3 tests from blueprint/tests/federation-groups-contracts.test.mjs verbatim. Passing."
+    },
+    "shippedCallers": [
+      "Not conclusively determined within lane time budget -- generic basename grep across blueprint/scripts, mcp/, apps/ produced too many false-positive matches (common words) to report reliably without per-hit manual review. See audit clusters.json note: 'Caller cutover is not observed for this cluster' -- scripts/run-m0-baseline-current.mjs still runs 'pnpm --dir blueprint test:all', so the whole blueprint/src/lib tree remains live-called via the legacy test/build path regardless of per-file specifics."
+    ]
+  },
+  {
+    "file": "blueprint/src/lib/findings/detect.mjs",
+    "exports": [
+      "detectFindings"
+    ],
+    "nativeEquivalent": {
+      "exists": true,
+      "location": "engine/crates/membrane-blueprint/src/findings.rs (detect(), effective_exports(), make_finding() -- BP001/BP002/BP003)",
+      "notes": "LANE LIB2 (2026-09-10) CONFIRMED, with one documented gap. Compared line-by-line: findings.rs's BP001/BP002/BP003 emission rules, omission taxonomy (parse_failed/unsupported_language/package_specifier/resolution_ambiguous/outside_scanned_set/star_depth_exceeded/star_cycle/open_export_surface -- exact 1:1 match with legacy OMISSION_REASONS), fingerprint derivation (sha256 of 'rule path name specifier', truncated), and finding shape (ruleId/ruleName/ruleDescription/severity/class/confidenceTier/precisionTier/message/evidencePath/fingerprint/remediation) all match detect.mjs plus registry.mjs exactly. Responsibility shifted, not missing: detect.mjs parses raw source text itself (via graph/module-surface.mjs); findings.rs instead consumes already-computed moduleSurface facts attached to file-node evidence by graph.rs's file_node() (same JSON field names: exports/starReexports/requests/parseStatus/open) -- parsing moved upstream to graph construction, detection/omission logic is the faithful counterpart. GAP: findings.rs's own inline resolve_candidates helper does not strip/rewrite an explicit .js/.jsx/.mjs/.cjs extension in a specifier the way the legacy detector's specifier resolver does (see findings/specifier.mjs row) -- a specifier written with an explicit .js extension against a .ts file spuriously fires BP002 natively where the legacy detector resolves it cleanly. Proven by engine/crates/membrane-blueprint/tests/parity_lib_findings_detect.rs (4 cases translated from blueprint/tests/findings-detect.test.mjs: zero-findings clean repo, BP001, BP002, registry rule ids), using extensionless specifiers to exercise real passing behavior rather than papering over the documented gap. All 4 pass."
+    },
+    "shippedCallers": [
+      "Not conclusively determined within lane time budget -- generic basename grep across blueprint/scripts, mcp/, apps/ produced too many false-positive matches (common words) to report reliably without per-hit manual review. See audit clusters.json note: 'Caller cutover is not observed for this cluster' -- scripts/run-m0-baseline-current.mjs still runs 'pnpm --dir blueprint test:all', so the whole blueprint/src/lib tree remains live-called via the legacy test/build path regardless of per-file specifics."
+    ]
+  },
+  {
+    "file": "blueprint/src/lib/findings/registry.mjs",
+    "exports": [
+      "FINDING_RULES",
+      "FINDING_RULE_IDS",
+      "findingRule",
+      "OMISSION_REASONS"
+    ],
+    "nativeEquivalent": {
+      "exists": true,
+      "location": "engine/crates/membrane-blueprint/src/findings.rs (make_finding()'s rule table: BP001/BP002/BP003 name/description/remediation; MAX_STAR_DEPTH=8 matches DEFAULT_STAR_DEPTH)",
+      "notes": "LANE LIB2 (2026-09-10) CONFIRMED. The three FINDING_RULES entries (id/name/severity/class/precisionFloor/description/remediation) are inlined verbatim into findings.rs's make_finding() match arms rather than kept as a separate lookup table, but the values are identical: BP001 import-binding-not-exported, BP002 module-not-found, BP003 reexport-binding-not-exported, all severity error / class block / precisionFloor AST. OMISSION_REASONS' 8 reasons all appear as literal omission() reason strings in findings.rs (parse_failed, unsupported_language, open_export_surface, package_specifier, outside_scanned_set, star_depth_exceeded, star_cycle, resolution_ambiguous). Proven by parity_lib_findings_detect.rs's registry_rule_ids_match_legacy_registry test plus the BP001/BP002 tests, which exercise the exact rule metadata (ruleId/ruleName/message/remediation) on emitted findings."
+    },
+    "shippedCallers": [
+      "Not conclusively determined within lane time budget -- generic basename grep across blueprint/scripts, mcp/, apps/ produced too many false-positive matches (common words) to report reliably without per-hit manual review. See audit clusters.json note: 'Caller cutover is not observed for this cluster' -- scripts/run-m0-baseline-current.mjs still runs 'pnpm --dir blueprint test:all', so the whole blueprint/src/lib tree remains live-called via the legacy test/build path regardless of per-file specifics."
+    ]
+  },
+  {
+    "file": "blueprint/src/lib/findings/service.mjs",
+    "exports": [
+      "FINDINGS_SERVICE_METHODS",
+      "buildGenerationBoundBundle",
+      "computeBaselineDelta",
+      "createFindingsService"
+    ],
+    "nativeEquivalent": {
+      "exists": true,
+      "location": "engine/crates/membrane-blueprint/src/findings.rs (execute_findings dispatch: findings_get/findings_explain/findings_pack/findings_sarif/baseline_capture/baseline_list)",
+      "notes": "LANE LIB2 (2026-09-10) CONFIRMED. legacy FINDINGS_SERVICE_METHODS = [findings.get, findings.explain, findings.evidence_pack, findings.baseline.capture, findings.baseline.list, findings.sarif] matches findings.rs's execute_findings match arms exactly (same six method strings via Operation::FindingsGet/FindingsExplain/FindingsEvidencePack/FindingsBaselineCapture/FindingsBaselineList/FindingsSarif). buildGenerationBoundBundle's per-file sha256 content-hash binding and per-finding evidencePath-hash binding is reproduced by findings.rs's detect() (hashes BTreeMap keyed by path, perFileContentHashes on every finding). computeBaselineDelta's added/persistent/resolved/changed/unknown classification (fingerprint-first, identity-fallback) is reproduced by baseline_delta() field-for-field (oldfp/nowfp fingerprint maps, oldid/nowid identity maps, same four output buckets). Proven transitively by parity_lib_findings_detect.rs exercising execute_findings via the findings.get dispatch path (BlueprintRequest with method FindingsGet -> execute_findings), which is the same entry point findings_explain/findings_pack/findings_sarif/baseline_* share; the findings.get-specific bundle-binding and detection behavior is directly asserted."
+    },
+    "shippedCallers": [
+      "Not conclusively determined within lane time budget -- generic basename grep across blueprint/scripts, mcp/, apps/ produced too many false-positive matches (common words) to report reliably without per-hit manual review. See audit clusters.json note: 'Caller cutover is not observed for this cluster' -- scripts/run-m0-baseline-current.mjs still runs 'pnpm --dir blueprint test:all', so the whole blueprint/src/lib tree remains live-called via the legacy test/build path regardless of per-file specifics."
+    ]
+  },
+  {
+    "file": "blueprint/src/lib/findings/specifier.mjs",
+    "exports": [],
+    "nativeEquivalent": {
+      "exists": true,
+      "location": "engine/crates/membrane-blueprint/src/lib_findings_specifier.rs (candidate_paths, resolve_specifier, is_relative_specifier, normalize_repo_path, classify_resolution, resolution_unsupported_omission, RESOLUTION_OMISSION_CODE, supported_resolution_extensions) -- newly ported by this lane, correcting an earlier misidentification",
+      "notes": "LANE LIB2 (2026-09-10): ported faithfully from the true owner (graph/resolution/index.mjs), since specifier.mjs itself carries zero logic. candidatePaths' exact-first ordering (exact path, then TS .js-to-source stem-stripped extension completion, then directory index files, de-duplicated first-occurrence-wins) reproduced precisely, including the '..' segment collapsing. classifyResolution's closed-surface gating order (generated > external > partial-parse > open-target-surface > unsupported-extension > null-when-closed) reproduced exactly. Proven by engine/crates/membrane-blueprint/tests/parity_lib_findings_specifier.rs, porting 4 of resolution-owner.test.mjs's behavioral tests verbatim (candidatePaths ordering, resolveSpecifier first-match-wins with alternatives count, isRelativeSpecifier gating, classifyResolution's 5-branch decision table); the 2 source-introspection tests (asserting the .mjs file text contains certain doc comments/regexes) were not ported as they test the legacy file's own prose, not behavior. All 4 behavioral tests pass. This port also documents (see findings/detect.mjs row) that findings.rs's own BP002 candidate resolution does NOT call this logic and lacks its extension-stripping step -- a real, uncorrected gap between the two native modules.",
+      "correctionNote": "CORRECTION of an earlier hypothesis in this lane's own working notes: engine/crates/membrane-blueprint/src/module_resolution.rs (which has a similarly-named TS_EXTENSIONS table) was initially suspected as the native equivalent, but its resolve_js_module/JsResolveInput signature and purpose (Python/JS cross-file identity resolution for a different caller) do not match specifier.mjs's fileSet-based candidatePaths/resolveSpecifier contract -- it is a different port of a different legacy concern, not a substitute. This file's actual owner, blueprint/src/graph/resolution/index.mjs (specifier.mjs itself is a zero-logic re-export, confirmed by blueprint/tests/resolution-owner.test.mjs's own assertion that the wrapper contains no 'function candidatePaths' / 'SOURCE_EXTENSIONS = [' of its own), had no native port before this lane."
+    },
+    "shippedCallers": [
+      "Not conclusively determined within lane time budget -- generic basename grep across blueprint/scripts, mcp/, apps/ produced too many false-positive matches (common words) to report reliably without per-hit manual review. See audit clusters.json note: 'Caller cutover is not observed for this cluster' -- scripts/run-m0-baseline-current.mjs still runs 'pnpm --dir blueprint test:all', so the whole blueprint/src/lib tree remains live-called via the legacy test/build path regardless of per-file specifics."
+    ]
+  },
+  {
+    "file": "blueprint/src/lib/generated-docs.mjs",
+    "exports": [
+      "VERSION",
+      "DOC_PATHS",
+      "generatedDocsGenerationId",
+      "generationHeader",
+      "isGenerated",
+      "maintainReadmePointer",
+      "generateDocs",
+      "_internal"
+    ],
+    "nativeEquivalent": {
+      "exists": true,
+      "location": "engine/crates/membrane-blueprint/src/lib_generated_docs.rs",
+      "notes": "Lane LIB4 2026-09-10: ported to engine/crates/membrane-blueprint/src/lib_generated_docs.rs with parity tests in engine/crates/membrane-blueprint/tests/parity_lib_generated_docs.rs; -p membrane-blueprint full suite passes locally via rightkit cargo."
+    },
+    "shippedCallers": [
+      "blueprint/scripts/* doc generation (per prior audit note)"
+    ]
+  },
+  {
+    "file": "blueprint/src/lib/hooks/blueprint-graph-index.mjs",
+    "exports": [
+      "createBlueprintGraphIndexHook",
+      "dispatchBlueprintGraphIndexHook"
+    ],
+    "nativeEquivalent": {
+      "exists": false,
+      "location": null,
+      "portLocation": "engine/crates/membrane-blueprint/src/lib_hooks_graph_index.rs::dispatch_graph_index_event",
+      "notes": "Ported (lane LIB3, r5). No prior native equivalent found by grep of membrane-blueprint/src and membrane-runtime/src for the event-filtered hook-dispatch contract. Ported the PostToolUse/Stop/SessionEnd event filter and skipped/indexed outcome shape; parity proven by tests/parity_lib_hooks_graph_index.rs."
+    },
+    "shippedCallers": [
+      "Not conclusively determined within lane time budget -- generic basename grep across blueprint/scripts, mcp/, apps/ produced too many false-positive matches (common words) to report reliably without per-hit manual review. See audit clusters.json note: 'Caller cutover is not observed for this cluster' -- scripts/run-m0-baseline-current.mjs still runs 'pnpm --dir blueprint test:all', so the whole blueprint/src/lib tree remains live-called via the legacy test/build path regardless of per-file specifics."
+    ]
+  },
+  {
+    "file": "blueprint/src/lib/http-server.mjs",
+    "exports": [
+      "startExplorerServer"
+    ],
+    "nativeEquivalent": {
+      "exists": true,
+      "location": "engine/crates/membrane-blueprint/src/lib_http_server.rs",
+      "notes": "Lane LIB4 2026-09-10: ported as pure route/auth-gate functions only. membrane-runtime/src/http_server.rs is a generic axum/hyper loopback server for HMAC-signed request/response envelopes (Hub health endpoint); it implements neither this module route table nor its bearer-session-token scheme, so no behavior was reused. Actual socket serving intentionally not ported (no HTTP dep in membrane-blueprint; no new deps allowed)."
+    },
+    "shippedCallers": [
+      "blueprint/src/lib/explorer/index.mjs"
+    ]
+  },
+  {
+    "file": "blueprint/src/lib/incremental-phase2.mjs",
+    "exports": [
+      "PHASE2_INCREMENTAL_VERSION",
+      "DIMENSIONS",
+      "graphFileHashes",
+      "claimEvidenceFingerprint",
+      "verdictResultFingerprint",
+      "reconcileInputFingerprint",
+      "isReconciliationDecisionCurrent",
+      "buildIncrementalPhase2Plan",
+      "requeueChangedVerdicts",
+      "sealPhase2Artifacts"
+    ],
+    "nativeEquivalent": {
+      "exists": true,
+      "location": "engine/crates/membrane-blueprint/src/phase2.rs",
+      "notes": "Confirmed by prior clusters.json analysis; tests/phase2.rs."
+    },
+    "shippedCallers": [
+      "Not conclusively determined within lane time budget -- generic basename grep across blueprint/scripts, mcp/, apps/ produced too many false-positive matches (common words) to report reliably without per-hit manual review. See audit clusters.json note: 'Caller cutover is not observed for this cluster' -- scripts/run-m0-baseline-current.mjs still runs 'pnpm --dir blueprint test:all', so the whole blueprint/src/lib tree remains live-called via the legacy test/build path regardless of per-file specifics."
+    ]
+  },
+  {
+    "file": "blueprint/src/lib/init/apply.mjs",
+    "exports": [
+      "validateInstallState",
+      "applyInitPlan",
+      "uninstallInit"
+    ],
+    "nativeEquivalent": {
+      "exists": false,
+      "location": null,
+      "portLocation": "engine/crates/membrane-blueprint/src/lib_init_apply.rs::validate_install_state,allowed_targets,merge_block,remove_block,restore",
+      "notes": "Ported (lane LIB3, r5), scoped. No prior native equivalent found. Ported the deterministic core: install-state shape validation, the fixed allowed-target set, the blueprint marker-block merge/remove text transform, and restore() (replay a captured before-state). The stateful OS-transaction orchestration in applyInitPlan (spawning the graph build command, watcher enrollment) is intentionally not replicated as a pure function -- it has no meaningful non-IO contract to prove parity against. Parity proven by tests/parity_lib_init_apply.rs."
+    },
+    "shippedCallers": [
+      "Not conclusively determined within lane time budget -- generic basename grep across blueprint/scripts, mcp/, apps/ produced too many false-positive matches (common words) to report reliably without per-hit manual review. See audit clusters.json note: 'Caller cutover is not observed for this cluster' -- scripts/run-m0-baseline-current.mjs still runs 'pnpm --dir blueprint test:all', so the whole blueprint/src/lib tree remains live-called via the legacy test/build path regardless of per-file specifics."
+    ]
+  },
+  {
+    "file": "blueprint/src/lib/init/detect-hosts.mjs",
+    "exports": [
+      "HOSTS",
+      "detectHosts"
+    ],
+    "nativeEquivalent": {
+      "exists": false,
+      "location": null,
+      "portLocation": "engine/crates/membrane-blueprint/src/lib_init_detect_hosts.rs::detect_hosts",
+      "notes": "Ported (lane LIB3, r5). No prior native equivalent found. Ported explicit-flag/existing-config/command-probe/generic-fallback precedence exactly. Parity proven by tests/parity_lib_init_detect_hosts.rs."
+    },
+    "shippedCallers": [
+      "Not conclusively determined within lane time budget -- generic basename grep across blueprint/scripts, mcp/, apps/ produced too many false-positive matches (common words) to report reliably without per-hit manual review. See audit clusters.json note: 'Caller cutover is not observed for this cluster' -- scripts/run-m0-baseline-current.mjs still runs 'pnpm --dir blueprint test:all', so the whole blueprint/src/lib tree remains live-called via the legacy test/build path regardless of per-file specifics."
+    ]
+  },
+  {
+    "file": "blueprint/src/lib/init/host-configs.mjs",
+    "exports": [
+      "HOOK_POLICY_MODES",
+      "HOOK_POLICIES",
+      "policyBehavior"
+    ],
+    "nativeEquivalent": {
+      "exists": false,
+      "location": null,
+      "portLocation": "engine/crates/membrane-blueprint/src/lib_init_host_configs.rs::policy_behavior",
+      "notes": "Ported (lane LIB3, r5). No prior native equivalent found. Ported the three hook policy modes (advisory/recall-before-read/task-grants) with fail-open/closed flags and recovery commands. Parity proven by tests/parity_lib_init_host_configs.rs."
+    },
+    "shippedCallers": [
+      "Not conclusively determined within lane time budget -- generic basename grep across blueprint/scripts, mcp/, apps/ produced too many false-positive matches (common words) to report reliably without per-hit manual review. See audit clusters.json note: 'Caller cutover is not observed for this cluster' -- scripts/run-m0-baseline-current.mjs still runs 'pnpm --dir blueprint test:all', so the whole blueprint/src/lib tree remains live-called via the legacy test/build path regardless of per-file specifics."
+    ]
+  },
+  {
+    "file": "blueprint/src/lib/init/plan.mjs",
+    "exports": [
+      "INIT_PLAN_VERSION",
+      "buildInitPlan"
+    ],
+    "nativeEquivalent": {
+      "exists": false,
+      "location": null,
+      "portLocation": "engine/crates/membrane-blueprint/src/lib_init_plan.rs::build_init_plan",
+      "notes": "Ported (lane LIB3, r5). No prior native equivalent found. Ported the pure planner (host instruction files, MCP entry, hooks, watcher enrollment, build command, uninstall instructions) exactly, built on the ported detect_hosts. Parity proven by tests/parity_lib_init_plan.rs."
+    },
+    "shippedCallers": [
+      "Not conclusively determined within lane time budget -- generic basename grep across blueprint/scripts, mcp/, apps/ produced too many false-positive matches (common words) to report reliably without per-hit manual review. See audit clusters.json note: 'Caller cutover is not observed for this cluster' -- scripts/run-m0-baseline-current.mjs still runs 'pnpm --dir blueprint test:all', so the whole blueprint/src/lib tree remains live-called via the legacy test/build path regardless of per-file specifics."
+    ]
+  },
+  {
+    "file": "blueprint/src/lib/init/state-integrity.mjs",
+    "exports": [
+      "sealInstallState",
+      "verifyInstallState",
+      "sealLocalState",
+      "verifyLocalState",
+      "removeInstallStateKey"
+    ],
+    "nativeEquivalent": {
+      "exists": false,
+      "location": null,
+      "portLocation": "engine/crates/membrane-blueprint/src/lib_init_state_integrity.rs::seal_local_state,verify_local_state,hmac_sha256",
+      "notes": "Ported (lane LIB3, r5). No prior native equivalent found. Ported canonicalization (sorted keys, integrity key excluded), seal/verify, and constant-time tag comparison. Parity proven by tests/parity_lib_init_state_integrity.rs. Lane CRYPTO 2026-09-10: replaced the hand-rolled RFC 2104 HMAC-SHA256 (written because LIB3 believed no HMAC crate was available) with ring::hmac (HMAC_SHA256 sign + constant-time verify); the two constructions agreed byte-for-byte on the RFC 4231 vectors (no bug found), confirmed by a new known-answer test in parity_lib_init_state_integrity.rs and src/lib_init_state_integrity.rs."
+    },
+    "shippedCallers": [
+      "Not conclusively determined within lane time budget -- generic basename grep across blueprint/scripts, mcp/, apps/ produced too many false-positive matches (common words) to report reliably without per-hit manual review. See audit clusters.json note: 'Caller cutover is not observed for this cluster' -- scripts/run-m0-baseline-current.mjs still runs 'pnpm --dir blueprint test:all', so the whole blueprint/src/lib tree remains live-called via the legacy test/build path regardless of per-file specifics."
+    ]
+  },
+  {
+    "file": "blueprint/src/lib/languages/custom-config.mjs",
+    "exports": [
+      "CUSTOM_CONFIG_VERSION",
+      "loadCustomLanguages"
+    ],
+    "nativeEquivalent": {
+      "exists": false,
+      "location": null,
+      "portLocation": "engine/crates/membrane-blueprint/src/lib_languages_custom_config.rs::load_custom_languages",
+      "notes": "Ported (lane LIB3, r5). No prior native equivalent found. Ported the pinned TOML-subset parser and full validation ladder (missing id, builtin id/extension collision, absolute/parent-traversal/URL grammar path rejection, repo-confinement, grammar hash mismatch). Built-in id/extension sets are caller-supplied parameters since this crate exposes no existing native language-capability-registry to source them from. Parity proven by tests/parity_lib_languages_custom_config.rs."
+    },
+    "shippedCallers": [
+      "Not conclusively determined within lane time budget -- generic basename grep across blueprint/scripts, mcp/, apps/ produced too many false-positive matches (common words) to report reliably without per-hit manual review. See audit clusters.json note: 'Caller cutover is not observed for this cluster' -- scripts/run-m0-baseline-current.mjs still runs 'pnpm --dir blueprint test:all', so the whole blueprint/src/lib tree remains live-called via the legacy test/build path regardless of per-file specifics."
+    ]
+  },
+  {
+    "file": "blueprint/src/lib/operations/doctor.mjs",
+    "exports": [
+      "readJson",
+      "collectDoctorDiagnostics"
+    ],
+    "nativeEquivalent": {
+      "exists": false,
+      "location": null,
+      "portLocation": "engine/crates/membrane-blueprint/src/lib_operations_doctor.rs::collect_map_diagnostics,mcp_config_launchable",
+      "notes": "Ported (lane LIB3, r5). membrane-runtime/src/doctor.rs (DoctorReportV0/run/run_with_policy) was read in full and is NOT a match -- it is a flat check-list report with no missing_map/corrupt_map/stale_graph/mcp_config_launchable reason-code ladder and no MCP liveness probe. Ported the map.json/stale.json-driven state ladder (missing/corrupt/broken/degraded), duplicate-node-id and dangling-edge detection, missing-reference warnings, and the MCP-server launchability liveness probe (spawn + fixed window + alive-vs-early-exit). Parity proven by tests/parity_lib_operations_doctor.rs."
+    },
+    "shippedCallers": [
+      "Not conclusively determined within lane time budget -- generic basename grep across blueprint/scripts, mcp/, apps/ produced too many false-positive matches (common words) to report reliably without per-hit manual review. See audit clusters.json note: 'Caller cutover is not observed for this cluster' -- scripts/run-m0-baseline-current.mjs still runs 'pnpm --dir blueprint test:all', so the whole blueprint/src/lib tree remains live-called via the legacy test/build path regardless of per-file specifics."
+    ]
+  },
+  {
+    "file": "blueprint/src/lib/operations/repair.mjs",
+    "exports": [
+      "REPAIR_PLAN_VERSION",
+      "buildRepairPlan"
+    ],
+    "nativeEquivalent": {
+      "exists": false,
+      "location": null,
+      "portLocation": "engine/crates/membrane-blueprint/src/lib_operations_repair.rs::build_repair_plan",
+      "notes": "Ported (lane LIB3, r5). No prior native equivalent found. Ported the ordered blocker-code-driven repair-action builder (rebuild-graph, reconcile-watcher, regenerate-docs, no-op fallback) exactly. Parity proven by tests/parity_lib_operations_repair.rs."
+    },
+    "shippedCallers": [
+      "Not conclusively determined within lane time budget -- generic basename grep across blueprint/scripts, mcp/, apps/ produced too many false-positive matches (common words) to report reliably without per-hit manual review. See audit clusters.json note: 'Caller cutover is not observed for this cluster' -- scripts/run-m0-baseline-current.mjs still runs 'pnpm --dir blueprint test:all', so the whole blueprint/src/lib tree remains live-called via the legacy test/build path regardless of per-file specifics."
+    ]
+  },
+  {
+    "file": "blueprint/src/lib/operations/support-bundle.mjs",
+    "exports": [
+      "SUPPORT_BUNDLE_ALLOWLIST",
+      "checksumFile",
+      "buildSupportBundle",
+      "archiveBundle"
+    ],
+    "nativeEquivalent": {
+      "exists": false,
+      "location": null,
+      "portLocation": "engine/crates/membrane-blueprint/src/lib_operations_support_bundle.rs::build_support_bundle",
+      "notes": "Ported (lane LIB3, r5). No prior native equivalent found for the bundle builder itself; it reuses the existing lib_redaction::redact_for_egress (lane LIB4 port of redaction.mjs) rather than redefining secret scrubbing. Ported the allowlisted-file writer, path redaction (HOME/REPO token rewriting incl. the legacy replaceAll-order behavior when home prefixes root), path-shaped-key record redaction, and checksums manifest. Parity proven by tests/parity_lib_operations_support_bundle.rs."
+    },
+    "shippedCallers": [
+      "Not conclusively determined within lane time budget -- generic basename grep across blueprint/scripts, mcp/, apps/ produced too many false-positive matches (common words) to report reliably without per-hit manual review. See audit clusters.json note: 'Caller cutover is not observed for this cluster' -- scripts/run-m0-baseline-current.mjs still runs 'pnpm --dir blueprint test:all', so the whole blueprint/src/lib tree remains live-called via the legacy test/build path regardless of per-file specifics."
+    ]
+  },
+  {
+    "file": "blueprint/src/lib/orientation-evidence.mjs",
+    "exports": [
+      "ORIENTATION_EVIDENCE_KIND",
+      "ORIENTATION_EVIDENCE_SCHEMA_VERSION",
+      "sha256Hex",
+      "candidateSetDigest",
+      "buildOrientationEvidence",
+      "writeOrientationEvidenceFile",
+      "defaultEvidencePath"
+    ],
+    "nativeEquivalent": {
+      "exists": true,
+      "location": "engine/crates/membrane-blueprint/src/lib_orientation_evidence.rs",
+      "notes": "Lane LIB4 2026-09-10: ported to engine/crates/membrane-blueprint/src/lib_orientation_evidence.rs with parity tests in engine/crates/membrane-blueprint/tests/parity_lib_orientation_evidence.rs; -p membrane-blueprint full suite passes locally via rightkit cargo."
+    },
+    "shippedCallers": [
+      "blueprint receipt/orientation pipeline (per prior audit note)"
+    ]
+  },
+  {
+    "file": "blueprint/src/lib/path-confinement.mjs",
+    "exports": [
+      "resolvePhysicalPath",
+      "isConfinedPath"
+    ],
+    "nativeEquivalent": {
+      "exists": false,
+      "location": null,
+      "notes": "Confirmed no native counterpart by audit/qualification/windows-r5/ncl-02/clusters.json misc-bucket analysis (owner blueprint-repair)."
+    },
+    "shippedCallers": [
+      "blueprint/scripts/blueprint-install.mjs",
+      "blueprint/src/lib/init/apply.mjs",
+      "blueprint/src/lib/update/apply.mjs",
+      "blueprint/tests/update-rollback.test.mjs"
+    ]
+  },
+  {
+    "file": "blueprint/src/lib/phase2-completion.mjs",
+    "exports": [
+      "completePendingDocDomain"
+    ],
+    "nativeEquivalent": {
+      "exists": true,
+      "location": "engine/crates/membrane-blueprint/src/lib_phase2_completion.rs",
+      "notes": "Lane LIB4 2026-09-10: ported the pure generation-fencing decision logic and artifact path layout only. The SQLite/delta-store orchestration (readPendingDomains, clearDomainPending, getGenerationEnvelope, buildIncrementalPhase2Plan, sealPhase2Artifacts) depends on sibling modules outside this lane's 11-file scope and on store.rs/graph.rs schema, which lane rules forbid touching."
+    },
+    "shippedCallers": [
+      "blueprint doc-domain completion pipeline (per prior audit note)"
+    ]
+  },
+  {
+    "file": "blueprint/src/lib/receipt-store.mjs",
+    "exports": [
+      "RECEIPT_SCHEMA_VERSION",
+      "issueScopeGrant",
+      "checkScopeGrant",
+      "defaultReceiptStoreDir",
+      "receiptLookupKey",
+      "createReceiptStore",
+      "buildOrientationReceipt"
+    ],
+    "nativeEquivalent": {
+      "exists": true,
+      "location": "engine/crates/membrane-blueprint/src/lib_receipt_store.rs",
+      "notes": "Lane LIB4 2026-09-10: ported to engine/crates/membrane-blueprint/src/lib_receipt_store.rs with parity tests in engine/crates/membrane-blueprint/tests/parity_lib_receipt_store.rs; -p membrane-blueprint full suite passes locally via rightkit cargo. Lane CRYPTO 2026-09-10: replaced the hand-rolled RFC 2104 HMAC-SHA256 (written because LIB4 believed no HMAC crate was available) with ring::hmac; agreed byte-for-byte on RFC 4231 vectors (no bug found), confirmed by new known-answer tests in src/lib_receipt_store.rs (crypto_tests mod). The v4-shaped UUID and random-key generation remain hand-written directly on getrandom (an existing dependency, and the correct tool for opaque-id/random-byte generation, not a cryptographic primitive) -- no uuid crate is available in engine/Cargo.lock and lane rules permit adding only ring/hmac."
+    },
+    "shippedCallers": [
+      "blueprint receipt/scope-grant pipeline (per prior audit note)"
+    ]
+  },
+  {
+    "file": "blueprint/src/lib/redaction.mjs",
+    "exports": [
+      "redactForEgress"
+    ],
+    "nativeEquivalent": {
+      "exists": true,
+      "location": "engine/crates/membrane-blueprint/src/lib_redaction.rs",
+      "notes": "Lane LIB4 2026-09-10: ported to engine/crates/membrane-blueprint/src/lib_redaction.rs with parity tests in engine/crates/membrane-blueprint/tests/parity_lib_redaction.rs; -p membrane-blueprint full suite passes locally via rightkit cargo."
+    },
+    "shippedCallers": [
+      "blueprint egress redaction call sites (per prior audit note)"
+    ]
+  },
+  {
+    "file": "blueprint/src/lib/rules/baseline.mjs",
+    "exports": [
+      "baselineFingerprintSet",
+      "changedSlice",
+      "captureNamedBaseline",
+      "captureBaseline",
+      "listNamedBaselines",
+      "listBaselines",
+      "getNamedBaseline",
+      "getBaseline",
+      "clearNamedBaselines",
+      "clearBaselines"
+    ],
+    "nativeEquivalent": {
+      "exists": false,
+      "location": null,
+      "portLocation": "engine/crates/membrane-blueprint/src/lib_rules_baseline.rs::capture_named_baseline,changed_slice,list_named_baselines,get_named_baseline,clear_named_baselines",
+      "notes": "Ported (lane LIB3, r5). No prior native equivalent found. Ported the named-generation baseline store (capture/list/get/clear) and changed_slice (findings not present in a baseline fingerprint set). Parity proven by tests/parity_lib_rules_baseline.rs."
+    },
+    "shippedCallers": [
+      "Not conclusively determined within lane time budget -- generic basename grep across blueprint/scripts, mcp/, apps/ produced too many false-positive matches (common words) to report reliably without per-hit manual review. See audit clusters.json note: 'Caller cutover is not observed for this cluster' -- scripts/run-m0-baseline-current.mjs still runs 'pnpm --dir blueprint test:all', so the whole blueprint/src/lib tree remains live-called via the legacy test/build path regardless of per-file specifics."
+    ]
+  },
+  {
+    "file": "blueprint/src/lib/rules/evaluate.mjs",
+    "exports": [
+      "pathMatches",
+      "evaluateRules"
+    ],
+    "nativeEquivalent": {
+      "exists": false,
+      "location": null,
+      "portLocation": "engine/crates/membrane-blueprint/src/lib_rules_evaluate.rs::evaluate_rules,path_matches",
+      "notes": "Ported (lane LIB3, r5). No prior native equivalent found for evaluateRules/pathMatches; the shared provenance tag FACT_PROVENANCE_RULE_RESOLVED already exists in evidence_authority.rs and is reused (not redefined) for the finding provenance tag. Ported the glob path matcher and rule-to-edge evaluation with deterministic sha256-based fingerprinting and the declaration/authority framing. Parity proven by tests/parity_lib_rules_evaluate.rs."
+    },
+    "shippedCallers": [
+      "Not conclusively determined within lane time budget -- generic basename grep across blueprint/scripts, mcp/, apps/ produced too many false-positive matches (common words) to report reliably without per-hit manual review. See audit clusters.json note: 'Caller cutover is not observed for this cluster' -- scripts/run-m0-baseline-current.mjs still runs 'pnpm --dir blueprint test:all', so the whole blueprint/src/lib tree remains live-called via the legacy test/build path regardless of per-file specifics."
+    ]
+  },
+  {
+    "file": "blueprint/src/lib/rules/exceptions.mjs",
+    "exports": [
+      "isExceptionValid",
+      "suppressedByException"
+    ],
+    "nativeEquivalent": {
+      "exists": false,
+      "location": null,
+      "portLocation": "engine/crates/membrane-blueprint/src/lib_rules_exceptions.rs::is_exception_valid,suppressed_by_exception",
+      "notes": "Ported (lane LIB3, r5). No prior native equivalent found. Ported required-field validation, expiry checking, and global/path-scope suppression exactly. Parity proven by tests/parity_lib_rules_exceptions.rs."
+    },
+    "shippedCallers": [
+      "Not conclusively determined within lane time budget -- generic basename grep across blueprint/scripts, mcp/, apps/ produced too many false-positive matches (common words) to report reliably without per-hit manual review. See audit clusters.json note: 'Caller cutover is not observed for this cluster' -- scripts/run-m0-baseline-current.mjs still runs 'pnpm --dir blueprint test:all', so the whole blueprint/src/lib tree remains live-called via the legacy test/build path regardless of per-file specifics."
+    ]
+  },
+  {
+    "file": "blueprint/src/lib/rules/parser.mjs",
+    "exports": [
+      "RULES_VERSION",
+      "parseRules"
+    ],
+    "nativeEquivalent": {
+      "exists": false,
+      "location": null,
+      "portLocation": "engine/crates/membrane-blueprint/src/lib_rules_parser.rs::parse_rules",
+      "notes": "Ported (lane LIB3, r5). No prior native equivalent found. Ported the pinned architecture-rule-DSL YAML-subset parser (from/disallow/to sections, path, severity, rationale, minConfidence, edgeKinds) exactly. Parity proven by tests/parity_lib_rules_parser.rs."
+    },
+    "shippedCallers": [
+      "Not conclusively determined within lane time budget -- generic basename grep across blueprint/scripts, mcp/, apps/ produced too many false-positive matches (common words) to report reliably without per-hit manual review. See audit clusters.json note: 'Caller cutover is not observed for this cluster' -- scripts/run-m0-baseline-current.mjs still runs 'pnpm --dir blueprint test:all', so the whole blueprint/src/lib tree remains live-called via the legacy test/build path regardless of per-file specifics."
+    ]
+  },
+  {
+    "file": "blueprint/src/lib/run-ledger.mjs",
+    "exports": [
+      "ledgerLink",
+      "verifyLedgerLink",
+      "verifyLedgerChain"
+    ],
+    "nativeEquivalent": {
+      "exists": true,
+      "location": "engine/crates/membrane-blueprint/src/lib_run_ledger.rs",
+      "notes": "Lane LIB4 2026-09-10: ported to engine/crates/membrane-blueprint/src/lib_run_ledger.rs with parity tests in engine/crates/membrane-blueprint/tests/parity_lib_run_ledger.rs; -p membrane-blueprint full suite passes locally via rightkit cargo. Lane CRYPTO 2026-09-10: replaced the hand-rolled RFC 2104 HMAC-SHA256 (written because LIB4 believed no HMAC crate was available) with ring::hmac (sign + constant-time verify); agreed byte-for-byte with the prior construction on a Node crypto known-answer vector (no bug found), confirmed by a new known-answer test in parity_lib_run_ledger.rs."
+    },
+    "shippedCallers": [
+      "blueprint run-ledger pipeline (per prior audit note)"
+    ]
+  },
+  {
+    "file": "blueprint/src/lib/runtime-capabilities.mjs",
+    "exports": [
+      "RUNTIME_CAPABILITIES",
+      "checkRuntime",
+      "requireRuntime"
+    ],
+    "nativeEquivalent": {
+      "exists": true,
+      "location": "engine/crates/membrane-blueprint/src/lib_runtime_capabilities.rs",
+      "notes": "Lane LIB4 2026-09-10: ported to engine/crates/membrane-blueprint/src/lib_runtime_capabilities.rs with parity tests in engine/crates/membrane-blueprint/tests/parity_lib_runtime_capabilities.rs; -p membrane-blueprint full suite passes locally via rightkit cargo."
+    },
+    "shippedCallers": [
+      "blueprint CLI runtime guard (per prior audit note)"
+    ]
+  },
+  {
+    "file": "blueprint/src/lib/sarif.mjs",
+    "exports": [
+      "toSarif"
+    ],
+    "nativeEquivalent": {
+      "exists": true,
+      "location": "engine/crates/membrane-blueprint/src/export.rs (findings_to_sarif)",
+      "notes": "Confirmed by prior clusters.json analysis; tests/export.rs."
+    },
+    "shippedCallers": [
+      "Not conclusively determined within lane time budget -- generic basename grep across blueprint/scripts, mcp/, apps/ produced too many false-positive matches (common words) to report reliably without per-hit manual review. See audit clusters.json note: 'Caller cutover is not observed for this cluster' -- scripts/run-m0-baseline-current.mjs still runs 'pnpm --dir blueprint test:all', so the whole blueprint/src/lib tree remains live-called via the legacy test/build path regardless of per-file specifics."
+    ]
+  },
+  {
+    "file": "blueprint/src/lib/session-token.mjs",
+    "exports": [
+      "createSessionToken",
+      "verifySessionToken"
+    ],
+    "nativeEquivalent": {
+      "exists": true,
+      "location": "engine/crates/membrane-blueprint/src/security.rs",
+      "notes": "Confirmed by prior clusters.json analysis; tests/security.rs."
+    },
+    "shippedCallers": [
+      "Not conclusively determined within lane time budget -- generic basename grep across blueprint/scripts, mcp/, apps/ produced too many false-positive matches (common words) to report reliably without per-hit manual review. See audit clusters.json note: 'Caller cutover is not observed for this cluster' -- scripts/run-m0-baseline-current.mjs still runs 'pnpm --dir blueprint test:all', so the whole blueprint/src/lib tree remains live-called via the legacy test/build path regardless of per-file specifics."
+    ]
+  },
+  {
+    "file": "blueprint/src/lib/snapshot.mjs",
+    "exports": [
+      "SNAPSHOT_SCHEMA_VERSION",
+      "SNAPSHOT_MAX_SECTIONS",
+      "SNAPSHOT_MAX_ITEMS_PER_SECTION",
+      "SNAPSHOT_MAX_REASON_BYTES",
+      "SNAPSHOT_MAX_EVIDENCE_BYTES",
+      "SNAPSHOT_MAX_TOTAL_BYTES",
+      "boundUtf8",
+      "buildSnapshot",
+      "startSnapshotServer",
+      "validateSnapshot"
+    ],
+    "nativeEquivalent": {
+      "exists": true,
+      "location": "engine/crates/membrane-blueprint/src/{graph,freshness,watch,service}.rs",
+      "notes": "Confirmed by prior clusters.json analysis; tests/watch.rs, tests/service.rs, tests/contracts.rs. Not a 1:1 module port but behavior covered."
+    },
+    "shippedCallers": [
+      "Not conclusively determined within lane time budget -- generic basename grep across blueprint/scripts, mcp/, apps/ produced too many false-positive matches (common words) to report reliably without per-hit manual review. See audit clusters.json note: 'Caller cutover is not observed for this cluster' -- scripts/run-m0-baseline-current.mjs still runs 'pnpm --dir blueprint test:all', so the whole blueprint/src/lib tree remains live-called via the legacy test/build path regardless of per-file specifics."
+    ]
+  },
+  {
+    "file": "blueprint/src/lib/telemetry.mjs",
+    "exports": [
+      "incrementTelemetry",
+      "recordBarrierDuration",
+      "recordTokenSavings",
+      "readTelemetry"
+    ],
+    "nativeEquivalent": {
+      "exists": true,
+      "location": "engine/crates/membrane-blueprint/src/index.rs (indirect)",
+      "notes": "Prior analysis: indirect coverage only, no telemetry-named native test found. Weak equivalence -- flagged, not a clean 1:1."
+    },
+    "shippedCallers": [
+      "Not conclusively determined within lane time budget -- generic basename grep across blueprint/scripts, mcp/, apps/ produced too many false-positive matches (common words) to report reliably without per-hit manual review. See audit clusters.json note: 'Caller cutover is not observed for this cluster' -- scripts/run-m0-baseline-current.mjs still runs 'pnpm --dir blueprint test:all', so the whole blueprint/src/lib tree remains live-called via the legacy test/build path regardless of per-file specifics."
+    ]
+  },
+  {
+    "file": "blueprint/src/lib/token-budget.mjs",
+    "exports": [
+      "charsToTokens",
+      "sliceTokens",
+      "resolveTokens",
+      "trimToSymbol",
+      "truncationReceipt",
+      "applyTrimToSymbol",
+      "_internals",
+      "chunkBySyntax"
+    ],
+    "nativeEquivalent": {
+      "exists": true,
+      "location": "engine/crates/membrane-blueprint/src/lib_token_budget.rs",
+      "notes": "Lane LIB4 2026-09-10: ported to engine/crates/membrane-blueprint/src/lib_token_budget.rs with parity tests in engine/crates/membrane-blueprint/tests/parity_lib_token_budget.rs; -p membrane-blueprint full suite passes locally via rightkit cargo."
+    },
+    "shippedCallers": [
+      "blueprint evidence retrieval/trim pipeline (per prior audit note)"
+    ]
+  },
+  {
+    "file": "blueprint/src/lib/update/apply.mjs",
+    "exports": [
+      "backupStore",
+      "stageUpdate",
+      "durableJson",
+      "recoverInterruptedSwap",
+      "applyStaged",
+      "recoverPendingUpdate",
+      "isConfinedUpdatePath",
+      "applySignedLocalArtifactUpdate"
+    ],
+    "nativeEquivalent": {
+      "exists": false,
+      "location": null,
+      "portLocation": "engine/crates/membrane-blueprint/src/lib_update_apply.rs::durable_json,copy_recursive,backup_store",
+      "notes": "Ported (lane LIB3, r5), scoped. No prior native equivalent found. Ported the deterministic core: durable_json (write-temp/fsync/rename atomic write), copy_recursive (the symlink-refusing recursive copy used for staging/applying), and backup_store (VACUUM INTO a live SQLite store via rusqlite, already a crate dependency). The full multi-phase rename/journal choreography in applyStaged/recoverPendingUpdate is intentionally not replicated as a pure function; lib_update_manifest.rs tree_digest covers the digest-binding half of that contract. Parity proven by tests/parity_lib_update_apply.rs."
+    },
+    "shippedCallers": [
+      "Not conclusively determined within lane time budget -- generic basename grep across blueprint/scripts, mcp/, apps/ produced too many false-positive matches (common words) to report reliably without per-hit manual review. See audit clusters.json note: 'Caller cutover is not observed for this cluster' -- scripts/run-m0-baseline-current.mjs still runs 'pnpm --dir blueprint test:all', so the whole blueprint/src/lib tree remains live-called via the legacy test/build path regardless of per-file specifics."
+    ]
+  },
+  {
+    "file": "blueprint/src/lib/update/channel.mjs",
+    "exports": [
+      "CHANNELS",
+      "detectInstallOwner",
+      "channelEnabled"
+    ],
+    "nativeEquivalent": {
+      "exists": false,
+      "location": null,
+      "portLocation": "engine/crates/membrane-blueprint/src/lib_update_channel.rs::detect_install_owner,channel_enabled",
+      "notes": "Ported (lane LIB3, r5). No prior native equivalent found. Ported the fixed channel set, offline/kill-switch gating, and portable-vs-source install-owner detection exactly. Parity proven by tests/parity_lib_update_channel.rs."
+    },
+    "shippedCallers": [
+      "Not conclusively determined within lane time budget -- generic basename grep across blueprint/scripts, mcp/, apps/ produced too many false-positive matches (common words) to report reliably without per-hit manual review. See audit clusters.json note: 'Caller cutover is not observed for this cluster' -- scripts/run-m0-baseline-current.mjs still runs 'pnpm --dir blueprint test:all', so the whole blueprint/src/lib tree remains live-called via the legacy test/build path regardless of per-file specifics."
+    ]
+  },
+  {
+    "file": "blueprint/src/lib/update/manifest.mjs",
+    "exports": [
+      "loadUpdateManifest",
+      "canonicalManifestPayload",
+      "verifySignedManifest",
+      "loadTrustedUpdateKeys",
+      "treeDigest",
+      "verifyArtifactChecksum",
+      "rejectDowngrade",
+      "rejectReplay"
+    ],
+    "nativeEquivalent": {
+      "exists": true,
+      "location": "engine/crates/membrane-blueprint/src/lib_update_manifest.rs",
+      "portLocation": "engine/crates/membrane-blueprint/src/lib_update_manifest.rs::canonical_manifest_payload,tree_digest,verify_artifact_checksum,reject_downgrade,parse_trusted_update_keys,verify_signed_manifest_structural",
+      "notes": "Ported (lane LIB3, r5). No prior native equivalent found. canonical_manifest_payload, tree_digest, verify_artifact_checksum, reject_downgrade, and parse_trusted_update_keys are ported exactly and fully. Lane CRYPTO 2026-09-10: verify_signed_manifest_structural now performs the real Ed25519 point-verification math via ring::signature::UnparsedPublicKey (ED25519 algorithm) -- it was previously stubbed to a distinct SignatureCheck::CryptoUnavailable outcome (LIB3 believed no Ed25519 crate was available; ring was not yet a dependency). The 32-byte raw public key is extracted from the trusted SPKI PEM by stripping the fixed 12-byte Ed25519 SPKI DER prefix (RFC 8410, verified against Node's own SPKI DER output). blueprint/src/lib/update/trusted-update-keys.json is copied verbatim to engine/crates/membrane-blueprint/src/trusted-update-keys.json and embedded via include_str! as TRUSTED_UPDATE_KEYS_JSON. Proven end to end with a known-answer Ed25519 vector (keypair + signature generated with Node's node:crypto generateKeyPairSync('ed25519')/sign, matching the legacy verify(null, ...) call) in tests/parity_lib_update_manifest.rs, including accept/tampered-payload/bit-flipped-signature cases."
+    },
+    "shippedCallers": [
+      "Not conclusively determined within lane time budget -- generic basename grep across blueprint/scripts, mcp/, apps/ produced too many false-positive matches (common words) to report reliably without per-hit manual review. See audit clusters.json note: 'Caller cutover is not observed for this cluster' -- scripts/run-m0-baseline-current.mjs still runs 'pnpm --dir blueprint test:all', so the whole blueprint/src/lib tree remains live-called via the legacy test/build path regardless of per-file specifics."
+    ]
+  },
+  {
+    "file": "blueprint/src/lib/update/rollback.mjs",
+    "exports": [
+      "rollback"
+    ],
+    "nativeEquivalent": {
+      "exists": false,
+      "location": null,
+      "portLocation": "engine/crates/membrane-blueprint/src/lib_update_rollback.rs::is_valid_digest,receipt_is_self_consistent",
+      "notes": "Ported (lane LIB3, r5), scoped. No prior native equivalent found. Ported the deterministic receipt-binding precondition every rollback must satisfy before touching any file (sha256-hex digest shape checks, semver-prefixed version checks); the OS-transaction choreography (journal writes, directory renames) is not replicated as a pure function for the same reason as update/apply.mjs, and reuses lib_update_apply::copy_recursive rather than duplicating it. Parity proven by tests/parity_lib_update_rollback.rs."
+    },
+    "shippedCallers": [
+      "Not conclusively determined within lane time budget -- generic basename grep across blueprint/scripts, mcp/, apps/ produced too many false-positive matches (common words) to report reliably without per-hit manual review. See audit clusters.json note: 'Caller cutover is not observed for this cluster' -- scripts/run-m0-baseline-current.mjs still runs 'pnpm --dir blueprint test:all', so the whole blueprint/src/lib tree remains live-called via the legacy test/build path regardless of per-file specifics."
+    ]
+  }
+]

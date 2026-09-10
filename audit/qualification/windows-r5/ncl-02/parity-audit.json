@@ -1,0 +1,380 @@
+[
+  {
+    "op": "service.mjs:resolveCanonicalRoot",
+    "legacySource": "blueprint/src/lib/application/service.mjs:435",
+    "nativeChain": "engine/crates/membrane-runtime/src/mcp_executor.rs:execute_blueprint (caller()) -> engine/crates/membrane-blueprint/src/engine.rs:confined_root (canonical_root)",
+    "classification": "EXECUTED-NATIVELY",
+    "shippedCallers": ["blueprint/src/sdk/embedded.mjs", "internal to service.mjs (root resolution for every op)"]
+  },
+  {
+    "op": "service.mjs:openFreshnessSession",
+    "legacySource": "blueprint/src/lib/application/service.mjs:296-336 (returned as public method, also used internally by withCurrentDb-based ops)",
+    "nativeChain": "engine/crates/membrane-blueprint/src/engine.rs:execute (Build|Refresh -> build_and_publish; Search/Resolve/Recall/Expand/Impact/Path/Architecture -> load_current_with_observation + ensure_generation) replaces session object with per-call read-only snapshot open/ensure_generation logic",
+    "classification": "EXECUTED-NATIVELY",
+    "shippedCallers": ["internal to service.mjs (used by expand/impact/path)"]
+  },
+  {
+    "op": "service.mjs:refresh",
+    "legacySource": "blueprint/src/lib/application/service.mjs:439-447",
+    "nativeChain": "membrane-runtime/src/mcp_executor.rs:775-783 execute_blueprint operation=\"refresh\" -> Operation::Refresh -> membrane-runtime/src/blueprint_one_shot.rs:dispatch_native -> membrane-blueprint/src/engine.rs:36-38 (Operation::Build|Refresh -> build_and_publish:161)",
+    "classification": "EXECUTED-NATIVELY",
+    "shippedCallers": ["engine/crates/membrane-mcp membrane_blueprint tool (operation=refresh)", "membrane-blueprint/src/cli.rs:manual_refresh (blueprint-cli manual refresh, LC-02)"]
+  },
+  {
+    "op": "service.mjs:snapshot_get",
+    "legacySource": "blueprint/src/lib/application/service.mjs:448-452",
+    "nativeChain": "mcp_executor.rs:804-806 operation=\"snapshot_get\" -> Operation::SnapshotGet -> blueprint_one_shot::dispatch_native -> engine.rs:70-80 (Operation::SnapshotGet -> lib_application_snapshots::get_snapshot)",
+    "classification": "EXECUTED-NATIVELY",
+    "shippedCallers": ["engine/crates/membrane-mcp membrane_blueprint tool (operation=snapshot_get)"]
+  },
+  {
+    "op": "service.mjs:snapshot_list",
+    "legacySource": "blueprint/src/lib/application/service.mjs:454-459",
+    "nativeChain": "mcp_executor.rs:804-806 operation=\"snapshot_list\" -> Operation::SnapshotList -> engine.rs:81-87 (lib_application_snapshots::list_snapshots)",
+    "classification": "EXECUTED-NATIVELY",
+    "shippedCallers": ["engine/crates/membrane-mcp membrane_blueprint tool (operation=snapshot_list)"]
+  },
+  {
+    "op": "service.mjs:changes",
+    "legacySource": "blueprint/src/lib/application/service.mjs:460-466",
+    "nativeChain": "mcp_executor.rs:804-806 operation=\"changes\"/\"changes_since\" -> Operation::Changes -> engine.rs:88-107 (lib_application_snapshots::changes_since_reference)",
+    "classification": "EXECUTED-NATIVELY",
+    "shippedCallers": ["engine/crates/membrane-mcp membrane_blueprint tool (operation=changes|changes_since)"]
+  },
+  {
+    "op": "service.mjs:status",
+    "legacySource": "blueprint/src/lib/application/service.mjs:467-488",
+    "nativeChain": "mcp_executor.rs:782 operation=\"status\" -> Operation::Status -> engine.rs:39-40 (status() -> status_value, source_hash freshness compare)",
+    "classification": "EXECUTED-NATIVELY",
+    "shippedCallers": ["engine/crates/membrane-mcp membrane_blueprint tool (operation=status)", "membrane-blueprint/src/cli.rs:status"]
+  },
+  {
+    "op": "service.mjs:search",
+    "legacySource": "blueprint/src/lib/application/service.mjs:490-532",
+    "nativeChain": "mcp_executor.rs:776-778 operation=\"search\" -> Operation::Search -> engine.rs:110-121 -> query.rs:327-337 search() (BM25/exact ranking inlined natively, no recall_circuit call for plain search)",
+    "classification": "EXECUTED-NATIVELY",
+    "shippedCallers": ["engine/crates/membrane-mcp membrane_blueprint tool (operation=search)", "membrane-blueprint/src/cli.rs:search"]
+  },
+  {
+    "op": "service.mjs:resolve",
+    "legacySource": "blueprint/src/lib/application/service.mjs:534-559 (includes reanchorEvidence fallback + crossCheckWithLiveVerifier)",
+    "nativeChain": "mcp_executor.rs:788-791 operation=\"symbol\" -> method=\"resolve\" -> Operation::Resolve -> engine.rs:110-121 -> query.rs:349-390 (resolve())",
+    "classification": "EXECUTED-NATIVELY",
+    "shippedCallers": ["engine/crates/membrane-mcp membrane_blueprint tool (operation=symbol)"]
+  },
+  {
+    "op": "service.mjs:resolve (reanchorEvidence fallback path)",
+    "legacySource": "blueprint/src/graph/reanchor.mjs reanchorEvidence, called from service.mjs:540-549",
+    "nativeChain": null,
+    "classification": "MISSING",
+    "shippedCallers": ["blueprint/src/lib/application/service.mjs resolve() when previousEvidence supplied and direct id lookup fails"]
+  },
+  {
+    "op": "service.mjs:resolve (verifySemantic / crossCheckWithLiveVerifier)",
+    "legacySource": "blueprint/src/providers/semantic-orchestrator.mjs crossCheckWithLiveVerifier, called from service.mjs:554-556",
+    "nativeChain": null,
+    "classification": "MISSING",
+    "shippedCallers": []
+  },
+  {
+    "op": "service.mjs:recall",
+    "legacySource": "blueprint/src/lib/application/service.mjs:561-614 (executeRecallCircuit + recallOrientation + stale-source suppression)",
+    "nativeChain": "mcp_executor.rs:779-781 operation=\"recall\" -> Operation::Recall -> engine.rs:110-121 -> query.rs:391-427 (uses recall_circuit::{Seed,make_path,compare_paths} for path ranking)",
+    "classification": "EXECUTED-NATIVELY",
+    "shippedCallers": ["engine/crates/membrane-mcp membrane_blueprint tool (operation=recall)", "membrane-blueprint/src/cli.rs:recall"]
+  },
+  {
+    "op": "service.mjs:recall (recallOrientation block/continue/noop/allow verdict + suppressRows stale filtering)",
+    "legacySource": "blueprint/src/lib/application/service.mjs:113-183 recallOrientation, staleSourcePolicy/suppressRows",
+    "nativeChain": null,
+    "classification": "PORTED-NOT-WIRED",
+    "shippedCallers": ["service.mjs recall() (internal)"]
+  },
+  {
+    "op": "service.mjs:expand",
+    "legacySource": "blueprint/src/lib/application/service.mjs:616-636 (boundedNeighbors via traverse-store.mjs)",
+    "nativeChain": "mcp_executor.rs:792-799 operation=\"expand\"|\"reference\"|\"references\" -> Operation::Expand -> engine.rs:110-121 -> query.rs:391-427 (adjacent() traversal inlined, replaces traverse-store.mjs boundedNeighbors)",
+    "classification": "EXECUTED-NATIVELY",
+    "shippedCallers": ["engine/crates/membrane-mcp membrane_blueprint tool (operation=expand|reference|references)", "membrane-blueprint/src/cli.rs:expand"]
+  },
+  {
+    "op": "service.mjs:impact",
+    "legacySource": "blueprint/src/lib/application/service.mjs:638-685 (boundedImpact + decomposeChangeRisk + recommendTestsForImpact)",
+    "nativeChain": "mcp_executor.rs:800-803 operation=\"impact\" -> Operation::Impact -> engine.rs:110-121 -> query.rs:391-427 (adjacent() + ImpactFrontierClass classification; no risk/test-recommendation stage)",
+    "classification": "EXECUTED-NATIVELY",
+    "shippedCallers": ["engine/crates/membrane-mcp membrane_blueprint tool (operation=impact)"]
+  },
+  {
+    "op": "service.mjs:impact (decomposeChangeRisk / risk score)",
+    "legacySource": "blueprint/src/graph/analytics/change-impact.mjs + analytics/index.mjs decomposeChangeRisk, service.mjs:659-667",
+    "nativeChain": null,
+    "classification": "MISSING",
+    "shippedCallers": ["service.mjs impact() (internal, feeds MCP/CLI impact responses)"]
+  },
+  {
+    "op": "service.mjs:impact (recommendTestsForImpact / testRecommendations)",
+    "legacySource": "blueprint/src/graph/test-recommendation.mjs recommendTestsForImpact, service.mjs:668-672",
+    "nativeChain": null,
+    "classification": "MISSING",
+    "shippedCallers": ["service.mjs impact() (internal, feeds MCP/CLI impact responses)"]
+  },
+  {
+    "op": "service.mjs:path",
+    "legacySource": "blueprint/src/lib/application/service.mjs:687-719 (boundedPath)",
+    "nativeChain": "mcp_executor.rs:783 operation=\"path\" -> Operation::Path -> engine.rs:110-121 -> query.rs:429-447 (enumerate_paths/rank_paths, native BFS/ranking replacing boundedPath)",
+    "classification": "EXECUTED-NATIVELY",
+    "shippedCallers": ["engine/crates/membrane-mcp membrane_blueprint tool (operation=path)"]
+  },
+  {
+    "op": "service.mjs:architecture (view=summary)",
+    "legacySource": "blueprint/src/lib/application/service.mjs:793-797 (boundedArchitecture)",
+    "nativeChain": "mcp_executor.rs:784-787 operation=\"architecture\" -> Operation::Architecture -> engine.rs:110-121 -> query.rs:448-455 (OrientationSectionV1-based summary projection)",
+    "classification": "EXECUTED-NATIVELY",
+    "shippedCallers": ["engine/crates/membrane-mcp membrane_blueprint tool (operation=architecture)", "membrane-blueprint/src/cli.rs:architecture_orientation"]
+  },
+  {
+    "op": "service.mjs:architecture (view=flows)",
+    "legacySource": "blueprint/src/lib/application/service.mjs:195-252 architectureFlowPage / graphFlowInventory (static-provider.mjs)",
+    "nativeChain": "query.rs Operation::Architecture -> architecture_views::dispatch_view(view=\"flows\") returns typed error architecture_view_not_wired (no native graphFlowInventory/architectureFlowPage port exists; static_provider.rs does not implement it despite the pub mod existing)",
+    "classification": "MISSING",
+    "shippedCallers": ["service.mjs architecture({view:'flows'})", "engine/crates/membrane-mcp membrane_blueprint tool (operation=architecture, view=flows) -- lane WIRE1 2026-09-10 threads `view` through but this view still reports not_wired"]
+  },
+  {
+    "op": "service.mjs:architecture (view=liveness)",
+    "legacySource": "blueprint/src/graph/liveness.mjs buildLivenessProjection, service.mjs:734-741",
+    "nativeChain": "mcp_executor.rs execute_blueprint(operation=\"architecture\", view=\"liveness\") -> Operation::Architecture -> engine.rs -> query.rs:771 view dispatch -> architecture_views::dispatch_view(view=\"liveness\") -> liveness::build_liveness_projection",
+    "classification": "EXECUTED-NATIVELY",
+    "shippedCallers": ["engine/crates/membrane-mcp membrane_blueprint tool (operation=architecture, view=liveness)", "membrane-blueprint/src/cli.rs:architecture_orientation_view", "engine/crates/membrane-blueprint/tests/parity_architecture_views.rs:liveness_view_reports_a_disposition_per_node"]
+  },
+  {
+    "op": "service.mjs:architecture (view=processes)",
+    "legacySource": "blueprint/src/graph/process-projection.mjs buildProcessProjection, service.mjs:742-749",
+    "nativeChain": "mcp_executor.rs execute_blueprint(operation=\"architecture\", view=\"processes\") -> Operation::Architecture -> engine.rs -> query.rs:771 view dispatch -> architecture_views::dispatch_view(view=\"processes\") -> process_projection::build_process_projection (new, lane WIRE1 2026-09-10), cached via dependency_dag::ProjectionCache keyed by repo root",
+    "classification": "EXECUTED-NATIVELY",
+    "shippedCallers": ["engine/crates/membrane-mcp membrane_blueprint tool (operation=architecture, view=processes)", "membrane-blueprint/src/cli.rs:architecture_orientation_view", "engine/crates/membrane-blueprint/tests/parity_architecture_views.rs:processes_view_walks_flow_edges_from_entry_points, processes_view_is_cached_and_invalidates_on_generation_change"]
+  },
+  {
+    "op": "service.mjs:architecture (view=contracts)",
+    "legacySource": "blueprint/src/graph/contract-registry.mjs buildContractRegistry, service.mjs:750-753",
+    "nativeChain": "mcp_executor.rs execute_blueprint(operation=\"architecture\", view=\"contracts\") -> Operation::Architecture -> engine.rs -> query.rs:771 view dispatch -> architecture_views::dispatch_view(view=\"contracts\") -> orientation_projection::contract_generation_from_store (adapter, lane WIRE1) -> contract_registry::build_contract_registry",
+    "classification": "EXECUTED-NATIVELY",
+    "shippedCallers": ["engine/crates/membrane-mcp membrane_blueprint tool (operation=architecture, view=contracts)", "membrane-blueprint/src/cli.rs:architecture_orientation_view", "engine/crates/membrane-blueprint/tests/parity_architecture_views.rs:contracts_view_returns_empty_registry_for_a_non_contract_fixture"]
+  },
+  {
+    "op": "service.mjs:architecture (view=signatures)",
+    "legacySource": "blueprint/src/graph/signature-projection.mjs projectSymbolSignatures, service.mjs:754-757",
+    "nativeChain": "mcp_executor.rs execute_blueprint(operation=\"architecture\", view=\"signatures\") -> Operation::Architecture -> engine.rs -> query.rs:771 view dispatch -> architecture_views::dispatch_view(view=\"signatures\") -> signature_projection::project_symbol_signatures (new, lane WIRE1 2026-09-10), cached via dependency_dag::ProjectionCache keyed by repo root",
+    "classification": "EXECUTED-NATIVELY",
+    "shippedCallers": ["engine/crates/membrane-mcp membrane_blueprint tool (operation=architecture, view=signatures)", "membrane-blueprint/src/cli.rs:architecture_orientation_view", "engine/crates/membrane-blueprint/tests/parity_architecture_views.rs:signatures_view_projects_sorted_symbol_signatures"]
+  },
+  {
+    "op": "service.mjs:architecture (view=orientation)",
+    "legacySource": "blueprint/src/graph/orientation.mjs buildColdStartOrientation, service.mjs:758-767",
+    "nativeChain": "mcp_executor.rs execute_blueprint(operation=\"architecture\", view=\"orientation\") -> Operation::Architecture -> engine.rs -> query.rs:771 view dispatch -> architecture_views::dispatch_view(view=\"orientation\") -> orientation_projection::build_cold_start_orientation (new, lane WIRE1 2026-09-10, composes entry_points/contract_registry/signature_projection/conventions exactly as legacy), cached via dependency_dag::ProjectionCache keyed by repo root. Note: pre-existing lib_orientation_evidence.rs is a DIFFERENT capability (BM03 task-anchored orientation sections used by the view=summary default) and is left untouched.",
+    "classification": "EXECUTED-NATIVELY",
+    "shippedCallers": ["engine/crates/membrane-mcp membrane_blueprint tool (operation=architecture, view=orientation)", "membrane-blueprint/src/cli.rs:architecture_orientation_view", "engine/crates/membrane-blueprint/tests/parity_architecture_views.rs:orientation_view_composes_entry_points_signatures_and_areas"]
+  },
+  {
+    "op": "service.mjs:architecture (view=projection)",
+    "legacySource": "blueprint/src/graph/architecture-model.mjs buildDisposableArchitectureProjection, service.mjs:769-782",
+    "nativeChain": "mcp_executor.rs execute_blueprint(operation=\"architecture\", view=\"projection\") -> Operation::Architecture -> engine.rs -> query.rs:771 view dispatch -> architecture_views::dispatch_view(view=\"projection\") -> architecture_model::build_disposable_architecture_projection (pre-existing module, now wired by lane WIRE1 2026-09-10)",
+    "classification": "EXECUTED-NATIVELY",
+    "shippedCallers": ["engine/crates/membrane-mcp membrane_blueprint tool (operation=architecture, view=projection)", "membrane-blueprint/src/cli.rs:architecture_orientation_view", "engine/crates/membrane-blueprint/tests/parity_architecture_views.rs:projection_view_groups_nodes_into_components"]
+  },
+  {
+    "op": "service.mjs:architecture (view=changes)",
+    "legacySource": "blueprint/src/graph/snapshots.mjs changesSinceReference, service.mjs:783-791",
+    "nativeChain": "query.rs Operation::Architecture -> architecture_views::dispatch_view(view=\"changes\") returns typed error architecture_view_not_wired: lib_application_snapshots::changes_since_reference needs a live store Connection that query::execute_query's (generation, request, context) signature does not carry, so an architecture-scoped changes view was left unwired rather than faked. The standalone Operation::Changes (engine.rs, same underlying function) is unaffected and stays EXECUTED-NATIVELY for the non-architecture-scoped changes op.",
+    "classification": "PORTED-NOT-WIRED",
+    "shippedCallers": ["service.mjs architecture({view:'changes'})"]
+  },
+  {
+    "op": "service.mjs:federate",
+    "legacySource": "blueprint/src/lib/application/service.mjs:801-830 (routeFederatedQuery, lib/federation/index.mjs)",
+    "nativeChain": "membrane-blueprint/src/engine.rs:114 Operation::Federate -> lib_application_federate::execute_federate (implemented) but engine/crates/membrane-runtime/src/mcp_executor.rs:execute_blueprint has no \"federate\" arm in its operation match (falls through to blueprint_envelope_invalid), and engine/crates/membrane-blueprint/src/cli.rs:federate (a pub fn) has no shipped CLI caller in membrane-runtime/src/blueprint_one_shot.rs's cli_request_with_deadline verb table",
+    "classification": "PORTED-NOT-WIRED",
+    "shippedCallers": []
+  },
+  {
+    "op": "service.mjs:documentTruth",
+    "legacySource": "blueprint/src/lib/application/service.mjs:832-857",
+    "nativeChain": "mcp_executor.rs:782 operation=\"documentTruth\" -> Operation::DocumentTruth -> engine.rs:52-59 -> lib_application_document_truth::execute_document_truth",
+    "classification": "EXECUTED-NATIVELY",
+    "shippedCallers": ["engine/crates/membrane-mcp membrane_blueprint tool (operation=documentTruth)"]
+  },
+  {
+    "op": "CLI blueprint.mjs: init",
+    "legacySource": "blueprint/scripts/cli/commands.mjs:199 case \"init\"",
+    "nativeChain": null,
+    "classification": "PORTED-NOT-WIRED",
+    "shippedCallers": ["blueprint/package.json#bin.blueprint (blueprint init)"],
+    "_note": "Operation::Init exists in membrane-blueprint model.rs but engine.rs's dispatch match has no arm for Operation::Init -- it falls into the catch-all unsupported_operation error. lib_init_apply.rs/lib_init_plan.rs/lib_init_detect_hosts.rs/lib_init_host_configs.rs/lib_init_state_integrity.rs are compiled pub mods but have no caller found in engine.rs, service.rs, cli.rs, or membrane-runtime/src/blueprint_one_shot.rs verb table."
+  },
+  {
+    "op": "CLI blueprint.mjs: update",
+    "legacySource": "blueprint/scripts/cli/commands.mjs:397 case \"update\"",
+    "nativeChain": null,
+    "classification": "PORTED-NOT-WIRED",
+    "shippedCallers": ["blueprint/package.json#bin.blueprint (blueprint update)"],
+    "_note": "Operation::Update has no arm in engine.rs dispatch (unsupported_operation). lib_update_apply.rs/lib_update_channel.rs/lib_update_manifest.rs/lib_update_rollback.rs are compiled but not called from engine.rs/service.rs/cli.rs production paths."
+  },
+  {
+    "op": "CLI blueprint.mjs: doctor (via `blueprint doctor`, referenced by docs/agent-rules.md)",
+    "legacySource": "blueprint/scripts/cli/commands.mjs (doctor path under service/operations)",
+    "nativeChain": null,
+    "classification": "PORTED-NOT-WIRED",
+    "shippedCallers": ["blueprint/package.json#bin.blueprint (blueprint doctor)", "blueprint/docs/agent-rules.md (\"Run `blueprint doctor --full --json`\")"],
+    "_note": "Operation::Doctor has no arm in engine.rs dispatch. lib_operations_doctor.rs is a compiled pub mod with no caller in engine.rs/service.rs/cli.rs."
+  },
+  {
+    "op": "CLI blueprint.mjs: service (repair path)",
+    "legacySource": "blueprint/scripts/cli/commands.mjs:222 case \"service\"",
+    "nativeChain": null,
+    "classification": "PORTED-NOT-WIRED",
+    "shippedCallers": ["blueprint/package.json#bin.blueprint (blueprint service ...)"],
+    "_note": "Operation::Repair has no arm in engine.rs dispatch. lib_operations_repair.rs is a compiled pub mod with no caller in engine.rs/service.rs/cli.rs."
+  },
+  {
+    "op": "CLI blueprint.mjs: show (support bundle / export)",
+    "legacySource": "blueprint/scripts/cli/commands.mjs:143 case \"show\"",
+    "nativeChain": "engine.rs:41-51 Operation::FindingsGet -> crate::findings::execute_findings -> crate::export::{build_evidence_pack, findings_to_sarif}",
+    "classification": "EXECUTED-NATIVELY",
+    "shippedCallers": ["engine/crates/membrane-mcp (findings-adjacent path)", "blueprint/package.json#bin.blueprint (blueprint show)"],
+    "_note": "Matched on export.rs being wired via FindingsGet, not a literal 1:1 CLI verb port; support-bundle-specific lib_operations_support_bundle.rs has no confirmed caller (see below)."
+  },
+  {
+    "op": "CLI blueprint.mjs: docs, explore, uninstall, languages, rules, mcp",
+    "legacySource": "blueprint/scripts/cli/commands.mjs:175,181,217,453,458,482",
+    "nativeChain": null,
+    "classification": "MISSING",
+    "shippedCallers": ["blueprint/package.json#bin.blueprint (blueprint docs|explore|uninstall|languages|rules|mcp)"],
+    "_note": "No Operation variant or native module maps to these legacy administrative/dev-loop verbs; not investigated to individual-module depth given audit time budget -- flag for follow-up before deleting blueprint/scripts/cli/commands.mjs."
+  },
+  {
+    "op": "CLI blueprint-watch.mjs (resident watcher loop)",
+    "legacySource": "blueprint/scripts/blueprint-watch.mjs",
+    "nativeChain": "engine/crates/membrane-blueprint/src/watch.rs (pub mod watch, referenced by lib.rs:25) -- confirmed compiled and referenced by crate root; full production-wiring trace into a resident host (membrane-hub tray/daemon) not completed in this pass",
+    "classification": "PORTED-NOT-WIRED",
+    "shippedCallers": ["blueprint/package.json#bin.blueprint-watch"],
+    "_note": "watch.rs exists and is exported from lib.rs, but this audit did not confirm a resident-host production caller (e.g. membrane-hub / membrane-tray-windows) within the time budget. Needs a dedicated follow-up trace before treating native watch as proven EXECUTED-NATIVELY."
+  },
+  {
+    "op": "CLI blueprint-mcp.mjs (legacy JS MCP server exposing operations via embedded.mjs)",
+    "legacySource": "blueprint/scripts/blueprint-mcp.mjs + blueprint/src/sdk/embedded.mjs",
+    "nativeChain": "engine/crates/membrane-mcp membrane_blueprint tool (Rust MCP server) is the shipped production MCP surface; legacy blueprint-mcp.mjs is a parallel legacy MCP server, not a caller into the native crate",
+    "classification": "EXECUTED-NATIVELY",
+    "shippedCallers": ["blueprint/package.json#bin.blueprint-mcp"],
+    "_note": "Classified by equivalence: every embedded.mjs method that maps onto a service.mjs op (search/recall/expand/impact/path/architecture/status/refresh/snapshot_get/snapshot_list/changes/documentTruth) already has its own EXECUTED-NATIVELY row above via engine/crates/membrane-mcp. embedded.mjs:federate is the one exception (see service.mjs:federate row, PORTED-NOT-WIRED / dead-in-legacy)."
+  },
+  {
+    "op": "CLI blueprint-install.mjs",
+    "legacySource": "blueprint/scripts/blueprint-install.mjs",
+    "nativeChain": null,
+    "classification": "MISSING",
+    "shippedCallers": [],
+    "_note": "No shipped caller found outside blueprint/ (apps/, top-level scripts/, mcp/, .github/, docs/product all grepped clean for blueprint-install/embedded.mjs invocation). Per repo invariant, CodeRight uses its own canonical installer for the native Membrane controller, not blueprint-install.mjs -- dead-in-legacy, no native port needed."
+  },
+  {
+    "op": "release/launchers/* (blueprint, blueprint-mcp, blueprint.cmd, blueprint-mcp.cmd)",
+    "legacySource": "blueprint/release/launchers/blueprint, blueprint-mcp, blueprint.cmd, blueprint-mcp.cmd",
+    "nativeChain": null,
+    "classification": "MISSING",
+    "shippedCallers": ["blueprint/release/launchers/* (exec scripts/blueprint.mjs and scripts/blueprint-mcp.mjs)"],
+    "_note": "Confirmed these launchers add no new surface beyond CLI verbs and blueprint-mcp.mjs already covered above -- they are thin exec wrappers, not independent operations."
+  },
+  {
+    "op": "graph/recall-circuit.mjs (executeRecallCircuit, recallCircuitToCandidateSet)",
+    "legacySource": "blueprint/src/graph/recall-circuit.mjs",
+    "nativeChain": "engine/crates/membrane-blueprint/src/recall_circuit.rs -> used by query.rs:11,196,297,310,315,318,435 in Operation::Recall/Path dispatch",
+    "classification": "EXECUTED-NATIVELY",
+    "shippedCallers": ["service.mjs recall()", "service.mjs path() (path ranking)"]
+  },
+  {
+    "op": "graph/seed-resolver.mjs (resolveSeeds)",
+    "legacySource": "blueprint/src/graph/seed-resolver.mjs",
+    "nativeChain": "query.rs:118-144 resolve() (inlined native seed resolution used by Resolve/Expand/Recall/Impact) -- no separate seed_resolver.rs module exists; logic was folded into query.rs rather than ported 1:1",
+    "classification": "EXECUTED-NATIVELY",
+    "shippedCallers": ["service.mjs resolveAnchor() (internal, feeds expand/impact/path/resolve)"]
+  },
+  {
+    "op": "graph/traverse-store.mjs (boundedNeighbors, boundedImpact, boundedPath, boundedArchitecture, indexedResolve, indexedQueryGeneration)",
+    "legacySource": "blueprint/src/graph/traverse-store.mjs",
+    "nativeChain": "query.rs:145-337 adjacent()/enumerate_paths()/rank_paths()/search() (inlined native BFS/traversal used by Expand/Impact/Path/Architecture/Search dispatch) -- no separate traverse_store.rs module; folded into query.rs",
+    "classification": "EXECUTED-NATIVELY",
+    "shippedCallers": ["service.mjs expand()/impact()/path()/architecture()/search()"]
+  },
+  {
+    "op": "graph/dependency-dag.mjs (buildProjectionDependencyDag, ProjectionCache)",
+    "legacySource": "blueprint/src/graph/dependency-dag.mjs",
+    "nativeChain": "lane WIRE1 (2026-09-10): engine/crates/membrane-blueprint/src/architecture_views.rs's cached() helper calls dependency_dag::build_projection_dependency_dag + ProjectionCache::get_or_build, keyed by repo root in a process-global registry, for the processes/contracts/signatures/orientation Architecture views (query.rs:771 view dispatch). bm25 is not wired through this cache (bm25 search stays on its own path); liveness is intentionally uncached, matching legacy (dependency-dag.mjs's PROJECTION_DEPENDENCIES table has no `liveness` entry).",
+    "classification": "EXECUTED-NATIVELY",
+    "shippedCallers": ["engine/crates/membrane-blueprint/src/architecture_views.rs (processes/contracts/signatures/orientation views)", "engine/crates/membrane-blueprint/tests/parity_architecture_views.rs:processes_view_is_cached_and_invalidates_on_generation_change"]
+  },
+  {
+    "op": "graph/delta-store.mjs / store-delta",
+    "legacySource": "blueprint/src/graph/delta-store.mjs (module name inferred; confirm exact legacy filename before final port)",
+    "nativeChain": "engine/crates/membrane-blueprint/src/delta_store.rs is called by store_delta.rs, but store_delta.rs itself has no caller in engine.rs/query.rs/service.rs/cli.rs/watch.rs",
+    "classification": "PORTED-NOT-WIRED",
+    "shippedCallers": []
+  },
+  {
+    "op": "graph/static-provider.mjs (graphStatus, graphFlowInventory, queryGraph, repositoryIdentity)",
+    "legacySource": "blueprint/src/graph/static-provider.mjs",
+    "nativeChain": null,
+    "classification": "PORTED-NOT-WIRED",
+    "shippedCallers": ["service.mjs status()", "service.mjs search()", "service.mjs architecture({view:'flows'})"],
+    "_note": "static_provider.rs exists as a compiled pub mod (lib.rs:81) but is not called from engine.rs/query.rs/service.rs production dispatch; native status()/search() were independently reimplemented in engine.rs/query.rs instead of porting this module, so those two legacy responsibilities are separately EXECUTED-NATIVELY while the module itself sits unused. Lane WIRE1 (2026-09-10) confirmed static_provider.rs contains no graphFlowInventory port at all (only is_build_config_file/build_config_digest) -- the Architecture view=flows row above reports architecture_view_not_wired rather than routing through this module, since there is nothing here to route to."
+  },
+  {
+    "op": "providers/* (bridges, compilers, frameworks, iac, manifests, modules, plugin-loader.mjs, ranking, semantic-orchestrator.mjs, source-disposition.mjs)",
+    "legacySource": "blueprint/src/providers/",
+    "nativeChain": null,
+    "classification": "MISSING",
+    "shippedCallers": ["blueprint/src/lib/application/service.mjs:41 crossCheckWithLiveVerifier import (semantic-orchestrator.mjs)", "graph build pipeline (framework/compiler provider plugins consumed during legacy `blueprint build`)"],
+    "_note": "No engine/crates/membrane-blueprint module corresponds to this directory tree. The native graph builder (graph.rs, ast_walker.rs, module_resolution.rs) reimplements source extraction independently rather than porting the JS provider plugin system; this is a design divergence, not a 1:1 gap, but legacy providers/* has no native equivalent at all for cross-check/live-verifier semantics. Lane WIRE4 (2026-09-10) enumerated this directory module-by-module in audit/qualification/windows-r5/ncl-02/providers-parity.json: bridges/seams.mjs, compilers/python-scip.mjs+scip-normalize.mjs, frameworks/index.mjs+http, iac/terraform.mjs, source-disposition.mjs and plugin-loader.mjs each remain MISSING (no Rust equivalent); modules/javascript.mjs and modules/python-resolver.mjs are PORTED-NOT-WIRED in module_resolution.rs (see the resolution/* row above); ranking/types.mjs and manifests/scip-python.json are non-logic (N/A); semantic-orchestrator.mjs is out of WIRE4 scope (lane WIRE3). Full native porting + wiring into graph.rs's build_generation was not completed this pass -- see receipt lane-WIRE4-2026-09-10.json for why and a recommended per-provider sub-lane split."
+  },
+  {
+    "op": "graph/analytics/* (change-impact.mjs resolveImpactSeedEnvelope+decomposeChangeRisk, index.mjs)",
+    "legacySource": "blueprint/src/graph/analytics/change-impact.mjs, blueprint/src/graph/analytics/index.mjs",
+    "nativeChain": null,
+    "classification": "MISSING",
+    "shippedCallers": ["service.mjs impact() (seedEnvelope resolution + risk decomposition)"]
+  },
+  {
+    "op": "framework-intelligence (framework detection)",
+    "legacySource": "blueprint/src/graph/framework-intelligence.mjs (or equivalent build-time detector; confirm exact legacy path before deletion)",
+    "nativeChain": "engine/crates/membrane-blueprint/src/framework_intelligence.rs is a compiled pub mod (lib.rs:90) with zero callers in engine.rs/query.rs/service.rs/cli.rs/watch.rs",
+    "classification": "PORTED-NOT-WIRED",
+    "shippedCallers": ["legacy `blueprint build` pipeline (framework detection augmentation)"]
+  },
+  {
+    "op": "architecture-model.mjs (buildDisposableArchitectureProjection)",
+    "legacySource": "blueprint/src/graph/architecture-model.mjs",
+    "nativeChain": "lane WIRE1 (2026-09-10): now called from engine/crates/membrane-blueprint/src/architecture_views.rs's \"projection\" view arm, reached via query.rs:771 Operation::Architecture view dispatch",
+    "classification": "EXECUTED-NATIVELY",
+    "shippedCallers": ["service.mjs architecture({view:'projection'})", "engine/crates/membrane-blueprint/src/architecture_views.rs (view=projection)", "engine/crates/membrane-blueprint/tests/parity_architecture_views.rs:projection_view_groups_nodes_into_components"]
+  },
+  {
+    "op": "git-source-observation.mjs (git-derived freshness/identity signals)",
+    "legacySource": "blueprint/src/graph/git-source-observation.mjs (name inferred from directory listing; confirm exact legacy path)",
+    "nativeChain": "engine/crates/membrane-blueprint/src/git_source_observation.rs is a compiled pub mod (lib.rs:91), now called from engine.rs build_and_publish() (lane WIRE2, 2026-09-10) -- replacing the drifted lib_application_snapshots::current_git_identity call (different porcelain exclusion set, no statusDigest) that previously fed build-time sourceObservation.head/dirty. Persisted sourceObservation now also carries the canonical statusDigest. Proven by tests/parity_wire_freshness.rs (build on a real git fixture repo, clean and dirty cases, asserting the persisted head/dirty/statusDigest equal an independent git_source_observation() call against the same fixture).",
+    "classification": "SPLIT: build-time git identity capture (engine.rs build_and_publish) = EXECUTED-NATIVELY as of lane WIRE2 (2026-09-10); query-time freshness-receipt assembly (freshness_receipt::build_freshness_receipt, which consumes git_source_observation's output as CurrentSourceState) remains PORTED-NOT-WIRED -- zero production callers found for build_freshness_receipt anywhere in engine.rs/query.rs/service.rs/cli.rs. Separately, blueprint/src/sources/freshness-observation.mjs's observeRepositoryFreshness (per-file overlay enumeration with content hashes, stability re-check, commit distance, byte/file limits) is a DIFFERENT and materially richer legacy capability than git-source-observation.mjs's head+dirty+digest -- no Rust module implements it at all (checked freshness.rs, freshness_receipt.rs, git_source_observation.rs, identity.rs); it is MISSING, not merely unwired, and was out of safe scope for this lane pass.",
+    "shippedCallers": ["service.mjs (freshness/observeRepositoryFreshness path, sources/freshness-observation.mjs)"],
+    "_wireNote": "lane WIRE2 (2026-09-10): only the build-time capture half of this row was wired and proven this pass. The freshness-receipt query-time path and observeRepositoryFreshness remain open work -- see receipt lane-WIRE2-2026-09-10.json."
+  },
+  {
+    "op": "resolution/* directory",
+    "legacySource": "blueprint/src/graph/resolution/, blueprint/src/providers/modules/python-resolver.mjs, blueprint/src/providers/modules/javascript.mjs",
+    "nativeChain": "lane WIRE4 correction (2026-09-10): engine/crates/membrane-blueprint/src/lib_findings_specifier.rs ports graph/resolution/index.mjs 1:1 (candidate_paths, resolve_specifier, classify_resolution, resolution_unsupported_omission -- matching names/semantics) and IS wired via findings.rs:131 resolve_candidates() -> lib_findings_specifier::candidate_paths. Separately, module_resolution.rs ports modules/javascript.mjs (resolve_js_module, extract_javascript_module_specifiers) and modules/python-resolver.mjs (resolve_python_module, extract_python_module_specifiers, python_project_info) but has ZERO callers anywhere in graph.rs/engine.rs/query.rs/service.rs/cli.rs/watch.rs -- graph.rs instead uses its own independent, simpler import_specifiers()/resolve_import() (graph.rs:799-800) for the actual build-time IMPORTS edges.",
+    "classification": "SPLIT: resolution/index.mjs=EXECUTED-NATIVELY (PORTED_AND_WIRED via lib_findings_specifier.rs/findings.rs); modules/javascript.mjs+modules/python-resolver.mjs=PORTED-NOT-WIRED (module_resolution.rs compiled, zero callers, graph.rs build path uses a separate unrelated implementation)",
+    "shippedCallers": ["findings.rs resolve_candidates() (BP001/BP002 negative-finding gating)"],
+    "_note": "See audit/qualification/windows-r5/ncl-02/providers-parity.json (lane WIRE4) for full citation detail and function-level line numbers. Follow-up: either wire module_resolution.rs's exact-first candidate ordering into graph.rs's build-time IMPORTS extraction (replacing graph.rs:799-800), proving edge-count/resolution equivalence against fixtures first, or delete module_resolution.rs as genuinely superseded dead code -- do not delete without that equivalence proof, and do not attempt the graph.rs rewrite without exclusive access (multiple lanes edit graph.rs concurrently as of 2026-09-10)."
+  },
+  {
+    "op": "snapshots (graph/snapshots.mjs: getSnapshot, listSnapshots, changesSinceReference, current git identity)",
+    "legacySource": "blueprint/src/graph/snapshots.mjs",
+    "nativeChain": "engine/crates/membrane-blueprint/src/lib_application_snapshots.rs -> engine.rs:70-107 (Operation::SnapshotGet/SnapshotList/Changes) and engine.rs:206 (current_git_identity used at build_and_publish time)",
+    "classification": "EXECUTED-NATIVELY",
+    "shippedCallers": ["service.mjs snapshot_get()/snapshot_list()/changes()/architecture({view:'changes'})", "engine/crates/membrane-mcp membrane_blueprint tool (operation=snapshot_get|snapshot_list|changes|changes_since)"]
+  }
+]

@@ -1,12 +1,13 @@
 # Blueprint snapshot review flow
 
-An operator creates a named immutable snapshot with Blueprint CLI after a clean, complete build:
+An operator prepares a complete native Blueprint generation from a clean worktree:
 
 ```sh
-blueprint graph snapshot create --name base --json
+membrane blueprint build --repo-root . --deadline-ms 120000
 ```
 
-Agents use read-only `membrane_blueprint` operations through installed Blueprint with Hub on or off:
+Native Rust Blueprint owns named snapshot creation & read-only review. Agents use
+`membrane_blueprint` operations through installed Membrane with Hub on or off:
 
 - `snapshot_get` with `name` reads one identity and exact file leaves.
 - `snapshot_list` lists named identities.

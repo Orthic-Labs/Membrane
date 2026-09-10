@@ -146,7 +146,7 @@ pub fn build_projection_dependency_dag(values: &ParentValues) -> ProjectionDepen
 pub fn invalidated_projections<S: AsRef<str>>(changed_parents: &[S]) -> Vec<String> {
     let changed: HashSet<String> = changed_parents
         .iter()
-        .map(|value| value.as_ref().trim_start_matches("parent:").to_string())
+        .map(|value| value.as_ref().strip_prefix("parent:").unwrap_or(value.as_ref()).to_string())
         .collect();
     let mut projections: Vec<String> = PROJECTION_DEPENDENCIES
         .iter()
@@ -247,7 +247,9 @@ pub struct ProjectionCache<T> {
 
 impl<T: Clone> ProjectionCache<T> {
     pub fn new(max_entries: usize) -> Self {
-        Self { max_entries: max_entries.max(1), entries: HashMap::new(), next_order: 0 }
+        // Legacy `Number(maxEntries) || 16` makes zero/absent-style input use
+        // the default; positive values remain bounded to at least one.
+        Self { max_entries: if max_entries == 0 { 16 } else { max_entries }, entries: HashMap::new(), next_order: 0 }
     }
 
     /// Build (or reuse) the cached value for `projection` under `dag`,

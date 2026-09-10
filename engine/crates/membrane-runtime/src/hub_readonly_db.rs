@@ -397,7 +397,11 @@ mod tests {
     fn sanctioned_open_refuses_absent_database() {
         let dir = tempfile::tempdir().unwrap();
         let refusal =
-            open_readonly_sanctioned(&dir.path().join("missing.db"), 26).expect_err("absent");
+            open_readonly_sanctioned(
+                &dir.path().join("missing.db"),
+                cortex_store::memdb::LATEST_SCHEMA_VERSION,
+            )
+            .expect_err("absent");
         assert_eq!(refusal, ReadOnlyRefusal::Absent);
         assert_eq!(refusal.code(), "database_absent");
     }
@@ -406,13 +410,15 @@ mod tests {
     fn sanctioned_open_fails_closed_on_generation_mismatch() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("older.db");
-        write_db_at(&path, 25);
-        let refusal = open_readonly_sanctioned(&path, 26).expect_err("older generation refused");
+        let expected = cortex_store::memdb::LATEST_SCHEMA_VERSION;
+        let older = expected - 1;
+        write_db_at(&path, older);
+        let refusal = open_readonly_sanctioned(&path, expected).expect_err("older generation refused");
         assert_eq!(
             refusal,
             ReadOnlyRefusal::GenerationMismatch {
-                found: 25,
-                expected: 26
+                found: older,
+                expected
             }
         );
         assert_eq!(refusal.code(), "schema_generation_mismatch");
@@ -421,10 +427,10 @@ mod tests {
         let newer = dir.path().join("newer.db");
         write_db_at(&newer, 99);
         assert!(matches!(
-            open_readonly_sanctioned(&newer, 26),
+            open_readonly_sanctioned(&newer, expected),
             Err(ReadOnlyRefusal::GenerationMismatch {
                 found: 99,
-                expected: 26
+                expected: _
             })
         ));
     }
@@ -433,8 +439,9 @@ mod tests {
     fn sanctioned_open_admits_matching_generation_and_forbids_writes() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("matching.db");
-        write_db_at(&path, 26);
-        let conn = open_readonly_sanctioned(&path, 26).expect("matching generation admitted");
+        let expected = cortex_store::memdb::LATEST_SCHEMA_VERSION;
+        write_db_at(&path, expected);
+        let conn = open_readonly_sanctioned(&path, expected).expect("matching generation admitted");
         let rows: i64 = conn
             .query_row("SELECT COUNT(*) FROM probe", [], |row| row.get(0))
             .unwrap();
@@ -568,6 +575,25 @@ mod tests {
             ("cortex-store/src/memdb.rs", "backout_v25_to_v24", 1, "migration-ladder backout"),
             ("cortex-store/src/memdb.rs", "backout_v26_to_v25", 1, "migration-ladder backout"),
             ("cortex-store/src/memdb.rs", "backout_v27_to_v26", 1, "migration-ladder backout"),
+            (
+                "membrane-blueprint/src/lib_generated_docs.rs",
+                "read_stored_manifest",
+                1,
+                "native port of blueprint/src/lib/generated-docs.mjs: a \
+                 read-only open of Blueprint's own graph.db to read the \
+                 stored manifest for docs generation, mirroring the legacy \
+                 module's own independent read-only handle rather than \
+                 calling into store.rs; Blueprint owning its own store is \
+                 not a Membrane->Blueprint crossing",
+            ),
+            (
+                "membrane-blueprint/src/lib_update_apply.rs",
+                "backup_store",
+                1,
+                "native port of blueprint update-apply's backupStore: \
+                 `VACUUM INTO` a snapshot of Blueprint's own live graph.db, \
+                 same self-owned-store rationale as store.rs below",
+            ),
             (
                 "membrane-blueprint/src/store.rs",
                 "open_store",

@@ -2037,7 +2037,10 @@ Experiments such as local cross-encoders, HyDE, generic query expansion, MMR as 
 
 Verify paths against current `main` before tickets.
 
-This map describes current implementation ownership. Python/Node production paths below are legacy migration inputs, not final targets; the native migration companion owns replacement and deletion.
+This map describes current implementation ownership. Python/Node production paths
+below are legacy migration inputs, not final targets; native Rust owners below
+own current execution. The native migration companion owns replacement & deletion
+of explicit compatibility paths.
 
 | Area | Current / target ownership |
 |---|---|
@@ -2057,9 +2060,9 @@ This map describes current implementation ownership. Python/Node production path
 | `engine/crates/cortex-store/` | canonical durable store + rebuildable projections |
 | `engine/crates/membrane-runtime/` | publication, Push/artifact/working context/runtime integration |
 | `engine/crates/membrane-runtime/src/ledger/{outline,identifier,doc_spine,doc_projection,doc_shadow,doc_candidate_provider}.rs` | Ledger implementation; document navigation/index only, not document truth or durable knowledge |
-| `mcp/server.mjs` | thin MCP surface |
-| `mcp/context-renderer-lib.cjs` | deterministic execution of planner-selected representation/layout; no hidden ranking |
-| `mcp/working-context.mjs` | bounded active working context; schema changes mirrored with Rust |
+| `engine/crates/membrane-mcp/src/{jsonrpc,tools}.rs` | native MCP transport, discovery, prompts, resources, & tool surface |
+| `engine/crates/membrane-runtime/src/mcp_executor.rs` | native MCP operation execution & authority dispatch |
+| `engine/crates/membrane-runtime/src/working_context.rs` | bounded active working context; schema changes mirrored with Rust |
 | `schemas/*receipt*` | content-free explanations/reconciliation |
 | `docs/architecture/runtime-truth.md` | generated only |
 | `docs/product/README.md` | generated only |
@@ -2081,7 +2084,7 @@ This is the file-exact core slice. The exact function bodies may evolve, but own
 **Modify**
 - `engine/crates/cortex-core/src/planner.rs` — one final admission policy; consume requirement coverage and evidence-class floors; keep current reserved lanes as the frozen migration control until qualification.
 - `engine/federation/gateway.py` — one deadline, staged capability execution, content-free stage timing and degradation.
-- `mcp/server.mjs` — bind packet/receipt ids to explicit feedback and resolver events; no raw durable-memory CRUD.
+- `engine/crates/membrane-runtime/src/mcp_executor.rs` — bind packet/receipt ids to explicit feedback & resolver events; no raw durable-memory CRUD.
 
 **Add**
 - `engine/federation/evidence_requirements.py` — versioned monotonic signal→requirement rules.
@@ -2107,9 +2110,9 @@ This is the file-exact core slice. The exact function bodies may evolve, but own
 ### Push
 
 **Modify**
-- `mcp/context-renderer-lib.cjs` — execute planner-selected representation/layout only.
-- host hook adapter(s) under `mcp/host/` — route rewrite-capable post-tool output through the common Push contract.
-- `membrane_source_read` path in `mcp/server.mjs` — exact/hash-bound reduction and resolver behavior.
+- `engine/crates/membrane-runtime/src/working_context.rs` — execute planner-selected working-context representation/layout only.
+- `engine/crates/membrane-runtime/src/hook.rs` — route native host-hook dispatch & rewrite-capable post-tool output through the common Push contract.
+- `membrane_source_read` path in `engine/crates/membrane-runtime/src/mcp_executor.rs` — exact/hash-bound reduction & resolver behavior.
 
 **Add/complete under `engine/crates/membrane-runtime/src/`**
 - artifact identity/store owner;

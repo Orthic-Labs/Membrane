@@ -287,6 +287,46 @@ export async function PKG_02({ row, workspaceRoot }) {
 // self-report rather than trusting a hand-authored fixture. Any failure to
 // reach the installed executable is reported back to the caller as `null`,
 // which PKG_03 turns into a non-fabricated "blocked" reason, not a PASS.
+//
+// `cli health` still prints the resident daemon's own health JSON to stdout
+// even when it exits non-zero (health returned a non-200 status, e.g. 503
+// while a resident subsystem such as the Blueprint watcher is degraded).
+// That body carries the real typed reason (health.blueprintWatcher.watcherDetail,
+// health.dailyAnalysis.reason, etc.) -- discarding it and returning bare
+// `null` would make a genuine product defect indistinguishable from "nothing
+// answered". lastControllerProbeFailure() exposes the most recent such body
+// (parsed where possible, raw text otherwise) purely for diagnostic detail;
+// it never feeds PKG_03's pass/fail decision, which still only trusts a
+// successfully parsed, live identity.
+let lastControllerProbeFailureDetail = null;
+export function lastControllerProbeFailure() {
+  return lastControllerProbeFailureDetail;
+}
+
+// Pure parser, independently testable: turns a failed `cli health`
+// invocation's raw stdout/stderr/exit status into the typed diagnostic
+// shape queryInstalledControllerIdentity records. Never throws; a stdout
+// that isn't parseable JSON just yields null body fields rather than
+// dropping the exit status/stderr that were readable.
+export function parseControllerProbeFailure({ status = null, stdout = null, stderr = null } = {}) {
+  let parsedBody = null;
+  if (nonEmptyString(stdout)) {
+    try {
+      parsedBody = JSON.parse(stdout);
+    } catch {
+      parsedBody = null;
+    }
+  }
+  return {
+    exitStatus: status ?? null,
+    stderr: nonEmptyString(stderr) ? stderr.trim() : null,
+    blueprintWatcherDetail: parsedBody?.blueprintWatcher?.watcherDetail ?? null,
+    blueprintWatcherState: parsedBody?.blueprintWatcher?.watcherState ?? null,
+    dailyAnalysis: parsedBody?.dailyAnalysis ?? null,
+    ok: parsedBody?.ok ?? null,
+  };
+}
+
 export function queryInstalledControllerIdentity(installedRoot) {
   if (!nonEmptyString(installedRoot)) return null;
   const exe = join(resolve(installedRoot), "membrane.exe");
@@ -299,7 +339,10 @@ export function queryInstalledControllerIdentity(installedRoot) {
       sourceRoot: health.sourceRoot ?? health.checkoutRoot ?? null,
       raw: health,
     };
-  } catch {
+  } catch (error) {
+    const stdout = typeof error?.stdout === "string" ? error.stdout : error?.stdout?.toString?.("utf8");
+    const stderr = typeof error?.stderr === "string" ? error.stderr : error?.stderr?.toString?.("utf8");
+    lastControllerProbeFailureDetail = parseControllerProbeFailure({ status: error?.status ?? null, stdout, stderr });
     return null;
   }
 }
@@ -391,6 +434,11 @@ export async function PKG_03({ row, workspaceRoot }) {
     }
 
     if (!installedRaw || !controller) {
+      // The self-start loop may have observed a live but non-200 health
+      // response repeatedly (e.g. a degraded resident subsystem) without ever
+      // reaching a parseable success; surface that last-observed typed reason
+      // for diagnosis instead of reporting a bare, undifferentiated timeout.
+      const lastProbeFailure = startedPid ? lastControllerProbeFailure() : null;
       return {
         status: "failed",
         evidenceKind: "source",
@@ -402,6 +450,7 @@ export async function PKG_03({ row, workspaceRoot }) {
           controllerIdentityPath: controllerIdentityPath ?? null,
           controllerSource,
           attemptedSelfStart: startedPid !== null,
+          lastObservedProbeFailure: lastProbeFailure,
         },
       };
     }
@@ -430,6 +479,13 @@ export async function PKG_03({ row, workspaceRoot }) {
 // itself (forbidden to this worker), it only verifies that HEAD on the
 // primary branch — once the integration owner has committed — contains the
 // qualified sourceRevision and carries no worker-authored commit.
+//
+// qualifiedSourceRevision can be supplied either as row.qualifiedSourceRevision
+// or via the environment variable MEMBRANE_QUALIFICATION_SOURCE_REVISION (the
+// row value wins when both are set); the registry runner has no per-row field
+// for it today, so a `--group PKG` run supplies it as
+// `MEMBRANE_QUALIFICATION_SOURCE_REVISION=<sha> node scripts/qualification/run.mjs ...`
+// with `<sha>` the integration owner's qualified `git rev-parse HEAD`.
 export async function PKG_04({ row, workspaceRoot }) {
   const qualifiedSourceRevision = row?.qualifiedSourceRevision ?? process.env.MEMBRANE_QUALIFICATION_SOURCE_REVISION;
   const workerLaneIds = row?.workerLaneIds ?? [];

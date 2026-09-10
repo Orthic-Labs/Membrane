@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
   "artifact": "membrane.runtime-policy",
-  "enforcementMode": "migration",
+  "enforcementMode": "sealed",
   "modeSemantics": {
-    "migration": "Prequalification state: Rust is the intended installed-production owner alongside declarative data, but source-visible Blueprint launcher/runtime rows remain until NCL-02 per-cluster parity and NCL-03 installed native-only evidence close. Python/Node/shell may remain production-reachable ONLY through an explicit time-bounded exception below; every exception names an owner packet, an expiry date, and a cutover gate. Passing in migration mode records this gap; it never issues a native-only seal.",
+    "migration": "Prequalification state: Rust is the intended installed-production owner alongside declarative data. Python/Node/shell may remain production-reachable ONLY through an explicit time-bounded exception below; every exception names an owner packet, an expiry date, and a cutover gate. Passing in migration mode records this gap; it never issues a native-only seal.",
     "sealed": "Zero interpreter-backed production rows or bounded external interpreter rows are permitted. Every cutover flag is complete, every dev-only/migration-oracle row carries a deletion-or-exclusion proof, no deleted selector reappears, and every production row has a resolved packaged value. The checker never issues a native-only seal itself; it only enumerates blockers."
   },
   "allowedProductionLanguages": [
@@ -35,23 +35,13 @@
       "Untracked generated payloads (apps/membrane-hub/src-tauri/runtime/**) are release-qualification concerns under spec section 16.4 and must be proven at package time, not here."
     ]
   },
-  "exceptions": [
-    {
-      "id": "blueprint-native-cleanup-pending",
-      "owner": "native-cleanup r5",
-      "expires": "2026-09-30",
-      "paths": [
-        "blueprint/release/launchers/",
-        "blueprint/scripts/",
-        "blueprint/src/",
-        "blueprint/watchman/"
-      ],
-      "cutoverGate": "NCL-02 per-cluster parity/caller-cutover receipts and NCL-03 installed interpreter-stripped process-tree, payload, and native-only-seal evidence",
-      "reason": "These source-visible legacy Blueprint launcher and runtime paths are pending exact parity-gated deletion. They are not sealed-native evidence and cannot authorize installed qualification."
-    }
+  "exceptions": [],
+  "deletedSelectors": [
+    "blueprint/",
+    "mcp/server.mjs",
+    "mcp/host/"
   ],
-  "deletedSelectors": [],
-  "deletedSelectorsNote": "No Blueprint interpreter selector is recorded deleted while its source path remains present. Add an exact selector only after its NCL-02 parity/caller-cutover receipt and deletion land; the checker then fails if it reappears.",
+  "deletedSelectorsNote": "Native parity is complete for the retired Blueprint tree and legacy MCP server/host paths. These selectors fail closed if any deleted source path reappears.",
   "cutoverFlags": [
     {
       "id": "adapt-native-cutover",
@@ -440,7 +430,7 @@
     },
     {
       "id": "engine-production-crates",
-      "pattern": "^engine/crates/(cortex-core|cortex-format|cortex-store|membrane|membrane-adapt|membrane-core|membrane-federation|membrane-mcp|membrane-protocol|membrane-provider-sdk|membrane-runtime|membrane-transcript)/",
+      "pattern": "^engine/crates/(cortex-core|cortex-format|cortex-store|membrane|membrane-adapt|membrane-core|membrane-federation|membrane-grammars-vendored|membrane-mcp|membrane-protocol|membrane-provider-sdk|membrane-runtime|membrane-transcript)/",
       "groupBy": "dir:3",
       "runtime": "rust",
       "kind": "native-production-crate",
@@ -600,34 +590,6 @@
       "exception": null,
       "deletion_or_exclusion_proof": "manifest/build config only; frontend bundle is compiled by Tauri toolchain",
       "notes": ""
-    },
-    {
-      "id": "blueprint-bundled-launchers",
-      "pattern": "^blueprint/release/launchers/.*\\.cmd$",
-      "groupBy": "dir:2",
-      "runtime": "shell",
-      "kind": "bundled-external-component-launcher",
-      "product_surface": "Blueprint",
-      "production_reachable": true,
-      "packaged": true,
-      "target_disposition": "external-typed-service",
-      "exception": "blueprint-native-cleanup-pending",
-      "deletion_or_exclusion_proof": "signed installer ships exact bounded Windows launch shims that invoke only its inventory-bound Blueprint Node runtime",
-      "notes": "These two declarative cmd shims are bounded launch surfaces, not resident Membrane processes."
-    },
-    {
-      "id": "blueprint-bundled-runtime",
-      "pattern": "^blueprint/(scripts|src|watchman)/",
-      "groupBy": "dir:2",
-      "runtime": "node",
-      "kind": "bundled-external-component",
-      "product_surface": "Blueprint",
-      "production_reachable": true,
-      "packaged": true,
-      "target_disposition": "external-typed-service",
-      "exception": "blueprint-native-cleanup-pending",
-      "deletion_or_exclusion_proof": "signed package includes one pinned Blueprint runtime; tray owns resident lifecycle, daemon hosts watcher, and tray-off access is one bounded installed operation",
-      "notes": "Blueprint launcher/runtime source remains only under the bounded prequalification exception; it must be removed before sealed-native qualification."
     },
     {
       "id": "blueprint-development",

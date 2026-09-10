@@ -5646,8 +5646,20 @@ fn health_response_with_workers(
             "earliestExpiryUnixSecs": snapshot.reserved.earliest_expiry_unix_secs }
     }));
     if protected_replay_saturated { payload["ok"] = Value::Bool(false); payload["readiness"] = Value::String("ReplayAdmissionSaturated".into()); }
-    let watcher_healthy = !require_resident_watcher || (payload["watcherRunning"].as_bool() == Some(true)
-        && payload["enrolledRepoCount"].as_u64().is_some_and(|count| count > 0));
+    // Watcher enrollment must never stand in for repository authorization or
+    // liveness. A freshly-installed, resident controller with nothing
+    // enrolled yet (or no daily analysis output yet) is degraded-but-live,
+    // not unavailable: identity must still be reportable. Only treat the
+    // watcher as a liveness failure when repositories ARE enrolled and the
+    // watcher itself is not running for them. A registry error remains a
+    // failure even when reconciliation cleared the enrolled count.
+    let enrolled_repo_count = payload["enrolledRepoCount"].as_u64().unwrap_or(0);
+    let watcher_has_error = payload["blueprintWatcher"]
+        .get("watcherDetail")
+        .is_some_and(|detail| !detail.is_null());
+    let watcher_healthy = !require_resident_watcher
+        || (!watcher_has_error && enrolled_repo_count == 0)
+        || payload["watcherRunning"].as_bool() == Some(true);
     let status = if store_healthy && catalog_healthy && watcher_healthy && !protected_replay_saturated {
         StatusCode::OK.as_u16()
     } else {
@@ -5678,6 +5690,14 @@ fn installed_resident_identity(
 
 fn resident_services_ready(state: &AppState) -> bool {
     let watcher = crate::service::resident_blueprint_status();
+    let watcher_has_error = watcher
+        .get("watcherDetail")
+        .is_some_and(|detail| !detail.is_null());
+    let no_repositories_configured = watcher
+        .get("enrolledRepoCount")
+        .and_then(Value::as_u64)
+        .unwrap_or(0)
+        == 0;
     if state.resident_identity.is_none()
         || !crate::service::lifecycle_control().admission_open()
         || state
@@ -5686,8 +5706,10 @@ fn resident_services_ready(state: &AppState) -> bool {
             .get("ok")
             .and_then(Value::as_bool)
             != Some(true)
-        || watcher.get("watcherRunning").and_then(Value::as_bool) != Some(true)
-        || watcher.get("watcherReady").and_then(Value::as_bool) != Some(true)
+        || watcher_has_error
+        || (!no_repositories_configured
+            && (watcher.get("watcherRunning").and_then(Value::as_bool) != Some(true)
+                || watcher.get("watcherReady").and_then(Value::as_bool) != Some(true)))
     {
         return false;
     }
@@ -10260,6 +10282,36 @@ mod tests {
             StatusCode::BAD_REQUEST,
             "garbage X-Membrane-Manifest header must produce 400"
         );
+    }
+
+    #[test]
+    fn detailed_health_is_live_for_resident_controller_with_no_enrolled_repos() {
+        // A freshly installed product with nothing enrolled yet, and no
+        // daily analysis output yet, must still report identity: watcher
+        // enrollment is never a substitute for repository authorization or
+        // liveness (docs/architecture/execution-lifecycle-boundary.md).
+        let store = MemoryStore::new();
+        let (status, body) = health_response_with_workers(
+            &store,
+            None,
+            &crate::pull::metrics::PlannerLatency::new(),
+            &crate::pull::metrics::LastFallback::new(),
+            &std::sync::atomic::AtomicU64::new(0),
+            None,
+            None,
+            true,
+        );
+        let payload: Value = serde_json::from_str(&body).expect("health JSON");
+        assert_eq!(
+            status,
+            StatusCode::OK.as_u16(),
+            "empty-workspace resident controller must be live: {body}"
+        );
+        assert_eq!(payload["ok"], true);
+        assert_eq!(payload["enrolledRepoCount"], 0);
+        assert_eq!(payload["watcherRunning"], false);
+        assert_eq!(payload["dailyAnalysis"]["status"], "unavailable");
+        assert_eq!(payload["dailyAnalysis"]["reason"], "missing_output");
     }
 
     #[test]

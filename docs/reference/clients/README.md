@@ -12,8 +12,9 @@ operator-facing view of the Membrane client surface.
 
 `schemas/registry/toolsets.yaml` is valid JSON-as-YAML discovery policy. Clients may
 send `params._meta["membrane.toolsets.v1"]` to `tools/list`; invalid requests
-fall back to `membrane_context`. Native discovery negotiates same metadata but
-advertises no tools until native tool execution exists.
+fall back to `membrane_context`. Native discovery negotiates same metadata &
+advertises tools implemented by the native registry; unsupported operations
+remain unadvertised.
 
 | Path | Purpose |
 |---|---|
@@ -23,7 +24,7 @@ advertises no tools until native tool execution exists.
 | `schemas/client-capability.v1.schema.json` | JSON Schema for one capability envelope. |
 | `schemas/client-support-matrix.v1.schema.json` | JSON Schema for the matrix. |
 | `scripts/tools/productization/generate-client-matrix.mjs` | Generator (byte-stable). |
-| `mcp/install.mjs` | Exposes `loadClientCapabilities`, `loadSupportMatrix`, `clientsForEnrollment`, and `supportedOperationsFor` for the install path. |
+| `engine/crates/membrane/src/activation.rs` | Native installed activation/binding reconciliation. |
 | `tests/clients/client-matrix.test.mjs` | Contract test for the registry. |
 
 ## Declared clients (current revision)

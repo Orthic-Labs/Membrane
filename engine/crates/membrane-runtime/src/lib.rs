@@ -137,3 +137,5 @@ pub use team_policy::{
 pub mod adapt_service;
 
 pub mod adapt_observations;
+
+pub mod blueprint_explore;

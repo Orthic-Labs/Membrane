@@ -19,6 +19,12 @@ use crate::graph::{is_canonical_ignored_dir, is_canonical_ignored_file};
 
 pub const DEFAULT_MAX_FILES: usize = 100_000;
 pub const DEFAULT_MAX_SNAPSHOT_BYTES: u64 = 256 * 1024 * 1024;
+/// Legacy watcher batches changes for one second. Native polling does not
+/// receive callbacks, but exposing same bounded window lets resident callers
+/// coalesce repeated polls without allowing an unbounded wait.
+pub const DEFAULT_DEBOUNCE_MS: u64 = 1_000;
+pub const DEBOUNCE_MS: u64 = DEFAULT_DEBOUNCE_MS;
+pub const MAX_DEBOUNCE_MS: u64 = 5_000;
 
 #[derive(Debug, Clone)]
 pub struct SnapshotConfig {
@@ -27,6 +33,8 @@ pub struct SnapshotConfig {
     pub max_files: usize,
     pub max_bytes: u64,
     pub max_file_bytes: u64,
+    pub max_events: usize,
+    pub debounce_ms: u64,
 }
 
 impl SnapshotConfig {
@@ -37,6 +45,8 @@ impl SnapshotConfig {
             max_files: DEFAULT_MAX_FILES,
             max_bytes: DEFAULT_MAX_SNAPSHOT_BYTES,
             max_file_bytes: MAX_SOURCE_FILE_BYTES,
+            max_events: 256,
+            debounce_ms: DEFAULT_DEBOUNCE_MS,
         }
     }
 
@@ -45,6 +55,20 @@ impl SnapshotConfig {
             self.exclusions.insert(path);
         }
         self
+    }
+
+    pub fn max_events(mut self, max_events: usize) -> Self {
+        self.max_events = max_events.max(1);
+        self
+    }
+
+    pub fn debounce_ms(mut self, debounce_ms: u64) -> Self {
+        self.debounce_ms = debounce_ms.min(MAX_DEBOUNCE_MS);
+        self
+    }
+
+    pub fn debounce(self, debounce: Duration) -> Self {
+        self.debounce_ms(debounce.as_millis().min(u64::MAX as u128) as u64)
     }
 }
 
@@ -260,6 +284,8 @@ pub enum WatchError {
     Snapshot(#[from] SnapshotError),
     #[error("rebuild callback failed: {0}")]
     Callback(String),
+    #[error("watcher event batch exceeded limit: {actual} (limit {limit})")]
+    EventOverflow { actual: usize, limit: usize },
 }
 
 pub struct NativeWatcher {
@@ -272,6 +298,7 @@ pub struct NativeWatcher {
     sequence: u64,
     clock: Arc<dyn MonotonicClock>,
     sink: Option<Arc<dyn LifecycleSink>>,
+    last_poll: Option<Instant>,
 }
 
 impl NativeWatcher {
@@ -281,7 +308,7 @@ impl NativeWatcher {
 
     pub fn start_with_cancellation(config: SnapshotConfig, cancellation: &CancellationToken) -> Result<Self, WatchError> {
         let initial = snapshot_with_cancellation(&config, cancellation)?;
-        let mut watcher = Self { config, previous: initial, source_clock: 0, applied_clock: 0, gap: None, closed: false, sequence: 0, clock: Arc::new(SteadyClock::new()), sink: None };
+        let mut watcher = Self { config, previous: initial, source_clock: 0, applied_clock: 0, gap: None, closed: false, sequence: 0, clock: Arc::new(SteadyClock::new()), sink: None, last_poll: None };
         watcher.emit("started", None);
         Ok(watcher)
     }
@@ -293,6 +320,26 @@ impl NativeWatcher {
     pub fn applied_clock(&self) -> u64 { self.applied_clock }
     pub fn gap(&self) -> Option<&EventGap> { self.gap.as_ref() }
     pub fn is_shutdown(&self) -> bool { self.closed }
+    pub fn root(&self) -> &Path { &self.config.root }
+    pub fn debounce(&self) -> Duration { Duration::from_millis(self.config.debounce_ms) }
+
+    /// Poll after a bounded quiet window. The first poll is immediate; later
+    /// polls wait only for the configured debounce period and remain
+    /// cancellation-aware. This keeps rapid saves from causing one refresh
+    /// per filesystem observation while preserving a hard upper bound.
+    pub fn poll_debounced<F>(&mut self, schedule_rebuild: F, cancellation: &CancellationToken) -> Result<Vec<WatchEvent>, WatchError>
+    where F: FnMut(&WatchEvent) -> Result<(), String> {
+        if let Some(previous) = self.last_poll {
+            let mut remaining = self.debounce().saturating_sub(previous.elapsed());
+            while !remaining.is_zero() {
+                if cancellation.is_cancelled() { return Err(WatchError::Snapshot(SnapshotError::Cancelled)); }
+                let slice = remaining.min(Duration::from_millis(10));
+                std::thread::sleep(slice);
+                remaining = self.debounce().saturating_sub(previous.elapsed());
+            }
+        }
+        self.poll_with_cancellation(schedule_rebuild, cancellation)
+    }
 
     /// Polling is the reconciliation truth. A callback is only a rebuild hint;
     /// it cannot approve Phase 2 or mutate semantic policy.
@@ -306,6 +353,10 @@ impl NativeWatcher {
         if self.closed { return Err(WatchError::Shutdown); }
         let current = match snapshot_with_cancellation(&self.config, cancellation) {
             Ok(current) => current,
+            Err(SnapshotError::Cancelled) => {
+                self.emit("poll_cancelled", None);
+                return Err(WatchError::Snapshot(SnapshotError::Cancelled));
+            }
             Err(error) => {
                 self.gap = Some(EventGap { reason: GapReason::SnapshotFailed, source_clock: self.source_clock });
                 self.emit("snapshot_failed", Some(error.to_string()));
@@ -313,6 +364,11 @@ impl NativeWatcher {
             }
         };
         let events = reconcile_snapshots(&self.previous, &current, self.source_clock);
+        if events.len() > self.config.max_events {
+            self.gap = Some(EventGap { reason: GapReason::EventOverflow, source_clock: self.source_clock });
+            self.emit("event_overflow", Some(format!("{}>{}", events.len(), self.config.max_events)));
+            return Err(WatchError::EventOverflow { actual: events.len(), limit: self.config.max_events });
+        }
         self.source_clock = self.source_clock.saturating_add(events.len() as u64);
         for event in &events {
             if let Err(error) = schedule_rebuild(event) {
@@ -336,6 +392,7 @@ impl NativeWatcher {
             self.emit("gap_cleared", None);
         }
         if self.gap.is_none() { self.emit("caught_up", None); }
+        self.last_poll = Some(Instant::now());
         Ok(events)
     }
 

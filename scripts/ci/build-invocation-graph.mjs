@@ -87,19 +87,6 @@ export function productionEntrypoints() {
       justification:
         "`membrane` binary entry (engine/crates/membrane) invoked directly by users and bundled by the Hub supervisor.",
     },
-    {
-      id: "blueprint/release/launchers/blueprint.cmd",
-      kind: "installed-external-component-entrypoint",
-      runtime: "shell",
-      justification:
-        "Signed Windows Blueprint CLI launcher bundled by the installer; direct consumers use bounded one-shot operations.",
-    },
-    {
-      id: "blueprint/release/launchers/blueprint-mcp.cmd",
-      kind: "installed-external-component-entrypoint",
-      runtime: "shell",
-      justification: "Signed Windows Blueprint MCP launcher bundled by the installer.",
-    },
   ];
 }
 
@@ -120,27 +107,6 @@ export function curatedEdges() {
       operation: "first-class membrane adapt dispatch",
       boundary: "in-process",
       evidence: { path: "engine/crates/membrane/src/modes.rs", symbol: "dispatch_cli / membrane_runtime::cli::run_cli_from" },
-    },
-    {
-      from: "blueprint/release/launchers/blueprint.cmd",
-      to: "blueprint/scripts/blueprint.mjs",
-      operation: "bounded installed Blueprint CLI launch",
-      boundary: "process",
-      evidence: { path: "blueprint/release/launchers/blueprint.cmd", symbol: "lib\\node.exe ... scripts\\blueprint.mjs" },
-    },
-    {
-      from: "blueprint/release/launchers/blueprint-mcp.cmd",
-      to: "blueprint/scripts/blueprint-mcp.mjs",
-      operation: "bounded installed Blueprint MCP launch",
-      boundary: "process",
-      evidence: { path: "blueprint/release/launchers/blueprint-mcp.cmd", symbol: "lib\\node.exe ... scripts\\blueprint-mcp.mjs" },
-    },
-    {
-      from: "blueprint/scripts/cli/commands.mjs",
-      to: "blueprint/scripts/blueprint-watch.mjs",
-      operation: "tray-owned daemon Blueprint watcher launch",
-      boundary: "process",
-      evidence: { path: "blueprint/scripts/cli/commands.mjs", symbol: "spawn(process.execPath, [watcherScript, \"start\"])" },
     },
     {
       from: "engine/crates/membrane-runtime/src/cli.rs",

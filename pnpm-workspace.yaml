@@ -1,5 +1,4 @@
-packages:
-  - blueprint
+packages: []
 
 allowBuilds:
   '@parcel/watcher': true

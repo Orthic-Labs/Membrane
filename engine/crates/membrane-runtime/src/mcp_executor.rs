@@ -7,7 +7,13 @@ use crate::{
     feedback, scratchpad, DiagnosticsService, MemoryStore,
 };
 use cortex_store::{TemporalFact, TemporalFactQuery};
-use membrane_blueprint::{BlueprintError, BlueprintRequest, CancellationToken, Operation};
+use membrane_blueprint::{
+    BlueprintApi, BlueprintError, BlueprintOperation, BlueprintRequest, BlueprintResponse,
+    CancellationToken, Operation,
+};
+use membrane_federation::blueprint_client::{
+    BlueprintBounds, BlueprintClient, BlueprintClientError, BlueprintQuery, MAX_CANDIDATE_CAP,
+};
 use membrane_mcp::NativeMcpExecutor;
 use rusqlite::{params, OptionalExtension};
 use serde_json::{json, Value};
@@ -24,6 +30,10 @@ use std::{
 const MAX_OPERATION_BYTES: usize = 64 * 1024;
 const CHECKPOINT_SAVE_WINDOW_MS: u64 = 60_000;
 const CHECKPOINT_SAVE_LIMIT: usize = 24;
+const WORKING_CONTEXT_PAGE_DEFAULT: usize = 50;
+const WORKING_CONTEXT_PAGE_MAX: usize = 100;
+const WORKING_CONTEXT_CURSOR_MAX: usize = 512;
+const WORKING_CONTEXT_CURSOR_PART_MAX: usize = 256;
 
 static CHECKPOINT_SAVE_RATE: OnceLock<Mutex<HashMap<String, VecDeque<u64>>>> = OnceLock::new();
 
@@ -224,6 +234,235 @@ fn blueprint_success(operation: &str, data: Value) -> Value {
         other => other,
     };
     success("membrane_blueprint", data)
+}
+
+fn working_context_cursor(created_at: &str, context_id: &str) -> String {
+    let value = serde_json::to_vec(&[created_at, context_id]).unwrap_or_default();
+    base64_url_encode(&value)
+}
+
+fn working_context_cursor_parts(cursor: &str) -> Option<(String, String)> {
+    if cursor.is_empty() || cursor.len() > WORKING_CONTEXT_CURSOR_MAX {
+        return None;
+    }
+    let bytes = base64_url_decode(cursor)?;
+    let parts = serde_json::from_slice::<Vec<String>>(&bytes).ok()?;
+    if parts.len() != 2
+        || parts.iter().any(|part| {
+            part.is_empty() || part.len() > WORKING_CONTEXT_CURSOR_PART_MAX
+        })
+    {
+        return None;
+    }
+    Some((parts[0].clone(), parts[1].clone()))
+}
+
+fn base64_url_encode(bytes: &[u8]) -> String {
+    const ALPHABET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+    let mut out = String::with_capacity((bytes.len() * 4 + 2) / 3);
+    for chunk in bytes.chunks(3) {
+        let b0 = chunk[0] as u32;
+        let b1 = *chunk.get(1).unwrap_or(&0) as u32;
+        let b2 = *chunk.get(2).unwrap_or(&0) as u32;
+        let n = (b0 << 16) | (b1 << 8) | b2;
+        out.push(ALPHABET[((n >> 18) & 0x3f) as usize] as char);
+        out.push(ALPHABET[((n >> 12) & 0x3f) as usize] as char);
+        if chunk.len() > 1 {
+            out.push(ALPHABET[((n >> 6) & 0x3f) as usize] as char);
+        }
+        if chunk.len() > 2 {
+            out.push(ALPHABET[(n & 0x3f) as usize] as char);
+        }
+    }
+    out
+}
+
+fn base64_url_decode(value: &str) -> Option<Vec<u8>> {
+    fn digit(byte: u8) -> Option<u8> {
+        match byte {
+            b'A'..=b'Z' => Some(byte - b'A'),
+            b'a'..=b'z' => Some(byte - b'a' + 26),
+            b'0'..=b'9' => Some(byte - b'0' + 52),
+            b'-' => Some(62),
+            b'_' => Some(63),
+            _ => None,
+        }
+    }
+    if value.len() % 4 == 1 {
+        return None;
+    }
+    let mut out = Vec::with_capacity(value.len() * 3 / 4);
+    let mut buffer = 0u32;
+    let mut bits = 0u8;
+    for byte in value.bytes() {
+        buffer = (buffer << 6) | u32::from(digit(byte)?);
+        bits += 6;
+        if bits >= 8 {
+            bits -= 8;
+            out.push((buffer >> bits) as u8);
+            buffer &= (1u32 << bits) - 1;
+        }
+    }
+    if bits > 0 && buffer != 0 {
+        return None;
+    }
+    Some(out)
+}
+
+fn valid_working_context_instant(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= WORKING_CONTEXT_CURSOR_PART_MAX
+        && value.split_once('T').is_some_and(|(_, clock)| {
+            clock.ends_with('Z') || clock.rfind(['+', '-']).is_some()
+        })
+}
+
+fn blueprint_client_failure(operation: &str, failure: BlueprintClientError) -> Value {
+    error(operation, failure.code(), failure.to_string())
+}
+
+struct BlueprintRecallApi {
+    operation: Arc<dyn BlueprintOperation>,
+    limits: Value,
+}
+
+impl BlueprintApi for BlueprintRecallApi {
+    fn dispatch(
+        &self,
+        mut request: BlueprintRequest,
+        cancellation: CancellationToken,
+    ) -> BlueprintResponse {
+        if let (Some(input), Some(limits)) = (request.input.as_object_mut(), self.limits.as_object()) {
+            for (name, value) in limits {
+                input.insert(name.clone(), value.clone());
+            }
+        }
+        self.operation.as_ref().dispatch(request, cancellation)
+    }
+}
+
+fn blueprint_client_recall(
+    arguments: &Value,
+    root: &str,
+    repository: &str,
+    expected_generation: Option<String>,
+    deadline_ms: u64,
+) -> Value {
+    let anchors = arguments
+        .get("anchors")
+        .and_then(Value::as_array)
+        .map(|values| {
+            values
+                .iter()
+                .filter_map(Value::as_str)
+                .map(str::to_owned)
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    let bounds = BlueprintBounds {
+        max_candidates: arguments
+            .get("limit")
+            .and_then(Value::as_u64)
+            .and_then(|value| usize::try_from(value).ok())
+            .unwrap_or(BlueprintBounds::default().max_candidates)
+            .clamp(1, MAX_CANDIDATE_CAP),
+        max_paths: arguments
+            .get("maxPaths")
+            .and_then(Value::as_u64)
+            .and_then(|value| usize::try_from(value).ok())
+            .unwrap_or(BlueprintBounds::default().max_paths),
+        max_response_bytes: BlueprintBounds::default().max_response_bytes,
+    };
+    let query = BlueprintQuery {
+        request_id: format!(
+            "mcp-blueprint-recall-{}-{}",
+            std::process::id(),
+            crate::time::now_millis()
+        ),
+        repository_id: repository.to_owned(),
+        repository_root: root.to_owned(),
+        worktree: root.to_owned(),
+        task: arguments
+            .get("query")
+            .or_else(|| arguments.get("task"))
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_owned(),
+        anchors,
+        policy_digest: String::new(),
+        expected_generation,
+        symbol: None,
+        bounds,
+        deadline: Duration::from_millis(deadline_ms),
+    };
+    let mut limits = serde_json::Map::new();
+    let limit = bounds.max_candidates as u64;
+    limits.insert("maxCandidates".into(), Value::from(limit));
+    limits.insert("maxSeeds".into(), Value::from(limit));
+    if let Some(value) = arguments.get("depth").and_then(Value::as_u64) {
+        limits.insert("maxDepth".into(), Value::from(value));
+    }
+    if let Some(value) = arguments.get("budget").and_then(Value::as_u64) {
+        limits.insert("maxBytes".into(), Value::from(value));
+    }
+    if let Some(value) = arguments.get("maxPaths").and_then(Value::as_u64) {
+        limits.insert("maxPaths".into(), Value::from(value));
+    }
+    let client = BlueprintClient::new(Arc::new(BlueprintRecallApi {
+        operation: membrane_blueprint::native_blueprint_operation(),
+        limits: Value::Object(limits),
+    }));
+    match client.query(&query) {
+        Ok(result) => {
+            let payload = result.payload;
+            let generation = result.generation;
+            let candidates = result.candidates;
+            let payload = payload.unwrap_or_else(|| {
+                json!({
+                    "generationId": generation,
+                    "candidates": candidates,
+                })
+            });
+            blueprint_success("recall", payload)
+        }
+        Err(failure) => blueprint_client_failure("membrane_blueprint", failure),
+    }
+}
+
+fn blueprint_deadline(arguments: &Value, method: Operation) -> Result<u64, Value> {
+    let maximum = match method {
+        Operation::Build => membrane_blueprint::model::MAX_BUILD_DEADLINE_MS,
+        Operation::Refresh => membrane_blueprint::model::MAX_DEADLINE_MS,
+        _ => membrane_blueprint::model::MAX_DEADLINE_MS,
+    };
+    match arguments.get("deadlineMs") {
+        None => Ok(maximum),
+        Some(Value::Number(value)) => {
+            let Some(value) = value.as_u64() else {
+                return Err(error(
+                    "membrane_blueprint",
+                    "blueprint_envelope_invalid",
+                    "deadlineMs must be an unsigned integer",
+                ));
+            };
+            if !(membrane_blueprint::model::MIN_DEADLINE_MS..=maximum).contains(&value) {
+                return Err(error(
+                    "membrane_blueprint",
+                    "blueprint_envelope_invalid",
+                    format!(
+                        "deadlineMs must be an integer from {} to {maximum}",
+                        membrane_blueprint::model::MIN_DEADLINE_MS
+                    ),
+                ));
+            }
+            Ok(value)
+        }
+        Some(_) => Err(error(
+            "membrane_blueprint",
+            "blueprint_envelope_invalid",
+            "deadlineMs must be an unsigned integer",
+        )),
+    }
 }
 
 fn canonical_query_limits(arguments: &Value, input: &mut Value) {
@@ -783,7 +1022,12 @@ fn execute_blueprint(arguments: &Value) -> Value {
         "path" => (operation, json!({"repoRoot":root,"from":arguments.get("from"),"to":arguments.get("to")})),
         "architecture" => (
             "architecture",
-            json!({"repoRoot":root,"task":arguments.get("task").or_else(|| arguments.get("query")).and_then(Value::as_str).unwrap_or(""),"query":arguments.get("query").and_then(Value::as_str).unwrap_or("")}),
+            json!({"repoRoot":root,"task":arguments.get("task").or_else(|| arguments.get("query")).and_then(Value::as_str).unwrap_or(""),"query":arguments.get("query").and_then(Value::as_str).unwrap_or(""),
+                // Lane WIRE1: pass the legacy `view` selector
+                // (flows/liveness/processes/contracts/signatures/
+                // orientation/projection/changes) straight through when the
+                // caller supplies one; absent stays the default summary.
+                "view":arguments.get("view").and_then(Value::as_str)}),
         ),
         "symbol" => (
             "resolve",
@@ -806,6 +1050,14 @@ fn execute_blueprint(arguments: &Value) -> Value {
                 "snapshot":arguments.get("snapshot"),"sinceGeneration":arguments.get("sinceGeneration"),
                 "treeish":arguments.get("treeish"),"limit":arguments.get("limit").and_then(Value::as_u64).unwrap_or(20)}))
         }
+        "federate" => (
+            "federate",
+            json!({"repoRoot":root,
+                "repositories": arguments.get("repositories").cloned().unwrap_or_else(|| json!([])),
+                "operation": arguments.get("federateOperation").and_then(Value::as_str).unwrap_or("search"),
+                "query": arguments.get("query").cloned().unwrap_or(Value::Null),
+                "allowedRepoIds": arguments.get("allowedRepoIds").cloned().unwrap_or(Value::Null)}),
+        ),
         _ => {
             return error(
                 name,
@@ -843,14 +1095,17 @@ fn execute_blueprint(arguments: &Value) -> Value {
     let Some(method) = Operation::parse(method) else {
         return error(name, "blueprint_envelope_invalid", "unsupported Blueprint operation");
     };
+    let deadline_ms = match blueprint_deadline(arguments, method) {
+        Ok(value) => value,
+        Err(result) => return result,
+    };
+    if method == Operation::Recall {
+        return blueprint_client_recall(arguments, root, repository, expected_generation, deadline_ms);
+    }
     let mut request = BlueprintRequest::new(request_id, method, root);
     request.repo_id = Some(repository.to_owned());
     request.generation = expected_generation;
-    request.deadline_ms = arguments
-        .get("deadlineMs")
-        .and_then(Value::as_u64)
-        .unwrap_or(30_000)
-        .clamp(10, 30_000);
+    request.deadline_ms = deadline_ms;
     input["repoId"] = Value::String(repository.to_owned());
     if let Some(generation) = request.generation.clone() {
         input["generation"] = Value::String(generation);
@@ -1849,6 +2104,21 @@ mod blueprint_input_tests {
         assert_eq!(input["seed"], "exact-symbol");
         assert_eq!(input["target"], "exact-symbol");
     }
+
+    #[test]
+    fn blueprint_deadline_keeps_build_cap_and_rejects_coercion() {
+        assert_eq!(
+            blueprint_deadline(&json!({}), Operation::Build).unwrap(),
+            membrane_blueprint::model::MAX_BUILD_DEADLINE_MS
+        );
+        assert_eq!(
+            blueprint_deadline(&json!({}), Operation::Recall).unwrap(),
+            membrane_blueprint::model::MAX_DEADLINE_MS
+        );
+        let invalid = blueprint_deadline(&json!({"deadlineMs": 1}), Operation::Recall)
+            .expect_err("invalid deadline must not be clamped");
+        assert_eq!(invalid["result"]["code"], "blueprint_envelope_invalid");
+    }
 }
 
 impl RuntimeMcpExecutor {
@@ -1989,6 +2259,27 @@ impl RuntimeMcpExecutor {
                 if let Err(result) = bounded(context, name, "working_context_payload_too_large") {
                     return result;
                 }
+                let expiry_value = context
+                    .get("expiresAt")
+                    .or_else(|| context.get("expires_at"))
+                    .or_else(|| arguments.get("expiresAt"));
+                let expiry = match expiry_value {
+                    None => None,
+                    Some(value) => match value
+                        .as_str()
+                        .map(str::trim)
+                        .filter(|value| valid_working_context_instant(value))
+                    {
+                        Some(value) => Some(value.to_owned()),
+                        None => {
+                            return error(
+                                name,
+                                "working_context_expiry_invalid",
+                                "expiresAt must be a valid ISO-8601 instant",
+                            )
+                        }
+                    },
+                };
                 let payload = match serde_json::to_string(context) {
                     Ok(value) => value,
                     Err(_) => {
@@ -2011,8 +2302,8 @@ impl RuntimeMcpExecutor {
                     }
                 };
                 if let Err(failure) = tx.execute(
-                    "INSERT INTO membrane_working_context(context_id,repository_id,scope_id,session_id,task_id,payload_json,payload_sha256,expires_at,state,created_at) VALUES(?1,?2,?3,?4,?5,?6,?7,strftime('%Y-%m-%dT%H:%M:%fZ','now','+24 hours'),'active',strftime('%Y-%m-%dT%H:%M:%fZ','now')) ON CONFLICT(context_id) DO UPDATE SET payload_json=excluded.payload_json,payload_sha256=excluded.payload_sha256,expires_at=excluded.expires_at WHERE repository_id=excluded.repository_id AND scope_id=excluded.scope_id AND session_id=excluded.session_id AND task_id=excluded.task_id AND state='active'",
-                    params![context_id,repository,scope,session,task,payload,digest],
+                    "INSERT INTO membrane_working_context(context_id,repository_id,scope_id,session_id,task_id,payload_json,payload_sha256,expires_at,state,created_at) VALUES(?1,?2,?3,?4,?5,?6,?7,COALESCE(?8,strftime('%Y-%m-%dT%H:%M:%fZ','now','+24 hours')),'active',strftime('%Y-%m-%dT%H:%M:%fZ','now')) ON CONFLICT(context_id) DO UPDATE SET payload_json=excluded.payload_json,payload_sha256=excluded.payload_sha256,expires_at=excluded.expires_at WHERE repository_id=excluded.repository_id AND scope_id=excluded.scope_id AND session_id=excluded.session_id AND task_id=excluded.task_id AND state='active'",
+                    params![context_id,repository,scope,session,task,payload,digest,expiry],
                 ) { return error(name, "working_context_scope_denied", failure.to_string()); }
                 if tx.commit().is_err() {
                     return error(
@@ -2027,14 +2318,103 @@ impl RuntimeMcpExecutor {
                 )
             }
             "load" => {
-                let mut statement = match db.prepare("SELECT context_id,payload_json FROM membrane_working_context WHERE repository_id=?1 AND scope_id=?2 AND session_id=?3 AND task_id=?4 AND state='active' AND expires_at>strftime('%Y-%m-%dT%H:%M:%fZ','now') ORDER BY created_at,context_id LIMIT 256") { Ok(value) => value, Err(failure) => return error(name, "working_context_envelope_invalid", failure.to_string()) };
-                let rows = statement.query_map(params![repository, scope, session, task], |row| {
-                    Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-                });
-                let contexts = match rows {
-                    Ok(rows) => rows
-                        .filter_map(Result::ok)
-                        .filter_map(|(id, payload)| {
+                let limit = match arguments.get("limit") {
+                    None => WORKING_CONTEXT_PAGE_DEFAULT,
+                    Some(value) => match value
+                        .as_u64()
+                        .and_then(|value| usize::try_from(value).ok())
+                        .filter(|value| (1..=WORKING_CONTEXT_PAGE_MAX).contains(value))
+                    {
+                        Some(value) => value,
+                        None => {
+                            return error(
+                                name,
+                                "working_context_page_limit_invalid",
+                                "limit must be an integer between 1 and 100",
+                            )
+                        }
+                    },
+                };
+                let as_of = match arguments.get("asOf") {
+                    None => cortex_store::time::now_iso(),
+                    Some(value) => match value
+                        .as_str()
+                        .map(str::trim)
+                        .filter(|value| valid_working_context_instant(value))
+                    {
+                        Some(value) => value.to_owned(),
+                        None => {
+                            return error(
+                                name,
+                                "working_context_as_of_invalid",
+                                "asOf must be a valid ISO-8601 instant",
+                            )
+                        }
+                    },
+                };
+                let cursor = match arguments.get("cursor") {
+                    None => None,
+                    Some(value) => match value.as_str().and_then(working_context_cursor_parts) {
+                        Some(value) => Some(value),
+                        None => {
+                            return error(
+                                name,
+                                "working_context_page_cursor_invalid",
+                                "cursor must be a valid working-context page cursor",
+                            )
+                        }
+                    },
+                };
+                let paged = arguments.get("cursor").is_some() || arguments.get("limit").is_some();
+                let page_limit = (limit + 1) as i64;
+                let query = "SELECT context_id,payload_json,created_at FROM membrane_working_context WHERE repository_id=?1 AND scope_id=?2 AND session_id=?3 AND task_id=?4 AND state='active' AND julianday(expires_at)>julianday(?5) ORDER BY created_at,context_id";
+                let paged_query = "SELECT context_id,payload_json,created_at FROM membrane_working_context WHERE repository_id=?1 AND scope_id=?2 AND session_id=?3 AND task_id=?4 AND state='active' AND julianday(expires_at)>julianday(?5) ORDER BY created_at,context_id LIMIT ?6";
+                let after_query = "SELECT context_id,payload_json,created_at FROM membrane_working_context WHERE repository_id=?1 AND scope_id=?2 AND session_id=?3 AND task_id=?4 AND state='active' AND julianday(expires_at)>julianday(?5) AND (created_at>?6 OR (created_at=?7 AND context_id>?8)) ORDER BY created_at,context_id LIMIT ?9";
+                let rows: Result<Vec<(String, String, String)>, rusqlite::Error> = if !paged {
+                    let mut statement = match db.prepare(query) {
+                        Ok(value) => value,
+                        Err(failure) => return error(name, "working_context_envelope_invalid", failure.to_string()),
+                    };
+                    statement.query_map(
+                        params![repository, scope, session, task, as_of],
+                        |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?)),
+                    ).and_then(|rows| rows.collect())
+                } else if let Some((created_at, after_id)) = cursor {
+                    let mut statement = match db.prepare(after_query) {
+                        Ok(value) => value,
+                        Err(failure) => return error(name, "working_context_envelope_invalid", failure.to_string()),
+                    };
+                    statement.query_map(
+                        params![repository, scope, session, task, as_of, created_at, created_at, after_id, page_limit],
+                        |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?)),
+                    ).and_then(|rows| rows.collect())
+                } else {
+                    let mut statement = match db.prepare(paged_query) {
+                        Ok(value) => value,
+                        Err(failure) => return error(name, "working_context_envelope_invalid", failure.to_string()),
+                    };
+                    statement.query_map(
+                        params![repository, scope, session, task, as_of, page_limit],
+                        |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?)),
+                    ).and_then(|rows| rows.collect())
+                };
+                let (contexts, next_cursor) = match rows {
+                    Ok(mut rows) => {
+                        let has_more = paged && rows.len() > limit;
+                        if paged {
+                            rows.truncate(limit);
+                        }
+                        let next_cursor = if has_more {
+                            rows.last()
+                                .map(|(context_id, _, created_at)| {
+                                    working_context_cursor(created_at, context_id)
+                                })
+                        } else {
+                            None
+                        };
+                        let contexts = rows
+                        .into_iter()
+                        .filter_map(|(id, payload, _created_at)| {
                             serde_json::from_str::<Value>(&payload)
                                 .ok()
                                 .map(|mut value| {
@@ -2044,7 +2424,9 @@ impl RuntimeMcpExecutor {
                                     value
                                 })
                         })
-                        .collect::<Vec<_>>(),
+                        .collect::<Vec<_>>();
+                        (contexts, next_cursor)
+                    }
                     Err(failure) => {
                         return error(
                             name,
@@ -2055,7 +2437,7 @@ impl RuntimeMcpExecutor {
                 };
                 success(
                     name,
-                    json!({"status":"loaded","operation":"load","contexts":contexts}),
+                    json!({"status":"loaded","operation":"load","contexts":contexts,"nextCursor":next_cursor}),
                 )
             }
             _ => {
@@ -2377,6 +2759,245 @@ mod hub_transport_tests {
             "membrane_feedback", "membrane_push_prepare", "membrane_push_resolve"] {
             assert_eq!(execute_explicit(tool, &json!({}))["result"]["code"], "caller_required", "{tool}");
         }
+    }
+
+    /// Parity regression for legacy `mcp/working-context.mjs`'s
+    /// `WorkingContextStore` (see mcp/working-context.test.mjs, test
+    /// "L3 durable working context survives restart, expires, and injects
+    /// only exact scope"). The native SQLite-backed store here
+    /// (`RuntimeMcpExecutor::working_context`, this file) implements the
+    /// same save/load/close/scope-isolation contract; this test proves it
+    /// directly against the private handler the way the legacy test proved
+    /// it directly against `WorkingContextStore`, without routing through
+    /// the full `AuthorizationGateV1` envelope (out of scope here).
+    ///
+    /// MBR-305 cursor paging & caller-supplied expiry are implemented by the
+    /// native handler; production-boundary coverage lives beside Blueprint.
+    #[test]
+    fn working_context_save_load_close_and_scope_isolation_match_legacy_store_contract() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let db_path = dir.path().join("primary.db");
+        let store = MemoryStore::open(crate::MemDb::open(&db_path).expect("open memdb"));
+        let diagnostics = DiagnosticsService::with_data_root(dir.path().to_path_buf())
+            .expect("diagnostics service");
+        let executor = RuntimeMcpExecutor::with_store(store, diagnostics);
+
+        // Save under session-a/task-a.
+        let save_args = json!({
+            "operation": "save",
+            "sessionId": "session-a",
+            "taskId": "task-a",
+            "contextId": "context-1",
+            "context": {"contextId": "context-1", "items": [{"ref": "sha256:a"}]}
+        });
+        let saved = executor.working_context(
+            "membrane_working_context",
+            &save_args,
+            "repo-a",
+            "scope-a",
+        );
+        assert_eq!(saved["result"]["data"]["status"], "saved", "{saved}");
+
+        // Load under the same session/task/repo/scope returns the saved context ("injects
+        // only exact scope" — legacy assertion).
+        let load_same = executor.working_context(
+            "membrane_working_context",
+            &json!({"operation": "load", "sessionId": "session-a", "taskId": "task-a"}),
+            "repo-a",
+            "scope-a",
+        );
+        let contexts = load_same["result"]["data"]["contexts"]
+            .as_array()
+            .expect("contexts array");
+        assert_eq!(contexts.len(), 1, "{load_same}");
+        assert_eq!(contexts[0]["contextId"], "context-1");
+
+        // Loading under a different session yields nothing (scope isolation).
+        let load_other_session = executor.working_context(
+            "membrane_working_context",
+            &json!({"operation": "load", "sessionId": "session-b", "taskId": "task-a"}),
+            "repo-a",
+            "scope-a",
+        );
+        assert_eq!(
+            load_other_session["result"]["data"]["contexts"]
+                .as_array()
+                .expect("contexts array")
+                .len(),
+            0
+        );
+
+        // Loading under a different repository/scope also yields nothing.
+        let load_other_scope = executor.working_context(
+            "membrane_working_context",
+            &json!({"operation": "load", "sessionId": "session-a", "taskId": "task-a"}),
+            "repo-a",
+            "scope-b",
+        );
+        assert_eq!(
+            load_other_scope["result"]["data"]["contexts"]
+                .as_array()
+                .expect("contexts array")
+                .len(),
+            0
+        );
+
+        // Close, then confirm it no longer loads.
+        let closed = executor.working_context(
+            "membrane_working_context",
+            &json!({"operation": "close", "sessionId": "session-a", "taskId": "task-a", "contextId": "context-1"}),
+            "repo-a",
+            "scope-a",
+        );
+        assert_eq!(closed["result"]["data"]["closed"], true, "{closed}");
+        let load_after_close = executor.working_context(
+            "membrane_working_context",
+            &json!({"operation": "load", "sessionId": "session-a", "taskId": "task-a"}),
+            "repo-a",
+            "scope-a",
+        );
+        assert_eq!(
+            load_after_close["result"]["data"]["contexts"]
+                .as_array()
+                .expect("contexts array")
+                .len(),
+            0
+        );
+    }
+
+    #[test]
+    fn working_context_page_cursor_expiry_and_bounds_are_typed() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let db_path = dir.path().join("primary.db");
+        let store = MemoryStore::open(crate::MemDb::open(&db_path).expect("open memdb"));
+        let diagnostics = DiagnosticsService::with_data_root(dir.path().to_path_buf())
+            .expect("diagnostics service");
+        let executor = RuntimeMcpExecutor::with_store(store, diagnostics);
+
+        for context_id in ["context-1", "context-2", "context-3"] {
+            let saved = executor.working_context(
+                "membrane_working_context",
+                &json!({
+                    "operation": "save",
+                    "sessionId": "session-a",
+                    "taskId": "task-a",
+                    "contextId": context_id,
+                    "context": {
+                        "contextId": context_id,
+                        "expiresAt": "2026-08-03T00:00:00Z",
+                        "items": [{"ref": context_id}]
+                    }
+                }),
+                "repo-a",
+                "scope-a",
+            );
+            assert_eq!(saved["result"]["data"]["status"], "saved", "{saved}");
+        }
+        let expired = executor.working_context(
+            "membrane_working_context",
+            &json!({
+                "operation": "save",
+                "sessionId": "session-a",
+                "taskId": "task-a",
+                "contextId": "expired",
+                "context": {
+                    "contextId": "expired",
+                    "expiresAt": "2020-01-01T00:00:00Z",
+                    "items": []
+                }
+            }),
+            "repo-a",
+            "scope-a",
+        );
+        assert_eq!(expired["result"]["data"]["status"], "saved", "{expired}");
+
+        let first = executor.working_context(
+            "membrane_working_context",
+            &json!({
+                "operation": "load",
+                "sessionId": "session-a",
+                "taskId": "task-a",
+                "asOf": "2026-08-02T00:00:00Z",
+                "limit": 2
+            }),
+            "repo-a",
+            "scope-a",
+        );
+        let first_contexts = first["result"]["data"]["contexts"]
+            .as_array()
+            .expect("first page contexts");
+        assert_eq!(first_contexts.len(), 2, "{first}");
+        assert!(first["result"]["data"]["nextCursor"].is_string(), "{first}");
+        let cursor = first["result"]["data"]["nextCursor"].clone();
+
+        let second = executor.working_context(
+            "membrane_working_context",
+            &json!({
+                "operation": "load",
+                "sessionId": "session-a",
+                "taskId": "task-a",
+                "asOf": "2026-08-02T00:00:00Z",
+                "cursor": cursor,
+                "limit": 2
+            }),
+            "repo-a",
+            "scope-a",
+        );
+        let second_contexts = second["result"]["data"]["contexts"]
+            .as_array()
+            .expect("second page contexts");
+        assert_eq!(second_contexts.len(), 1, "{second}");
+        assert_eq!(second_contexts[0]["contextId"], "context-3");
+        assert!(second["result"]["data"]["nextCursor"].is_null(), "{second}");
+
+        let after_expiry = executor.working_context(
+            "membrane_working_context",
+            &json!({
+                "operation": "load",
+                "sessionId": "session-a",
+                "taskId": "task-a",
+                "asOf": "2026-08-04T00:00:00Z"
+            }),
+            "repo-a",
+            "scope-a",
+        );
+        assert!(after_expiry["result"]["data"]["contexts"]
+            .as_array()
+            .expect("expired contexts")
+            .is_empty());
+
+        let invalid_cursor = executor.working_context(
+            "membrane_working_context",
+            &json!({
+                "operation": "load",
+                "sessionId": "session-a",
+                "taskId": "task-a",
+                "cursor": ""
+            }),
+            "repo-a",
+            "scope-a",
+        );
+        assert_eq!(
+            invalid_cursor["result"]["code"],
+            "working_context_page_cursor_invalid",
+            "{invalid_cursor}"
+        );
+        let invalid_limit = executor.working_context(
+            "membrane_working_context",
+            &json!({
+                "operation": "load",
+                "sessionId": "session-a",
+                "taskId": "task-a",
+                "limit": 0
+            }),
+            "repo-a",
+            "scope-a",
+        );
+        assert_eq!(
+            invalid_limit["result"]["code"],
+            "working_context_page_limit_invalid",
+            "{invalid_limit}"
+        );
     }
 }
 

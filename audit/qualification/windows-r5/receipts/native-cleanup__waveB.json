@@ -11,11 +11,11 @@
   },
   "accounting": {
     "source": "D:/Claude/review/windows-r5/interpreter-dispositions.json",
-    "interpreterDispositions": 878,
+    "interpreterDispositions": 879,
     "actionCounts": {
-      "delete-after-parity": 373,
-      "retain-with-reachability-proof": 505,
-      "commit-deletion": 0
+      "delete-after-parity": 0,
+      "retain-with-reachability-proof": 278,
+      "commit-deletion": 601
     }
   },
   "storage": {

@@ -4,12 +4,12 @@ import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { pnpmCliArgs } from "../blueprint/scripts/release/npm-cli.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const membraneRoot = resolve(HERE, "..");
 const workspaceRoot = resolve(membraneRoot, "..");
-const pnpmCommand = process.platform === "win32" ? process.execPath : "pnpm";
+const nativeCargoCommand = process.platform === "win32" ? "rightkit.cmd" : "cargo";
+const nativeCargoTarget = process.platform === "win32" ? ["--target", "x86_64-pc-windows-msvc"] : [];
 const pythonCommand = process.platform === "win32"
   ? join(workspaceRoot, ".venv-tools", "Scripts", "python.exe")
   : join(workspaceRoot, ".venv-tools", "bin", "python");
@@ -22,11 +22,26 @@ const forgeSuitePaths = [
 ];
 const m0CrossRepoAvailable = [...forgeSuitePaths, pythonCommand].every(existsSync);
 
+const nativeCargoSuite = (...packages) => [
+  nativeCargoCommand,
+  [
+    ...(process.platform === "win32" ? ["cargo"] : []),
+    "test",
+    "--manifest-path",
+    join(membraneRoot, "engine", "Cargo.toml"),
+    ...nativeCargoTarget,
+    ...packages.flatMap((name) => ["-p", name]),
+    "--locked",
+    "--no-fail-fast",
+  ],
+  membraneRoot,
+];
+
 // Honesty disclosure (read this before trusting `baseline_red`): the `baseline` value below for
 // every case is a literal transcription of the fixture's own `failure` column — the documented
 // pre-fix input — not bytes read from an actual checkout of a historical commit. Reproducing the
 // real historical behavior would require checking out an old commit of several
-// language runtimes (Rust engine, JS Membrane/Blueprint, Python Adapt) & rebuilding each,
+// language runtimes (Rust engine, Python Adapt) & rebuilding each,
 // which this workspace's primary-checkout-only / no-worktree-without-approval rule forbids doing
 // in place, and which a temporary worktree could only do with Adrian's explicit sign-off. So
 // `baseline_red` here proves "the documented failure input fails the current validator", not
@@ -90,15 +105,10 @@ const probes = {
 };
 
 const suites = {
-  cortex: [process.execPath, ["--test", join(membraneRoot, "mcp/server-durable.test.mjs")], workspaceRoot],
-  "membrane-host": [process.execPath, ["--test", join(membraneRoot, "mcp/client.test.mjs"), join(membraneRoot, "mcp/adapters.test.mjs")], workspaceRoot],
-  // root-child-scope's fix lives in repository-catalog.mjs ("child graph access requires an
-  // explicit root grant"), not project-registry.mjs — the original suite list omitted it, so
-  // "current_green" for that fixture was gated on a suite that never actually exercised the fix.
-  membrane: [process.execPath, ["--test", join(membraneRoot, "mcp/project-registry.test.mjs"), join(membraneRoot, "mcp/repository-catalog.test.mjs")], workspaceRoot],
-  blueprint: process.platform === "win32"
-    ? [pnpmCommand, pnpmCliArgs(["--dir", join(membraneRoot, "blueprint"), "test:all"]), workspaceRoot]
-    : [pnpmCommand, ["--dir", join(membraneRoot, "blueprint"), "test:all"], workspaceRoot],
+  cortex: nativeCargoSuite("cortex-store"),
+  "membrane-host": nativeCargoSuite("membrane-mcp"),
+  membrane: nativeCargoSuite("membrane"),
+  blueprint: nativeCargoSuite("membrane-blueprint"),
   // Forge was retired into Arcane (workspace Phase H-10). These focused successor
   // suites cover its two remaining F13 cases: declared-check correlation + closed output schemas.
   forge: [process.execPath, ["--test",

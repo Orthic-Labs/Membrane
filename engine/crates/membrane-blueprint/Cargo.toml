@@ -9,6 +9,8 @@ rusqlite = { version = "0.40.2", features = ["bundled"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 sha2 = "0.11"
+ring = "0.17"
+hmac = "0.13"
 thiserror = { workspace = true }
 hex = { workspace = true }
 regex = { workspace = true }
@@ -27,6 +29,22 @@ tree-sitter-c-sharp = "0.23"
 tree-sitter-ruby = "0.23"
 tree-sitter-php = "0.24"
 tree-sitter-bash = "0.25"
+tree-sitter-kotlin-ng = "1"
+tree-sitter-swift = "0.7"
+tree-sitter-scala = "0.24"
+tree-sitter-dart = "0.0.4"
+tree-sitter-lua = "0.4"
+tree-sitter-json = "0.24"
+tree-sitter-yaml = "0.7"
+tree-sitter-toml-ng = "0.7"
+tree-sitter-html = "0.23"
+tree-sitter-css = "0.23"
+tree-sitter-objc = "3"
+tree-sitter-ocaml = "0.24"
+tree-sitter-elixir = "0.3"
+tree-sitter-zig = "1"
+tree-sitter-elm = "5.9.4"
+membrane-grammars-vendored = { path = "../membrane-grammars-vendored" }
 xxhash-rust = { version = "0.8", features = ["xxh3"] }
 unicode-normalization = "0.1"
 

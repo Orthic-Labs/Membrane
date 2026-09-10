@@ -1,0 +1,8 @@
+.run {
+  color: red;
+}
+
+@keyframes start {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}

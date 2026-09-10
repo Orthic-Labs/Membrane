@@ -85,3 +85,75 @@ pub mod contract_registry;
 pub mod conventions;
 pub mod evidence_authority;
 pub mod liveness;
+
+pub mod architecture_model;
+pub mod framework_intelligence;
+pub mod git_source_observation;
+pub mod lib_path_confinement;
+
+pub mod atomic_adopt;
+pub mod confidence_tiers;
+pub mod bootstrap;
+pub mod store_delta;
+
+pub mod recall_circuit;
+pub mod module_resolution;
+pub mod lib_redaction;
+
+pub mod lib_hooks_graph_index;
+pub mod lib_init_detect_hosts;
+pub mod lib_init_plan;
+pub mod lib_init_host_configs;
+pub mod lib_run_ledger;
+pub mod lib_comment_claims;
+pub mod lib_rules_parser;
+pub mod lib_rules_exceptions;
+pub mod lib_rules_baseline;
+pub mod lib_rules_evaluate;
+pub mod lib_languages_custom_config;
+pub mod lib_orientation_evidence;
+pub mod lib_receipt_store;
+pub mod lib_operations_repair;
+pub mod lib_operations_support_bundle;
+pub mod lib_operations_doctor;
+pub mod lib_init_state_integrity;
+
+pub mod lib_application_errors;
+pub mod lib_application_root_registry;
+pub mod lib_runtime_capabilities;
+pub mod lib_application_normalize;
+pub mod lib_token_budget;
+pub mod lib_http_server;
+pub mod lib_phase2_completion;
+pub mod lib_generated_docs;
+pub mod lib_admission;
+pub mod lib_update_channel;
+pub mod lib_update_manifest;
+pub mod lib_explorer_layout;
+pub mod lib_explorer_static;
+pub mod lib_findings_specifier;
+pub mod lib_init_apply;
+pub mod lib_update_apply;
+pub mod lib_update_rollback;
+pub mod lib_application_document_truth;
+pub mod lib_application_snapshots;
+pub mod lib_application_federate;
+pub mod analytics;
+pub mod change_impact;
+pub mod test_recommendation;
+pub mod reanchor;
+pub mod process_projection;
+pub mod signature_projection;
+pub mod orientation_projection;
+
+pub mod providers;
+
+pub mod lib_operations_init;
+pub mod lib_operations_update;
+
+pub mod lib_cli_languages;
+pub mod lib_cli_rules;
+pub mod lib_cli_mcp;
+pub mod lib_cli_uninstall;
+pub mod architecture_views;
+pub mod freshness_observation;

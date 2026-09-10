@@ -1,0 +1,169 @@
+{
+  "schema": "membrane.registry-qualification.v1",
+  "platform": "windows",
+  "profile": "internal-unsigned",
+  "group": "PKG",
+  "caseRegistryPath": "D:\\Claude\\review\\windows-r5\\windows-amendment-acceptance.json",
+  "workspaceRoot": "D:\\Claude\\membrane",
+  "caseSourceRoot": "D:\\Claude\\membrane",
+  "evidencePath": "D:\\Claude\\membrane\\audit\\qualification\\windows-r5\\pkg-rerun.json",
+  "generatedAt": "2026-09-10T07:51:26.644Z",
+  "requiredIds": [
+    "PKG-01",
+    "PKG-02",
+    "PKG-03",
+    "PKG-04",
+    "PKG-05"
+  ],
+  "executedIds": [
+    "PKG-01",
+    "PKG-02",
+    "PKG-03",
+    "PKG-04",
+    "PKG-05"
+  ],
+  "terminalIds": [
+    "PKG-01",
+    "PKG-02",
+    "PKG-03",
+    "PKG-04",
+    "PKG-05"
+  ],
+  "results": [
+    {
+      "id": "PKG-01",
+      "status": "passed",
+      "functionalStatus": "structural",
+      "evidenceKind": "component",
+      "detail": {
+        "checks": [
+          {
+            "name": "duplicate-id-rejected",
+            "passed": true
+          },
+          {
+            "name": "zero-selection-rejected",
+            "passed": true
+          },
+          {
+            "name": "missing-export-fails",
+            "passed": true
+          },
+          {
+            "name": "missing-module-fails",
+            "passed": true
+          },
+          {
+            "name": "missing-evidence-kind-fails",
+            "passed": true
+          },
+          {
+            "name": "macos-platform-rejected",
+            "passed": true
+          },
+          {
+            "name": "non-internal-unsigned-profile-rejected",
+            "passed": true
+          }
+        ]
+      },
+      "reason": "evidenceKind component is not runtime evidence"
+    },
+    {
+      "id": "PKG-02",
+      "status": "failed",
+      "functionalStatus": "failed",
+      "evidenceKind": "source",
+      "detail": {
+        "candidateManifestPath": null,
+        "installedManifestPath": "C:/Users/adrds/AppData/Local/Orthic Labs/Membrane/release-manifest.json"
+      },
+      "reason": "candidate and/or installed release manifest unavailable on this machine; run after the RightKit internal-unsigned Windows build and install"
+    },
+    {
+      "id": "PKG-03",
+      "status": "failed",
+      "functionalStatus": "failed",
+      "evidenceKind": "source",
+      "detail": {
+        "installedManifestPath": "C:/Users/adrds/AppData/Local/Orthic Labs/Membrane/release-manifest.json",
+        "controllerIdentityPath": null,
+        "controllerSource": null,
+        "attemptedSelfStart": true,
+        "lastObservedProbeFailure": {
+          "exitStatus": 2,
+          "stderr": "membrane: installed health returned HTTP 503",
+          "blueprintWatcherDetail": "generation_partial_coverage",
+          "blueprintWatcherState": "watcher_unavailable",
+          "dailyAnalysis": {
+            "alert": true,
+            "lastSuccessAgeSeconds": null,
+            "reason": "missing_output",
+            "status": "unavailable"
+          },
+          "ok": true
+        }
+      },
+      "reason": "installed manifest and/or a live controller identity report unavailable even after attempting to start the installed Hub holder (timed out)"
+    },
+    {
+      "id": "PKG-04",
+      "status": "passed",
+      "functionalStatus": "structural",
+      "evidenceKind": "source",
+      "detail": {
+        "head": "20251c483e6321001d8aae136ef300f87afd3d9e",
+        "qualifiedSourceRevision": "20251c483e6321001d8aae136ef300f87afd3d9e"
+      },
+      "reason": "evidenceKind source is not runtime evidence"
+    },
+    {
+      "id": "PKG-05",
+      "status": "passed",
+      "functionalStatus": "structural",
+      "evidenceKind": "component",
+      "detail": {
+        "sampleResults": [
+          {
+            "id": "PKG-02",
+            "status": "failed",
+            "evidenceKind": "source"
+          },
+          {
+            "id": "PKG-03",
+            "status": "failed",
+            "evidenceKind": "source"
+          },
+          {
+            "id": "PKG-04",
+            "status": "passed",
+            "evidenceKind": "source"
+          }
+        ],
+        "checks": [
+          {
+            "name": "PKG-02-evidence-kind-recognized",
+            "passed": true
+          },
+          {
+            "name": "PKG-03-evidence-kind-recognized",
+            "passed": true
+          },
+          {
+            "name": "PKG-04-evidence-kind-recognized",
+            "passed": true
+          }
+        ]
+      },
+      "reason": "evidenceKind component is not runtime evidence"
+    }
+  ],
+  "evidenceKindCounts": {
+    "component": 2,
+    "source": 3
+  },
+  "status": "failed",
+  "functionalStatus": "failed",
+  "unsignedFunctional": false,
+  "signedReleasePass": false
+}

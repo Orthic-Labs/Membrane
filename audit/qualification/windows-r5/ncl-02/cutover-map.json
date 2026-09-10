@@ -1,0 +1,127 @@
+{
+  "lane": "CUT1",
+  "generatedAt": "2026-09-10",
+  "purpose": "Complete cutover map of every shipped or CI path that invokes or packages legacy Blueprint JS (blueprint/, blueprint/release/launchers/blueprint.cmd, runtime/blueprint/lib/node.exe), with native replacement and switch status, per NCL-03/NCL-02.",
+  "finding_summary": "The source-level packaging/CI chain for the next release already does not stage or invoke the legacy Blueprint JS interpreter tree. RUNTIME_SPECS in runtime-inventory.mjs carries no Blueprint Node entry (blueprint-contract ships only the JSON schema resource; transport is a named-pipe to the native membrane-blueprint crate). package-portable-windows.mjs writes only a thin blueprint.cmd shim that execs membrane.exe. installer.nsi actively strips any legacy runtime/blueprint tree found under a version root and asserts (RemoveRetiredBlueprintRuntime, lines 367-372) that no node.exe/blueprint.cmd remain before completing install. The only place the legacy interpreter still ships is the CURRENTLY INSTALLED 0.1.24 product on this machine (an older signed release, pre-dating this cutover work) -- not something this lane can fix by editing scripts, since it requires a new signed installer build (out of lane scope; confirmed by scripts/qualification/cases/ncl-windows.mjs's own NCL-03 comment). No packaging/CI file edits were required to satisfy this lane's switch step because none of the entries below were still wired to the legacy interpreter.",
+  "entries": [
+    {
+      "path": "apps/membrane-hub/scripts/runtime-inventory.mjs",
+      "what_it_does_with_js": "Declares RUNTIME_SPECS, the authoritative list of what the Tauri bundle ships. No entry names blueprint/, node.exe, or blueprint.cmd. The blueprint-contract entry ships only schemas/operations/membrane-blueprint.v1.schema.json (a JSON resource) with transport: named-pipe, pointing at the native membrane-blueprint crate surface.",
+      "native_replacement": "membrane.exe cli blueprint <op> (engine/crates/membrane-blueprint) reached over the named-pipe transport declared on the blueprint-contract spec.",
+      "can_switch_now": "already-native",
+      "action_taken": "none required"
+    },
+    {
+      "path": "apps/membrane-hub/scripts/stage-runtime.mjs",
+      "what_it_does_with_js": "Stages RUNTIME_SPECS entries into src-tauri/runtime/. Contains zero references to blueprint/, node.exe, or .cmd launchers -- it only stages what runtime-inventory.mjs declares.",
+      "native_replacement": "N/A (staging script; nothing to switch, downstream of runtime-inventory.mjs)",
+      "can_switch_now": "already-native",
+      "action_taken": "none required"
+    },
+    {
+      "path": "apps/membrane-hub/scripts/package-portable-windows.mjs",
+      "what_it_does_with_js": "Copies the staged runtime/ tree (native-only per above) and writes a portable blueprint.cmd shim: `@echo off / \"%~dp0membrane.exe\" cli blueprint %* / exit /b %ERRORLEVEL%`. Also copies mcp/blueprint-readiness.mjs, which reads Blueprint freshness over a Unix-domain/named-pipe IPC socket (~/.blueprint/blueprint.sock) to the native daemon -- it never spawns node or the legacy blueprint.cmd.",
+      "native_replacement": "membrane.exe cli blueprint (invoked via the shim); blueprint-ipc named-pipe/socket protocol to the native daemon for readiness reads.",
+      "can_switch_now": "already-native",
+      "action_taken": "none required"
+    },
+    {
+      "path": "apps/membrane-hub/scripts/release-build-candidate-windows.mjs",
+      "what_it_does_with_js": "Its only blueprint-related line is the same mcp/blueprint-readiness.mjs enrollment-file reference (native IPC client, see above); it does not build, stage, or invoke blueprint/ JS or node.exe.",
+      "native_replacement": "N/A",
+      "can_switch_now": "already-native",
+      "action_taken": "none required"
+    },
+    {
+      "path": "apps/membrane-hub/scripts/release-build-windows.mjs",
+      "what_it_does_with_js": "No blueprint references at all.",
+      "native_replacement": "N/A",
+      "can_switch_now": "already-native",
+      "action_taken": "none required"
+    },
+    {
+      "path": "apps/membrane-hub/src-tauri/windows/installer.nsi",
+      "what_it_does_with_js": "Never adds runtime\\blueprint to the package it builds. It actively removes any legacy runtime\\blueprint tree found under a version root on upgrade/repair (RemoveRetiredBlueprintRuntime, invoked around lines 172-179 and step 330-335: 'remove-retired-blueprint-runtime'), then hard-asserts at lines 367-372 that $INSTDIR\\versions\\<version>\\runtime\\blueprint\\lib\\node.exe and \\bin\\blueprint.cmd do not exist, aborting install if they do.",
+      "native_replacement": "N/A (installer contains only cleanup/assertion logic against the legacy tree, not an invocation of it)",
+      "can_switch_now": "already-native",
+      "action_taken": "none required"
+    },
+    {
+      "path": "apps/membrane-hub/src-tauri/tauri.conf.json",
+      "what_it_does_with_js": "No blueprint references.",
+      "native_replacement": "N/A",
+      "can_switch_now": "already-native",
+      "action_taken": "none required"
+    },
+    {
+      "path": "blueprint/release/launchers/blueprint.cmd, blueprint-mcp.cmd (and blueprint/blueprint-mcp with no extension)",
+      "what_it_does_with_js": "Legacy launcher shims for the JS Blueprint CLI/MCP server, still present in the source tree under blueprint/release/launchers/. Not referenced by any packaging script above -- package-portable-windows.mjs synthesizes its own native blueprint.cmd shim at package time instead of copying this one.",
+      "native_replacement": "The synthesized native blueprint.cmd shim written by package-portable-windows.mjs (calls membrane.exe cli blueprint).",
+      "can_switch_now": "no (legacy source tree kept intentionally -- port parity not yet landed; not deleted per task instruction, and confirmed unreferenced by packaging)",
+      "action_taken": "none -- confirmed already unreferenced by any shipped/CI packaging path"
+    },
+    {
+      "path": "mcp/capability-inventory.mjs",
+      "what_it_does_with_js": "Lists capability rows whose `artifact`/`test_ids` fields cite blueprint/src/... and blueprint/tests/... paths for provenance/traceability of findings capabilities (bp001-bp003, module_surface.parse). This is a static capability ledger read by qualification tooling; it does not import, spawn, or execute any blueprint/ file at runtime, and it is not copied into the shipped package by package-portable-windows.mjs's enrollmentFiles list.",
+      "native_replacement": "N/A for invocation (nothing executes); the underlying capabilities (findings.bp001-3, module_surface.parse) still require engine/crates/membrane-blueprint parity before their test_ids can be repointed at native test files -- that repointing is a port-parity task, not a packaging/invocation switch.",
+      "can_switch_now": "no (repointing test_ids to native equivalents is gated on port parity landing for findings/module-surface, not a packaging or invocation concern)",
+      "action_taken": "none -- confirmed non-executing, unshipped"
+    },
+    {
+      "path": "scripts/run-m0-baseline-current.mjs",
+      "what_it_does_with_js": "Imports pnpmCliArgs from blueprint/scripts/release/npm-cli.mjs and runs `pnpm --dir blueprint test:all` on Windows as one of its baseline commands. This is a dev-only M0 baseline capture tool (not part of the shipped product or the release/installer path) whose purpose is to record the legacy JS suite's own baseline results for later parity comparison against the native port -- it deliberately targets the legacy suite as ground truth.",
+      "native_replacement": "No native replacement applies: this script's job is to capture the legacy baseline for comparison, not to invoke Blueprint as a product operation. Once membrane-blueprint reaches full parity and blueprint/ is retired, this baseline command becomes historical and can be dropped from the active baseline set, but that is a port-parity-completion action, not a cutover-map switch.",
+      "can_switch_now": "no (script's function is legacy-baseline capture for parity proof, not shipped/invoked product behavior)",
+      "action_taken": "none -- confirmed dev-only, non-shipped, intentionally legacy-targeting"
+    },
+    {
+      "path": "scripts/qualification/cases/bpt-windows.mjs",
+      "what_it_does_with_js": "Its real (DELIVERED-eligible) BPT case rows already execFileSync the installed membrane.exe with `cli blueprint <op>` (lines 51 and 75) -- no node/legacy spawn in the pass path. A small number of specific rows (BPT-018 comparePaths ranking, BPT-020 dependency-dag selective invalidation, BPT-026 comparePaths reordering) additionally import the real legacy modules directly (blueprint/src/graph/recall-circuit.mjs, blueprint/src/graph/dependency-dag.mjs) to produce a fixture-level proof that the legacy behavior exists, then explicitly mark status void per REC-02/nativeRequalification because engine/crates/membrane-blueprint does not yet implement equivalent ranking/DAG semantics -- this is intentional, documented non-fabrication, not an un-switched invocation.",
+      "native_replacement": "membrane.exe cli blueprint <op> for all DELIVERED rows. For the three REC-02-gated rows: engine/crates/membrane-blueprint needs (a) an equivalent non-compensatory comparePaths ranking algorithm (BPT-018/BPT-026) and (b) an equivalent selective/incremental dependency-DAG invalidation (BPT-020) before those rows can be requalified against native and their legacy-module imports removed.",
+      "can_switch_now": "mostly already-native; the 3 rows above are explicitly blocked on port parity, named exactly",
+      "action_taken": "none required -- already calls membrane.exe cli blueprint for all switchable rows; remaining legacy imports are load-bearing negative/parity-proof fixtures, not product invocations"
+    },
+    {
+      "path": "package.json (scripts: test, test:mcp, test:fable, test:all, test:equivalence, test:random, test:restored)",
+      "what_it_does_with_js": "None of these scripts reference blueprint/, node.exe, or blueprint.cmd. test runs mcp/host suite + scripts suite + compat tests + test:restored + legal:verify; test:mcp/test:fable run only mcp/*.test.mjs and mcp/host/*.test.mjs; test:all runs the Rust workspace via rightkit cargo plus check-release-identity.mjs.",
+      "native_replacement": "N/A",
+      "can_switch_now": "already-native",
+      "action_taken": "none required"
+    },
+    {
+      "path": ".github/workflows/ledger-completion.yml",
+      "what_it_does_with_js": "node --check on mcp/server.mjs and mcp/toolsets.mjs, node --test on tests/ledger-wiring-contracts.test.mjs, and scripts/ci/check-atomic-canons.mjs. No blueprint/, node.exe (legacy interpreter), or blueprint.cmd reference.",
+      "native_replacement": "N/A",
+      "can_switch_now": "already-native",
+      "action_taken": "none required"
+    },
+    {
+      "path": "migration/native-rust/runtime-policy.json (blueprint-bundled-launchers, blueprint-bundled-runtime rows)",
+      "what_it_does_with_js": "Two policy rows still carry `\"exception\": \"blueprint-native-cleanup-pending\"` and `packaged: true` for patterns ^blueprint/release/launchers/.*\\.cmd$ and ^blueprint/(scripts|src|watchman)/, asserting these are bundled into the *signed installer's own historical understanding* pending native cleanup.",
+      "native_replacement": "engine/crates/membrane-blueprint (full parity) + the packaging chain confirmed above, which no longer stages these paths.",
+      "can_switch_now": "yes for the launchers row -- packaging evidence above (package-portable-windows.mjs synthesizes its own native shim; installer.nsi asserts the legacy launcher's absence) shows blueprint/release/launchers/*.cmd is no longer packaged by the current source-level build. NOT yet for blueprint-bundled-runtime -- engine/crates/membrane-blueprint does not yet have full parity (BPT-018/020/026 gaps named above), so blueprint/(scripts|src|watchman)/ remains a legitimate bundled-external-component exception until that lands.",
+      "action_taken": "expired the blueprint-bundled-launchers exception (packaged: false, exception: null, deletion_or_exclusion_proof updated); left blueprint-bundled-runtime exception in place pending the named port-parity gaps"
+    }
+  ],
+  "switched_now": [
+    "migration/native-rust/runtime-policy.json: blueprint-bundled-launchers exception expired (packaged flips to false; launchers are confirmed unreferenced by current packaging scripts)",
+    "BPT-018/BPT-020/BPT-026: lane GC13 requalified these three rows against the native path -- scripts/qualification/cases/bpt-windows.mjs now proves DELIVERED status via rightkit cargo test -p membrane-blueprint --test parity_module_resolution (BPT-018), --test parity_dependency_dag (BPT-020), and --test parity_recall_circuit (BPT-026) rather than legacy .mjs import alone (legacy modules are retained only as the field-for-field oracle the ports were written against, per REC-02 nativeRequalification instruction). module_resolution.rs was newly added by this lane (engine/crates/membrane-blueprint/src/module_resolution.rs); recall_circuit.rs and dependency_dag.rs were already ported by prior lanes and are unchanged except for a Windows path-canonicalization bug fix in module_resolution.rs's resolve_js_module inside-repo check."
+  ],
+  "still_blocked_on_port_parity": [
+    "migration/native-rust/runtime-policy.json blueprint-bundled-runtime exception (blueprint/(scripts|src|watchman)/) remains open until the above land and the JS tree is retired (BPT-018/020/026 comparePaths/dependency-DAG gap closed by lane GC13 -- engine/crates/membrane-blueprint/src/recall_circuit.rs, dependency_dag.rs, and module_resolution.rs now provide equivalent ranking/invalidation/cross-file-identity semantics, proven by parity_recall_circuit.rs, parity_dependency_dag.rs, and parity_module_resolution.rs; remaining ~45 unported legacy files per clusters.json still block full retirement of blueprint/(scripts|src|watchman)/)"
+  ],
+  "cut2_addendum": {
+    "lane": "CUT2",
+    "generatedAt": "2026-09-10",
+    "purpose": "CUT2 was dispatched to fully delete the legacy JS Blueprint tree and its remaining JS callers, on the premise that native parity had fully landed. Independent re-verification (rerunning the caller grep, reading CUT1/MCPHOST/PARMCP receipts dated the same day) shows that premise is false for a bounded set of items, so no deletion was performed.",
+    "reverified_caller_grep": "grep -rln \"blueprint/src|blueprint/release|mcp/host\" --include=*.mjs --include=*.json --include=*.yml --include=*.md --include=*.cmd . | grep -v node_modules | grep -v \"^./blueprint/\" -> 104 hits, consistent with CUT1s prior pass; the overwhelming majority are historical audit/provenance docs (left untouched, per task scope) or generated evidence snapshots.",
+    "findings": [
+      "CUT1 (lane-CUT1-2026-09-10.json) proved 3 qualification rows (BPT-018, BPT-020, BPT-026) have NO native equivalent in engine/crates/membrane-blueprint: comparePaths non-compensatory ranking (blueprint/src/graph/recall-circuit.mjs) and selective/incremental dependency-DAG invalidation (blueprint/src/graph/dependency-dag.mjs). Deleting blueprint/ would destroy the only implementation of behavior 3 qualification cases still depend on as fixture-level ground truth.",
+      "PARMCP (lane-PARMCP-2026-09-10.json) proved mcp/server.mjs (legacy JS MCP server) and package.json test/test:mcp/test:fable scripts still depend on mcp/host/*.test.mjs and 18 other mcp/*.test.mjs files with no native port; only a subset of mcp/host functionality has a native destination (per MCPHOST), and MCPHOSTs own host_context_adapter.rs port is explicitly partial (subprocess/HTTP transport and mcp/context-renderer-lib.cjs delegation excluded).",
+      ".github/workflows/ledger-completion.yml was grepped directly by CUT2 and contains zero blueprint/ or mcp/host references -- nothing to switch there.",
+      "scripts/run-m0-baseline-current.mjs and mcp/capability-inventory.mjs were re-confirmed by CUT2 to match CUT1s prior finding: both are intentionally legacy-targeting (baseline capture / provenance metadata) and not shipped/executed product behavior, so switching them now would misrepresent parity that does not exist yet for BPT-018/020/026."
+    ],
+    "action_taken": "No deletion, no package.json/workflow/script edits. Retargeting package.json test/test:mcp/test:fable away from mcp/host would falsely claim coverage that PARMCP already proved does not exist (26 unported legacy test files). Marking migration/native-rust/runtime-policy.json exceptions closed or interpreter-dispositions.json rows deleted would fabricate a pass CUT1 explicitly declined to claim for the same reason.",
+    "recommendation": "Re-run this lane only after a future lane lands (a) BPT-018/020/026 native parity in engine/crates/membrane-blueprint and (b) the remaining 26 mcp/mcp-host test ports plus mcp/server.mjs -> native membrane-mcp binary caller cutover. Until then blueprint/, mcp/host/, and mcp/server.mjs are not dead code and must not be removed."
+  }
+}

@@ -3,7 +3,6 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { CAPABILITY_MATRIX_DIGEST, HOST_CAPABILITY_MATRIX } from "../mcp/host/capability-matrix.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const MEMBRANE_SCHEMA = join(ROOT, "schemas", "context-candidate-set.v1.schema.json");
@@ -11,11 +10,19 @@ const RUST_SCHEMA = join(ROOT, "engine", "crates", "membrane-protocol", "assets"
 const REGISTRY_SCHEMA = join(ROOT, "schemas", "registry", "context-candidate-set.v1.schema.json");
 const PROJECTION = join(ROOT, "schemas", "registry", "context-candidate-set.v1.projection.json");
 const RUST_PROJECTION = join(ROOT, "schemas", "registry", "context-candidate-set.v1.rust.json");
-const MATRIX = join(ROOT, "mcp", "host", "capability-matrix.v1.json");
+// Host capability is compiled into membrane-mcp. Keep this generator pointed
+// at its native fixture so deleting the legacy JS host cannot break contract
+// generation.
+const MATRIX = join(ROOT, "engine", "crates", "membrane-mcp", "fixtures", "capability-matrix.v1.json");
 const MEMBRANE_SOURCE = "schemas/context-candidate-set.v1.schema.json";
 const GENERATOR = "scripts/generate-host-contracts.mjs";
 
 function hash(text) { return `sha256:${createHash("sha256").update(text).digest("hex")}`; }
+function canonical(value) {
+  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
+  if (value && typeof value === "object") return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${canonical(value[key])}`).join(",")}}`;
+  return JSON.stringify(value);
+}
 function stable(value) {
   if (Array.isArray(value)) return value.map(stable);
   if (value && typeof value === "object") return Object.fromEntries(Object.keys(value).sort().map((key) => [key, stable(value[key])]));
@@ -39,12 +46,15 @@ export function expectedArtifacts() {
     $id: "https://membrane/schemas/registry/context-candidate-set.v1.schema.json",
     title: "MembraneContextCandidateSetV1",
   };
+  const nativeMatrix = readJson(MATRIX);
+  delete nativeMatrix.sourceHash;
+  const nativeMatrixHash = hash(canonical(nativeMatrix));
   return {
     [RUST_SCHEMA]: output(projection),
     [REGISTRY_SCHEMA]: output(registry),
     [PROJECTION]: output({ $schema: "https://json-schema.org/draft/2020-12/schema", $id: "https://membrane/schemas/projections/context-candidate-set.v1.json", title: "MembraneContextCandidateSetV1Projection", source: MEMBRANE_SOURCE, sourceHash, generator: GENERATOR, projection: "json", schemaVersion: 1 }),
     [RUST_PROJECTION]: output({ schemaVersion: 1, source: MEMBRANE_SOURCE, sourceHash, generator: GENERATOR, projection: "rust", required: ["schemaVersion", "traceId", "indexedAt"] }),
-    [MATRIX]: output(stable({ ...HOST_CAPABILITY_MATRIX, sourceHash: CAPABILITY_MATRIX_DIGEST })),
+    [MATRIX]: output(stable({ ...nativeMatrix, sourceHash: nativeMatrixHash })),
   };
 }
 

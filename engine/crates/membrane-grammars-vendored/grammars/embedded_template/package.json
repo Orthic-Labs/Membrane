@@ -1,0 +1,39 @@
+{
+  "name": "tree-sitter-embedded-template",
+  "version": "0.20.0",
+  "description": "Embedded template (ERB, EJS) grammar for tree-sitter",
+  "main": "bindings/node",
+  "keywords": [
+    "parser",
+    "json"
+  ],
+  "author": "Max Brunsfeld",
+  "license": "MIT",
+  "dependencies": {
+    "nan": "^2.14.0"
+  },
+  "devDependencies": {
+    "tree-sitter-cli": "^0.19.1"
+  },
+  "scripts": {
+    "test": "tree-sitter test"
+  },
+  "tree-sitter": [
+    {
+      "scope": "text.html.ejs",
+      "file-types": [
+        "ejs"
+      ],
+      "injections": "queries/injections-ejs.scm",
+      "injection-regex": "ejs"
+    },
+    {
+      "scope": "text.html.erb",
+      "file-types": [
+        "erb"
+      ],
+      "injections": "queries/injections-erb.scm",
+      "injection-regex": "erb"
+    }
+  ]
+}

@@ -83,22 +83,6 @@ const runtime = join(hub, "src-tauri", "runtime");
 if (!existsSync(runtime)) throw new Error(`candidate runtime missing: ${runtime}`);
 cpSync(runtime, join(payload, "runtime"), { recursive: true });
 
-// Protected finalization packages this candidate with --input-root, so retain
-// the non-hook enrollment projection it must copy into stable current.
-const enrollmentFiles = [
-  "mcp/install.mjs",
-  "mcp/project-registry.mjs",
-  "mcp/installation-binding.mjs",
-  "mcp/repository-catalog.mjs",
-  "mcp/blueprint-readiness.mjs",
-];
-for (const file of enrollmentFiles) {
-  const source = join(repo, file);
-  if (!existsSync(source)) throw new Error(`candidate enrollment projection file missing: ${source}`);
-  mkdirSync(join(payload, file, ".."), { recursive: true });
-  cpSync(source, join(payload, file));
-}
-
 // Candidate owns complete client/plugin projection. Protected finalization is
 // forbidden from rebuilding this content from its checkout.
 const portableCore = join(artifactRoot, "agent-plugin-core");

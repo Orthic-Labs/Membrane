@@ -12,6 +12,7 @@ const runtime = join(hub, "src-tauri", "runtime");
 const axes = ["pull", "push", "cortex", "blueprint", "ledger", "adapt"];
 const composition = ["membrane", "cortex", "blueprint", "ledger", "pull", "push", "adapt"];
 const retired = /(?:^|[\\/])(crypt(?:-service)?|orthic(?:[_-]manifest)?|product-addons?)(?:[\\/]|$)/i;
+const blueprintNodeRuntime = /(?:^|[\\/])blueprint(?:[\\/]|$)|\.(?:cjs|mjs|js)$/i;
 const ignored = /(?:^|[\\/])(?:\.git|node_modules|__pycache__|tests?|\.pytest_cache)(?:[\\/]|$)/;
 const digest = (file) => createHash("sha256").update(readFileSync(file)).digest("hex");
 const SHA256_RE = /^[0-9a-f]{64}$/;
@@ -68,6 +69,10 @@ function externalBinaryName(entry) {
   return name;
 }
 
+function assertNativeRuntimePath(path, label) {
+  if (blueprintNodeRuntime.test(path)) throw new Error(`${label} reaches retired Blueprint Node runtime: ${path}`);
+}
+
 // `installedComponent` records files already staged under Tauri runtime.
 // `externalBin` & `tauriBundle` record ownership without
 // copying source or duplicating sidecars/icons into Tauri's resource tree.
@@ -117,9 +122,12 @@ export function runtimeInventory({ hubDir = hub, target, specs = RUNTIME_SPECS }
     if (seen.has(spec.id)) throw new Error(`duplicate runtime component: ${spec.id}`);
     seen.add(spec.id);
     const sourceRoot = resolve(hubDir, concretePath(spec.path, resolvedTarget));
+    assertNativeRuntimePath(relative(hubDir, sourceRoot), "runtime source");
     if (retired.test(relative(hubDir, sourceRoot))) throw new Error(`retired runtime asset rejected: ${spec.path}`);
     for (const source of filesAt(sourceRoot, spec.extensions)) {
       const staged = stagePath(spec, source, sourceRoot, resolvedTarget);
+      assertNativeRuntimePath(relative(hubDir, source), "runtime source");
+      assertNativeRuntimePath(staged, "runtime staged asset");
       if (retired.test(staged)) throw new Error(`retired staged runtime asset rejected: ${staged}`);
       const installerPath = spec.delivery === "externalBin" ? `${externalBinaryName({ component: spec.id })}${targetExtension(resolvedTarget)}` : staged;
       entries.push({ component: spec.id, ...(spec.axis ? { axis: spec.axis } : {}), ...(spec.invocation ? { invocation: spec.invocation } : {}), ...(spec.profile ? { profile: spec.profile } : {}), ...(spec.transport ? { transport: spec.transport } : {}), delivery: spec.delivery, source: relative(hubDir, source).replaceAll("\\", "/"), stagePath: staged, installerPath, sha256: digest(source) });
@@ -159,6 +167,8 @@ export function verifyStagedInventory({ runtimeDir = runtime, sourceRoot } = {})
     if (!relativePath || relativePath === ".." || relativePath.startsWith("../")) throw new Error(`runtime staged path escapes runtime: ${entry.stagePath}`);
     if (seen.has(relativePath)) throw new Error(`duplicate runtime staged path: ${relativePath}`);
     seen.add(relativePath); expected.add(relativePath);
+    assertNativeRuntimePath(entry.stagePath, "runtime staged asset");
+    assertNativeRuntimePath(entry.source, "runtime source");
     if (entry.delivery === "externalBin") {
       const binary = externalBinaryName(entry);
       const filename = `${binary}${targetExtension(inventory.target)}`;

@@ -228,8 +228,31 @@ impl BlueprintClient {
         if cancellation.is_cancelled() { return Err(BlueprintClientError::Cancelled); }
         let bounds = query.bounds.bounded();
         let request = native_request(query, method);
-        let response = self.api.dispatch(request.clone(), NativeCancellation::new());
+        // Blueprint's API is synchronous, so bridge caller cancellation into
+        // its native token while dispatch is in flight. This keeps cancellation
+        // observable by operations that checkpoint their RequestContext rather
+        // than only checking once transport returns.
+        let native_cancellation = NativeCancellation::new();
+        let watcher_token = native_cancellation.clone();
+        let caller_cancellation = cancellation.clone();
+        let deadline = Instant::now().checked_add(query.deadline);
+        let watcher = std::thread::spawn(move || {
+            while !watcher_token.is_cancelled() {
+                if caller_cancellation.is_cancelled() || deadline.is_some_and(|at| Instant::now() >= at) {
+                    watcher_token.cancel();
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(1));
+            }
+        });
+        let response = self.api.dispatch(request.clone(), native_cancellation.clone());
+        let dispatch_finished_at = Instant::now();
+        // Stop & join watcher before returning so no background thread retains
+        // caller state after this synchronous boundary has completed.
+        native_cancellation.cancel();
+        let _ = watcher.join();
         if cancellation.is_cancelled() { return Err(BlueprintClientError::Cancelled); }
+        if deadline.is_some_and(|at| dispatch_finished_at >= at) { return Err(BlueprintClientError::Timeout); }
         parse_result(response, &request, query, bounds)
     }
 

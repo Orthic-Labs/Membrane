@@ -26,7 +26,7 @@ if (Object.keys(candidate.files ?? {}).some((name) => name === "mcp/hooks" || na
   throw new Error("candidate includes obsolete mcp/hooks backend");
 }
 for (const name of ["mcp/install.mjs", "mcp/project-registry.mjs", "mcp/installation-binding.mjs", "mcp/repository-catalog.mjs", "mcp/blueprint-readiness.mjs"]) {
-  if (!candidate.files?.[name]) throw new Error(`candidate enrollment projection missing: ${name}`);
+  if (candidate.files?.[name]) throw new Error(`candidate contains obsolete enrollment projection: ${name}`);
 }
 for (const name of ["plugin.json", "mcp.json", ".claude-plugin/plugin.json", ".codex-plugin/plugin.json", ".antigravity-plugin/plugin.json"]) {
   if (!candidate.files?.[name]) throw new Error(`candidate client projection closure missing: ${name}`);

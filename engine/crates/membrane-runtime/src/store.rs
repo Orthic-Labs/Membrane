@@ -2383,21 +2383,29 @@ fn new_uuid_v4() -> Result<String, String> {
 }
 
 fn workspace_root_for_store(db_path: Option<&Path>) -> Option<PathBuf> {
-    if db_path.is_none() {
-        return None;
+    let db_path = db_path?;
+    // The database's own path is authoritative whenever it sits under the
+    // conventional `<workspace>/tools/...` layout -- this is true for both the
+    // installed product's fixed state directory and a development checkout, and
+    // it is immune to an ambient `WORKSPACE_ROOT` left over from an unrelated
+    // dev session. An installed run's identity must never be redirected by a
+    // stray environment variable (see explicit_client::owner_binding, which
+    // derives the installed workspace root solely from the running executable
+    // and would then disagree with a store that honored `WORKSPACE_ROOT`).
+    if let Some(root) = db_path
+        .ancestors()
+        .find(|ancestor| ancestor.file_name().is_some_and(|name| name == "tools"))
+        .and_then(Path::parent)
+        .map(Path::to_path_buf)
+    {
+        return Some(root);
     }
-    if let Some(configured) = std::env::var_os("WORKSPACE_ROOT") {
-        let configured = PathBuf::from(configured);
-        if !configured.as_os_str().is_empty() {
-            return Some(configured);
-        }
-    }
-    db_path.and_then(|path| {
-        path.ancestors()
-            .find(|ancestor| ancestor.file_name().is_some_and(|name| name == "tools"))
-            .and_then(Path::parent)
-            .map(Path::to_path_buf)
-    })
+    // Fall back to an explicit `WORKSPACE_ROOT` only when the db path itself
+    // does not resolve one (e.g. an ad hoc/test database outside the usual
+    // `tools/.cache/memory` layout).
+    std::env::var_os("WORKSPACE_ROOT")
+        .map(PathBuf::from)
+        .filter(|configured| !configured.as_os_str().is_empty())
 }
 
 pub fn operation_attribution_for_store(
@@ -11662,6 +11670,64 @@ fn sanitize_memory_id(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Serializes tests that mutate the process-wide `WORKSPACE_ROOT` env var so
+    /// they cannot race other threads reading it concurrently within this test
+    /// binary.
+    static WORKSPACE_ROOT_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    /// Regression for the installed explicit-call binding fence tripping with
+    /// "installed owner identity changed or is incompatible" whenever an ambient
+    /// `WORKSPACE_ROOT` (left set by an unrelated dev session) was present: the
+    /// installed store's `installation_id` must be derived from the db path's
+    /// own `tools/.cache/memory/...` ancestor -- exactly what
+    /// `explicit_client::owner_binding` independently derives from the running
+    /// executable -- never redirected by a stray `WORKSPACE_ROOT` that points at
+    /// a different workspace entirely.
+    #[test]
+    fn workspace_root_for_store_prefers_db_path_over_ambient_workspace_root_env() {
+        let _guard = WORKSPACE_ROOT_ENV_LOCK.lock().unwrap();
+        let installed_state = tempfile::tempdir().unwrap();
+        let unrelated_dev_workspace = tempfile::tempdir().unwrap();
+        let db_path = installed_state
+            .path()
+            .join("tools")
+            .join(".cache")
+            .join("memory")
+            .join("cortex-engine.db");
+        let previous = std::env::var_os("WORKSPACE_ROOT");
+        std::env::set_var("WORKSPACE_ROOT", unrelated_dev_workspace.path());
+        let resolved = workspace_root_for_store(Some(&db_path));
+        match previous {
+            Some(value) => std::env::set_var("WORKSPACE_ROOT", value),
+            None => std::env::remove_var("WORKSPACE_ROOT"),
+        }
+        assert_eq!(
+            resolved.as_deref(),
+            Some(installed_state.path()),
+            "installed db path must win over an ambient WORKSPACE_ROOT override"
+        );
+    }
+
+    #[test]
+    fn workspace_root_for_store_falls_back_to_workspace_root_env_without_tools_ancestor() {
+        let _guard = WORKSPACE_ROOT_ENV_LOCK.lock().unwrap();
+        let configured = tempfile::tempdir().unwrap();
+        let db_path = std::path::Path::new("ad-hoc").join("outside-tools-layout.db");
+        let previous = std::env::var_os("WORKSPACE_ROOT");
+        std::env::set_var("WORKSPACE_ROOT", configured.path());
+        let resolved = workspace_root_for_store(Some(&db_path));
+        match previous {
+            Some(value) => std::env::set_var("WORKSPACE_ROOT", value),
+            None => std::env::remove_var("WORKSPACE_ROOT"),
+        }
+        assert_eq!(resolved.as_deref(), Some(configured.path()));
+    }
+
+    #[test]
+    fn workspace_root_for_store_none_without_db_path() {
+        assert_eq!(workspace_root_for_store(None), None);
+    }
 
     #[test]
     fn cortex_competitive_skill_index_search_bounded_read_restores_privacy_without_persisting_it() {

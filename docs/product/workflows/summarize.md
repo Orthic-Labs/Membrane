@@ -2,7 +2,7 @@
 
 MBR-303 introduced the canonical Membrane MCP workflow prompts. This document
 describes the `summarize` prompt, exposed through the `prompts/get` JSON-RPC
-method on both the native (Rust) and legacy (JS) MCP servers.
+method on the native Rust MCP server (`engine/crates/membrane-mcp/`).
 
 ## What it does
 

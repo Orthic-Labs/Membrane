@@ -2,7 +2,7 @@
 
 MBR-303 introduced the canonical Membrane MCP workflow prompts. This document
 describes the `recap` prompt, which is exposed through the `prompts/get` JSON-RPC
-method on both the native (Rust) and legacy (JS) MCP servers.
+method on the native Rust MCP server (`engine/crates/membrane-mcp/`).
 
 ## What it does
 
@@ -60,5 +60,5 @@ summarize the results. No further authority is granted.
 
 The canonical JSON definition lives at
 [`schemas/registry/prompts/recap.v1.json`](../../../schemas/registry/prompts/recap.v1.json).
-Both the native (Rust) and legacy (JS) servers embed that file via
-`include_str!` and runtime `readFile` respectively and serve it verbatim.
+The native Rust MCP server embeds that file via `include_str!` and serves it
+verbatim.

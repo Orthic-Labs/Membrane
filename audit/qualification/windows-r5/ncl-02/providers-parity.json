@@ -1,0 +1,278 @@
+[
+  {
+    "module": "blueprint/src/providers/source-disposition.mjs",
+    "exports": [
+      "auditSourceDispositions"
+    ],
+    "contributes": "Not a graph provider (no nodes/edges). Audits git-tracked source universe against admitted files; classifies every non-admitted tracked path into a terminal disposition (ignored_policy, unsupported, rejected, failed) with reasons (primary_scan_exclusion, tracked_path_missing, not_regular_file, file_too_large, binary_nul_in_text_source, source_read_failed, not_admitted_by_primary_scan). Consumed by build.mjs to prove build completeness.",
+    "nodeKinds": [],
+    "edgeKinds": [],
+    "confidenceTiers": [],
+    "legacyTests": [
+      "blueprint/tests/source-disposition.test.mjs"
+    ],
+    "nativeStatus": "PORTED_AND_WIRED",
+    "nativeNote": "Lane P4 (2026-09-10): engine/crates/membrane-blueprint/src/providers/source_disposition.rs::audit_source_dispositions is a field-for-field port (same POLICY_SEGMENTS set, same classify_absent precedence, same schemaVersion:1/scope/complete/considered/indexed/terminal/counts/exceptions shape). Ported tests: engine/crates/membrane-blueprint/tests/parity_source_disposition.rs. Not yet called from build_generation (accounting-only provider, PROVIDER_ORDER id \"ingestion\" reserved in providers/mod.rs registry for the lane that wires generation-level accounting output)."
+  },
+  {
+    "module": "blueprint/src/providers/plugin-loader.mjs",
+    "exports": [
+      "discoverPluginManifests",
+      "admitPluginManifest",
+      "admitRepositoryPlugins",
+      "PLUGIN_MANIFEST_DIR",
+      "PLUGIN_DISPOSITIONS"
+    ],
+    "contributes": "Not a graph provider. Untrusted third-party plugin ADMISSION gate for .agent/plugins/*.json manifests: path confinement, JSON validity, known plugin type, provider-manifest shape (id/version/license/integrity/entry), permission ceiling, integrity hash match, publisher trust. Never imports/executes plugin code itself.",
+    "nodeKinds": [],
+    "edgeKinds": [],
+    "confidenceTiers": [],
+    "legacyTests": [
+      "blueprint/tests/provider-registry-runtime.test.mjs (partial coverage; no dedicated plugin-loader test file found)"
+    ],
+    "nativeStatus": "REGISTRY_SCAFFOLD_ONLY",
+    "nativeNote": "Lane P4 (2026-09-10): engine/crates/membrane-blueprint/src/providers/mod.rs reserves PROVIDER_ORDER id \"plugins\" and documents plugin-loader.mjs's admission role, but the admission gate itself (path confinement, manifest JSON validation, permission-ceiling refusal, integrity hash check, publisher trust) is NOT ported -- still a real gap if repo-shipped native plugins are in scope. Tracked in parity_providers_registry.rs as an order-contract test only, not a behavior test."
+  },
+  {
+    "module": "blueprint/src/providers/bridges/seams.mjs",
+    "exports": [
+      "scanExplicitBridgeSeams",
+      "BRIDGE_PROVIDER_ID",
+      "BRIDGE_PROVIDER_VERSION"
+    ],
+    "contributes": "Regex-rule scan for explicit cross-language FFI/interop seams: extern \"C\" (Rust), ctypes.CDLL (Python), JNI native methods (Java/Kotlin), JNIEXPORT/JNICALL (C/C++), cgo `import \"C\"` (Go), gRPC service/rpc (proto), P/Invoke DllImport (C#), wasm-bindgen/WebAssembly.instantiate, COM ComImport/CoCreateInstance.",
+    "nodeKinds": [
+      "domain (bridge seam fact, kind='bridge', labels=['CrossLanguageBridge', bridgeKind]) for bridgeKind in FFI|JNI|cgo|gRPC|PInvoke|WASM|COM"
+    ],
+    "edgeKinds": [
+      "CONTAINS (file -> bridge node; never CALLS)"
+    ],
+    "confidenceTiers": [
+      "EXACT_RESOLUTION (regex-matched explicit syntax, not heuristic)"
+    ],
+    "legacyTests": [
+      "blueprint/tests/production-provider-cluster.test.mjs (confirmed: 'production generation consumes module, framework, SQL, Terraform, SCIP, & explicit bridge providers', 'framework facts stay absent without explicit gates & seam comments never become evidence', 'incremental file build emits same local provider facts without seam CALLS')"
+    ],
+    "nativeStatus": "PORTED",
+    "nativeNote": "engine/crates/membrane-blueprint/src/providers/bridges.rs::run (lane P1, 2026-09-10) ports scanExplicitBridgeSeams/bridgeSeamProvider field-for-field: same 12 regex rules (FFI/JNI/cgo/gRPC/PInvoke/WASM/COM), same comment-stripping (sourceLine), same node id/qualifiedName scheme, same CONTAINS-only edge emission. Registered in providers::registry() under id 'blueprint-bridges' (providers::PROVIDER_ORDER, lane P4 scaffold). Parity proven by engine/crates/membrane-blueprint/tests/parity_providers_bridges.rs using fixture text copied verbatim from production-provider-cluster.test.mjs; 5/5 tests pass locally (rightkit cargo test -p membrane-blueprint --test parity_providers_bridges)."
+  },
+  {
+    "module": "blueprint/src/providers/compilers/python-scip.mjs + compilers/scip-normalize.mjs",
+    "exports": [
+      "pythonScipProvider (python-scip.mjs)",
+      "normalizeScipRoles, readNormalizedScipIndex, scipOccurrenceEvidence (scip-normalize.mjs)"
+    ],
+    "contributes": "Reads out-of-band portable SCIP JSON index (scip-python) if present under repo-read; never installs/invokes scip-python itself. Normalizes occurrence roles/ranges/symbol metadata into compiler-tier semantic facts (definitions, references, reads, writes) degrading to PRECISION_TIERS.AST when unavailable. Filters local/parameter symbols with no cross-file meaning.",
+    "nodeKinds": [
+      "symbol definitions from SCIP index (compiler-verified)"
+    ],
+    "edgeKinds": [
+      "REFERENCES/CALLS-equivalent from SCIP occurrence roles (definition/reference/read/write)"
+    ],
+    "confidenceTiers": [
+      "compiler-tier (highest, via compilerSemanticFact) when SCIP index present; degrades to PRECISION_TIERS.AST otherwise"
+    ],
+    "legacyTests": [
+      "blueprint/tests/scip-normalizer.test.mjs"
+    ],
+    "nativeStatus": "PORTED",
+    "nativeNote": "Ported to engine/crates/membrane-blueprint/src/providers/scip.rs (normalize_scip_index/read_normalized_scip_index/normalize_scip_roles/scip_occurrence_evidence mirror scip-normalize.mjs; probe_scip_index/collect/build_from_index mirror python-scip.mjs, including local/parameter symbol filtering, version-gate on scip-python 0.6.6, and unavailable/partial/ok degradation states). No SCIP protobuf/prost crate exists or was added -- engine/Cargo.lock has none, and the legacy normalizer itself only ever consumes portable SCIP JSON (readNormalizedScipIndex does JSON.parse), so the Rust port reads the same JSON transport via serde_json with no new dependency. Parity test: engine/crates/membrane-blueprint/tests/parity_providers_scip.rs (5 tests, ported from blueprint/tests/scip-normalizer.test.mjs), fixture copied verbatim to engine/crates/membrane-blueprint/tests/fixtures/providers/scip-python/index.scip.json. Registered via `pub mod scip;` in providers/mod.rs. NOT yet wired into the provider registry (providers::registry(), owned by lane P4) or into graph.rs/engine.rs -- that requires reconciling this port's rich Value-shaped nodes/edges (labels, qualifiedName, precisionTier, provider, symbol, symbolKind, confidenceTier, reason, resolved) against the registry ProviderContext/ProviderOutput contract, which currently targets a narrower GraphNode/GraphEdge shape (deny_unknown_fields) -- out of this lane's scope (SCIP ingestion/normalization only)."
+  },
+  {
+    "module": "blueprint/src/providers/frameworks/index.mjs + frameworks/http/index.mjs",
+    "exports": [
+      "importedPackages",
+      "domainGateActive",
+      "extractEventFacts",
+      "extractDatabaseFacts",
+      "extractDeploymentFacts",
+      "extractRoutes",
+      "frameworkGateActive",
+      "CROSS_STACK_EDGES",
+      "DOMAIN_GATES"
+    ],
+    "contributes": "Import/config-gated cross-stack fact extraction: message-queue producer/consumer topics (PRODUCES/CONSUMES), DB/ORM model+read/write (READS/WRITES), deployment action/resource (DEPLOYS/CONFIGURES), HTTP routes (frameworkGateActive-gated). Gate: only active when a matching package (kafkajs, prisma, sqlalchemy, etc.) is imported in the file, else facts are not emitted -- prevents name-only false positives.",
+    "nodeKinds": [
+      "none directly; facts feed edges against existing symbol/file nodes"
+    ],
+    "edgeKinds": [
+      "PRODUCES",
+      "CONSUMES",
+      "GENERATES",
+      "READS",
+      "WRITES",
+      "CONFIGURES",
+      "DEPLOYS"
+    ],
+    "confidenceTiers": [
+      "CROSS_FILE_HEURISTIC (all facts explicitly tagged this tier)"
+    ],
+    "legacyTests": [
+      "blueprint/tests/http-framework-providers.test.mjs (framework-process-contracts.test.mjs targets the unrelated framework-intelligence.mjs module)"
+    ],
+    "nativeStatus": "PORTED-NOT-WIRED",
+    "nativeNote": "Ported field-for-field to engine/crates/membrane-blueprint/src/providers/frameworks.rs (imported_packages, domain_gate_active, framework_gate_active, extract_event_facts, extract_database_facts, extract_deployment_facts, extract_routes, CROSS_STACK_EDGES). Not wired into providers::registry() -- edge emission requires resolving facts against existing symbol/file nodes (legacy build.mjs wiring), which is outside this lane's scope. framework_intelligence.rs (lane GC11) remains the separate, already-wired port of graph/framework-intelligence.mjs and is unaffected.",
+    "nativeTests": [
+      "engine/crates/membrane-blueprint/tests/parity_providers_frameworks.rs"
+    ]
+  },
+  {
+    "module": "blueprint/src/providers/iac/terraform.mjs",
+    "exports": [
+      "extractTerraformFacts",
+      "extractKubernetesFacts",
+      "profileFile",
+      "extractProfileFacts"
+    ],
+    "contributes": "Terraform `resource \"type\" \"name\"` and Kubernetes manifest `kind:` extraction into IaC facts, profile-selected by file extension (.tf vs .yaml).",
+    "nodeKinds": [
+      "domain (IaC resource/manifest facts)"
+    ],
+    "edgeKinds": [
+      "CONFIGURES (resource facts, per build.mjs providerEdge wiring)"
+    ],
+    "confidenceTiers": [
+      "EXACT_RESOLUTION-equivalent (structural regex on declarative syntax)"
+    ],
+    "legacyTests": [
+      "blueprint/tests/iac-profiles.test.mjs"
+    ],
+    "nativeStatus": "PORTED-NOT-WIRED",
+    "nativeNote": "Ported field-for-field to engine/crates/membrane-blueprint/src/providers/iac_terraform.rs (extract_terraform_facts, extract_kubernetes_facts, profile_file, extract_profile_facts). No new dependency: legacy used a plain multi-line regex scan (no hcl/YAML parser), matched exactly. Not wired into providers::registry() -- CONFIGURES-edge wiring against file nodes is outside this lane's scope (see frameworks row for the same boundary).",
+    "nativeTests": [
+      "engine/crates/membrane-blueprint/tests/parity_providers_iac.rs"
+    ]
+  },
+  {
+    "module": "blueprint/src/providers/manifests/scip-python.json",
+    "exports": [
+      "static manifest: id, version, license, integrity(sha256), entry"
+    ],
+    "contributes": "Not code -- a signed provider-manifest fixture describing the scip-python compiler adapter for plugin-loader.mjs admission tests and/or self-description of the first-party scip-python provider.",
+    "nodeKinds": [],
+    "edgeKinds": [],
+    "confidenceTiers": [],
+    "legacyTests": [
+      "referenced by provider-registry-runtime.test.mjs and/or compiler-adapters.test.mjs (confirm exact usage)"
+    ],
+    "nativeStatus": "PORTED",
+    "nativeNote": "Embedded verbatim via include_str! in engine/crates/membrane-blueprint/src/providers/scip.rs as SCIP_PYTHON_MANIFEST_JSON / scip_python_manifest(), asserted by parity_providers_scip.rs::embedded_manifest_matches_legacy_provider_identity. No plugin-loader admission surface exists natively yet (see plugin-loader.mjs row), so the manifest is carried as provider self-description only."
+  },
+  {
+    "module": "blueprint/src/providers/modules/javascript.mjs",
+    "exports": [
+      "extractJavaScriptModuleSpecifiers",
+      "resolveModuleSpecifier"
+    ],
+    "contributes": "JS/TS/JSX/MJS/CJS import/require/dynamic-import specifier extraction and exact-first module resolution (relative path -> candidate file list -> first existing match), TypeScript-aware (.tsx extensions).",
+    "nodeKinds": [],
+    "edgeKinds": [
+      "IMPORTS (via build.mjs moduleRecords/resolveModule wiring)"
+    ],
+    "confidenceTiers": [
+      "EXACT_RESOLUTION when resolved; UNRESOLVED when ambiguous/unresolved (build.mjs abstainFromAmbiguousImport)"
+    ],
+    "legacyTests": [
+      "blueprint/tests/javascript-module-resolution.test.mjs",
+      "blueprint/tests/module-resolution.test.mjs"
+    ],
+    "nativeStatus": "PARTIALLY_WIRED",
+    "nativeNote": "Lane P4 (2026-09-10): graph.rs's former private import_specifiers()/resolve_import() (formerly lines 799-800) are now `use crate::module_resolution::{import_specifiers_in_files as import_specifiers, resolve_import_in_files as resolve_import};` -- i.e. the build pass now calls module_resolution.rs. HOWEVER this wiring uses two NEW disk-free adapter functions (import_specifiers_in_files/resolve_import_in_files) added alongside the pre-existing resolve_js_module/extract_javascript_module_specifiers, because graph.rs's build pass operates on an in-memory FileRecord map (tests/re-anchor build from synthetic file sets), not the filesystem that resolve_js_module stats. resolve_js_module's ambiguous-extension/ambiguous-index typed-Ambiguous discipline is therefore still NOT reachable from the native build pass -- it silently first-match-wins exactly as the pre-port code did (no regression, but also no improvement). Equivalence proved by engine/crates/membrane-blueprint/tests/parity_module_resolution_wired.rs. Bare (package) specifier resolution remains explicitly unsupported (JsResolution::Unsupported), matching graph.rs's prior behavior of returning None for non-relative specifiers."
+  },
+  {
+    "module": "blueprint/src/providers/modules/python-resolver.mjs",
+    "exports": [
+      "extractPythonModuleSpecifiers",
+      "resolvePythonModule"
+    ],
+    "contributes": "Python import/from-import specifier extraction and resolution: relative imports (dot-count -> parent traversal), package __init__.py named-target resolution, stdlib short-circuit (py_stdlib_has), pyproject.toml-configured source roots.",
+    "nodeKinds": [],
+    "edgeKinds": [
+      "IMPORTS (via build.mjs)"
+    ],
+    "confidenceTiers": [
+      "EXACT_RESOLUTION / UNRESOLVED, same scheme as javascript.mjs"
+    ],
+    "legacyTests": [
+      "blueprint/tests/module-resolution.test.mjs"
+    ],
+    "nativeStatus": "PARTIALLY_WIRED",
+    "nativeNote": "Lane P4 (2026-09-10): same wiring as the javascript.mjs row -- graph.rs's build pass now calls module_resolution::{import_specifiers_in_files, resolve_import_in_files} for Python too (both languages share the one in-memory adapter, dispatched by file extension). resolve_python_module's stdlib short-circuit, pyproject.toml-configured roots, and named-target __init__.py re-export following are still NOT reachable from the native build pass (same disk-vs-in-memory gap as javascript.mjs). Equivalence proved by parity_module_resolution_wired.rs's python_relative_import_resolves_to_sibling_module and python_relative_package_import_resolves_to_init cases."
+  },
+  {
+    "module": "blueprint/src/providers/ranking/types.mjs",
+    "exports": [
+      "RANKING_TYPES"
+    ],
+    "contributes": "Not a provider -- a 2-entry const enum (candidateProvider: 'candidate-only', reranker: 'explainable-components') classifying ranking-provider roles for provider-registry validation elsewhere.",
+    "nodeKinds": [],
+    "edgeKinds": [],
+    "confidenceTiers": [],
+    "legacyTests": [
+      "blueprint/tests/provider-registry-runtime.test.mjs (likely)"
+    ],
+    "nativeStatus": "PORTED_AND_WIRED",
+    "nativeNote": "Lane P4 (2026-09-10): engine/crates/membrane-blueprint/src/providers/ranking.rs ports both frozen constants (RANKING_TYPE_CANDIDATE_PROVIDER=\"candidate-only\", RANKING_TYPE_RERANKER=\"explainable-components\") plus a typed RankingType::parse that returns None (not a silent default) for any unknown role string."
+  },
+  {
+    "module": "blueprint/src/providers/plugin-loader.mjs entry (../sdk/providers.mjs, ./index.mjs validateProviderManifest)",
+    "exports": [
+      "definePlugin, PLUGIN_TYPES (sdk/providers.mjs); validateProviderManifest (providers/index.mjs)"
+    ],
+    "contributes": "Provider/plugin manifest schema validation shared by plugin-loader.mjs. Not independently enumerated as a top-level task target but load-bearing for plugin-loader.mjs; not scanned in this pass (see follow-up note).",
+    "nodeKinds": [],
+    "edgeKinds": [],
+    "confidenceTiers": [],
+    "legacyTests": [
+      "grammar-manifest.test.mjs (likely covers providers/index.mjs manifest shape validation)"
+    ],
+    "nativeStatus": "NOT_ENUMERATED",
+    "nativeNote": "Out of this pass's scope; flagged for the plugin-loader.mjs port to inherit."
+  },
+  {
+    "module": "blueprint/src/providers/semantic-orchestrator.mjs",
+    "exports": [
+      "collectSemanticEvidenceSync",
+      "crossCheckWithLiveVerifier (imported by blueprint/src/lib/application/service.mjs:41)"
+    ],
+    "contributes": "349-line orchestrator: cross-checks build-time graph facts against a live semantic verifier at query time. Owned by lane WIRE3 per this task's routing instructions -- NOT enumerated in depth here.",
+    "nodeKinds": [
+      "N/A - orchestration, not fact extraction"
+    ],
+    "edgeKinds": [
+      "N/A"
+    ],
+    "confidenceTiers": [
+      "N/A"
+    ],
+    "legacyTests": [
+      "NOT_ENUMERATED (owned by WIRE3)"
+    ],
+    "nativeStatus": "NOT_ENUMERATED",
+    "nativeNote": "parity-audit.json line 74 already flags semantic-orchestrator.mjs crossCheckWithLiveVerifier separately (called from service.mjs:554-556). Explicitly out of WIRE4 scope per dispatch instructions ('semantic-orchestrator.mjs is lane WIRE3's')."
+  },
+  {
+    "module": "blueprint/src/graph/resolution/index.mjs",
+    "exports": [
+      "isRelativeSpecifier",
+      "normalizeRepoPath",
+      "candidatePaths",
+      "resolveSpecifier",
+      "resolutionUnsupportedOmission",
+      "classifyResolution",
+      "RESOLUTION_OMISSION_CODE",
+      "SUPPORTED_RESOLUTION_EXTENSIONS"
+    ],
+    "contributes": "The declared 'exact-first resolution owner' for scanned-file JS/TS resolution used by findings (BP001/BP002 negative-finding gating). Closed-surface rule: negative findings only emitted when target module's export surface is provably closed; every other case (unsupported ext, ambiguous, partial parse, dynamic import, generated file, external/bare specifier) becomes a typed 'resolution_unsupported' omission instead of a finding.",
+    "nodeKinds": [],
+    "edgeKinds": [],
+    "confidenceTiers": [
+      "N/A (omission/finding gating logic, not a confidence-tiered graph fact)"
+    ],
+    "legacyTests": [
+      "blueprint/tests/resolution-owner.test.mjs"
+    ],
+    "nativeStatus": "PORTED_AND_WIRED",
+    "nativeNote": "CORRECTS parity-audit.json's classification of 'resolution/* directory' as MISSING. engine/crates/membrane-blueprint/src/lib_findings_specifier.rs is a near-verbatim port: candidate_paths (line 54), resolve_specifier (line 104), classify_resolution (line 143), resolution_unsupported_omission (line 122), supported_resolution_extensions (line 33), is_relative_specifier (line 40), normalize_repo_path (line 45) -- matching function names/semantics 1:1. It IS wired: findings.rs:131 resolve_candidates() calls lib_findings_specifier::candidate_paths directly (see findings.rs:126-131 comment crediting 'Lane LIB5 (r5 windows closure)' with this exact delegation)."
+  }
+]

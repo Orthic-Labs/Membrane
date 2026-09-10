@@ -1,0 +1,58 @@
+{
+  "name": "tree-sitter-elisp",
+  "version": "1.7.2",
+  "description": "tree-sitter grammar for Emacs Lisp",
+  "main": "bindings/node",
+  "types": "bindings/node",
+  "keywords": [
+    "parser",
+    "lexer"
+  ],
+  "files": [
+    "grammar.js",
+    "tree-sitter.json",
+    "binding.gyp",
+    "bindings/node/*",
+    "queries/*",
+    "src/**"
+  ],
+  "scripts": {
+    "ts-init": "tree-sitter init --update",
+    "generate": "tree-sitter generate",
+    "highlight": "tree-sitter highlight",
+    "parse": "tree-sitter parse",
+    "test": "tree-sitter test",
+    "install": "node -e \"require('fs').existsSync('src/parser.c') || require('child_process').execSync('tree-sitter generate', { stdio: 'inherit' })\" && node-gyp-build",
+    "prepack": "tree-sitter generate"
+  },
+  "author": "Wilfred Hughes <me@wilfred.me.uk>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Wilfred/tree-sitter-elisp.git"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "node-addon-api": "^8.0.0",
+    "node-gyp-build": "^4.8.4"
+  },
+  "peerDependencies": {
+    "tree-sitter": "^0.25.0"
+  },
+  "peerDependenciesMeta": {
+    "tree-sitter": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "tree-sitter-cli": "^0.25.0"
+  },
+  "tree-sitter": [
+    {
+      "scope": "source.emacs.lisp",
+      "highlights": "queries/highlights.scm",
+      "file-types": [
+        "el"
+      ]
+    }
+  ]
+}

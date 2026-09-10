@@ -318,6 +318,10 @@ pub fn build_generation_from_files_with_cancellation(root: &Path, scan: ScanRepo
     let mut lexical_edges = Vec::new();
     let mut reports = Vec::new();
     let file_map: BTreeMap<String, &FileRecord> = scan.files.iter().map(|f| (f.path.clone(), f)).collect();
+    // Compute resolver-config identity once per build. It is retained on
+    // config-file evidence so dependency/projection consumers can invalidate
+    // against the exact same candidate set as the legacy build pass.
+    let config_digest = crate::static_provider::build_config_digest_for_files(&scan.files);
     for file in &scan.files {
         if cancellation.is_cancelled() { return Err(GraphError::Cancelled); }
         let surface = module_surface(file);
@@ -328,6 +332,14 @@ pub fn build_generation_from_files_with_cancellation(root: &Path, scan: ScanRepo
             lexical.append(&mut nodes); lexical_edges.append(&mut edges); reports.push(report);
         } else {
             reports.push(FileReport { path: file.path.clone(), language: language_for_path(&file.path).map(str::to_owned), provider: "lexical".into(), precision: PrecisionTier::Lexical, parse_status: "unsupported".into(), error_node_count: 0, error: None });
+        }
+    }
+    if let Some(config_digest) = config_digest {
+        for node in &mut lexical {
+            if node.kind != "file" || !crate::static_provider::is_build_config_file(node.path.as_deref().unwrap_or("")) { continue; }
+            if let Some(evidence) = node.evidence.first_mut().and_then(Value::as_object_mut) {
+                evidence.insert("configDigest".into(), json!(config_digest.clone()));
+            }
         }
     }
     let mut ast_nodes = Vec::new(); let mut ast_edges = Vec::new();
@@ -345,18 +357,72 @@ pub fn build_generation_from_files_with_cancellation(root: &Path, scan: ScanRepo
             }
         }
     }
-    let (nodes, mut edges) = merge_facts(lexical, lexical_edges, ast_nodes, ast_edges, options.compiler.clone());
+    let (mut nodes, mut edges) = merge_facts(lexical, lexical_edges, ast_nodes, ast_edges, options.compiler.clone());
     edges = resolve_edges(edges, &nodes, &file_map);
+    // Provider registry is the single build-pass admission point. Framework,
+    // IaC, SCIP, and bridge providers all contribute through this ordered
+    // pass; framework intelligence remains its documented post-pass.
+    let provider_context = crate::providers::ProviderContext { repo_root: root, files: &scan.files, file_map: &file_map };
+    let mut supplemental = crate::providers::ProviderOutput::default();
+    for descriptor in crate::providers::registry() {
+    supplemental.merge((descriptor.run)(&provider_context));
+    }
+    merge_supplemental(&mut nodes, &mut edges, supplemental, &file_map);
     let source_hash = source_hash(&scan.files);
-    let mut body_nodes = nodes.clone(); let mut body_edges = edges.clone();
-    let (nodes_json, edges_json) = generation_identity_bodies(&body_nodes, &body_edges);
+    let mut generation = GraphGeneration { schema_version: GRAPH_SCHEMA_VERSION, provider: "native-rust".into(), provider_version: PROVIDER_VERSION.into(),
+        generation_id: String::new(), source_hash: source_hash.clone(), repo_root: normalize_path(&root.to_string_lossy()), complete: !scan.traversal_truncated && !scan.file_limit_reached,
+        nodes, edges, files: reports, truncation_reasons: scan.truncation_reasons };
+    // Framework intelligence owns its graph-shape adapter so generated
+    // domain bindings, edge evidence, and entry-point marks stay consistent
+    // with direct callers of the provider module.
+    crate::framework_intelligence::augment_graph_generation(&mut generation, &scan.files);
+    let (nodes_json, edges_json) = generation_identity_bodies(&generation.nodes, &generation.edges);
     let generation_id = compute_generation_id(&nodes_json, &edges_json, Some(&source_hash));
-    let mut nodes = nodes; let mut edges = edges;
-    for node in &mut nodes { node.generation_id = generation_id.clone(); }
-    for edge in &mut edges { edge.generation_id = generation_id.clone(); }
-    Ok(GraphGeneration { schema_version: GRAPH_SCHEMA_VERSION, provider: "native-rust".into(), provider_version: PROVIDER_VERSION.into(),
-        generation_id, source_hash, repo_root: normalize_path(&root.to_string_lossy()), complete: !scan.traversal_truncated && !scan.file_limit_reached,
-        nodes, edges, files: reports, truncation_reasons: scan.truncation_reasons })
+    generation.generation_id = generation_id.clone();
+    for node in &mut generation.nodes { node.generation_id = generation_id.clone(); }
+    for edge in &mut generation.edges { edge.generation_id = generation_id.clone(); }
+    Ok(generation)
+}
+
+fn merge_supplemental(
+    nodes: &mut Vec<GraphNode>,
+    edges: &mut Vec<GraphEdge>,
+    output: crate::providers::ProviderOutput,
+    file_map: &BTreeMap<String, &FileRecord>,
+) {
+    let mut node_ids: HashSet<String> = nodes.iter().map(|node| node.id.clone()).collect();
+    let mut edge_ids: HashSet<String> = edges.iter().map(|edge| edge.id.clone()).collect();
+    for mut node in output.nodes {
+        normalize_provider_evidence(&mut node.evidence, node.path.as_deref(), file_map);
+        if node_ids.insert(node.id.clone()) { nodes.push(node); }
+    }
+    for mut edge in output.edges {
+        let path = edge.evidence.iter().find_map(|e| e.get("path").and_then(Value::as_str)).map(str::to_owned);
+        normalize_provider_evidence(&mut edge.evidence, path.as_deref(), file_map);
+        if edge_ids.insert(edge.id.clone()) { edges.push(edge); }
+    }
+    nodes.sort_by(|a, b| a.id.cmp(&b.id));
+    edges.sort_by(|a, b| a.id.cmp(&b.id));
+}
+
+/// Closed provider adapters may omit the source digest because their rich
+/// payload predates the V1 graph envelope. Bind evidence to the scanned file
+/// here, once, before graph identity is computed; never admit an unbound fact
+/// into source-backed query candidate sets.
+fn normalize_provider_evidence(
+    evidence: &mut [Value],
+    path: Option<&str>,
+    file_map: &BTreeMap<String, &FileRecord>,
+) {
+    let Some(path) = path.map(|value| value.replace('\\', "/")) else { return };
+    let Some(file) = file_map.get(&path) else { return };
+    for row in evidence {
+        let Some(object) = row.as_object_mut() else { continue };
+        object.entry("path").or_insert_with(|| json!(file.path.clone()));
+        object.entry("contentHash").or_insert_with(|| json!(file.content_hash.clone()));
+        object.entry("startLine").or_insert_with(|| json!(1));
+        object.entry("endLine").or_insert_with(|| json!(1));
+    }
 }
 
 fn file_node(file: &FileRecord, module_surface: &Value) -> GraphNode {
@@ -552,7 +618,7 @@ fn lexical_facts(file: &FileRecord, text: &str, files: &BTreeMap<String, &FileRe
         let target_id = target.as_ref().map(|path| format!("file:{path}"));
         edges.push(import_edge(&file_id, target_id.as_deref(), &import, file, module_surface));
     }
-    for (name, qualified, start, label) in symbols_by_line.iter().filter(|x| x.3 == "Function" || x.3 == "Method" || x.3 == "Test") {
+    for (name, qualified, start, _label) in symbols_by_line.iter().filter(|x| x.3 == "Function" || x.3 == "Method" || x.3 == "Test") {
         let end = nodes.iter().find(|n| n.name.as_deref() == Some(name) && n.path.as_deref() == Some(file.path.as_str()) && evidence_lines(n).0 == *start).map(|n| evidence_lines(n).1).unwrap_or(*start);
         let body = lines.get(start.saturating_sub(1)..end.min(lines.len())).unwrap_or(&[]).join("\n");
         for callee in call_names(&ext, &body) {
@@ -569,13 +635,13 @@ fn lexical_facts(file: &FileRecord, text: &str, files: &BTreeMap<String, &FileRe
 fn ast_facts(file: &FileRecord, text: &str, language: &str, cancellation: &CancellationToken) -> Result<AstResult, GraphError> {
     if cancellation.is_cancelled() { return Err(GraphError::Cancelled); }
     let mut parser = Parser::new();
-    let language_result: tree_sitter::Language = match language { "javascript" => tree_sitter_javascript::LANGUAGE.into(), "typescript" => tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(), "tsx" => tree_sitter_typescript::LANGUAGE_TSX.into(), "python" => tree_sitter_python::LANGUAGE.into(), "rust" => tree_sitter_rust::LANGUAGE.into(), "go" => tree_sitter_go::LANGUAGE.into(), "java" => tree_sitter_java::LANGUAGE.into(), "c" => tree_sitter_c::LANGUAGE.into(), "cpp" => tree_sitter_cpp::LANGUAGE.into(), "c_sharp" => tree_sitter_c_sharp::LANGUAGE.into(), "ruby" => tree_sitter_ruby::LANGUAGE.into(), "php" => tree_sitter_php::LANGUAGE_PHP.into(), "bash" => tree_sitter_bash::LANGUAGE.into(), _ => return Ok(AstResult::failed(file, "unsupported parser")), };
+    let language_result: tree_sitter::Language = match language { "javascript" => tree_sitter_javascript::LANGUAGE.into(), "typescript" => tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(), "tsx" => tree_sitter_typescript::LANGUAGE_TSX.into(), "python" => tree_sitter_python::LANGUAGE.into(), "rust" => tree_sitter_rust::LANGUAGE.into(), "go" => tree_sitter_go::LANGUAGE.into(), "java" => tree_sitter_java::LANGUAGE.into(), "c" => tree_sitter_c::LANGUAGE.into(), "cpp" => tree_sitter_cpp::LANGUAGE.into(), "c_sharp" => tree_sitter_c_sharp::LANGUAGE.into(), "ruby" => tree_sitter_ruby::LANGUAGE.into(), "php" => tree_sitter_php::LANGUAGE_PHP.into(), "bash" => tree_sitter_bash::LANGUAGE.into(), "kotlin" => tree_sitter_kotlin_ng::LANGUAGE.into(), "swift" => tree_sitter_swift::LANGUAGE.into(), "scala" => tree_sitter_scala::LANGUAGE.into(), "dart" => tree_sitter_dart::language(), "lua" => tree_sitter_lua::LANGUAGE.into(), "json" => tree_sitter_json::LANGUAGE.into(), "yaml" => tree_sitter_yaml::LANGUAGE.into(), "toml" => tree_sitter_toml_ng::LANGUAGE.into(), "html" => tree_sitter_html::LANGUAGE.into(), "css" => tree_sitter_css::LANGUAGE.into(), "objc" => tree_sitter_objc::LANGUAGE.into(), "ocaml" => tree_sitter_ocaml::LANGUAGE_OCAML.into(), "elixir" => tree_sitter_elixir::LANGUAGE.into(), "zig" => tree_sitter_zig::LANGUAGE.into(), "elm" => tree_sitter_elm::LANGUAGE.into(), "elisp" => membrane_grammars_vendored::elisp::LANGUAGE.into(), "embedded_template" => membrane_grammars_vendored::embedded_template::LANGUAGE.into(), "ql" => membrane_grammars_vendored::ql::LANGUAGE.into(), "rescript" => membrane_grammars_vendored::rescript::LANGUAGE.into(), "solidity" => membrane_grammars_vendored::solidity::LANGUAGE.into(), "systemrdl" => membrane_grammars_vendored::systemrdl::LANGUAGE.into(), "tlaplus" => membrane_grammars_vendored::tlaplus::LANGUAGE.into(), "vue" => membrane_grammars_vendored::vue::LANGUAGE.into(), _ => return Ok(AstResult::failed(file, "unsupported parser")), };
     if parser.set_language(&language_result).is_err() { return Ok(AstResult::failed(file, "parser language unavailable")); }
     let Some(tree) = parser.parse(text, None) else { return Ok(AstResult::failed(file, "parser returned no tree")); };
     let root = tree.root_node();
     let error_count = count_error_nodes(root, cancellation)?; let partial = root.has_error();
     let mut nodes = Vec::new(); let mut edges = Vec::new();
-    if !partial { walk_ast(root, text, file, &mut nodes, &mut edges, None, cancellation)?; }
+    if !partial { walk_ast(root, text, file, &mut nodes, &mut edges, None, language, cancellation)?; }
     for node in &nodes { edges.push(contains_edge(&format!("file:{}", file.path), &node.id, file, ConfidenceTier::ExactResolution)); }
     Ok(AstResult { nodes, edges, report: FileReport { path: file.path.clone(), language: Some(language.into()), provider: "tree-sitter".into(), precision: PrecisionTier::Ast, parse_status: if partial { "partial" } else { "ok" }.into(), error_node_count: error_count, error: if partial { Some("parse contains errors".into()) } else { None } } })
 }
@@ -583,23 +649,61 @@ fn ast_facts(file: &FileRecord, text: &str, language: &str, cancellation: &Cance
 struct AstResult { nodes: Vec<GraphNode>, edges: Vec<GraphEdge>, report: FileReport }
 impl AstResult { fn failed(file: &FileRecord, message: &str) -> Self { Self { nodes: Vec::new(), edges: Vec::new(), report: FileReport { path: file.path.clone(), language: language_for_path(&file.path).map(str::to_owned), provider: "tree-sitter".into(), precision: PrecisionTier::Ast, parse_status: "failed".into(), error_node_count: 0, error: Some(message.into()) } } } }
 
-fn walk_ast(node: Node<'_>, source: &str, file: &FileRecord, nodes: &mut Vec<GraphNode>, edges: &mut Vec<GraphEdge>, scope: Option<String>, cancellation: &CancellationToken) -> Result<(), GraphError> {
+fn walk_ast(node: Node<'_>, source: &str, file: &FileRecord, nodes: &mut Vec<GraphNode>, edges: &mut Vec<GraphEdge>, scope: Option<String>, language: &str, cancellation: &CancellationToken) -> Result<(), GraphError> {
     if cancellation.is_cancelled() { return Err(GraphError::Cancelled); }
     let kind = node.kind();
-    let declaration = matches!(kind, "function_declaration"|"function_definition"|"function_item"|"method_definition"|"method_declaration"|"class_declaration"|"class_definition"|"class"|"struct_item"|"enum_item"|"trait_item"|"interface_declaration"|"type_alias_declaration"|"type_spec"|"struct_specifier"|"enum_specifier"|"union_specifier"|"namespace_definition"|"interface_body"|"module"|"singleton_method"|"method"|"function_definition_statement");
+    let declaration = matches!(kind, "function_declaration"|"function_definition"|"function_item"|"function_signature"|"method_definition"|"method_declaration"|"class_declaration"|"class_definition"|"class"|"struct_item"|"enum_item"|"trait_item"|"interface_declaration"|"type_alias_declaration"|"type_spec"|"struct_specifier"|"enum_specifier"|"union_specifier"|"namespace_definition"|"interface_body"|"module"|"singleton_method"|"method"|"function_definition_statement"|"object_declaration"|"protocol_declaration"|"typealias_declaration"|"object_definition"|"trait_definition"|"enum_definition"|"val_definition"|"var_definition"|"enum_declaration"|"mixin_declaration"|"extension_declaration"|"typedef"|"class_interface"|"class_implementation"|"value_definition"|"module_definition"|"struct_declaration"|"union_declaration"|"error_set_declaration"|"test_declaration"|"opaque_declaration"|"type_declaration"|"value_declaration"|"macro_definition"|"type_binding"|"module_binding"|"component_named_def"|"operator_definition"|"contract_declaration"|"rule_set"|"keyframes_statement"|"element"|"pair"|"block_mapping_pair");
     let name = node.child_by_field_name("name").and_then(|n| n.utf8_text(source.as_bytes()).ok()).map(str::to_owned)
-        .or_else(|| if matches!(kind, "function_definition"|"declaration") { declarator_name(node, source) } else { None });
+        .or_else(|| if matches!(kind, "function_definition"|"declaration") { declarator_name(node, source) } else { None })
+        .or_else(|| fallback_declaration_name(language, kind, node, source));
     let mut next_scope = scope.clone();
     if declaration { if let Some(raw) = name {
         let qualified = scope.as_ref().map(|s| format!("{s}.{raw}")).unwrap_or_else(|| raw.clone());
-        let class = kind.contains("class") || kind.contains("struct") || kind.contains("enum") || kind.contains("trait") || kind.contains("interface") || matches!(kind, "type_spec"|"namespace_definition"|"module");
+        let class = kind.contains("class") || kind.contains("struct") || kind.contains("enum") || kind.contains("trait") || kind.contains("interface") || kind.contains("contract") || matches!(kind, "type_spec"|"namespace_definition"|"module"|"type_binding"|"component_named_def");
         let label = if class { "Class" } else if scope.is_some() || kind == "method_definition" { "Method" } else { "Function" };
         let n = ast_symbol(file, if class { "class" } else { "symbol" }, &raw, &qualified, node, label);
         next_scope = Some(qualified); nodes.push(n);
     }}
     let mut cursor = node.walk();
-    for child in node.named_children(&mut cursor) { walk_ast(child, source, file, nodes, edges, next_scope.clone(), cancellation)?; }
+    for child in node.named_children(&mut cursor) { walk_ast(child, source, file, nodes, edges, next_scope.clone(), language, cancellation)?; }
     Ok(())
+}
+
+/// Grammars for markup/data/declarative-selector languages (css, html,
+/// json, toml, yaml, objc, ocaml, dart) do not label a `name` field on the
+/// node kinds their declarations use, so the generic field lookup above
+/// finds nothing. Recover a syntax-true name from each grammar's own shape
+/// instead of fabricating one.
+fn fallback_declaration_name(language: &str, kind: &str, node: Node<'_>, source: &str) -> Option<String> {
+    fn text_of(n: Node<'_>, source: &str) -> Option<String> { n.utf8_text(source.as_bytes()).ok().map(str::to_owned) }
+    fn first_child_of_kind<'a>(node: Node<'a>, target: &str) -> Option<Node<'a>> {
+        let mut cursor = node.walk();
+        let children: Vec<Node<'a>> = node.children(&mut cursor).collect();
+        children.into_iter().find(|c| c.kind() == target)
+    }
+    fn first_descendant_of_kind<'a>(node: Node<'a>, target: &str) -> Option<Node<'a>> {
+        if node.kind() == target { return Some(node); }
+        let mut cursor = node.walk();
+        let children: Vec<Node<'a>> = node.children(&mut cursor).collect();
+        children.into_iter().find_map(|c| first_descendant_of_kind(c, target))
+    }
+    match (language, kind) {
+        ("css", "rule_set") => first_child_of_kind(node, "selectors").and_then(|n| text_of(n, source)).map(|s| s.trim().to_owned()),
+        ("css", "keyframes_statement") => first_child_of_kind(node, "keyframes_name").and_then(|n| text_of(n, source)),
+        ("html", "element") => first_child_of_kind(node, "start_tag").and_then(|tag| first_child_of_kind(tag, "tag_name")).and_then(|n| text_of(n, source)),
+        ("json", "pair") => first_child_of_kind(node, "string").and_then(|s| first_child_of_kind(s, "string_content")).and_then(|n| text_of(n, source)),
+        ("toml", "pair") => first_child_of_kind(node, "bare_key").and_then(|n| text_of(n, source)),
+        ("yaml", "block_mapping_pair") => first_child_of_kind(node, "flow_node").and_then(|n| text_of(n, source)).map(|s| s.trim().to_owned()),
+        ("objc", "class_interface") | ("objc", "class_implementation") => first_child_of_kind(node, "identifier").and_then(|n| text_of(n, source)),
+        ("objc", "method_declaration") | ("objc", "method_definition") => first_child_of_kind(node, "identifier").and_then(|n| text_of(n, source)),
+        ("ocaml", "value_definition") => first_descendant_of_kind(node, "value_name").and_then(|n| text_of(n, source)),
+        ("dart", "function_signature") => first_descendant_of_kind(node, "identifier").and_then(|n| text_of(n, source)),
+        ("elm", "value_declaration") => first_descendant_of_kind(node, "function_declaration_left").and_then(|left| first_child_of_kind(left, "lower_case_identifier")).and_then(|n| text_of(n, source)),
+        ("ql", "module") => first_child_of_kind(node, "modulename").and_then(|n| text_of(n, source)),
+        ("ql", "class") => first_child_of_kind(node, "classname").and_then(|n| text_of(n, source)),
+        ("systemrdl", "component_named_def") => node.child_by_field_name("id").and_then(|n| text_of(n, source)),
+        _ => None,
+    }
 }
 
 /// C/C++ function definitions carry their name inside a nested `declarator`
@@ -661,10 +765,10 @@ fn import_edge(source: &str, target: Option<&str>, specifier: &str, file: &FileR
     edge
 }
 
-fn parser_language(ext: &str) -> Option<&'static str> { match ext.to_ascii_lowercase().as_str() { "rs" => Some("rust"), "py" => Some("python"), "js"|"jsx"|"mjs"|"cjs" => Some("javascript"), "ts"|"mts"|"cts" => Some("typescript"), "tsx" => Some("tsx"), "go" => Some("go"), "java" => Some("java"), "c"|"h" => Some("c"), "cpp"|"cc"|"cxx"|"hpp"|"hh"|"hxx" => Some("cpp"), "cs" => Some("c_sharp"), "rb" => Some("ruby"), "php" => Some("php"), "sh"|"bash" => Some("bash"), _ => None } }
+fn parser_language(ext: &str) -> Option<&'static str> { match ext.to_ascii_lowercase().as_str() { "rs" => Some("rust"), "py" => Some("python"), "js"|"jsx"|"mjs"|"cjs" => Some("javascript"), "ts"|"mts"|"cts" => Some("typescript"), "tsx" => Some("tsx"), "go" => Some("go"), "java" => Some("java"), "c"|"h" => Some("c"), "cpp"|"cc"|"cxx"|"hpp"|"hh"|"hxx" => Some("cpp"), "cs" => Some("c_sharp"), "rb" => Some("ruby"), "php" => Some("php"), "sh"|"bash" => Some("bash"), "kt"|"kts" => Some("kotlin"), "swift" => Some("swift"), "scala"|"sc" => Some("scala"), "dart" => Some("dart"), "lua" => Some("lua"), "json" => Some("json"), "yaml"|"yml" => Some("yaml"), "toml" => Some("toml"), "html"|"htm" => Some("html"), "css" => Some("css"), "m"|"mm" => Some("objc"), "ml"|"mli" => Some("ocaml"), "ex"|"exs" => Some("elixir"), "zig" => Some("zig"), "elm" => Some("elm"), "el" => Some("elisp"), "erb" => Some("embedded_template"), "ql" => Some("ql"), "res"|"resi" => Some("rescript"), "sol" => Some("solidity"), "rdl" => Some("systemrdl"), "tla" => Some("tlaplus"), "vue" => Some("vue"), _ => None } }
 fn language_for_path(path: &str) -> Option<&'static str> { parser_language(path.rsplit_once('.').map(|(_,e)| e).unwrap_or("")) }
 fn is_file_only(name: &str) -> bool { matches!(name.rsplit_once('.').map(|(_,e)| e).unwrap_or(""), "md"|"markdown"|"txt"|"json"|"jsonl"|"yaml"|"yml"|"toml"|"html"|"css"|"svg"|"sql"|"csv"|"tsv") }
-fn normalize_path(path: &str) -> String { path.replace('\\', "/").trim_start_matches("./").to_owned() }
+pub(crate) fn normalize_path(path: &str) -> String { path.replace('\\', "/").trim_start_matches("./").to_owned() }
 fn compare_paths(a: &str, b: &str) -> std::cmp::Ordering { a.as_bytes().cmp(b.as_bytes()) }
 fn line_count(text: &str) -> usize { text.lines().count().max(1) }
 fn strip_generated_pointer(text: &str) -> String { GENERATED_POINTER_REGEX.replace(text, "").into_owned() }
@@ -758,8 +862,13 @@ fn json_array(values: &[Value]) -> String { format!("[{}]", values.iter().map(|v
 
 fn symbol_names(text: &str) -> Vec<String> { SYMBOL_NAMES_REGEX.find_iter(text).map(|m| m.as_str().to_owned()).collect() }
 fn call_names(ext: &str, body: &str) -> Vec<String> { let mut out = BTreeSet::new(); for c in CALL_NAMES_REGEX.captures_iter(body) { if let Some(v)=c.get(1) { out.insert(v.as_str().to_owned()); } } if matches!(ext, "py"|"rs") { out.extend(symbol_names(body).into_iter().filter(|v| body.contains(&format!("{v}(")))); } out.into_iter().collect() }
-fn import_specifiers(ext: &str, text: &str) -> Vec<String> { let patterns = if ext == "py" { vec![r"^\s*from\s+([.A-Za-z_]\w*(?:\.\w+)*)\s+import", r"^\s*import\s+([A-Za-z_]\w*(?:\.\w+)*)"] } else if ext == "rs" { vec![r"^\s*(?:pub\s+)?use\s+([^;]+)", r"^\s*(?:pub\s+)?mod\s+([A-Za-z_]\w*)\s*;"] } else { vec![r#"(?:import|export)(?:\s+type)?[\s\S]*?\sfrom\s+["']([^"']+)["']"#, r#"import\s*["']([^"']+)["']"#, r#"require\s*\(\s*["']([^"']+)["']\s*\)"#] }; let mut out=BTreeSet::new(); for pattern in patterns { if let Ok(re)=Regex::new(pattern) { for line in text.lines() { if let Some(c)=re.captures(line) { if let Some(m)=c.get(1) { out.insert(m.as_str().to_owned()); } } } } } out.into_iter().collect() }
-fn resolve_import(source: &str, specifier: &str, files: &BTreeMap<String, &FileRecord>) -> Option<String> { if !specifier.starts_with('.') && !source.ends_with(".rs") && !source.ends_with(".py") { return None; } let base = Path::new(source).parent().unwrap_or(Path::new("")).join(specifier); let base = normalize_path(&base.to_string_lossy()); let mut candidates=vec![base.clone()]; if source.ends_with(".py") { candidates.extend([format!("{base}.py"),format!("{base}/__init__.py")]); } else if source.ends_with(".rs") { candidates.extend([format!("{base}.rs"),format!("{base}/mod.rs")]); } else { for ext in ["ts","tsx","mts","cts","js","jsx","mjs","cjs"] { candidates.push(format!("{base}.{ext}")); candidates.push(format!("{base}/index.{ext}")); } } candidates.into_iter().find(|p| files.contains_key(p)) }
+// import_specifiers/resolve_import were ported to
+// `crate::module_resolution::{import_specifiers_in_files, resolve_import_in_files}`
+// (lane P4, 2026-09-10) — a disk-free relocation of this exact logic, not a
+// behavior change. See that module's "In-memory build-pass adapter" section
+// for the equivalence rationale and `tests/parity_module_resolution_wired.rs`
+// for the proof.
+use crate::module_resolution::{import_specifiers_in_files as import_specifiers, resolve_import_in_files as resolve_import};
 fn count_error_nodes(root: Node<'_>, cancellation: &CancellationToken) -> Result<usize, GraphError> {
     if cancellation.is_cancelled() { return Err(GraphError::Cancelled); }
     let mut count = usize::from(root.is_error());

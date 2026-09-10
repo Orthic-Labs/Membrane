@@ -15,6 +15,7 @@ members = [
     "crates/membrane-testkit",
     "crates/membrane-updater",
     "crates/membrane-blueprint",
+    "crates/membrane-grammars-vendored",
     "crates/membrane-client",
     "crates/membrane-transcript",
     "crates/membrane-adapt",

@@ -4,6 +4,7 @@
 use crate::scope::{normalize_scope, path_to_scope};
 use crate::{CheckpointV1, MemDb, MemoryStore};
 use clap::{Parser, Subcommand, ValueEnum};
+use membrane_blueprint::{BlueprintRequest, CancellationToken, Operation};
 use serde::{Deserialize, Serialize};
 use std::io::{BufRead, Read, Write};
 use std::path::{Path, PathBuf};
@@ -4264,6 +4265,114 @@ fn run_main() -> Result<(), String> {
     run_main_with_argv(std::env::args().collect())
 }
 
+/// Parse the legacy `blueprint update` facade vocabulary into the native
+/// Operation::Update request. The general one-shot parser intentionally keeps
+/// a smaller operation vocabulary; update's local artifact path needs these
+/// additional fields (`artifactName`, `appDir`, `priorDir`, & `publicKey`).
+fn run_native_blueprint_update(args: &[String]) -> Result<(), String> {
+    let mut root = std::env::current_dir().map_err(|error| format!("resolve repository root: {error}"))?;
+    let mut input = serde_json::json!({});
+    let mut subcommand: Option<String> = None;
+    let mut index = 1; // args[0] == "update"
+    while index < args.len() {
+        let raw = &args[index];
+        let (key, inline) = raw
+            .split_once('=')
+            .map_or((raw.as_str(), None), |(key, value)| (key, Some(value)));
+        let mut next_value = || -> Result<String, String> {
+            if let Some(value) = inline {
+                return Ok(value.to_owned());
+            }
+            index += 1;
+            args.get(index)
+                .cloned()
+                .ok_or_else(|| format!("{key} requires a value"))
+        };
+        match key {
+            "check" | "apply" | "rollback" => {
+                if inline.is_some() {
+                    return Err(format!("{key} does not take a value"));
+                }
+                subcommand = Some(key.to_owned());
+            }
+            "--channel" => input["channel"] = serde_json::Value::String(next_value()?),
+            "--artifact" | "--artifact-dir" => {
+                input["artifactDir"] = serde_json::Value::String(next_value()?);
+            }
+            "--artifact-name" => {
+                input["artifactName"] = serde_json::Value::String(next_value()?);
+            }
+            "--app-dir" => input["appDir"] = serde_json::Value::String(next_value()?),
+            "--prior-dir" => input["priorDir"] = serde_json::Value::String(next_value()?),
+            "--public-key" => input["publicKey"] = serde_json::Value::String(next_value()?),
+            "--current-version" => {
+                input["currentVersion"] = serde_json::Value::String(next_value()?);
+            }
+            "--version" => input["version"] = serde_json::Value::String(next_value()?),
+            "--repo-root" | "--root" => {
+                root = PathBuf::from(next_value()?);
+            }
+            "--manifest" => {
+                let path = next_value()?;
+                let raw_manifest = std::fs::read_to_string(&path)
+                    .map_err(|error| format!("--manifest: read {path}: {error}"))?;
+                input["manifest"] = serde_json::from_str(&raw_manifest)
+                    .map_err(|error| format!("--manifest: parse {path}: {error}"))?;
+            }
+            "--rollback" => {
+                let path = next_value()?;
+                let raw_receipt = std::fs::read_to_string(&path)
+                    .map_err(|error| format!("--rollback: read {path}: {error}"))?;
+                input["rollback"] = serde_json::from_str(&raw_receipt)
+                    .map_err(|error| format!("--rollback: parse {path}: {error}"))?;
+            }
+            "--offline" => input["offline"] = true.into(),
+            "--dry-run" => input["dryRun"] = true.into(),
+            "--json" => {}
+            option if option.starts_with("--") => {
+                return Err(format!("unsupported native Blueprint update option: {option}"));
+            }
+            value => {
+                return Err(format!("unsupported Blueprint update argument: {value}"));
+            }
+        }
+        index += 1;
+    }
+    let root = root
+        .canonicalize()
+        .map_err(|error| format!("canonicalize repository root: {error}"))?;
+    input["repoRoot"] = serde_json::Value::String(root.to_string_lossy().into_owned());
+    // The legacy facade defaults every ordinary invocation to `check`, even
+    // when channel/offline flags are present. Keep an explicit rollback
+    // receipt on native operation path so execute_update can perform its
+    // receipt-bound restore instead of being shadowed by the check default.
+    if let Some(subcommand) = subcommand {
+        input["args"] = serde_json::json!([subcommand]);
+    } else if input.get("rollback").is_none() {
+        input["args"] = serde_json::json!(["check"]);
+    }
+
+    let mut request = BlueprintRequest::new(
+        format!("blueprint-update-cli-{}-{}", std::process::id(), crate::time::now_millis()),
+        Operation::Update,
+        root.to_string_lossy(),
+    );
+    request.input = input;
+    request.deadline_ms = membrane_blueprint::model::MAX_DEADLINE_MS;
+    let response = crate::blueprint_one_shot::dispatch_native(request, CancellationToken::new());
+    if response.ok {
+        let result = response.result.ok_or_else(|| "native Blueprint update response missing result".to_string())?;
+        println!("{}", serde_json::to_string(&result).map_err(|error| format!("encode Blueprint update response: {error}"))?);
+        Ok(())
+    } else {
+        let error = response
+            .error
+            .map(|error| format!("{}: {}", error.code, error.message))
+            .unwrap_or_else(|| "native Blueprint update failed".into());
+        Err(error)
+    }
+}
+
 /// MBR-102: accept an explicit argv so the membrane binary can forward `membrane cli ...`
 /// without re-execing.
 fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
@@ -4282,6 +4391,16 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
         return run_health(*timeout_seconds);
     }
     if let Cmd::Blueprint { args } = &cli.cmd {
+        if args.first().map(String::as_str) == Some("update") {
+            return run_native_blueprint_update(args);
+        }
+        // Native port of legacy `blueprint explore` (`commands.mjs`'s
+        // "explore" case): a bounded loopback HTTP explorer, not a bounded
+        // one-shot operation, so it does not go through
+        // `blueprint_one_shot::run_cli`'s `Operation` dispatch.
+        if args.first().map(String::as_str) == Some("explore") {
+            return crate::blueprint_explore::run_cli(args);
+        }
         return crate::blueprint_one_shot::run_cli(args);
     }
     if let Cmd::Installation { command } = &cli.cmd {

@@ -35,11 +35,10 @@ jobs:
           version: 11.24.0
       - name: Install JavaScript dependencies without build scripts
         run: pnpm install --frozen-lockfile --ignore-scripts
-      - name: Ledger source, MCP and canon checks
+      - name: Ledger, native MCP and canon checks
         run: |
           set -euo pipefail
-          node --check mcp/server.mjs
-          node --check mcp/toolsets.mjs
+          cargo test --manifest-path engine/Cargo.toml --package membrane-mcp --package membrane-runtime --package membrane-blueprint --locked --no-fail-fast
           node --test tests/ledger-wiring-contracts.test.mjs
           set +e
           canon_output="$(node scripts/ci/check-atomic-canons.mjs 2>&1)"

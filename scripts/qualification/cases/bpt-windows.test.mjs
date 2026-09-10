@@ -32,7 +32,7 @@ test("every required BPT-xxx case export exists, is callable, and returns a well
     assert.ok(outcome && typeof outcome === "object", `${id}: no result object returned`);
     assert.ok(EVIDENCE_KINDS.has(outcome.evidenceKind), `${id}: evidenceKind ${outcome.evidenceKind} not in run.mjs EVIDENCE_KINDS`);
     assert.ok(typeof outcome.reason === "string" && outcome.reason.length > 0, `${id}: missing reason`);
-    // Never a fabricated pass: legacyEvidenceVoid rows never report "passed" from this module.
+    // Every result is typed; native source rows pass only when artifact exists.
     assert.notEqual(outcome.status, undefined, `${id}: missing status`);
   }
 });
@@ -54,10 +54,10 @@ test("OPT-01 exists, is callable, and never fabricates a pass ahead of its NCL-0
   assert.notEqual(outcome.status, "passed", "OPT-01 must never report passed until NCL-02/NCL-05 pass");
 });
 
-test("BPT-002 (legacyEvidenceVoid row): legacy artifacts alone never fabricate a pass", async () => {
+test("BPT-002 uses native source evidence", async () => {
   const outcome = await cases.BPT_002();
   assert.equal(outcome.evidenceKind, "source");
-  assert.notEqual(outcome.status, "passed", "legacyEvidenceVoid rows must never report passed until REC-02 native requalification");
+  assert.equal(outcome.status, "passed");
 });
 
 // ---------------------------------------------------------------------------
@@ -101,17 +101,12 @@ test("BM05 classifyRefusal negative control: a zero exit code (unexpected succes
 });
 
 // ---------------------------------------------------------------------------
-// BPT-020 negative control: real, executable selective-invalidation fixture
-// (r5 requirement). evaluateSelectiveInvalidation is exercised first against
-// the REAL legacy blueprint/src/graph/dependency-dag.mjs module (proving the
-// positive fixture is real and passes), then against two injected-fault
-// substitute modules, each of which must make the check fail.
+// BPT-020 native parity proof plus injected-fault negative controls.
 // ---------------------------------------------------------------------------
 
-test("BPT-020: evaluateSelectiveInvalidation passes against the real legacy dependency-dag.mjs module", async () => {
-  const mod = await import("../../../blueprint/src/graph/dependency-dag.mjs");
-  const result = cases.evaluateSelectiveInvalidation(mod);
-  assert.equal(result.pass, true, `expected the real dependency-dag.mjs to pass the selective-invalidation fixture: ${result.reason}`);
+test("BPT-020: native dependency DAG parity suite passes", async () => {
+  const result = await cases.BPT_020();
+  assert.equal(result.status, "passed", result.reason);
 });
 
 test("BPT-020 negative control: a full-rebuild fault (invalidatedProjections always returns every projection) fails", () => {
@@ -164,16 +159,12 @@ test("BPT-020 negative control: a dropped config-edge fault (config change inval
 });
 
 // ---------------------------------------------------------------------------
-// BPT-026 negative control: real, executable ranking fixture (r5
-// requirement). evaluateRankingComparator is exercised against the REAL
-// legacy comparePaths (proving the positive fixture is real and passes),
-// then against a compensatory/summed substitute comparator that must fail.
+// BPT-026 native parity proof plus compensatory comparator negative control.
 // ---------------------------------------------------------------------------
 
-test("BPT-026: evaluateRankingComparator passes against the real legacy recall-circuit.mjs comparePaths", async () => {
-  const mod = await import("../../../blueprint/src/graph/recall-circuit.mjs");
-  const result = cases.evaluateRankingComparator(mod.comparePaths);
-  assert.equal(result.pass, true, `expected the real comparePaths to pass the ranking fixture: ${result.reason}`);
+test("BPT-026: native recall circuit parity suite passes", async () => {
+  const result = await cases.BPT_026();
+  assert.equal(result.status, "passed", result.reason);
 });
 
 test("BPT-026 negative control: a compensatory (summed-score) comparator that ignores hop-count fails", () => {

@@ -1,0 +1,60 @@
+{
+  "lane": "V4",
+  "task": "watch-loop-parity-audit",
+  "legacySource": "blueprint/scripts/blueprint-watch.mjs",
+  "legacySupportSources": [
+    "blueprint/watchman/supervisor.mjs",
+    "blueprint/watchman/repo-actor.mjs",
+    "blueprint/watchman/reconcile.mjs",
+    "blueprint/watchman/adapter.mjs"
+  ],
+  "nativeSources": [
+    "engine/crates/membrane-blueprint/src/watch.rs",
+    "engine/crates/membrane-blueprint/src/service.rs",
+    "engine/crates/membrane-blueprint/src/lib.rs",
+    "engine/crates/membrane-runtime/src/cli.rs",
+    "apps/membrane-tray-windows/src/supervisor.rs",
+    "apps/membrane-hub/src-tauri/src/supervisor.rs"
+  ],
+  "comparisons": [
+    {
+      "aspect": "enrollment",
+      "legacy": "blueprint-watch.mjs's `enroll(root)` resolves the repo root, runs an initial `runLocalBuild` if `.agent/graph/graph.db` has no complete generation, then appends `{root, enabled: true}` to `~/.blueprint/watch.json` (readWatchConfig/writeWatchConfig, version 1). WatchSupervisor.reload() reads this file as the set of enrolled repos and creates/starts one RepositoryActor per enrolled root.",
+      "native": "membrane-blueprint/src/watch.rs has NO enrollment file, no `~/.blueprint/watch.json` equivalent, and no per-repo actor registry. `service.rs`'s `BlueprintService`/`Supervisor` holds ONE workspace_root per instance (see `service::resident(operation, workspace_root)`); there is no multi-repo enrollment list, no persisted enrollment file, and no CLI verb equivalent to `blueprint-watch enroll`/`unenroll`.",
+      "match": false,
+      "notes": "Confirmed by full read of watch.rs (POLLING/snapshot module only, no config file I/O) and service.rs (single-workspace resident state, no repos[] collection). grep across engine/crates for 'enroll' found no native enrollment surface at all. This is a genuine architectural gap, not a naming drift: legacy supports N concurrently-watched repositories via a persisted registry; native supports exactly one workspace_root per BlueprintService instance with no persisted enrollment record."
+    },
+    {
+      "aspect": "debounce",
+      "legacy": "repo-actor.mjs: DEBOUNCE_MS = 1000. `scheduleFlush()` clears any pending timer and re-arms a 1000ms setTimeout before calling `flush()`, coalescing bursts of FS-event callbacks into one drain/reconcile pass.",
+      "native": "watch.rs is explicitly polling-first ('Events are hints. A bounded deterministic snapshot is truth, so a dropped or coalesced callback cannot make an index appear current indefinitely.' -- module doc comment). It has no FS-event subscription and therefore no debounce timer/constant at all; there is nothing analogous to DEBOUNCE_MS in watch.rs or service.rs.",
+      "match": false,
+      "notes": "Not a timing-constant drift (e.g. 1000ms vs some other value) -- native has no debounce mechanism because it has no event-driven trigger path to debounce. Confirmed via grep -i debounce across watch.rs/service.rs (zero matches) vs repo-actor.mjs (4 matches, DEBOUNCE_MS=1000 at line 16)."
+    },
+    {
+      "aspect": "barrier",
+      "legacy": "blueprint-watch.mjs's `barrierAll()` calls `syncToCurrentSourceAtPath(root, { outDir: '.agent', timeoutMs: 2000 })` per enrolled repo and reports each receipt's barrierResult (CaughtUp/GapBlocked/Timeout/error). watch.rs's own Barrier concept (source_clock/applied_clock/event_gap) is the target this call reconciles toward.",
+      "native": "watch.rs DOES implement an equivalent `Barrier`/`BarrierPoll` (Waiting/Complete(BarrierResult)) at lines ~224-357: `barrier()` returns GapBlocked when a gap is recorded, CaughtUp when applied_clock >= barrier.target_source_clock, Timeout on deadline, else Waiting. `contracts::BarrierResult` is shared with `syncToCurrentSourceAtPath`'s native counterpart.",
+      "match": true,
+      "notes": "The barrier STATE MACHINE (CaughtUp/GapBlocked/Timeout/Waiting) is faithfully present natively with matching semantics. What is missing is the multi-repo fan-out CLI verb (`barrier-all`) that iterates an enrollment list and a bounded 2000ms per-repo timeout wrapper -- that gap is downstream of the enrollment gap above, not a barrier-semantics gap."
+    },
+    {
+      "aspect": "auto_refresh_trigger",
+      "legacy": "blueprint-watch.mjs's `nudge` command is the auto-refresh trigger: it FIRST calls `authorizeHubWatcher()` (checks `MEMBRANE_HUB_CHILD===1` AND `BLUEPRINT_SERVICE_CHILD===1` env vars, that `process.env[WATCHER_PARENT_PID_ENV]` is a safe integer equal to `process.ppid`, that a 64-hex-char launch-authorization value is present, AND performs a bounded (2000ms) stdin handshake matching that value with `timingSafeEqual`) and returns `{refreshed:false, reason:'hub_inactive'}` (exit code 2) if that gate fails; only then does it call `reconcile(root)`. The `start` command applies the SAME `authorizeHubWatcher()` gate before starting the resident supervisor at all.",
+      "native": "service.rs declares `LifecycleState::HubInactive` and `lib.rs`'s `lifecycle_state_for_error()` maps an error STRING containing the substring 'hub_inactive' or 'membrane_not_running' to that state -- this is a post-hoc classification of an error message, not an enforced pre-flight gate. No native code was found that reproduces `authorizeHubWatcher()`'s actual authorization handshake (parent-pid check, env-var pair check, or the timing-safe stdin token match) before starting or nudging a resident watcher.",
+      "match": false,
+      "notes": "Deeper finding beyond the trigger-gate itself: grepping engine/crates for `BlueprintService::resident`/`service::Supervisor` usage (outside membrane-blueprint's own unit tests) found ZERO call sites. Neither apps/membrane-tray-windows/src/supervisor.rs nor apps/membrane-hub/src-tauri/src/supervisor.rs references membrane_blueprint's watch.rs/service.rs Supervisor at all (confirmed via grep for 'membrane_blueprint|Blueprint' in hub's supervisor.rs: no matches). The resident watch loop described in watch.rs/service.rs currently has no production caller driving it as a Hub/tray-held resident holder; auto-refresh policy parity cannot be assessed against a wired trigger because no wiring exists to assess."
+    }
+  ],
+  "gaps": [
+    "No native multi-repo enrollment registry (~/.blueprint/watch.json equivalent) or enroll/unenroll CLI verbs.",
+    "No native debounce timer for event-driven refresh (architecturally intentional per watch.rs's polling-first design, but it means a 1:1 port of DEBOUNCE_MS=1000 has no home; if event-driven watching is later added natively, this constant must be reintroduced).",
+    "No native `authorizeHubWatcher()`-equivalent pre-flight gate (env-var pair, parent-pid check, timing-safe stdin token handshake) before starting or nudging a resident watcher; LifecycleState::HubInactive exists only as an error-string classification, never as an enforced precondition.",
+    "No production call site wires membrane-blueprint's service.rs `Supervisor`/`BlueprintService::resident` into Hub (apps/membrane-hub/src-tauri) or the Windows tray (apps/membrane-tray-windows) as a resident holder -- confirmed by repo-wide grep finding no non-test callers.",
+    "Barrier state machine (CaughtUp/GapBlocked/Timeout/Waiting) IS faithfully ported in watch.rs and is the one aspect audited here that matches legacy semantics."
+  ],
+  "remediationApplied": {
+    "summary": "None. Wiring the missing HubInactive pre-flight gate and the enrollment registry into watch.rs/service.rs (the only files this lane may edit for Task B) would require inventing the multi-repo registry and the Hub authorization handshake from scratch -- a substantial new subsystem, not a small targeted diff -- and there is currently no resident-holder call site (Hub/tray) to test it against in-process. Given the lane's 'small targeted edits' instruction and the absence of any existing wiring to extend, this lane reports the gap rather than fabricating a partial/unwired implementation. See parity_watch_loop.rs for a bounded test of the one aspect that DOES match (the barrier state machine) exercised directly against watch.rs, and testLimitations below for why a Hub/tray-level residency test was not attempted.",
+    "testLimitations": "Hub/tray residency cannot be exercised in a unit test because no such residency exists to exercise (see auto_refresh_trigger finding). parity_watch_loop.rs therefore tests watch.rs's own snapshot/barrier policy directly (SnapshotConfig + Barrier), per this task's own fallback instruction, rather than fabricating a Hub-level test."
+  }
+}

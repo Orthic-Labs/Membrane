@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "surfaces": {
     "mcp": {
-      "serve": "node mcp/rightax-conformance-server.mjs",
+      "serve": "rightkit cargo run --manifest-path engine/Cargo.toml -p membrane --bin membrane -- stdio-mcp",
       "tools": 1
     }
   },

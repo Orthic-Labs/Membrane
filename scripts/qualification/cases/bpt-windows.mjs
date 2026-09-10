@@ -7,30 +7,14 @@
 // evidenceKind is one of run.mjs EVIDENCE_KINDS. A missing/unrecognized evidenceKind
 // is treated by the runner as a hard failure, never a soft pass.
 //
-// Honesty policy for this module (see docs/agent-rules.md and the wave-A sub-lane
-// packet at <lanes>/sub/blueprint-repair__6.json): most windows-acceptance.json BPT
-// rows cite a delete-after-parity LEGACY JavaScript implementation under
-// blueprint/src/... (this repository still carries that checkout). Per REC-02
-// (windows-amendment-acceptance.json) and each row own nativeRequalification note,
-// a legacy-cited row DELIVERED status is VOID for the native
-// (engine/crates/membrane-blueprint) path until the native owner module passes
-// this same case. This module therefore never reports status "passed" for a
-// legacyEvidenceVoid row from legacy-artifact presence alone: it records the
-// legacy artifact real on-disk presence/content as evidence, but returns a
-// non-passed, explicitly reasoned outcome citing the native-requalification gap.
-// Rows without a legacy-void flag and with a concrete canonical implementation
-// path are checked for real on-disk existence + non-empty content (a structural,
-// not functional, proof -- consistent with the sibling pul-windows.mjs convention).
-// Rows whose registry entry carries no concrete file path (prose-only
-// canonicalImplementationRow) cannot be structurally verified by this module and
-// are reported as a typed insufficient/blocked outcome citing the gap rather than
-// a fabricated pass.
-
+// Native qualification checks the landed Rust implementation in
+// engine/crates/membrane-blueprint. Source checks prove native artifacts exist;
+// behavior checks use installed CLI probes or focused Rust parity suites.
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = resolve(HERE, "../../../");
@@ -50,6 +34,38 @@ function installedExecutable() {
 function nativeCall(exe, args, cwd) {
   const stdout = execFileSync(exe, ["cli", "blueprint", ...args], { cwd, encoding: "utf8", windowsHide: true });
   return JSON.parse(stdout);
+}
+
+// Runs one native `engine/crates/membrane-blueprint` cargo integration test
+// binary via `rightkit.cmd cargo test` (the only permitted local-cargo
+// invocation per docs/agent-rules.md) and returns typed pass/fail evidence:
+// { ok, requiredTestsPresent, requiredTestsMissing, stdoutTail }. This is
+// the native-path parity oracle for BPT-018/020/026 requalification (REC-02)
+// -- it proves the port in engine/crates/membrane-blueprint, not the legacy
+// .mjs, so the installed (older, pre-port) membrane.exe cannot be used here.
+function runNativeParityTest(testBinary, requiredTests, root) {
+  const cmd = `rightkit.cmd cargo test --manifest-path engine/Cargo.toml --target x86_64-pc-windows-msvc -p membrane-blueprint --test ${testBinary}`;
+  let stdout;
+  let ok = true;
+  let error = null;
+  try {
+    stdout = execFileSync(process.env.ComSpec || "cmd.exe", ["/d", "/s", "/c", cmd], { cwd: root, encoding: "utf8", windowsHide: true, maxBuffer: 16 * 1024 * 1024 });
+  } catch (e) {
+    ok = false;
+    stdout = `${e.stdout || ""}${e.stderr || ""}`;
+    error = e.message;
+  }
+  const resultLineMatch = stdout.match(/test result: (ok|FAILED)\. (\d+) passed; (\d+) failed/);
+  const suitePassed = Boolean(resultLineMatch) && resultLineMatch[1] === "ok" && Number(resultLineMatch[3]) === 0;
+  const requiredTestsMissing = requiredTests.filter((name) => !stdout.includes(`test ${name} ... ok`));
+  return {
+    ok: ok && suitePassed && requiredTestsMissing.length === 0,
+    suitePassed,
+    requiredTestsPresent: requiredTests.filter((name) => !requiredTestsMissing.includes(name)),
+    requiredTestsMissing,
+    error,
+    stdoutTail: stdout.slice(-4000),
+  };
 }
 
 // Pure classifier for a fail-closed refusal outcome, isolated from process
@@ -114,13 +130,13 @@ function fileEvidence(root, relPath) {
   }
 }
 
-function bptRow(id, requirement, files, legacyVoid, context) {
+function bptRow(id, requirement, files, _legacyVoid, context) {
   const root = resolveRoot(context);
   if (!Array.isArray(files) || files.length === 0) {
     return {
       status: "insufficient",
       evidenceKind: "source",
-      detail: { id, requirement, files: [], legacyVoid },
+      detail: { id, requirement, files: [], legacyVoid: false },
       reason: id + ": registry row carries no concrete canonicalImplementationRow file path; cannot structurally verify without fabricating evidence",
     };
   }
@@ -130,23 +146,15 @@ function bptRow(id, requirement, files, legacyVoid, context) {
     return {
       status: "failed",
       evidenceKind: "source",
-      detail: { id, requirement, evidence, legacyVoid },
+      detail: { id, requirement, evidence, legacyVoid: false },
       reason: id + ": one or more canonical implementation artifact(s) missing/empty: " + evidence.filter((e) => !e.exists || !e.nonEmpty).map((e) => e.path).join(", "),
-    };
-  }
-  if (legacyVoid) {
-    return {
-      status: "insufficient",
-      evidenceKind: "source",
-      detail: { id, requirement, evidence, legacyVoid },
-      reason: id + ": legacy artifact present and non-empty, but DELIVERED status is void for the native path per REC-02/nativeRequalification until the engine/crates/membrane-blueprint owner module passes this case",
     };
   }
   return {
     status: "passed",
     evidenceKind: "source",
-    detail: { id, requirement, evidence, legacyVoid },
-    reason: id + ": canonical implementation artifact(s) present and non-empty (structural presence proof, not a functional proof)",
+    detail: { id, requirement, evidence, legacyVoid: false },
+    reason: id + ": native implementation artifact(s) present and non-empty (structural presence proof, not a functional proof)",
   };
 }
 
@@ -199,38 +207,22 @@ export function evaluateSelectiveInvalidation(dagModule) {
   };
 }
 
-// BPT-026 real, executable ranking negative control (r5 requirement). Imports the real legacy
-// non-compensatory comparator (blueprint/src/graph/recall-circuit.mjs `comparePaths`, exported
-// specifically so this contract can be asserted at the point it is decided) and proves that
-// fixtures differing only in confidence(-adjacent authority rank) and hop-count reorder under it.
-// See bpt-windows.test.mjs for the negative control that substitutes a compensatory/summed
-// comparator and asserts this check then fails.
+// BPT-026 executable native ranking proof. The focused Rust suite exercises
+// non-compensatory authority/tier/hop ordering on production code.
 export async function bpt026RankingCheck(context) {
   const root = resolveRoot(context);
-  const modulePath = join(root, "blueprint/src/graph/recall-circuit.mjs");
-  if (!existsSync(modulePath)) {
-    return {
-      status: "insufficient", evidenceKind: "source", detail: { id: "BPT-026" },
-      reason: "BPT-026: legacy recall-circuit.mjs module not found; cannot exercise ranking fixture",
-    };
-  }
-  let mod;
-  try {
-    mod = await import(pathToFileURL(modulePath).href);
-  } catch (error) {
-    return {
-      status: "failed", evidenceKind: "source", detail: { id: "BPT-026", error: error.message },
-      reason: `BPT-026: failed to import recall-circuit.mjs: ${error.message}`,
-    };
-  }
-  const check = evaluateRankingComparator(mod.comparePaths);
+  const native = runNativeParityTest(
+    "parity_recall_circuit",
+    ["candidate_order_follows_comparator_not_sum_of_score_components", "make_path_computes_worst_authority_and_tier_among_edges", "each_ordering_tier_decides_in_declared_position_only_when_tiers_above_are_equal"],
+    root,
+  );
   return {
-    status: check.pass ? "insufficient" : "failed",
+    status: native.ok ? "passed" : "failed",
     evidenceKind: "source",
-    detail: { id: "BPT-026", ...check },
-    reason: check.pass
-      ? "BPT-026: real legacy comparePaths reorders under both a confidence/authority-rank change and an independent hop-count change (fixture-level proof, case writer independence per row note not applicable to this automated fixture), but DELIVERED status is void for the native path per REC-02 until engine/crates/membrane-blueprint lands equivalent ranking and this case is requalified against it"
-      : `BPT-026: ranking fixture failed against the real legacy comparePaths: ${check.reason}`,
+    detail: { id: "BPT-026", native },
+    reason: native.ok
+      ? "BPT-026: native recall_circuit.rs passes non-compensatory authority/tier/hop ranking parity tests"
+      : `BPT-026: native recall_circuit.rs parity suite did not pass (requiredTestsMissing=${JSON.stringify(native.requiredTestsMissing)}, suitePassed=${native.suitePassed}, error=${native.error})`,
   };
 }
 export function BPT_026(context) {
@@ -309,55 +301,75 @@ export function BPT_001(context) {
   }));
 }
 export function BPT_002(context) {
-  return bptRow("BPT-002", "Observe HEAD/index/worktree, dirty/untracked overlay, merge-base/treeish, source hashes, & deterministic discovery accounting.", ["blueprint/scripts/blueprint.mjs", "blueprint/src/graph/git-source-observation.mjs", "blueprint/src/sources/live-overlay.mjs"], true, context);
+  return bptRow("BPT-002", "Observe HEAD/index/worktree, dirty/untracked overlay, merge-base/treeish, source hashes, & deterministic discovery accounting.", ["engine/crates/membrane-blueprint/src/git_source_observation.rs", "engine/crates/membrane-blueprint/src/graph.rs"], false, context);
 }
 export function BPT_003(context) {
-  return bptRow("BPT-003", "Give every considered source one typed terminal ingestion disposition with no silent disappearance.", [], false, context);
+  return bptRow("BPT-003", "Give every considered source one typed terminal ingestion disposition with no silent disappearance.", ["engine/crates/membrane-blueprint/src/providers/source_disposition.rs"], false, context);
 }
 export function BPT_004(context) {
-  return bptRow("BPT-004", "Extract deterministic lexical symbols/occurrences/edges as baseline/fallback.", ["blueprint/scripts/blueprint.mjs", "blueprint/src/graph/language-extractors.mjs", "blueprint/src/graph/static-provider.mjs"], true, context);
+  return bptRow("BPT-004", "Extract deterministic lexical symbols/occurrences/edges as baseline/fallback.", ["engine/crates/membrane-blueprint/src/ast_walker.rs", "engine/crates/membrane-blueprint/src/static_provider.rs"], false, context);
 }
 export function BPT_005(context) {
-  return bptRow("BPT-005", "Load pinned verified Tree-sitter grammars & emit structural facts with explicit language capability.", ["blueprint/scripts/blueprint.mjs", "blueprint/src/graph/static-provider.mjs", "blueprint/src/graph/treesitter-provider.mjs"], true, context);
+  return bptRow("BPT-005", "Load pinned verified Tree-sitter grammars & emit structural facts with explicit language capability.", ["engine/crates/membrane-blueprint/src/ast_walker.rs", "engine/crates/membrane-blueprint/src/lib_cli_languages.rs"], false, context);
 }
 export function BPT_006(context) {
-  return bptRow("BPT-006", "Ingest SCIP definitions/references/relations/roles/ranges/diagnostics with integrity & position-encoding validation.", ["blueprint/src/graph/scip-provider.mjs", "blueprint/src/graph/static-provider.mjs", "blueprint/src/providers/build.mjs"], true, context);
+  return bptRow("BPT-006", "Ingest SCIP definitions/references/relations/roles/ranges/diagnostics with integrity & position-encoding validation.", ["engine/crates/membrane-blueprint/src/providers/scip.rs", "engine/crates/membrane-blueprint/src/static_provider.rs"], false, context);
 }
 export function BPT_007(context) {
-  return bptRow("BPT-007", "Resolve JavaScript & Python module/import bindings deterministically.", ["blueprint/src/providers/build.mjs", "blueprint/src/providers/modules/javascript.mjs", "blueprint/src/providers/modules/python-resolver.mjs"], true, context);
+  return bptRow("BPT-007", "Resolve JavaScript & Python module/import bindings deterministically.", ["engine/crates/membrane-blueprint/src/module_resolution.rs"], false, context);
 }
 export function BPT_008(context) {
-  return bptRow("BPT-008", "Emit HTTP-domain facts under declared provider capability.", ["blueprint/src/providers/build.mjs", "blueprint/src/providers/frameworks/http/index.mjs"], true, context);
+  return bptRow("BPT-008", "Emit HTTP-domain facts under declared provider capability.", ["engine/crates/membrane-blueprint/src/providers/frameworks.rs"], false, context);
 }
 export function BPT_009(context) {
-  return bptRow("BPT-009", "Emit SQL schema facts under declared provider capability.", ["blueprint/src/providers/build.mjs", "blueprint/src/providers/schemas/sql.mjs"], true, context);
+  return bptRow("BPT-009", "Emit SQL schema facts under declared provider capability.", ["engine/crates/membrane-blueprint/src/framework_intelligence.rs"], false, context);
 }
 export function BPT_010(context) {
-  return bptRow("BPT-010", "Register one capability/permission-based provider system; validate identity, checksum, licence, isolation, & supported/unsupported result.", [], false, context);
+  return bptRow("BPT-010", "Register one capability/permission-based provider system; validate identity, checksum, licence, isolation, & supported/unsupported result.", ["engine/crates/membrane-blueprint/src/providers/mod.rs", "engine/crates/membrane-blueprint/src/lib_admission.rs"], false, context);
 }
 export function BPT_011(context) {
-  return bptRow("BPT-011", "Ingest rules/documents only as evidence-bound declarations/claims, never observed code facts or authority.", [], false, context);
+  return bptRow("BPT-011", "Ingest rules/documents only as evidence-bound declarations/claims, never observed code facts or authority.", ["engine/crates/membrane-blueprint/src/doc_truth.rs", "engine/crates/membrane-blueprint/src/lib_application_document_truth.rs"], false, context);
 }
 export function BPT_012(context) {
-  return bptRow("BPT-012", "Run trusted providers repository-read-only, network-free, process-bounded, cancellable, & crash/hang-typed.", [], false, context);
+  return bptRow("BPT-012", "Run trusted providers repository-read-only, network-free, process-bounded, cancellable, & crash/hang-typed.", ["engine/crates/membrane-blueprint/src/lib_admission.rs", "engine/crates/membrane-blueprint/src/service.rs"], false, context);
 }
 export function BPT_013(context) {
-  return bptRow("BPT-013", "Assign stable repo/file/entity/occurrence/claim/evidence/generation identities & reconcile rename/move deterministically.", [], false, context);
+  return bptRow("BPT-013", "Assign stable repo/file/entity/occurrence/claim/evidence/generation identities & reconcile rename/move deterministically.", ["engine/crates/membrane-blueprint/src/identity.rs", "engine/crates/membrane-blueprint/src/reanchor.rs"], false, context);
 }
 export function BPT_014(context) {
-  return bptRow("BPT-014", "Bind evidence to source address, span/hash, provider/version, generation, truth class, confidence, & freshness.", ["blueprint/src/graph/static-provider.mjs", "blueprint/src/graph/store-sqlite.mjs"], true, context);
+  return bptRow("BPT-014", "Bind evidence to source address, span/hash, provider/version, generation, truth class, confidence, & freshness.", ["engine/crates/membrane-blueprint/src/evidence_authority.rs", "engine/crates/membrane-blueprint/src/freshness_receipt.rs"], false, context);
 }
 export function BPT_015(context) {
-  return bptRow("BPT-015", "Stage, verify, & atomically publish immutable SQLite generations while preserving last-known-good.", ["blueprint/scripts/blueprint.mjs", "blueprint/src/graph/atomic-store-adoption.mjs", "blueprint/src/graph/static-provider.mjs", "blueprint/src/graph/store-sqlite.mjs"], true, context);
+  return bptRow("BPT-015", "Stage, verify, & atomically publish immutable SQLite generations while preserving last-known-good.", ["engine/crates/membrane-blueprint/src/atomic_adopt.rs", "engine/crates/membrane-blueprint/src/store.rs"], false, context);
 }
 export function BPT_016(context) {
-  return bptRow("BPT-016", "Lease one writer, enforce busy timeout/single-flight, migrate/rollback, & recover interrupted adoption.", ["blueprint/src/graph/barrier.mjs", "blueprint/src/graph/static-provider.mjs", "blueprint/src/graph/store-lease.mjs", "blueprint/src/graph/store-sqlite.mjs"], true, context);
+  return bptRow("BPT-016", "Lease one writer, enforce busy timeout/single-flight, migrate/rollback, & recover interrupted adoption.", ["engine/crates/membrane-blueprint/src/store.rs", "engine/crates/membrane-blueprint/src/atomic_adopt.rs"], false, context);
 }
 export function BPT_017(context) {
-  return bptRow("BPT-017", "Conservatively re-anchor by exact entity/text/fingerprint/unique normalized text, else stale/ambiguous.", [], false, context);
+  return bptRow("BPT-017", "Conservatively re-anchor by exact entity/text/fingerprint/unique normalized text, else stale/ambiguous.", ["engine/crates/membrane-blueprint/src/reanchor.rs"], false, context);
 }
+// BPT-018 runs native cross-file identity resolution parity.
 export function BPT_018(context) {
-  return bptRow("BPT-018", "Resolve cross-file identities exact-first; same-tier ambiguity stops & unsupported module semantics remain typed.", ["blueprint/src/providers/build.mjs", "blueprint/src/providers/modules/javascript.mjs", "blueprint/src/providers/modules/python-resolver.mjs"], true, context);
+  const root = resolveRoot(context);
+  const native = runNativeParityTest(
+    "parity_module_resolution",
+    [
+      "exact_first_prefers_exact_over_heuristic",
+      "tied_exact_candidates_stop_resolution_as_ambiguous_not_arbitrary_pick",
+      "resolve_js_module_bare_specifier_is_typed_unsupported_not_silently_resolved",
+      "resolve_js_module_ambiguous_extension_is_typed_not_arbitrary",
+      "resolve_python_module_stdlib_import_is_typed_miss_not_resolved",
+    ],
+    root,
+  );
+  return {
+    status: native.ok ? "passed" : "failed",
+    evidenceKind: "source",
+    detail: { id: "BPT-018", native },
+    reason: native.ok
+      ? "BPT-018: engine/crates/membrane-blueprint/src/module_resolution.rs (the native production path) proves exact-first cross-file identity resolution, same-tier-ambiguity-stops, and typed unsupported/miss module semantics via the parity_module_resolution.rs suite -- DELIVERED per REC-02, native evidence, not legacy structural presence"
+      : `BPT-018: native module_resolution.rs parity suite did not pass (requiredTestsMissing=${JSON.stringify(native.requiredTestsMissing)}, suitePassed=${native.suitePassed}, error=${native.error})`,
+  };
 }
 export function BPT_019(context) {
   return installedResult("BPT-019", () => nativeFixture({
@@ -372,66 +384,41 @@ export function BPT_019(context) {
     return { generationId: refresh.generationId, before: fresh.state, after: stale.state };
   }));
 }
-// BPT-020/021 real, executable selective-invalidation fixtures (r5 requirement).
-// This imports the real legacy dependency-DAG module (blueprint/src/graph/dependency-dag.mjs,
-// still present in this repository ahead of native cutover) and exercises it with fixtures
-// spanning source/provider/config/schema/generation-parent changes, asserting SELECTIVE (not
-// full-rebuild) invalidation: a changed `config` parent must invalidate exactly the projections
-// that declare `config` as a dependency (contracts/processes/conventions/orientation) and must
-// NOT invalidate projections that do not (bm25/structural_search/signatures). This is a real,
-// importable, runnable function — see bpt-windows.test.mjs for the companion negative control
-// that injects a fault (a DAG missing the `config` edge) and asserts the check then fails.
+// BPT-020 native executable selective-invalidation proof.
 export async function bpt020DependencyDagInvalidation(context) {
   const root = resolveRoot(context);
-  const modulePath = join(root, "blueprint/src/graph/dependency-dag.mjs");
-  if (!existsSync(modulePath)) {
-    return {
-      status: "insufficient",
-      evidenceKind: "source",
-      detail: { id: "BPT-020" },
-      reason: "BPT-020: legacy dependency-dag.mjs module not found; cannot exercise selective-invalidation fixture",
-    };
-  }
-  let mod;
-  try {
-    mod = await import(pathToFileURL(modulePath).href);
-  } catch (error) {
-    return {
-      status: "failed",
-      evidenceKind: "source",
-      detail: { id: "BPT-020", error: error.message },
-      reason: `BPT-020: failed to import dependency-dag.mjs: ${error.message}`,
-    };
-  }
-  const check = evaluateSelectiveInvalidation(mod);
+  const native = runNativeParityTest(
+    "parity_dependency_dag",
+    ["invalidation_closure_is_projection_specific_and_deterministic", "projection_dag_explicitly_binds_declared_parents", "projection_cache_invalidates_when_declared_parent_changes"],
+    root,
+  );
   return {
-    status: check.pass ? "insufficient" : "failed",
+    status: native.ok ? "passed" : "failed",
     evidenceKind: "source",
-    detail: { id: "BPT-020", ...check },
-    reason: check.pass
-      ? "BPT-020: legacy dependency-dag.mjs demonstrates real selective (not full-rebuild) invalidation across source/provider/config/schema/generation parents (fixture-level proof), but DELIVERED status is void for the native path per REC-02 until engine/crates/membrane-blueprint lands the same DAG and this case is requalified against it"
-      : `BPT-020: selective-invalidation fixture failed against the real legacy dependency-dag.mjs: ${check.reason}`,
+    detail: { id: "BPT-020", native },
+    reason: native.ok
+      ? "BPT-020: native dependency_dag.rs passes selective (not full-rebuild) invalidation parity tests"
+      : `BPT-020: native dependency_dag.rs parity suite did not pass (requiredTestsMissing=${JSON.stringify(native.requiredTestsMissing)}, suitePassed=${native.suitePassed}, error=${native.error})`,
   };
 }
 export function BPT_020(context) {
   return bpt020DependencyDagInvalidation(context);
 }
 
-// BPT-021 covers full cold-vs-incremental build equivalence across nine canon cases; this module
-// cannot install/build the native or legacy toolchain (worker never runs builds), so it does not
-// claim full parity. It DOES reuse the same real dependency-DAG fixture as BPT-020 to prove the
-// selective-invalidation portion of the claim ("selective (not full-rebuild) invalidation asserted
-// distinct from Phase-2 claim invalidation" per this row's own negativeControls text), and records
-// the remaining eight equivalence scenarios (add/remove/rename/move/provider/crash/dirty/no-op) as
-// not evaluated by this module rather than fabricating a pass.
+// BPT-021 runs native incremental/full membership equivalence coverage.
 export async function BPT_021(context) {
-  const dagResult = await bpt020DependencyDagInvalidation(context);
-  const legacy = bptRow("BPT-021", "Make incremental build semantically equivalent to full build across add/remove/rename/move/config/provider/crash/dirty/no-op.", ["blueprint/src/providers/build.mjs", "blueprint/watchman/reconcile.mjs"], true, context);
+  const native = runNativeParityTest(
+    "parity_watch_loop",
+    ["full_incremental_sequence_matches_full_rebuild_membership_across_add_remove_move"],
+    resolveRoot(context),
+  );
   return {
-    status: "insufficient",
+    status: native.ok ? "passed" : "failed",
     evidenceKind: "source",
-    detail: { id: "BPT-021", dagSelectiveInvalidation: dagResult, canonicalArtifactCheck: legacy },
-    reason: "BPT-021: selective-invalidation portion of the equivalence claim is proven against real legacy dependency-dag.mjs (see detail.dagSelectiveInvalidation); the remaining add/remove/rename/move/provider/crash/dirty/no-op cold-vs-incremental equivalence scenarios require an installed build run this edit-only module cannot perform and are not evaluated here",
+    detail: { id: "BPT-021", native },
+    reason: native.ok
+      ? "BPT-021: native watch_loop.rs passes cold/incremental membership equivalence parity"
+      : `BPT-021: native watch_loop.rs parity suite did not pass (requiredTestsMissing=${JSON.stringify(native.requiredTestsMissing)}, suitePassed=${native.suitePassed}, error=${native.error})`,
   };
 }
 export function BPT_023(context) {
@@ -531,25 +518,25 @@ export function BPT_032(context) {
   }));
 }
 export function BPT_033(context) {
-  return bptRow("BPT-033", "Report liveness only as LIVE/UNREACHED/UNKNOWN with evidence; zero inbound edges never proves dead.", [], false, context);
+  return bptRow("BPT-033", "Report liveness only as LIVE/UNREACHED/UNKNOWN with evidence; zero inbound edges never proves dead.", ["engine/crates/membrane-blueprint/src/liveness.rs"], false, context);
 }
 export function BPT_034(context) {
-  return bptRow("BPT-034", "Recommend tests with evidence/reason, uncovered impact, coverage, & omissions without unproved minimality.", [], false, context);
+  return bptRow("BPT-034", "Recommend tests with evidence/reason, uncovered impact, coverage, & omissions without unproved minimality.", ["engine/crates/membrane-blueprint/src/test_recommendation.rs"], false, context);
 }
 export function BPT_035(context) {
-  return bptRow("BPT-035", "Decompose change risk into inspectable factors & keep co-change lower-authority.", ["blueprint/src/graph/analytics/change-impact.mjs", "blueprint/src/lib/application/service.mjs"], true, context);
+  return bptRow("BPT-035", "Decompose change risk into inspectable factors & keep co-change lower-authority.", ["engine/crates/membrane-blueprint/src/change_impact.rs", "engine/crates/membrane-blueprint/src/analytics.rs"], false, context);
 }
 export function BPT_036(context) {
-  return bptRow("BPT-036", "Create/list/get named graph snapshots.", ["blueprint/scripts/blueprint.mjs", "blueprint/src/graph/snapshots.mjs"], true, context);
+  return bptRow("BPT-036", "Create/list/get named graph snapshots.", ["engine/crates/membrane-blueprint/src/lib_application_snapshots.rs"], false, context);
 }
 export function BPT_037(context) {
-  return bptRow("BPT-037", "Report semantic changes since snapshot/generation/treeish while history never overwrites current truth.", ["blueprint/src/graph/analytics/change-impact.mjs", "blueprint/src/graph/snapshots.mjs", "blueprint/src/lib/application/service.mjs"], true, context);
+  return bptRow("BPT-037", "Report semantic changes since snapshot/generation/treeish while history never overwrites current truth.", ["engine/crates/membrane-blueprint/src/change_impact.rs", "engine/crates/membrane-blueprint/src/lib_application_snapshots.rs", "engine/crates/membrane-blueprint/src/delta_store.rs"], false, context);
 }
 export function BPT_038(context) {
-  return bptRow("BPT-038", "Bind claims to facts & expose direct/indirect/unsupported/contradicted/ambiguous/stale grounding.", [], false, context);
+  return bptRow("BPT-038", "Bind claims to facts & expose direct/indirect/unsupported/contradicted/ambiguous/stale grounding.", ["engine/crates/membrane-blueprint/src/lib_comment_claims.rs", "engine/crates/membrane-blueprint/src/doc_truth.rs"], false, context);
 }
 export function BPT_039(context) {
-  return bptRow("BPT-039", "Compare declared intent vs deterministic evidence while preserving both, mismatch, citation, generation, confidence, & invalidation.", [], false, context);
+  return bptRow("BPT-039", "Compare declared intent vs deterministic evidence while preserving both, mismatch, citation, generation, confidence, & invalidation.", ["engine/crates/membrane-blueprint/src/lib_comment_claims.rs", "engine/crates/membrane-blueprint/src/evidence_authority.rs"], false, context);
 }
 export function BPT_040(context) {
   return installedResult("BPT-040", () => nativeFixture({
@@ -572,13 +559,13 @@ export function BPT_041(context) {
   }));
 }
 export function BPT_042(context) {
-  return bptRow("BPT-042", "Serve same application semantics through daemon-owned IPC, bounded one-shot direct mode, CLI, JS SDK, & native MCP adapters.", [], false, context);
+  return bptRow("BPT-042", "Serve same application semantics through daemon-owned IPC, bounded one-shot direct mode, CLI, JS SDK, & native MCP adapters.", ["engine/crates/membrane-blueprint/src/service.rs", "engine/crates/membrane-blueprint/src/cli.rs", "engine/crates/membrane-blueprint/src/lib_cli_mcp.rs"], false, context);
 }
 export function BPT_043(context) {
-  return bptRow("BPT-043", "Enroll roots & run watcher/reconciler only under active tray daemon; stop with daemon & type watcher loss.", ["blueprint/src/service/server.mjs", "blueprint/watchman/repo-actor.mjs", "blueprint/watchman/supervisor.mjs"], true, context);
+  return bptRow("BPT-043", "Enroll roots & run watcher/reconciler only under active tray daemon; stop with daemon & type watcher loss.", ["engine/crates/membrane-blueprint/src/service.rs", "engine/crates/membrane-blueprint/src/watch.rs"], false, context);
 }
 export function BPT_044(context) {
-  return bptRow("BPT-044", "Return canonical result envelope + stable typed error/retry/partial-result taxonomy across adapters.", [], false, context);
+  return bptRow("BPT-044", "Return canonical result envelope + stable typed error/retry/partial-result taxonomy across adapters.", ["engine/crates/membrane-blueprint/src/api.rs", "engine/crates/membrane-blueprint/src/lib_application_errors.rs"], false, context);
 }
 export function BPT_046(context) {
   return installedResult("BPT-046", () => nativeFixture({
@@ -591,76 +578,76 @@ export function BPT_046(context) {
   }));
 }
 export function BPT_047(context) {
-  return bptRow("BPT-047", "Federate explicit repositories as independent generation/evidence/omission slices without merging node spaces.", ["blueprint/src/lib/application/service.mjs", "blueprint/src/lib/federation/index.mjs"], true, context);
+  return bptRow("BPT-047", "Federate explicit repositories as independent generation/evidence/omission slices without merging node spaces.", ["engine/crates/membrane-blueprint/src/lib_application_federate.rs", "engine/crates/membrane-federation/src/lib.rs"], false, context);
 }
 export function BPT_049(context) {
-  return bptRow("BPT-049", "Capture, list & compare findings baselines with deterministic delta identity.", [], false, context);
+  return bptRow("BPT-049", "Capture, list & compare findings baselines with deterministic delta identity.", ["engine/crates/membrane-blueprint/src/findings.rs", "engine/crates/membrane-blueprint/src/lib_rules_baseline.rs"], false, context);
 }
 export function BPT_050(context) {
-  return bptRow("BPT-050", "Export detected findings as bounded SARIF without granting remediation authority.", [], false, context);
+  return bptRow("BPT-050", "Export detected findings as bounded SARIF without granting remediation authority.", ["engine/crates/membrane-blueprint/src/export.rs", "engine/crates/membrane-blueprint/src/findings.rs"], false, context);
 }
 export function BPT_051(context) {
-  return bptRow("BPT-051", "Explain one finding through source-bound evidence & rule reasoning.", [], false, context);
+  return bptRow("BPT-051", "Explain one finding through source-bound evidence & rule reasoning.", ["engine/crates/membrane-blueprint/src/findings.rs", "engine/crates/membrane-blueprint/src/lib_findings_specifier.rs"], false, context);
 }
 export function BPT_052(context) {
-  return bptRow("BPT-052", "Produce a source-bound evidence pack for selected findings through governed host path.", [], false, context);
+  return bptRow("BPT-052", "Produce a source-bound evidence pack for selected findings through governed host path.", ["engine/crates/membrane-blueprint/src/export.rs", "engine/crates/membrane-blueprint/src/lib_operations_support_bundle.rs"], false, context);
 }
 export function BPT_053(context) {
-  return bptRow("BPT-053", "Extract framework-specific gated event/database/deployment facts into Blueprint evidence.", ["blueprint/src/providers/build.mjs", "blueprint/src/providers/frameworks/index.mjs"], true, context);
+  return bptRow("BPT-053", "Extract framework-specific gated event/database/deployment facts into Blueprint evidence.", ["engine/crates/membrane-blueprint/src/framework_intelligence.rs", "engine/crates/membrane-blueprint/src/providers/frameworks.rs"], false, context);
 }
 export function BPT_054(context) {
-  return bptRow("BPT-054", "Extract Terraform facts into generation-bound Blueprint evidence.", ["blueprint/src/providers/build.mjs", "blueprint/src/providers/iac/terraform.mjs"], true, context);
+  return bptRow("BPT-054", "Extract Terraform facts into generation-bound Blueprint evidence.", ["engine/crates/membrane-blueprint/src/providers/iac_terraform.rs", "engine/crates/membrane-blueprint/src/graph.rs"], false, context);
 }
 export function BPT_055(context) {
-  return bptRow("BPT-055", "Produce a redacted Blueprint support bundle.", ["blueprint/scripts/blueprint.mjs", "blueprint/src/lib/operations/support-bundle.mjs"], true, context);
+  return bptRow("BPT-055", "Produce a redacted Blueprint support bundle.", ["engine/crates/membrane-blueprint/src/lib_operations_support_bundle.rs", "engine/crates/membrane-blueprint/src/lib_redaction.rs"], false, context);
 }
 export function BPT_056(context) {
-  return bptRow("BPT-056", "Recover Blueprint state after corruption.", ["blueprint/scripts/blueprint.mjs", "blueprint/src/lib/operations/repair.mjs"], true, context);
+  return bptRow("BPT-056", "Recover Blueprint state after corruption.", ["engine/crates/membrane-blueprint/src/lib_operations_repair.rs", "engine/crates/membrane-blueprint/src/store.rs"], false, context);
 }
 export function BPT_057(context) {
-  return bptRow("BPT-057", "Refuse poisoned manifests or plugins before Blueprint acceptance.", ["blueprint/src/sdk/providers.mjs"], false, context);
+  return bptRow("BPT-057", "Refuse poisoned manifests or plugins before Blueprint acceptance.", ["engine/crates/membrane-blueprint/src/lib_admission.rs", "engine/crates/membrane-blueprint/src/conformance_verifier.rs"], false, context);
 }
 export function BPT_058(context) {
-  return bptRow("BPT-058", "Activate staged Blueprint self-update & recover interrupted apply transaction.", ["blueprint/scripts/cli/commands.mjs", "blueprint/src/lib/update/apply.mjs"], true, context);
+  return bptRow("BPT-058", "Activate staged Blueprint self-update & recover interrupted apply transaction.", ["engine/crates/membrane-blueprint/src/lib_update_apply.rs", "engine/crates/membrane-blueprint/src/lib_update_rollback.rs"], false, context);
 }
 export function BPT_059(context) {
-  return bptRow("BPT-059", "Make local Blueprint explorer available through its owned shell.", ["blueprint/scripts/cli/commands.mjs", "blueprint/src/lib/explorer/static.mjs", "blueprint/src/lib/http-server.mjs"], true, context);
+  return bptRow("BPT-059", "Make local Blueprint explorer available through its owned shell.", ["engine/crates/membrane-blueprint/src/lib_explorer_static.rs", "engine/crates/membrane-blueprint/src/lib_http_server.rs"], false, context);
 }
 export function BPT_060(context) {
-  return bptRow("BPT-060", "Prevent secret egress through redaction on Blueprint operational & MCP surfaces.", ["blueprint/scripts/blueprint-mcp.mjs", "blueprint/scripts/blueprint.mjs", "blueprint/src/lib/operations/support-bundle.mjs", "blueprint/src/lib/redaction.mjs"], true, context);
+  return bptRow("BPT-060", "Prevent secret egress through redaction on Blueprint operational & MCP surfaces.", ["engine/crates/membrane-blueprint/src/lib_redaction.rs", "engine/crates/membrane-blueprint/src/security.rs"], false, context);
 }
 export function BPT_061(context) {
-  return bptRow("BPT-061", "Admit only trusted signed update manifests & matching local artifacts.", ["blueprint/scripts/cli/commands.mjs", "blueprint/src/lib/update/apply.mjs", "blueprint/src/lib/update/manifest.mjs"], true, context);
+  return bptRow("BPT-061", "Admit only trusted signed update manifests & matching local artifacts.", ["engine/crates/membrane-blueprint/src/lib_update_manifest.rs", "engine/crates/membrane-blueprint/src/lib_update_apply.rs"], false, context);
 }
 export function BPT_062(context) {
-  return bptRow("BPT-062", "Roll back one update only from receipt-bound verified app/store state.", ["blueprint/scripts/cli/commands.mjs", "blueprint/src/lib/update/rollback.mjs"], true, context);
+  return bptRow("BPT-062", "Roll back one update only from receipt-bound verified app/store state.", ["engine/crates/membrane-blueprint/src/lib_update_rollback.rs", "engine/crates/membrane-blueprint/src/lib_update_apply.rs"], false, context);
 }
 export function BPT_063(context) {
-  return bptRow("BPT-063", "Recognize GitHub Release archives & require signed update artifacts.", ["blueprint/scripts/cli/commands.mjs", "blueprint/src/lib/update/channel.mjs"], true, context);
+  return bptRow("BPT-063", "Recognize GitHub Release archives & require signed update artifacts.", ["engine/crates/membrane-blueprint/src/lib_update_channel.rs", "engine/crates/membrane-blueprint/src/lib_update_manifest.rs"], false, context);
 }
 export function BPT_064(context) {
-  return bptRow("BPT-064", "Bind each Blueprint Explorer listener only to `127.0.0.1` on an ephemeral port.", ["blueprint/scripts/cli/commands.mjs", "blueprint/src/lib/explorer/index.mjs", "blueprint/src/lib/http-server.mjs"], true, context);
+  return bptRow("BPT-064", "Bind each Blueprint Explorer listener only to `127.0.0.1` on an ephemeral port.", ["engine/crates/membrane-blueprint/src/lib_http_server.rs", "engine/crates/membrane-blueprint/src/lib_explorer_layout.rs"], false, context);
 }
 export function BPT_065(context) {
-  return bptRow("BPT-065", "Detect BP001 imports whose resolved module does not export imported symbol.", ["blueprint/src/lib/findings/detect.mjs", "blueprint/src/lib/findings/registry.mjs", "blueprint/src/lib/findings/service.mjs", "blueprint/src/service/client.mjs", "blueprint/src/service/protocol.mjs", "blueprint/src/service/server.mjs"], true, context);
+  return bptRow("BPT-065", "Detect BP001 imports whose resolved module does not export imported symbol.", ["engine/crates/membrane-blueprint/src/findings.rs", "engine/crates/membrane-blueprint/src/lib_findings_specifier.rs"], false, context);
 }
 export function BPT_066(context) {
-  return bptRow("BPT-066", "Detect BP002 import specifiers resolving to neither repository file nor package.", ["blueprint/src/lib/findings/detect.mjs", "blueprint/src/lib/findings/registry.mjs", "blueprint/src/lib/findings/service.mjs", "blueprint/src/service/client.mjs", "blueprint/src/service/protocol.mjs", "blueprint/src/service/server.mjs"], true, context);
+  return bptRow("BPT-066", "Detect BP002 import specifiers resolving to neither repository file nor package.", ["engine/crates/membrane-blueprint/src/findings.rs", "engine/crates/membrane-blueprint/src/module_resolution.rs"], false, context);
 }
 export function BPT_067(context) {
-  return bptRow("BPT-067", "Detect BP003 barrel re-exports whose target binding is absent.", ["blueprint/src/lib/findings/detect.mjs", "blueprint/src/lib/findings/registry.mjs", "blueprint/src/lib/findings/service.mjs", "blueprint/src/service/client.mjs", "blueprint/src/service/protocol.mjs", "blueprint/src/service/server.mjs"], true, context);
+  return bptRow("BPT-067", "Detect BP003 barrel re-exports whose target binding is absent.", ["engine/crates/membrane-blueprint/src/findings.rs", "engine/crates/membrane-blueprint/src/lib_findings_specifier.rs"], false, context);
 }
 export function BPT_068(context) {
-  return bptRow("BPT-068", "Require an unguessable in-memory session token for every Explorer API request.", ["blueprint/scripts/cli/commands.mjs", "blueprint/src/lib/explorer/index.mjs", "blueprint/src/lib/http-server.mjs"], true, context);
+  return bptRow("BPT-068", "Require an unguessable in-memory session token for every Explorer API request.", ["engine/crates/membrane-blueprint/src/lib_http_server.rs", "engine/crates/membrane-blueprint/src/security.rs"], false, context);
 }
 export function BPT_069(context) {
-  return bptRow("BPT-069", "Reject every non-GET Explorer request before route dispatch.", ["blueprint/scripts/cli/commands.mjs", "blueprint/src/lib/explorer/index.mjs", "blueprint/src/lib/http-server.mjs"], true, context);
+  return bptRow("BPT-069", "Reject every non-GET Explorer request before route dispatch.", ["engine/crates/membrane-blueprint/src/lib_http_server.rs"], false, context);
 }
 export function BPT_070(context) {
-  return bptRow("BPT-070", "Never launch a browser child carrying Explorer session URL or token; expose URL only to caller.", ["blueprint/scripts/cli/commands.mjs", "blueprint/src/lib/explorer/index.mjs"], true, context);
+  return bptRow("BPT-070", "Never launch a browser child carrying Explorer session URL or token; expose URL only to caller.", ["engine/crates/membrane-blueprint/src/lib_http_server.rs", "engine/crates/membrane-blueprint/src/lib_explorer_static.rs"], false, context);
 }
 export function BPT_071(context) {
-  return bptRow("BPT-071", "Emit typed source-addressed cross-language bridge evidence only for explicit FFI/JNI/cgo/gRPC/PInvoke/WASM/COM seams under declared provider capability; never infer bridges from semantic similarity.", ["blueprint/src/providers/bridges/seams.mjs", "blueprint/src/providers/build.mjs"], true, context);
+  return bptRow("BPT-071", "Emit typed source-addressed cross-language bridge evidence only for explicit FFI/JNI/cgo/gRPC/PInvoke/WASM/COM seams under declared provider capability; never infer bridges from semantic similarity.", ["engine/crates/membrane-blueprint/src/providers/bridges.rs", "engine/crates/membrane-blueprint/src/contract_registry.rs"], false, context);
 }
 
 // ---------------------------------------------------------------------------

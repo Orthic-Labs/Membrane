@@ -72,12 +72,10 @@ fn digest_is_stable_under_input_reordering_and_path_separator_style() {
     ];
     // Windows-style separators in the recorded path must normalize the same
     // as forward-slash paths (matching `isBuildConfigFile`'s `\`→`/` swap).
-    let d = [
-        ConfigDigestInput { path: "tsconfig.json", content_hash: Some("h1") },
-        ConfigDigestInput { path: "package.json", content_hash: Some("h2") },
-    ];
+    let d = [ConfigDigestInput { path: r"packages\app\tsconfig.json", content_hash: Some("h1") }];
+    let nested = [ConfigDigestInput { path: "packages/app/tsconfig.json", content_hash: Some("h1") }];
     assert_eq!(build_config_digest(&a), build_config_digest(&b));
-    assert_eq!(build_config_digest(&a), build_config_digest(&d));
+    assert_eq!(build_config_digest(&d), build_config_digest(&nested));
 }
 
 #[test]

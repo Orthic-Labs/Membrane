@@ -187,7 +187,7 @@ fn read_bounded(path: &Path, expected_size: u64, limit: u64) -> Result<Vec<u8>, 
     if expected_size > limit {
         return Err(StableReadError::TooLarge { size: expected_size, limit });
     }
-    let mut file = File::open(path)?;
+    let file = File::open(path)?;
     let capacity = usize::try_from(expected_size).unwrap_or(usize::MAX).min(limit as usize);
     let mut bytes = Vec::with_capacity(capacity);
     file.take(limit.saturating_add(1)).read_to_end(&mut bytes)?;
