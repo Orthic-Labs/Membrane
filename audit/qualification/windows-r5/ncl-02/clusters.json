@@ -420,7 +420,17 @@
     "fileCount": 5,
     "nativeDestination": "engine/crates/membrane-transcript (adapters.rs, canonical.rs, classify.rs, error.rs, event.rs, evidence.rs, parser.rs, redact.rs, source.rs; 3472 total lines)",
     "nativeTests": null,
-    "gap": "Six live Adapt production modules still import continuity.transcript directly. Deleting driver.py/host_adapters.py/__init__.py would break adapt/src/adapt/insights.py, transcript_snapshots.py, taste_v2_pipeline.py at import time. No Rust-backed replacement is wired into Adapt's Python call sites (no FFI/subprocess bridge to membrane-transcript found from adapt/src/adapt/*.py). Needed before parity: (a) Adapt's Python callers switched to call the compiled membrane-transcript binary/FFI instead of importing continuity.transcript, (b) a passing test that exercises that switched call path, (c) then this file group becomes a caller-cutover candidate."
+    "callerCutover": {
+      "checkedAgainst": "adapt/src/adapt/*.py (live source; __pycache__/*.pyc excluded as stale)",
+      "liveImporters": [
+        "adapt/src/adapt/mine_snapshot_manifest.py:26 -- from continuity.transcript import parse_source_events",
+        "adapt/src/adapt/transcript_snapshots.py:20 -- from continuity.transcript import compact_text, parse_source_events"
+      ],
+      "importChain": "mine_snapshot_manifest.py:23 imports transcript_snapshots, so the two live importers form one call chain, not two independent ones",
+      "staleClaimCorrected": "adapt/src/adapt/insights.py and adapt/src/adapt/taste_v2_pipeline.py no longer exist as source files (only stale __pycache__/*.pyc remain, predating a rewrite onto engine/crates/membrane-adapt/src/insights/mod.rs and taste.rs); they are not live importers. The original 'six live Adapt production modules' claim is not supported by current source -- only 2 files (one import chain) remain",
+      "verdict": "still no FFI/subprocess bridge from these 2 files to membrane-transcript; caller cutover not done"
+    },
+    "gap": "Two live Adapt production modules (mine_snapshot_manifest.py, and transcript_snapshots.py which it imports) still import continuity.transcript directly; deleting driver.py/host_adapters.py/__init__.py would break them at import time. No Rust-backed replacement is wired into Adapt's Python call sites (no FFI/subprocess bridge to membrane-transcript found from adapt/src/adapt/*.py). Needed before parity: (a) Adapt's Python callers switched to call the compiled membrane-transcript binary/FFI instead of importing continuity.transcript, (b) a passing test that exercises that switched call path, (c) then this file group becomes a caller-cutover candidate."
   },
   {
     "owner": "public-runtime",
@@ -438,7 +448,22 @@
     "fileCount": 37,
     "nativeDestination": "engine/crates/membrane-mcp (discovery.rs, http_security.rs, jsonrpc.rs, prompts.rs, resources.rs, tools.rs, lib.rs; 1860 total lines) launched via mcp/membrane-mcp-native.mjs -> engine/target/.../membrane stdio-mcp",
     "nativeTests": null,
-    "gap": "interpreter-dispositions.json labels mcp/server.mjs currentPolicy as 'dev-only', but the grep evidence contradicts that: productization/doc-generation scripts and CI invocation-graph checks call into this module tree at build/qualification time, not just in dev. The native crate (1860 lines across 6 modules: discovery, http_security, jsonrpc, prompts, resources, tools) has no counterpart for decision-points, delivery-receipt/serialization, rollout, workspace-routing, feedback-loop, push-client/push-limits, adapters/provenance, authorization, or the diagnostics/verification-command libs — behavior in those legacy files has no plausible native destination file to check assertions against, so no 'exists' claim can be made for named native destination modules covering them. Needed before parity: name the specific native module per legacy file (most don't have one yet), port the missing behavior, cut over blueprint.mjs/repair.mjs/productization scripts/qualification scripts to the native path, then supply passing tests naming the ported assertions."
+    "callerCutover": {
+      "referencesEnumerated": [
+        {"ref": "mcp.json (repo root) and installed-product mcp.json (versions/0.1.24/mcp.json under C:/Users/adrds/AppData/Local/Orthic Labs/Membrane)", "callsLegacy": false, "servedByNative": true, "note": "mcpServers.membrane already points to command 'membrane' args ['stdio-mcp'] -- the native binary, not mcp/server.mjs"},
+        {"ref": ".claude-plugin/plugin.json, .codex-plugin/plugin.json, .antigravity-plugin/plugin.json (repo root and installed versions/0.1.24)", "callsLegacy": false, "servedByNative": "n/a", "note": "no mcp/server.mjs or mcp/host reference found in any plugin.json variant, installed or in-tree"},
+        {"ref": "package.json scripts.test, scripts.\"test:mcp\", scripts.\"test:fable\"", "callsLegacy": true, "servedByNative": false, "note": "all three run `node --test mcp/*.test.mjs mcp/host/*.test.mjs` -- the legacy test harness is still an active, non-optional dependency of the shipped test/CI gate"},
+        {"ref": ".github/workflows/ledger-completion.yml:41-42", "callsLegacy": true, "servedByNative": false, "note": "CI step runs `node --check mcp/server.mjs` and `node --check mcp/toolsets.mjs` -- a real build-time syntax-check dependency on the legacy file, contradicting interpreter-dispositions.json's 'dev-only' label"},
+        {"ref": "apps/membrane-hub/scripts/runtime-inventory.mjs", "callsLegacy": false, "servedByNative": "n/a", "note": "no mcp/server.mjs or mcp/host reference found in this script"},
+        {"ref": "apps/membrane-hub/tests/runtime-inventory.test.mjs:124", "callsLegacy": false, "servedByNative": true, "note": "asserts the runtime manifest contains NO entry whose source is .py or includes 'mcp/host' -- positive evidence the shipped inventory is native-only"},
+        {"ref": "mcp/capability-inventory.mjs (self) and its consumers .agent/graph/parse-cache/records.json, .audit/2026-09-02-wiring-full/blueprint/graph/parse-cache/records.json, migration/native-rust/executable-ledger.json", "callsLegacy": "indirect", "servedByNative": "n/a", "note": "these are Blueprint's own parsed-file graph/ledger records that list mcp/server.mjs as a parsed source, not a functional caller invoking its behavior at runtime"},
+        {"ref": "scripts/tools/productization/generate-product-truth.mjs:6, scripts/tools/productization/render-docs.mjs:8", "callsLegacy": false, "servedByNative": "n/a", "note": "only stale comments mention mcp/server.mjs / capability-matrix.v1.json; grep for actual import/require of mcp/server.mjs in these files found none -- the doc-generation claim in the prior gap text is not supported by current source, only by comment text"},
+        {"ref": "scripts/qualification/cases/psh-windows.mjs:565", "callsLegacy": false, "servedByNative": "n/a", "note": "treats legacy mcp/host/push-tool-egress.mjs evidence as already void (PSH-I027, REC-02); it discounts the legacy path rather than calling it"},
+        {"ref": "release SBOM: scripts/release/evidence/sbom.mjs and generated docs/evidence/releases/{92d72b80,ee9cdfd9}-windows-x86_64/sbom.json", "callsLegacy": false, "servedByNative": true, "note": "grep for mcp/server.mjs or mcp/host in both generated release SBOMs returns zero matches -- the shipped artifact inventory does not list the legacy tree"}
+      ],
+      "summary": "Shipping/runtime surfaces (mcp.json, plugin.json variants, release SBOM, runtime-inventory manifest) are cut over to the native binary. Two non-shipping harness surfaces are NOT cut over: package.json's test/test:mcp/test:fable scripts still execute the full legacy mcp/*.test.mjs + mcp/host/*.test.mjs suite, and CI (ledger-completion.yml) still syntax-checks mcp/server.mjs and mcp/toolsets.mjs. Caller cutover is therefore proven for the product's runtime path but not yet for its own test/CI harness."
+    },
+    "gap": "interpreter-dispositions.json labels mcp/server.mjs currentPolicy as 'dev-only'; the caller-cutover enumeration above shows the shipped runtime path IS cut over (mcp.json/plugin.json/SBOM/runtime-inventory all point to or confirm the native binary), but package.json's own test scripts and .github/workflows/ledger-completion.yml still actively invoke/check the legacy file, so the harness itself is not yet cut over. Independently, the native crate (1860 lines across 6 modules: discovery, http_security, jsonrpc, prompts, resources, tools) has no counterpart for decision-points, delivery-receipt/serialization, rollout, workspace-routing, feedback-loop, push-client/push-limits, adapters/provenance, authorization, or the diagnostics/verification-command libs — behavior in those legacy files has no plausible native destination file to check assertions against, so no 'exists' claim can be made for named native destination modules covering them. Needed before parity: name the specific native module per legacy file (most don't have one yet), port the missing behavior, cut package.json's test scripts and the CI workflow over to the native path, then supply passing tests naming the ported assertions."
   },
   {
     "owner": "public-runtime",
@@ -464,7 +489,35 @@
     "verdict": "insufficient",
     "fileCount": 42,
     "nativeDestination": "n/a — these are the test files for mcp-server-entrypoint-and-runtime and mcp-host-adapter-chain, not independent production code.",
-    "nativeTests": null,
-    "gap": "Same as parent modules: no native destination is cut over for what these test, so the tests cannot be deleted without leaving the still-live production files uncovered. This directly matches the packet's stated pattern ('cleanup owner deletes only after these exact runtime cases pass') — the runtime cases here still exercise legacy code, not native code."
+    "nativeTests": "engine/crates/membrane-mcp/tests/parity_mcp_blueprint_capability.rs (new)",
+    "portedTestNames": {
+      "coveredByExistingNativeTests": [
+        {"legacy": "mcp/server.test.mjs", "native": "engine/crates/membrane-mcp/tests/discovery_roundtrip.rs (discovery_matches_initialize_contract, negotiated_toolsets_advertise_only_registered_native_tools, tool_calls_are_typed_and_never_use_legacy_fallback)"},
+        {"legacy": "mcp/product-truth.test.mjs", "native": "engine/crates/membrane-mcp/tests/discovery_roundtrip.rs (tool-count and schema assertions on discovery_response())"},
+        {"legacy": "mcp/authorization.test.mjs, mcp/authorization.conformance.test.mjs, mcp/scope-grant-v1.test.mjs", "native": "engine/crates/membrane-runtime/tests/authorization_conformance.rs, native_authorization.rs"},
+        {"legacy": "mcp/install.test.mjs, mcp/installation-binding.test.mjs", "native": "engine/crates/membrane-runtime/tests/installation_manifest.rs (active_manifest_publishes_once_and_persists_for_subsequent_calls, handshake_rejects_wrong_installation, handshake_rejects_incompatible_schema, handshake_rejects_unexpected_data_root, handshake_accepts_matching_manifest, parsed_manifest_distinguishes_three_states)"},
+        {"legacy": "mcp/client.test.mjs", "native": "engine/crates/membrane-client/tests/explicit.rs, compat.rs, installed_lifecycle.rs, installed_transport.rs"},
+        {"legacy": "mcp/repository-catalog.test.mjs, mcp/project-registry.test.mjs", "native": "engine/crates/membrane-runtime/tests/pull_catalog.rs, ledger_owner_acceptance.rs"},
+        {"legacy": "mcp/proposal-store.test.mjs", "native": "engine/crates/membrane-adapt/tests/proposal_state_machine.rs, proposal_target_exclusion.rs (already parity-proven under the adapt-completion/proposal-lifecycle-and-conflict cluster)"},
+        {"legacy": "mcp/retrieval-contracts.test.mjs", "native": "engine/crates/membrane-runtime/tests/pull_catalog.rs, pull_freshness.rs, pull_residual_qualification.rs"},
+        {"legacy": "mcp/diagnostics-tools.test.mjs", "native": "engine/crates/membrane-runtime/tests/diagnostics_authorization.rs, live_diagnostics_audit_persistence.rs"}
+      ],
+      "coveredByNewParityTest": [
+        {"legacy": "mcp/blueprint-capability.test.mjs", "native": "engine/crates/membrane-mcp/tests/parity_mcp_blueprint_capability.rs (new: asserts membrane_blueprint discovery schema required/enum fields, search/recall query validation, expand node validation, and the typed blueprint_envelope_invalid error path via McpServer.dispatch)"}
+      ],
+      "noNativeImplementationFound_remainsToPort": [
+        "mcp/blueprint-readiness.test.mjs", "mcp/calibration-harness.test.mjs", "mcp/capability-inventory.test.mjs",
+        "mcp/deadline.test.mjs", "mcp/decision-points.test.mjs", "mcp/delivery-receipt.test.mjs",
+        "mcp/delivery-serialization.test.mjs", "mcp/e2e-benchmark.test.mjs", "mcp/feedback-loop.test.mjs",
+        "mcp/lifecycle.test.mjs", "mcp/push-limits.test.mjs", "mcp/rollout.test.mjs", "mcp/workspace-routing.test.mjs",
+        "mcp/adapters.test.mjs", "mcp/adapter-manifest.test.mjs", "mcp/adapters/provenance/index.test.mjs",
+        "mcp/server-durable.test.mjs", "mcp/working-context.test.mjs",
+        "mcp/host/host-boundary.test.mjs", "mcp/host/host-context-adapter.test.mjs", "mcp/host/host-delivery-ledger.test.mjs",
+        "mcp/host/host-delivery-receipt.test.mjs", "mcp/host/host-observable-event.test.mjs",
+        "mcp/host/host-observable-ingress-default-path.test.mjs", "mcp/host/host-observable-ingress.test.mjs",
+        "mcp/host/push-tool-egress.test.mjs"
+      ]
+    },
+    "gap": "Same as parent modules: no native destination is cut over for what most of these test, so most of the tests cannot be deleted without leaving the still-live production files uncovered. Re-mapped this pass: 9 legacy test files already have real native-test coverage under existing membrane-mcp/membrane-runtime/membrane-client/membrane-adapt tests (see portedTestNames.coveredByExistingNativeTests), 1 (blueprint-capability) now has a new native parity test (parity_mcp_blueprint_capability.rs), and 26 legacy test files (18 top-level mcp/*.test.mjs + 8 mcp/host/*.test.mjs) have no native implementation to test at all — these remain the true port backlog. This directly matches the packet's stated pattern ('cleanup owner deletes only after these exact runtime cases pass') — the runtime cases in the remains-to-port list still exercise legacy code, not native code."
   }
 ]
