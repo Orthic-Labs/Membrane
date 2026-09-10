@@ -1,7 +1,7 @@
 {
  "schemaVersion": 1,
  "artifact": "membrane.runtime-language-manifest",
- "generatedAt": "2026-09-10T17:54:41.548Z",
+ "generatedAt": "2026-09-10T18:36:54.656Z",
  "enforcementMode": "sealed",
  "policyDigest": "9d70956ed53ce0f1e6a71be5d4649f5ea86153f295402e5a81347e8f2817eeca",
  "totals": {
@@ -1852,7 +1852,7 @@
     "scripts/tools/productization/generate-support-matrix.test.mjs",
     "scripts/tools/productization/render-docs.mjs"
    ],
-   "content_digest": "168a14d6441841263dd5bf235f9b50061ab9d8592ea8aef2a8e80350313d7b62"
+   "content_digest": "dead870b0c27914dfaf96ba30d10d4b1709ba0472e9b8249941d0d400b594e1c"
   },
   {
    "id": "surface-extraction-tool-surface-extraction-tool",
