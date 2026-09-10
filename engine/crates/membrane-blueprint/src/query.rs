@@ -303,13 +303,16 @@ pub fn execute_query(generation: &GraphGeneration, request: &BlueprintRequest, c
                 let anchors = if candidate_items.is_empty() {
                     OrientationSectionV1::empty_evaluated()
                 } else {
-                    // Total match count beyond what `resolve` returns is not
-                    // tracked here; state that explicitly rather than
-                    // guessing a total.
-                    OrientationSectionV1::evaluated(candidate_items.clone(), None, false)
+                    // `resolve` does not truncate its candidate list (no
+                    // separate ceiling is applied beyond what it returns), so
+                    // the returned items ARE the total known set: state that
+                    // count explicitly (BM03) rather than omitting it.
+                    let total = candidate_items.len() as u64;
+                    OrientationSectionV1::evaluated(candidate_items.clone(), Some(total), false)
                 };
                 let alternatives = if ambiguous {
-                    OrientationSectionV1::evaluated(candidate_items, None, false)
+                    let total = candidate_items.len() as u64;
+                    OrientationSectionV1::evaluated(candidate_items, Some(total), false)
                 } else {
                     OrientationSectionV1::empty_evaluated()
                 };
@@ -329,9 +332,9 @@ pub fn execute_query(generation: &GraphGeneration, request: &BlueprintRequest, c
                     let class = crate::model::ImpactFrontierClass::classify(edge.target.as_deref(), tier);
                     json!({"edgeId": edge.id, "class": class.as_str(), "nodeId": edge.source})
                 }).collect();
-                let callers = if callers_items.is_empty() { OrientationSectionV1::empty_evaluated() } else { OrientationSectionV1::evaluated(callers_items, None, false) };
-                let callees = if callees_items.is_empty() { OrientationSectionV1::empty_evaluated() } else { OrientationSectionV1::evaluated(callees_items, None, false) };
-                let impact = if impact_items.is_empty() { OrientationSectionV1::empty_evaluated() } else { OrientationSectionV1::evaluated(impact_items, None, false) };
+                let callers = if callers_items.is_empty() { OrientationSectionV1::empty_evaluated() } else { let total = callers_items.len() as u64; OrientationSectionV1::evaluated(callers_items, Some(total), false) };
+                let callees = if callees_items.is_empty() { OrientationSectionV1::empty_evaluated() } else { let total = callees_items.len() as u64; OrientationSectionV1::evaluated(callees_items, Some(total), false) };
+                let impact = if impact_items.is_empty() { OrientationSectionV1::empty_evaluated() } else { let total = impact_items.len() as u64; OrientationSectionV1::evaluated(impact_items, Some(total), false) };
                 let source_signature = nodes.get(id.as_str())
                     .map(|node| OrientationSectionV1::evaluated(vec![node_value(node)], Some(1), false))
                     .unwrap_or_else(|| OrientationSectionV1::unavailable("anchor_node_missing"));

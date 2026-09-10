@@ -74,6 +74,33 @@ test("BM03/BM04/BM05 report insufficient (never a fabricated pass) if installed 
 });
 
 // ---------------------------------------------------------------------------
+// BM05 classifyRefusal: pure classifier for the fail-closed generation_mismatch
+// refusal, isolated from process spawning. The installed CLI proves BM05 by
+// refusing a mismatched generation with a typed error and non-zero exit --
+// this must be recognized as the PASS condition, while a non-typed failure
+// (wrong exit code, marker-less message, or an unexpected success) must still
+// be rejected (negative control).
+// ---------------------------------------------------------------------------
+
+test("BM05 classifyRefusal: typed generation_mismatch refusal on non-zero exit is recognized", () => {
+  const result = cases.classifyRefusal(1, "", "membrane: generation_mismatch: request generation does not match served generation", "generation_mismatch");
+  assert.equal(result.failed, true);
+  assert.equal(result.typed, true);
+});
+
+test("BM05 classifyRefusal negative control: non-zero exit WITHOUT the typed marker is not recognized as the proven outcome", () => {
+  const result = cases.classifyRefusal(1, "", "membrane: internal_error: something else broke", "generation_mismatch");
+  assert.equal(result.failed, true);
+  assert.equal(result.typed, false, "a non-typed failure must never be classified as the fail-closed generation_mismatch proof");
+});
+
+test("BM05 classifyRefusal negative control: a zero exit code (unexpected success) is never classified as failed/typed", () => {
+  const result = cases.classifyRefusal(0, "{\"state\":\"ok\"}", "", "generation_mismatch");
+  assert.equal(result.failed, false);
+  assert.equal(result.typed, false);
+});
+
+// ---------------------------------------------------------------------------
 // BPT-020 negative control: real, executable selective-invalidation fixture
 // (r5 requirement). evaluateSelectiveInvalidation is exercised first against
 // the REAL legacy blueprint/src/graph/dependency-dag.mjs module (proving the

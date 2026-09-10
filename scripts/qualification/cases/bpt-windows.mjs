@@ -52,6 +52,37 @@ function nativeCall(exe, args, cwd) {
   return JSON.parse(stdout);
 }
 
+// Pure classifier for a fail-closed refusal outcome, isolated from process
+// spawning so it can be unit-tested directly (see bpt-windows.test.mjs).
+// A typed refusal requires BOTH a non-zero exit AND the expected typed
+// marker string present in the combined stdout/stderr -- this is the
+// negative control: a crash, a wrong exit code, or a marker-less failure
+// is never classified as the proven fail-closed outcome.
+export function classifyRefusal(exitCode, stdout, stderr, marker) {
+  const combined = `${stdout || ""}\n${stderr || ""}`;
+  const failed = typeof exitCode === "number" && exitCode !== 0;
+  const typed = failed && combined.includes(marker);
+  return { failed, typed, combined };
+}
+
+// Runs a CLI invocation that is EXPECTED to be refused with a typed fail-closed
+// error (e.g. generation_mismatch). Unlike nativeCall, a non-zero exit here is
+// the proof of correct behavior, not an unexpected failure -- but only when the
+// refusal carries the expected typed marker; any other outcome (success, or a
+// non-typed failure) is surfaced for the caller to reject.
+function nativeCallExpectRefusal(exe, args, cwd, marker) {
+  try {
+    const stdout = execFileSync(exe, ["cli", "blueprint", ...args], { cwd, encoding: "utf8", windowsHide: true });
+    return { refused: false, typed: false, exitCode: 0, combined: stdout };
+  } catch (error) {
+    const exitCode = typeof error.status === "number" ? error.status : -1;
+    const stdout = error.stdout ? String(error.stdout) : "";
+    const stderr = error.stderr ? String(error.stderr) : "";
+    const { failed, typed, combined } = classifyRefusal(exitCode, stdout, stderr, marker);
+    return { refused: failed, typed, exitCode, combined };
+  }
+}
+
 function nativeFixture(files, probe) {
   const root = mkdtempSync(join(tmpdir(), "membrane-bpt-"));
   try {
@@ -704,10 +735,16 @@ export function BM05(context) {
     const refresh = nativeCall(exe, ["refresh", "--repo-root", root], root);
     const current = nativeCall(exe, ["status", "--repo-root", root, "--generation", refresh.generationId], root);
     if (current.generationId !== refresh.generationId || current.state !== "fresh") throw new Error("generation-pinned status did not remain fresh");
-    const mismatch = nativeCall(exe, ["search", "--repo-root", root, "--query", "phase2", "--generation", "missing-generation"], root);
-    const mismatchText = JSON.stringify(mismatch);
-    if (mismatch.state !== "suppressed" || !/stale_generation|generation/i.test(mismatchText)) throw new Error("mismatched generation did not return typed suppressed response");
-    return { generationId: refresh.generationId, freshState: current.state, generationMismatchRejected: true };
+    // The installed CLI fails CLOSED on a mismatched generation: it refuses with
+    // a typed `generation_mismatch` error and a non-zero exit, rather than
+    // returning a JSON "suppressed" body. That refusal, captured here, IS the
+    // proof this case is meant to establish -- a non-typed failure (wrong exit
+    // code, crash, or a marker-less message) or an unexpected success both
+    // still fail this case (negative control).
+    const mismatch = nativeCallExpectRefusal(exe, ["search", "--repo-root", root, "--query", "phase2", "--generation", "missing-generation"], root, "generation_mismatch");
+    if (!mismatch.refused) throw new Error(`mismatched generation did not fail closed: command exited 0 with output: ${mismatch.combined.slice(0, 300)}`);
+    if (!mismatch.typed) throw new Error(`mismatched generation failed (exit ${mismatch.exitCode}) but not with the typed generation_mismatch refusal: ${mismatch.combined.slice(0, 300)}`);
+    return { generationId: refresh.generationId, freshState: current.state, generationMismatchRejected: true, mismatchExitCode: mismatch.exitCode };
   }));
 }
 
