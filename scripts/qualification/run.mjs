@@ -434,7 +434,11 @@ export async function runRegistryQualification(options = {}) {
     terminalIds: terminal,
     results,
     evidenceKindCounts,
-    status: failed.length === 0 && functionalFailed.length === 0 ? "passed" : "failed",
+    // Registry qualification records whether required cases passed their
+    // declared checks. Runtime evidence is a separate functional axis below:
+    // source/component/integration rows may qualify structurally without
+    // being promoted to unsigned functional closure.
+    status: failed.length === 0 ? "passed" : "failed",
     functionalStatus: functionalFailed.length === 0 ? "passed" : "failed",
     unsignedFunctional: functionalFailed.length === 0,
     signedReleasePass: false,

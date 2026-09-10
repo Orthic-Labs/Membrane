@@ -227,6 +227,7 @@ export function BM10() { return actual("BM10", (path) => {
     { id: "timeout", task: "exact_probe", request: { maxWaitMs: 1 } },
     { id: "unresolved_dynamic", task: "exact_probe", request: { anchors: ["dynamic://bm10/unresolved"] } },
     { id: "rejected", task: "same_name", request: {} },
+    { id: "not_discovered", task: "exact_probe", request: { requirementFacts: [{ dimension: "CurrentState", required: true, ruleId: "bm10_missing_target", exactTarget: "does_not_exist.rs" }] } },
   ];
   const outputs = [path.packet];
   for (const control of controls) {

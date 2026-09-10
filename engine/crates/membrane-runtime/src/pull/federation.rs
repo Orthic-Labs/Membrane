@@ -1319,6 +1319,21 @@ pub fn native_response_to_ccs(
                 .filter_map(|output| output.get("diagnostics").cloned())
                 .collect::<Vec<_>>()
         });
+    let provider_diagnostics = provider_diagnostics
+        .into_iter()
+        .map(|mut value| {
+            // Native protocol keeps diagnostic attributes content-free strings;
+            // Pull's public projection exposes typed fields.
+            if let Some(attributes) = value.get_mut("attributes").and_then(Value::as_object_mut) {
+                if let Some(cancellation) = attributes.get("cancellation").and_then(Value::as_str) {
+                    if let Ok(parsed) = cancellation.parse::<bool>() {
+                        attributes.insert("cancellation".to_owned(), Value::Bool(parsed));
+                    }
+                }
+            }
+            value
+        })
+        .collect::<Vec<_>>();
     let source_complete = source_response
         .get("complete")
         .and_then(Value::as_bool)
@@ -1580,7 +1595,24 @@ pub fn envelope_from_ccs(stdout: &str, input: EnvelopeInput) -> Result<Value, St
         payload["admissionComparison"] = value;
     }
     if let Some(value) = contradiction_pairs_projection {
-        payload["contradictionPairs"] = value;
+        // Contradiction records are only atomic when both sides survive into
+        // final packet blocks.  Never publish pair IDs for budget-dropped
+        // candidates.
+        let block_ids = payload
+            .get("packet")
+            .and_then(|packet| packet.get("blocks"))
+            .and_then(Value::as_array)
+            .map(|blocks| blocks.iter().filter_map(|block| block.get("id").and_then(Value::as_str)).collect::<std::collections::BTreeSet<_>>())
+            .unwrap_or_default();
+        let filtered = match value {
+            Value::Array(pairs) => Value::Array(pairs.into_iter().filter(|pair| {
+                let left = pair.get("leftId").and_then(Value::as_str);
+                let right = pair.get("rightId").and_then(Value::as_str);
+                left.is_some_and(|left| block_ids.contains(left)) && right.is_some_and(|right| block_ids.contains(right))
+            }).collect()),
+            value => value,
+        };
+        payload["contradictionPairs"] = filtered;
     }
     if let Some(value) = ambiguity_disposition_projection {
         payload["ambiguityDisposition"] = value;

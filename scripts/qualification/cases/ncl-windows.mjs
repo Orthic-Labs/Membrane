@@ -350,14 +350,31 @@ export function NCL_03(context) {
   };
   scan(rootPath);
   const payloadOk = payloadInterpreters.length === 0;
-  const passed = probe.ok && payloadOk;
+  // The registry acceptance requires an issued native-only seal in addition to
+  // process/payload observations.  Do not let a clean smoke probe masquerade as
+  // a sealed release when the evidence chain is absent or malformed.
+  const sealPath = (context && context.nativeOnlySealPath) ||
+    process.env.MEMBRANE_NATIVE_ONLY_SEAL ||
+    join(root, "audit", "qualification", "windows-r5", "native-only-seal.json");
+  let seal = null;
+  let sealError = null;
+  if (existsSync(sealPath)) {
+    try { seal = JSON.parse(readFileSync(sealPath, "utf8")); }
+    catch (error) { sealError = `cannot read seal: ${error.message}`; }
+  } else {
+    sealError = `missing native-only seal: ${sealPath}`;
+  }
+  const sealOk = seal?.schema === "membrane.native-only-seal.v1" &&
+    seal?.status === "sealed" && seal?.target === "windows-x86_64" &&
+    typeof seal?.artifact_sha256 === "string" && /^[a-f0-9]{64}$/u.test(seal.artifact_sha256);
+  const passed = probe.ok && payloadOk && sealOk;
   return {
     status: passed ? "passed" : "insufficient",
     evidenceKind: "installed",
-    detail: { root, installedRoot: rootPath, executables, payloadInterpreters, probe },
+    detail: { root, installedRoot: rootPath, executables, payloadInterpreters, probe, sealPath, sealOk, sealError, seal },
     reason: passed
-      ? "NCL-03: installed native executables ran with restricted PATH, live process snapshots contained no interpreter children, and payload contained no interpreter executable"
-      : `NCL-03: installed native probe incomplete: ${probe.reason || (probe.forbidden?.length ? "interpreter child observed" : "process probe failed")}${payloadOk ? "" : `; bundled interpreter executable(s): ${payloadInterpreters.join(", ")}`}`,
+      ? "NCL-03: installed native executables ran with restricted PATH, live process snapshots contained no interpreter children, payload contained no interpreter executable, and native-only seal is present"
+      : `NCL-03: installed native probe incomplete: ${probe.reason || (probe.forbidden?.length ? "interpreter child observed" : "process probe failed")}${payloadOk ? "" : `; bundled interpreter executable(s): ${payloadInterpreters.join(", ")}`}${sealOk ? "" : `; ${sealError || "native-only seal is invalid"}`}`,
   };
 }
 

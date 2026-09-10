@@ -424,7 +424,7 @@ test('registry runner keeps source findings visible without treating them as fun
     });
     assert.equal(summary.results[0].status, 'passed');
     assert.equal(summary.results[0].functionalStatus, 'structural');
-    assert.equal(summary.status, 'failed');
+    assert.equal(summary.status, 'passed');
     assert.equal(summary.functionalStatus, 'failed');
     assert.equal(summary.unsignedFunctional, false);
   } finally {

@@ -73,6 +73,19 @@ test("BM03/BM04/BM05 report insufficient (never a fabricated pass) if installed 
   assert.match(outcome.reason, /installed native probe|MEMBRANE_QUALIFICATION_INSTALLED_ROOT|membrane\.exe/i);
 });
 
+test("BM03 orientation section collector excludes freshness metadata", () => {
+  const sections = cases.orientationSections({
+    schemaVersion: 1,
+    generationId: "gen-1",
+    state: "resolved",
+    freshness: "fresh",
+    freshnessReceipt: { schema: "BlueprintFreshnessReceiptV1", freshness: "fresh" },
+    omissions: [],
+    anchors: { disposition: "evaluated", returnedCount: 1, totalKnownCount: 1, truncated: false, items: [] },
+  });
+  assert.deepEqual(sections.map(([name]) => name), ["anchors"]);
+});
+
 // ---------------------------------------------------------------------------
 // BM05 classifyRefusal: pure classifier for the fail-closed generation_mismatch
 // refusal, isolated from process spawning. The installed CLI proves BM05 by

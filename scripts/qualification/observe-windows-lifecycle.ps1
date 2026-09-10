@@ -268,6 +268,7 @@ $daemon = [ordered]@{
 }
 
 $devCheckoutRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
+$missingRoot = Join-Path $env:TEMP "membrane-qualification-missing-root-$([guid]::NewGuid().ToString('N'))"
 $refreshProbeRoot = Join-Path $env:TEMP "membrane-qualification-refresh-root-$([guid]::NewGuid().ToString('N'))"
 New-Item -ItemType Directory -Path $refreshProbeRoot -Force | Out-Null
 Set-Content -LiteralPath (Join-Path $refreshProbeRoot 'main.rs') -Value 'fn main() {}' -Encoding utf8
@@ -318,7 +319,12 @@ $scenarioSpecs = @(
   @{ lane = 'LC-04'; id = 'hub-off-explicit'; exe = $membrane; args = @('cli', 'doctor', '--json'); validate = { param($a) $a.exitCode -eq 0 -and $a.stdout.TrimStart().StartsWith('{') } }
   @{ lane = 'LC-04'; id = 'hub-background'; reason = "requires 'membrane activate' without --dry-run against the live resident daemon shared with concurrent qualification lanes; withheld for shared-install safety" }
   @{ lane = 'LC-04'; id = 'coderight-adopt'; reason = "requires a live CodeRight daemon this observation does not control" }
-  @{ lane = 'LC-04'; id = 'provision-missing'; reason = "safe installed probe cannot provision a missing shared install root; canonical installer path is outside this observer's non-mutating scope" }
+  # Dry-run status validates missing-root provisioning refusal without touching
+  # shared install state; the canonical installer remains out of scope.
+  @{ lane = 'LC-04'; id = 'provision-missing'; exe = $membrane; args = @('status', '--dry-run', '--install-root', $missingRoot); validate = {
+      param($a)
+      $a.exitCode -ne 0 -and (($a.stdout + $a.stderr) -match 'stable installed path|installed root|activation')
+    } }
   @{ lane = 'LC-04'; id = 'reject-corrupt'; reason = "no installed command accepts a corrupt install-root artifact without mutating the shared installed root to test rejection safely" }
   @{ lane = 'LC-04'; id = 'reject-denied'; reason = "permission-denial rejection cannot be safely triggered without altering ACLs on the shared installed root" }
   @{ lane = 'LC-04'; id = 'reject-unverifiable'; reason = "signature-verification rejection is only exercised by 'membrane install'/'activate' transactional staging, not independently probeable read-only" }
@@ -338,16 +344,16 @@ $scenarioSpecs = @(
   # appears doubled in stdout (...\\Orthic Labs\\Membrane\\current). A single-backslash
   # pattern never matches JSON-escaped stdout and was the prior validator's bug.
   @{ lane = 'LC-06'; id = 'canonical-roots'; exe = $membrane; args = @('status', '--dry-run'); validate = { param($a) $a.exitCode -eq 0 -and $a.stdout -match [regex]::Escape('Orthic Labs') -and $a.stdout -match [regex]::Escape('\\Membrane\\current') } }
-  # A resident-free installed runtime returns HTTP 503 after emitting its
-  # structured health payload. That is the typed unavailable outcome this
-  # probe is intended to observe; accept only that shape, never arbitrary
-  # non-zero output.
+  # A resident-free installed runtime reports typed health_unavailable on
+  # stderr before any HTTP response exists. A resident returning HTTP 503 may
+  # emit a structured body; accept either typed unavailable shape only.
   @{ lane = 'LC-06'; id = 'health-probe'; exe = $membrane; args = @('cli', 'health'); validate = {
       param($a)
-      if ($a.exitCode -eq 0 -or [string]::IsNullOrWhiteSpace($a.stdout)) { return $false }
+      if ($a.exitCode -eq 0 -or ([string]::IsNullOrWhiteSpace($a.stdout) -and [string]::IsNullOrWhiteSpace($a.stderr))) { return $false }
+      if ($a.stderr -match 'health_unavailable') { return $true }
       try {
         $value = $a.stdout | ConvertFrom-Json
-        return $value.ok -eq $true -and $value.runtimeOrigin -eq 'installed' -and
+        return $value.runtimeOrigin -eq 'installed' -and
           -not [string]::IsNullOrWhiteSpace([string]$value.releaseGeneration) -and
           (($a.stderr) -match 'HTTP 503|health unavailable|health probe')
       } catch { return $false }

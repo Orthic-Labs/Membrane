@@ -538,7 +538,9 @@ impl FederationEngine {
                 .map(|capability| capability.dimensions.as_slice())
                 .unwrap_or_default();
             for fact in normalized.requirements.facts.iter()
-                .filter(|fact| dimensions.contains(&fact.dimension)) {
+                .filter(|fact| dimensions.contains(&fact.dimension))
+                .filter(|fact| fact.exact_target.as_ref().map_or(true, |target| candidate.source_ref == *target))
+                .filter(|fact| fact.source_hash.as_ref().map_or(true, |hash| candidate.source_hash == *hash)) {
                 journeys.push(CandidateJourneyV1 {
                     evidence_id: candidate.id.clone(),
                     requirement_binding_digest: fact.binding_digest.clone(),

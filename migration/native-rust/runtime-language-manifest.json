@@ -1,7 +1,7 @@
 {
  "schemaVersion": 1,
  "artifact": "membrane.runtime-language-manifest",
- "generatedAt": "2026-09-10T14:42:34.690Z",
+ "generatedAt": "2026-09-10T15:18:31.062Z",
  "enforcementMode": "sealed",
  "policyDigest": "9d70956ed53ce0f1e6a71be5d4649f5ea86153f295402e5a81347e8f2817eeca",
  "totals": {
@@ -972,7 +972,7 @@
     "engine/crates/membrane-federation/tests/requirements_contract.rs",
     "engine/crates/membrane-federation/tests/shadow_diff.rs"
    ],
-   "content_digest": "30be1685f2e7349413c7caeb435a5f44f772e319feea2f08f44f7c3b093246a7"
+   "content_digest": "7a83b7673e6edb63966c4cad1c86d3be7981b0b53f7f33f9b8d29597c0d0ec58"
   },
   {
    "id": "engine-production-crates-engine/crates/membrane-grammars-vendored",
@@ -1332,7 +1332,7 @@
     "engine/crates/membrane-runtime/tests/session_projection.rs",
     "engine/crates/membrane-runtime/tests/windows_acl_isolation.rs"
    ],
-   "content_digest": "97b272878f4d3e5a25c7578e97cf7a34eafc5e743fd27e0c2e0111efe419a88f"
+   "content_digest": "9d7c56f99182174f9fe0251c51f86e14965e3fd5f63521c6c777975a96098012"
   },
   {
    "id": "engine-production-crates-engine/crates/membrane-transcript",
@@ -1852,7 +1852,7 @@
     "scripts/tools/productization/generate-support-matrix.test.mjs",
     "scripts/tools/productization/render-docs.mjs"
    ],
-   "content_digest": "037132d00e0f76ba77b35e4019e0269fee68ca2abcd42e720e0f7a0c18d3e60f"
+   "content_digest": "9a493f1c2e1903bf818e09d1c55a46662e810bbfe58aa0be885d01b263d1fec5"
   },
   {
    "id": "surface-extraction-tool-surface-extraction-tool",

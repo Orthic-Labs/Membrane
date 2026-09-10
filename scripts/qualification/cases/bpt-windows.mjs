@@ -684,13 +684,19 @@ function nativeSourceCheck(id, requirement, relPath, markers, note, context) {
   };
 }
 
+// Architecture response also carries generation metadata (`freshnessReceipt`),
+// which is not an orientation section and has its own schema.
+export function orientationSections(result) {
+  return Object.entries(result).filter(([key, value]) => !["schemaVersion", "generationId", "state", "task", "resolution", "freshness", "freshnessReceipt", "omissions"].includes(key) && value && typeof value === "object");
+}
+
 export function BM03(context) {
   return installedResult("BM03", () => nativeFixture({
     "src/main.rs": "fn helper() {}\nfn main() { helper(); }\n",
   }, (exe, root) => {
     const refresh = nativeCall(exe, ["refresh", "--repo-root", root], root);
     const result = nativeCall(exe, ["architecture", "--repo-root", root, "--task", "main"], root);
-    const sections = Object.entries(result).filter(([key, value]) => !["schemaVersion", "generationId", "state", "task", "resolution", "freshness", "omissions"].includes(key) && value && typeof value === "object");
+    const sections = orientationSections(result);
     if (!refresh.generationId || !result.generationId || result.generationId !== refresh.generationId) throw new Error("architecture generation is not bound to refresh");
     if (sections.length < 8) throw new Error(`architecture returned only ${sections.length} orientation sections`);
     for (const [name, section] of sections) {
