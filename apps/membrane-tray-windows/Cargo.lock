@@ -4452,8 +4452,11 @@ version = "0.1.0"
 dependencies = [
  "getrandom 0.4.3",
  "hex",
+ "hmac",
  "ignore",
+ "membrane-grammars-vendored",
  "regex",
+ "ring",
  "rusqlite",
  "serde",
  "serde_json",
@@ -4467,6 +4470,7 @@ dependencies = [
  "tree-sitter-css",
  "tree-sitter-dart",
  "tree-sitter-elixir",
+ "tree-sitter-elm",
  "tree-sitter-go",
  "tree-sitter-html",
  "tree-sitter-java",
@@ -4529,6 +4533,14 @@ dependencies = [
  "thiserror 2.0.20",
  "tokio",
  "tokio-util",
+]
+
+[[package]]
+name = "membrane-grammars-vendored"
+version = "0.1.0"
+dependencies = [
+ "cc",
+ "tree-sitter-language",
 ]
 
 [[package]]
@@ -7714,6 +7726,16 @@ name = "tree-sitter-elixir"
 version = "0.3.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "66dd064a762ed95bfc29857fa3cb7403bb1e5cb88112de0f6341b7e47284ba40"
+dependencies = [
+ "cc",
+ "tree-sitter-language",
+]
+
+[[package]]
+name = "tree-sitter-elm"
+version = "5.9.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "807f387a83c88d894b978edeff024f26a2935505de83237f57c77f9aa2de4ee7"
 dependencies = [
  "cc",
  "tree-sitter-language",
