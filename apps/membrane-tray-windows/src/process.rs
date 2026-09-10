@@ -1,8 +1,8 @@
 //! Windows daemon launch primitive.
 //!
-//! The process is placed in its Job Object by `PROC_THREAD_ATTRIBUTE_JOB_LIST`
-//! during `CreateProcessW`. There is intentionally no spawn-then-assign gap:
-//! closing the tray's job handle kills every daemon descendant.
+//! Contained processes are created suspended, assigned to their kill-on-close
+//! Job Object, then resumed. No daemon code runs before assignment; closing the
+//! tray's job handle kills every contained daemon descendant.
 
 use std::path::Path;
 
@@ -33,17 +33,18 @@ mod windows_impl {
         Storage::FileSystem::{ReadFile, WriteFile},
         System::{
             JobObjects::{
-                CreateJobObjectW, JobObjectExtendedLimitInformation, SetInformationJobObject,
-                JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+                AssignProcessToJobObject, CreateJobObjectW, JobObjectExtendedLimitInformation,
+                SetInformationJobObject, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
+                JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
             },
             Pipes::CreatePipe,
             Threading::{
                 CreateProcessW, DeleteProcThreadAttributeList, GetCurrentProcess,
                 GetExitCodeProcess, GetProcessTimes, InitializeProcThreadAttributeList,
-                UpdateProcThreadAttribute, WaitForSingleObject, CREATE_NO_WINDOW,
+                ResumeThread, TerminateProcess, UpdateProcThreadAttribute, WaitForSingleObject,
+                CREATE_NO_WINDOW, CREATE_SUSPENDED,
                 EXTENDED_STARTUPINFO_PRESENT, INFINITE, PROCESS_INFORMATION,
-                PROC_THREAD_ATTRIBUTE_HANDLE_LIST, PROC_THREAD_ATTRIBUTE_JOB_LIST,
-                STARTF_USESTDHANDLES, STARTUPINFOEXW,
+                PROC_THREAD_ATTRIBUTE_HANDLE_LIST, STARTF_USESTDHANDLES, STARTUPINFOEXW,
             },
         },
     };
@@ -51,6 +52,7 @@ mod windows_impl {
     const CONTROL_WRITE_TIMEOUT: Duration = Duration::from_millis(500);
     const ERROR_ACCESS_DENIED: i32 = 5;
     const CREATE_BREAKAWAY_FROM_JOB: u32 = 0x0100_0000;
+    const PROCESS_ABORT_WAIT_MS: u32 = 5_000;
 
     /// Events emitted by process readers. Event contains only decoded stdout
     /// protocol frames; stderr is consumed separately and never enters channel.
@@ -63,9 +65,9 @@ mod windows_impl {
 
     /// How a launched daemon relates to this tray's containment job.
     ///
-    /// `Contained` is the ordinary path: the daemon is placed in the tray's
-    /// kill-on-close job at spawn time via `PROC_THREAD_ATTRIBUTE_JOB_LIST`,
-    /// so closing the tray's job handle kills every daemon descendant.
+    /// `Contained` is the ordinary path: the daemon is created suspended,
+    /// assigned to the tray's kill-on-close job, then resumed, so no daemon
+    /// code runs outside containment.
     /// `Shared` is selected by the supervisor *before* spawn — never
     /// retrofitted onto an already-acquired process — when a peer holder
     /// already owns the daemon's lifetime; the child explicitly escapes (does
@@ -147,6 +149,45 @@ mod windows_impl {
         if !handle.is_null() {
             unsafe { CloseHandle(handle) };
         }
+    }
+
+    /// Terminate and reap a process created for a launch that failed before it
+    /// could be returned. The process handle is still owned by this function's
+    /// caller, so this closes both process/thread handles exactly once.
+    fn abort_created_process(process_info: &mut PROCESS_INFORMATION) {
+        if !process_info.hProcess.is_null() {
+            unsafe {
+                let _ = TerminateProcess(process_info.hProcess, 1);
+                let _ = WaitForSingleObject(process_info.hProcess, PROCESS_ABORT_WAIT_MS);
+            }
+            close_if_valid(process_info.hProcess);
+            process_info.hProcess = null_mut();
+        }
+        close_if_valid(process_info.hThread);
+        process_info.hThread = null_mut();
+    }
+
+    fn creation_flags(mode: LaunchMode) -> u32 {
+        let mut flags = EXTENDED_STARTUPINFO_PRESENT | CREATE_NO_WINDOW;
+        match mode {
+            LaunchMode::Contained => flags |= CREATE_SUSPENDED,
+            LaunchMode::Shared => flags |= CREATE_BREAKAWAY_FROM_JOB,
+        }
+        flags
+    }
+
+    /// Assign a suspended contained child before allowing it to execute.
+    fn assign_and_resume_contained(
+        job: HANDLE,
+        process_info: &mut PROCESS_INFORMATION,
+    ) -> std::io::Result<()> {
+        if unsafe { AssignProcessToJobObject(job, process_info.hProcess) } == 0 {
+            return Err(failed());
+        }
+        if unsafe { ResumeThread(process_info.hThread) } == u32::MAX {
+            return Err(failed());
+        }
+        Ok(())
     }
 
     fn make_security_attributes() -> SECURITY_ATTRIBUTES {
@@ -260,13 +301,12 @@ mod windows_impl {
                 }
             }
 
-            // `Contained` places the daemon in the tray's kill-on-close job
-            // at spawn time (below), before any handle escapes to a caller —
-            // there is no later retrofit step. `Shared` never creates or
-            // assigns a job at all: the child must explicitly escape any job
-            // this tray process is itself part of via `CREATE_BREAKAWAY_FROM_JOB`
-            // on `CreateProcessW`, so `job` stays null and the daemon is never
-            // put under kill-on-close containment it must outlive.
+            // `Contained` creates the daemon suspended, then assigns it to the
+            // tray's kill-on-close job before resuming it. `Shared` never creates
+            // or assigns a job: the child must explicitly escape any job this
+            // tray process is itself part of via `CREATE_BREAKAWAY_FROM_JOB` on
+            // `CreateProcessW`, so `job` stays null and the daemon is never put
+            // under kill-on-close containment it must outlive.
             let attribute_count: u32 = match mode {
                 LaunchMode::Contained => {
                     job = CreateJobObjectW(null(), null());
@@ -284,7 +324,7 @@ mod windows_impl {
                     {
                         fail!(failed());
                     }
-                    2
+                    1
                 }
                 LaunchMode::Shared => 1,
             };
@@ -304,21 +344,6 @@ mod windows_impl {
             }
             attributes_initialized = true;
 
-            if matches!(mode, LaunchMode::Contained) {
-                let job_list = [job];
-                if UpdateProcThreadAttribute(
-                    attribute_list,
-                    0,
-                    PROC_THREAD_ATTRIBUTE_JOB_LIST as usize,
-                    job_list.as_ptr() as *const _,
-                    size_of::<HANDLE>(),
-                    null_mut(),
-                    null(),
-                ) == 0
-                {
-                    fail!(failed());
-                }
-            }
             let inherited = [child_stdin, child_stdout, child_stderr];
             if UpdateProcThreadAttribute(
                 attribute_list,
@@ -346,15 +371,7 @@ mod windows_impl {
             startup.StartupInfo.hStdError = child_stderr;
             startup.lpAttributeList = attribute_list;
 
-            let mut creation_flags = EXTENDED_STARTUPINFO_PRESENT | CREATE_NO_WINDOW;
-            if matches!(mode, LaunchMode::Shared) {
-                // Explicitly escape any job this tray process is itself part
-                // of. Without this flag a `Shared` launch could silently
-                // inherit containment from an ambient parent job even though
-                // no job is assigned here — the escape must be requested, not
-                // assumed.
-                creation_flags |= CREATE_BREAKAWAY_FROM_JOB;
-            }
+            let process_flags = creation_flags(mode);
 
             let created = CreateProcessW(
                 application.as_ptr(),
@@ -362,7 +379,7 @@ mod windows_impl {
                 null(),
                 null(),
                 1,
-                creation_flags,
+                process_flags,
                 null(),
                 null(),
                 &startup.StartupInfo,
@@ -395,6 +412,17 @@ mod windows_impl {
                     return Err(LaunchError::JobEscapeDenied);
                 }
                 return Err(LaunchError::Io(error));
+            }
+
+            if matches!(mode, LaunchMode::Contained) {
+                if let Err(error) = assign_and_resume_contained(job, &mut process_info) {
+                    abort_created_process(&mut process_info);
+                    for handle in [stdin_write, stdout_read, stderr_read] {
+                        close_if_valid(handle);
+                    }
+                    close_if_valid(job);
+                    return Err(LaunchError::Io(error));
+                }
             }
 
             close_if_valid(process_info.hThread);
@@ -638,6 +666,20 @@ mod windows_impl {
             self.stdout_read = null_mut();
             self.stderr_read = null_mut();
             self.job = null_mut();
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn contained_launch_is_suspended_until_job_assignment() {
+            let contained = creation_flags(LaunchMode::Contained);
+            let shared = creation_flags(LaunchMode::Shared);
+            assert_ne!(contained & CREATE_SUSPENDED, 0);
+            assert_eq!(shared & CREATE_SUSPENDED, 0);
+            assert_ne!(shared & CREATE_BREAKAWAY_FROM_JOB, 0);
         }
     }
 }

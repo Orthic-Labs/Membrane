@@ -406,8 +406,47 @@ pub struct CompactionFederationDecision {
 
 pub const COMPACTION_FEDERATION_V1_SCHEMA: &str = "compaction-federation-v1";
 
+/// Issue the canonical server decision for one explicit compaction selection.
+pub fn issue_compaction_federation_decision(
+    identity: impl Into<String>,
+    fence: impl Into<String>,
+    scope: impl Into<String>,
+    selected_item_ids: Vec<String>,
+    selection_hash: impl Into<String>,
+    issued_monotonic_elapsed_ms: u64,
+    expires_after_elapsed_ms: u64,
+    restart_epoch: u64,
+) -> Result<CompactionFederationDecision, FederationLivenessError> {
+    let decision = CompactionFederationDecision {
+        schema: COMPACTION_FEDERATION_V1_SCHEMA.to_owned(),
+        identity: identity.into(),
+        fence: fence.into(),
+        scope: scope.into(),
+        decision: "approved".to_owned(),
+        selection_receipt: FederationSelectionReceipt {
+            selected_item_ids,
+            selection_hash: selection_hash.into(),
+        },
+        issued_monotonic_elapsed_ms,
+        expires_after_elapsed_ms,
+        restart_epoch,
+    };
+    if decision.identity.trim().is_empty()
+        || decision.fence.trim().is_empty()
+        || decision.scope.trim().is_empty()
+        || decision.selection_receipt.selection_hash.trim().is_empty()
+        || decision.expires_after_elapsed_ms == 0
+        || decision.restart_epoch == 0
+    {
+        return Err(FederationLivenessError::InvalidDecision);
+    }
+    Ok(decision)
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum FederationLivenessError {
+    #[error("federation decision is missing required identity, fence, scope, receipt, expiry, or restart epoch")]
+    InvalidDecision,
     #[error("federation decision restart epoch {decision_epoch} does not match current epoch {current_epoch}")]
     RestartEpochStale {
         decision_epoch: u64,

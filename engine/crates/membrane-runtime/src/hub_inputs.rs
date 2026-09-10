@@ -4,14 +4,12 @@
 //! unconditionally, so the popover showed "Offline" even while the local
 //! Membrane resident was up and healthy. This module replaces that hardcoded
 //! facade with a real (best-effort) read of the local service's
-//! unauthenticated `GET /health` endpoint, mapped into the same
+//! authenticated installed `GET /health` endpoint, mapped into the same
 //! `HubInputsV1` contract the facade already understands. Any failure to
 //! reach or parse the service falls back to `None`, and the caller keeps the
 //! existing "unavailable" behavior — we never fabricate readiness.
 
-use std::io::{Read, Write};
-use std::net::TcpStream;
-use std::time::Duration;
+use std::{io::{Read, Write}, net::TcpStream, time::Duration};
 
 use crate::hub::{HubInputsV1, HubMetadataV1, HubReadV1, HubSubsystemInputsV1};
 
@@ -47,12 +45,71 @@ pub fn live_snapshot_parts_from_local_service() -> Option<LiveSnapshotParts> {
     let health = fetch_health_json(port)?;
     let workspace_root = configured_workspace_root();
     let delivery = read_delivery_health_json(&workspace_root);
-    let blueprint = crate::freshness::read_blueprint_status(&workspace_root);
+    let blueprint = resident_watcher_evidence(
+        crate::freshness::read_blueprint_status(&workspace_root),
+        &health,
+    );
     Some(snapshot_parts_from_health(
         &health,
         delivery.as_ref(),
         blueprint,
     ))
+}
+
+/// Carry watcher liveness observed from the resident `/health` response into
+/// the Blueprint IPC envelope consumed by `blueprint_hub_read`. The two reads
+/// are intentionally joined here: Blueprint status owns graph generation,
+/// while the resident health route owns the actual NativeService lifecycle.
+fn resident_watcher_evidence(
+    status: Result<serde_json::Value, String>,
+    health: &serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    let watcher = health.get("blueprintWatcher");
+    let running = health.get("watcherRunning");
+    let enrolled = health.get("enrolledRepoCount");
+    if watcher.is_none() && running.is_none() && enrolled.is_none() {
+        return status;
+    }
+
+    status.map(|mut envelope| {
+        if envelope.get("result").is_some_and(serde_json::Value::is_object) {
+            inject_runtime_watcher_evidence(
+                envelope.get_mut("result").expect("result exists"),
+                watcher,
+                running,
+                enrolled,
+            );
+        } else {
+            inject_runtime_watcher_evidence(&mut envelope, watcher, running, enrolled);
+        }
+        envelope
+    })
+}
+
+fn inject_runtime_watcher_evidence(
+    result: &mut serde_json::Value,
+    watcher: Option<&serde_json::Value>,
+    running: Option<&serde_json::Value>,
+    enrolled: Option<&serde_json::Value>,
+) {
+    let Some(result) = result.as_object_mut() else {
+        return;
+    };
+    let runtime = result
+        .entry("runtime")
+        .or_insert_with(|| serde_json::json!({}));
+    let Some(runtime) = runtime.as_object_mut() else {
+        return;
+    };
+    if let Some(value) = running {
+        runtime.insert("watcherRunning".into(), value.clone());
+    }
+    if let Some(value) = enrolled {
+        runtime.insert("enrolledRepoCount".into(), value.clone());
+    }
+    if let Some(value) = watcher {
+        runtime.insert("watcher".into(), value.clone());
+    }
 }
 
 /// Canonical Hub snapshot composition from observed parts.
@@ -228,24 +285,29 @@ fn configured_workspace_root() -> std::path::PathBuf {
 }
 
 fn fetch_health_json(port: u16) -> Option<serde_json::Value> {
+    let runtime = std::env::current_exe().ok()
+        .and_then(|exe| crate::service::runtime_from_exe(&exe).ok())
+        .filter(|runtime| runtime.origin == "installed");
+    let Some(runtime) = runtime else { return fetch_health_json_development(port); };
+    let token = std::fs::read_to_string(&runtime.token).ok()?;
+    let response = crate::installed_health::probe_installed(runtime.port, token.trim(), CONNECT_TIMEOUT.max(IO_TIMEOUT), &runtime.token).ok()?;
+    let mut health: serde_json::Value = serde_json::from_slice(&response.body).ok()?;
+    if response.status != 200 {
+        // Retain typed subsystem diagnostics while refusing a healthy parent.
+        health.as_object_mut()?.insert("ok".into(), serde_json::Value::Bool(false));
+    }
+    Some(health)
+}
+
+fn fetch_health_json_development(port: u16) -> Option<serde_json::Value> {
     let addr = format!("127.0.0.1:{port}");
     let mut stream = TcpStream::connect_timeout(&addr.parse().ok()?, CONNECT_TIMEOUT).ok()?;
     stream.set_read_timeout(Some(IO_TIMEOUT)).ok()?;
     stream.set_write_timeout(Some(IO_TIMEOUT)).ok()?;
-
-    let request =
-        format!("GET /health HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nConnection: close\r\n\r\n");
-    stream.write_all(request.as_bytes()).ok()?;
-
-    let mut raw = Vec::new();
-    stream.read_to_end(&mut raw).ok()?;
+    stream.write_all(format!("GET /health HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nConnection: close\r\n\r\n").as_bytes()).ok()?;
+    let mut raw = Vec::new(); stream.read_to_end(&mut raw).ok()?;
     let text = String::from_utf8_lossy(&raw);
-    // Split HTTP headers from body on the first blank line; be tolerant of
-    // both CRLF and bare LF framing.
-    let body = text
-        .split_once("\r\n\r\n")
-        .or_else(|| text.split_once("\n\n"))
-        .map(|(_, body)| body)?;
+    let body = text.split_once("\r\n\r\n").or_else(|| text.split_once("\n\n")).map(|(_, body)| body)?;
     serde_json::from_str(body.trim()).ok()
 }
 

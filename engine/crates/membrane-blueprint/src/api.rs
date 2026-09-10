@@ -306,13 +306,23 @@ impl Deadline {
     pub fn duration(self) -> Duration { self.duration }
 }
 
-#[derive(Debug, Clone, Default)]
-pub struct CancellationToken(Arc<AtomicBool>);
-impl CancellationToken { pub fn new() -> Self { Self::default() } pub fn cancel(&self) { self.0.store(true, Ordering::Release); } pub fn is_cancelled(&self) -> bool { self.0.load(Ordering::Acquire) } }
+#[derive(Debug, Clone)]
+pub struct CancellationToken { cancelled: Arc<AtomicBool>, deadline: Option<Instant> }
+impl Default for CancellationToken { fn default() -> Self { Self { cancelled: Arc::new(AtomicBool::new(false)), deadline: None } } }
+impl CancellationToken {
+    pub fn new() -> Self { Self::default() }
+    pub fn cancel(&self) { self.cancelled.store(true, Ordering::Release); }
+    pub fn bind_deadline(&self, deadline: Deadline) -> Self {
+        let bound = deadline.started + deadline.duration;
+        Self { cancelled: Arc::clone(&self.cancelled), deadline: Some(self.deadline.map_or(bound, |current| current.min(bound))) }
+    }
+    pub fn is_cancelled(&self) -> bool { self.cancelled.load(Ordering::Acquire) || self.deadline_expired() }
+    pub fn deadline_expired(&self) -> bool { !self.cancelled.load(Ordering::Acquire) && self.deadline.is_some_and(|deadline| Instant::now() >= deadline) }
+}
 
 #[derive(Debug, Clone)]
 pub struct RequestContext { pub scope: RepositoryScope, pub deadline: Deadline, pub cancellation: CancellationToken, pub bounds: Bounds }
-impl RequestContext { pub fn check(&self) -> Result<(), BlueprintError> { if self.cancellation.is_cancelled() { Err(BlueprintError::cancelled()) } else if self.deadline.expired() { Err(BlueprintError::deadline()) } else { Ok(()) } } }
+impl RequestContext { pub fn check(&self) -> Result<(), BlueprintError> { if self.cancellation.deadline_expired() { Err(BlueprintError::deadline()) } else if self.cancellation.is_cancelled() { Err(BlueprintError::cancelled()) } else if self.deadline.expired() { Err(BlueprintError::deadline()) } else { Ok(()) } } }
 
 /// Implemented by native graph/service owners.  It owns no storage through
 /// this boundary and is usable by one-shot as well as resident callers.
@@ -327,10 +337,57 @@ pub trait BlueprintApi: Send + Sync {
 impl<T: BlueprintOperation + ?Sized> BlueprintApi for T {
     fn dispatch(&self, request: BlueprintRequest, cancellation: CancellationToken) -> BlueprintResponse {
         let mut response = match request.validate(Bounds::default()) {
-            Ok(mut context) => { context.cancellation = cancellation; match context.check().and_then(|_| self.execute(&request, &context)).and_then(|value| context.check().map(|_| value)) { Ok(value) => BlueprintResponse::success(request.request_id.clone(), request.generation.clone(), value), Err(error) => BlueprintResponse::failure(Some(request.request_id.clone()), error) } },
+            Ok(mut context) => { context.cancellation = cancellation.bind_deadline(context.deadline); match context.check().and_then(|_| self.execute(&request, &context)).and_then(|value| context.check().map(|_| value)) { Ok(value) => BlueprintResponse::success(request.request_id.clone(), request.generation.clone(), value), Err(error) => BlueprintResponse::failure(Some(request.request_id.clone()), error) } },
             Err(error) => BlueprintResponse::failure(Some(request.request_id.clone()), error),
         };
         if let Err(error) = response.validate(Bounds::default()) { response = BlueprintResponse::failure(response.request_id.clone(), error); }
         response
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn context(token: CancellationToken, deadline: Deadline) -> RequestContext {
+        RequestContext {
+            scope: RepositoryScope { repo_root: ".".into(), repo_id: None, worktree: None, generation: None, paths: None },
+            deadline,
+            cancellation: token,
+            bounds: Bounds::default(),
+        }
+    }
+
+    #[test]
+    fn bound_deadline_is_observed_at_checkpoint_without_mutating_parent() {
+        let parent = CancellationToken::new();
+        let expired = Deadline { started: Instant::now() - Duration::from_millis(2), duration: Duration::from_millis(1) };
+        let child = parent.bind_deadline(expired);
+        let error = context(child.clone(), expired).check().unwrap_err();
+        assert_eq!(error.code, "deadline_exceeded");
+        assert!(child.deadline_expired());
+        assert!(!parent.is_cancelled());
+    }
+
+    #[test]
+    fn explicit_parent_cancellation_keeps_cancellation_classification() {
+        let parent = CancellationToken::new();
+        let deadline = Deadline { started: Instant::now(), duration: Duration::from_secs(30) };
+        let child = parent.bind_deadline(deadline);
+        parent.cancel();
+        let error = context(child.clone(), deadline).check().unwrap_err();
+        assert_eq!(error.code, "request_cancelled");
+        assert!(!child.deadline_expired());
+    }
+
+    #[test]
+    fn expired_child_does_not_poison_future_bound_request() {
+        let parent = CancellationToken::new();
+        let expired = Deadline { started: Instant::now() - Duration::from_millis(2), duration: Duration::from_millis(1) };
+        assert!(parent.bind_deadline(expired).is_cancelled());
+        let future = Deadline { started: Instant::now(), duration: Duration::from_secs(30) };
+        let next = parent.bind_deadline(future);
+        assert!(!next.is_cancelled());
+        assert!(!parent.is_cancelled());
     }
 }

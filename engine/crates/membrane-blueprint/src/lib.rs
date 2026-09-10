@@ -6,6 +6,7 @@
 
 pub mod api;
 pub mod contracts;
+pub mod cli;
 pub mod doc_truth;
 pub mod engine;
 pub mod export;
@@ -29,6 +30,7 @@ pub use api::{
     Deadline, FreshnessBinding, FreshnessState, GenerationBinding, GraphEdge, GraphNode,
     RequestContext,
 };
+pub use cli::{architecture_orientation, expand, manual_refresh, recall, run_one_shot, run_query, search, status};
 pub use engine::{native_blueprint_operation, NativeBlueprintOperation};
 pub use export::{build_evidence_pack, execute_export, findings_to_sarif};
 pub use findings::execute_findings;

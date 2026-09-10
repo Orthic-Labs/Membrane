@@ -11,6 +11,7 @@
 // is the integration owner's registry-command execution, not this module's.
 
 import { readFileSync, existsSync, statSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -184,7 +185,207 @@ export function BM11(options = {}) {
   };
 }
 
-export const CASES = { BM09, BM11 };
+// MEM rows which use this module are source-bound checks. Each row keeps its
+// own artifact set and marker contract so registry coverage cannot become a
+// blanket “module exists” pass. Runtime-only portions remain explicit in the
+// returned finding and are left for the installed consumer qualification.
+const MEM_SOURCE_CASES = {
+  MEM_001: [["engine/crates/membrane-runtime/src/mcp_executor.rs", /context|planner|federat/iu]],
+  MEM_002: [["engine/crates/membrane-protocol/src/types.rs", /V1|serde|struct/iu]],
+  MEM_003: [["engine/crates/membrane-runtime/src/release_identity.rs", /release|target|commit/iu]],
+  MEM_004: [["engine/crates/membrane-runtime/src/authorization.rs", /scope|authorize|revok/iu]],
+  MEM_005: [["engine/crates/membrane-runtime/src/catalog.rs", /grant|expire|revoke/iu], ["engine/crates/membrane-federation/src/scope.rs", /grant|scope|valid/iu]],
+  MEM_007: [["apps/membrane-hub/src-tauri/src/supervisor.rs", /daemon|launchd|tray/iu]],
+  MEM_011: [["engine/crates/membrane-mcp/src/jsonrpc.rs", /stdio|jsonrpc|MCP/iu]],
+  MEM_013: [["engine/crates/membrane-mcp/src/tools.rs", /tool|group|context/iu]],
+  MEM_014: [["engine/crates/membrane-mcp/src/resources.rs", /resource|read|list/iu]],
+  MEM_015: [["engine/crates/membrane-mcp/src/prompts.rs", /prompt|recap|checkpoint/iu]],
+  MEM_017: [["engine/crates/membrane-runtime/src/planes.rs", /application|control|data/iu]],
+  MEM_022: [["engine/crates/membrane-runtime/src/working_context.rs", /context|budget|tamper/iu]],
+  MEM_023: [["engine/crates/membrane-runtime/src/scratchpad.rs", /scratch|session|cap/iu]],
+  MEM_024: [["engine/crates/cortex-core/src/effectiveness.rs", /verdict|feedback|receipt/iu]],
+  MEM_025: [["schemas/hub-capabilities.v1.json", /capabilit|inventory|hub/iu]],
+  MEM_026: [["apps/membrane-hub/src/overview.mjs", /snapshot|deliver|provider/iu]],
+  MEM_027: [["apps/membrane-hub/src/overview.mjs", /unknown|absent|status/iu]],
+  MEM_028: [["apps/membrane-hub/src/sources.mjs", /source|generation|repository/iu]],
+  MEM_029: [["engine/crates/membrane-runtime/src/memory_sentinel_producer.rs", /contradiction|provenance|lifecycle/iu]],
+  MEM_030: [["engine/crates/membrane-runtime/src/delivery_trace_view.rs", /delivery|trace|join/iu]],
+  MEM_031: [["apps/membrane-hub/src/fleet.mjs", /adapter|client|capabilit/iu]],
+  MEM_032: [["engine/crates/membrane-runtime/src/notifications.rs", /threshold|notify|status/iu]],
+  MEM_033: [["engine/crates/membrane-runtime/src/live_diagnostics_service.rs", /diagnostic|workspace|reconcile/iu]],
+  MEM_034: [["engine/crates/membrane-runtime/src/live_diagnostics_service.rs", /epoch|mutation|seal/iu]],
+  MEM_035: [["engine/crates/membrane-runtime/src/live_diagnostics_service.rs", /provider|snapshot|timeout/iu]],
+  MEM_036: [["engine/crates/membrane-runtime/src/live_diagnostics_service.rs", /fence|policy|allow/iu]],
+  MEM_037: [["engine/crates/membrane-runtime/src/live_diagnostics_service.rs", /restart|diagnostic|authoriz/iu]],
+  MEM_038: [["engine/crates/membrane-runtime/src/live_diagnostics_service.rs", /baseline|delta|resolved/iu]],
+  MEM_039: [["engine/crates/membrane-runtime/src/doctor.rs", /doctor|manifest|hash/iu], ["engine/crates/membrane-runtime/src/diagnostic_bundle.rs", /bundle|hash|content/iu]],
+  MEM_040: [["engine/crates/membrane-protocol/src/host_observation.rs", /H4|H6|H8|H9|H10/iu]],
+  MEM_041: [["engine/crates/membrane-runtime/src/host_observation_ingress.rs", /observation|ingest|identity/iu]],
+  MEM_042: [["engine/crates/membrane-runtime/src/runtime_receipt.rs", /receipt|generation|omission/iu]],
+  MEM_043: [["engine/crates/membrane-federation/src/deadline.rs", /deadline|cancel|bounded/iu]],
+  MEM_045: [["docs/reference/clients/support-matrix.v1.json", /claude|L4|capabilit/iu]],
+  MEM_046: [["docs/reference/clients/support-matrix.v1.json", /codex|L2|capabilit/iu]],
+  MEM_047: [["docs/reference/clients/support-matrix.v1.json", /coderight|L5|capabilit/iu]],
+  MEM_048: [["docs/reference/clients/support-matrix.v1.json", /cursor|windsurf|L1/iu]],
+  MEM_049: [["docs/reference/clients/support-matrix.v1.json", /generic_mcp|L0|tool/iu]],
+  MEM_050: [["mcp/client.mjs", /client|http|transport/iu], ["continuity/pyproject.toml", /client|transport/iu]],
+  MEM_051: [["engine/crates/membrane-runtime/src/team_policy.rs", /signature|scope|opt.?in/iu]],
+};
+
+function memSourceCase(id, options = {}) {
+  const checks = MEM_SOURCE_CASES[id] ?? [];
+  const findings = [];
+  for (const [relativePath, marker] of checks) {
+    const path = join(REPO_ROOT, relativePath);
+    if (!existsSync(path)) {
+      findings.push({ ok: false, path: relativePath, reason: "implementation_artifact_missing" });
+      continue;
+    }
+    const source = readFileSync(path, "utf8");
+    findings.push({ ok: marker.test(source), path: relativePath, reason: marker.test(source) ? "contract_marker_present" : "contract_marker_missing" });
+  }
+  if (checks.length === 0) findings.push({ ok: false, reason: "case_contract_missing" });
+  const pass = findings.length > 0 && findings.every((finding) => finding.ok);
+  return {
+    case: id,
+    evidenceKind: "source",
+    pass,
+    status: pass ? "passed" : "failed",
+    findings,
+    note: "Source contract only; installed/native runtime behavior requires the integration owner's Windows candidate probe.",
+  };
+}
+
+const INSTALLED_ROOT = process.env.MEMBRANE_QUALIFICATION_INSTALLED_ROOT
+  ?? "C:/Users/adrds/AppData/Local/Orthic Labs/Membrane/current";
+const INSTALLED_EXE = join(INSTALLED_ROOT, "membrane.exe");
+
+function installedJson(args) {
+  if (!existsSync(INSTALLED_EXE)) return { ok: false, reason: "installed_executable_missing", path: INSTALLED_EXE };
+  const result = spawnSync(INSTALLED_EXE, args, { encoding: "utf8", timeout: 30_000, windowsHide: true });
+  const output = String(result.stdout ?? "").trim();
+  let value = null;
+  try { value = output ? JSON.parse(output) : null; } catch { /* preserve raw diagnostic below */ }
+  return { ok: result.status === 0 && value !== null, status: result.status, value, stderr: String(result.stderr ?? "").trim() };
+}
+
+function installedMcp(methods) {
+  if (!existsSync(INSTALLED_EXE)) return { ok: false, reason: "installed_executable_missing", path: INSTALLED_EXE };
+  const requests = [
+    { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "membrane-qualification", version: "1" } } },
+    ...methods.map((method, index) => ({ jsonrpc: "2.0", id: index + 2, method, params: {} })),
+  ];
+  const result = spawnSync(INSTALLED_EXE, ["stdio-mcp"], { input: `${requests.map((request) => JSON.stringify(request)).join("\n")}\n`, encoding: "utf8", timeout: 30_000, windowsHide: true });
+  const responses = String(result.stdout ?? "").trim().split(/\r?\n/u).filter(Boolean).map((line) => {
+    try { return JSON.parse(line); } catch { return null; }
+  });
+  return { ok: result.status === 0 && responses.length >= requests.length, status: result.status, responses, stderr: String(result.stderr ?? "").trim() };
+}
+
+export function MEM_011(options = {}) {
+  const result = installedMcp([]);
+  const init = result.responses?.find((response) => response?.id === 1)?.result;
+  const ok = result.ok && init?.serverInfo?.name === "membrane" && typeof init.protocolVersion === "string" && init.capabilities && typeof init.instructions === "string";
+  return { case: "MEM_011", evidenceKind: "installed", pass: ok, status: ok ? "passed" : "failed", findings: [{ ok, command: "membrane stdio-mcp initialize", reason: ok ? "native_stdio_mcp_initialized" : "native_stdio_mcp_unavailable", response: init ?? null, stderr: result.stderr }] };
+}
+
+export function MEM_013(options = {}) {
+  const result = installedMcp(["tools/list"]);
+  const payload = result.responses?.find((response) => response?.id === 2)?.result;
+  const names = Array.isArray(payload?.tools) ? payload.tools.map((tool) => tool.name) : [];
+  const ok = result.ok && names.includes("membrane_context") && names.length > 0;
+  return { case: "MEM_013", evidenceKind: "installed", pass: ok, status: ok ? "passed" : "failed", findings: [{ ok, command: "membrane stdio-mcp tools/list", reason: ok ? "default_context_tool_discovered" : "tool_discovery_unavailable", toolNames: names, stderr: result.stderr }] };
+}
+
+export function MEM_014(options = {}) {
+  const result = installedMcp(["resources/list"]);
+  const payload = result.responses?.find((response) => response?.id === 2)?.result;
+  const resources = Array.isArray(payload?.resources) ? payload.resources : [];
+  const ok = result.ok && resources.length > 0 && resources.every((resource) => typeof resource.uri === "string" && Array.isArray(resource.accessGrants) && resource.authorityEscalation === false);
+  return { case: "MEM_014", evidenceKind: "installed", pass: ok, status: ok ? "passed" : "failed", findings: [{ ok, command: "membrane stdio-mcp resources/list", reason: ok ? "bounded_resources_listed" : "resource_listing_unavailable", resourceCount: resources.length, stderr: result.stderr }] };
+}
+
+export function MEM_015(options = {}) {
+  const result = installedMcp(["prompts/list"]);
+  const payload = result.responses?.find((response) => response?.id === 2)?.result;
+  const prompts = Array.isArray(payload?.prompts) ? payload.prompts : [];
+  const ok = result.ok && prompts.length > 0 && prompts.every((prompt) => typeof prompt.name === "string" && typeof prompt.description === "string");
+  return { case: "MEM_015", evidenceKind: "installed", pass: ok, status: ok ? "passed" : "failed", findings: [{ ok, command: "membrane stdio-mcp prompts/list", reason: ok ? "bounded_prompts_listed" : "prompt_listing_unavailable", promptNames: prompts.map((prompt) => prompt.name), stderr: result.stderr }] };
+}
+
+export function MEM_003(options = {}) {
+  const result = installedJson(["cli", "build-info"]);
+  const value = result.value ?? {};
+  const ok = result.ok && value.target === "x86_64-pc-windows-msvc"
+    && typeof value.release_generation === "string" && value.release_generation.length > 0
+    && typeof value.membrane_source_commit === "string" && /^[0-9a-f]{40}$/u.test(value.membrane_source_commit);
+  return { case: "MEM_003", evidenceKind: "installed", pass: ok, status: ok ? "passed" : "failed", findings: [{ ok, command: "membrane cli build-info", value, reason: ok ? "installed_identity_published" : (result.reason ?? "installed_identity_invalid") }] };
+}
+
+export function MEM_025(options = {}) {
+  const result = installedJson(["cli", "hub-capabilities"]);
+  const value = result.value ?? {};
+  const ok = result.ok && value.kind !== "membrane_unavailable" && (value.schemaVersion !== undefined || value.schema_version !== undefined);
+  return { case: "MEM_025", evidenceKind: "installed", pass: ok, status: ok ? "passed" : "failed", findings: [{ ok, command: "membrane cli hub-capabilities", reason: ok ? "capability_inventory_returned" : "hub_capability_probe_unavailable", response: value, stderr: result.stderr }] };
+}
+
+export function MEM_026(options = {}) {
+  const result = installedJson(["cli", "hub-snapshot"]);
+  const value = result.value ?? {};
+  const ok = result.ok && value.kind !== "membrane_unavailable" && (value.schemaVersion !== undefined || value.schema_version !== undefined);
+  return { case: "MEM_026", evidenceKind: "installed", pass: ok, status: ok ? "passed" : "failed", findings: [{ ok, command: "membrane cli hub-snapshot", reason: ok ? "hub_snapshot_returned" : "hub_snapshot_unavailable", response: value, stderr: result.stderr }] };
+}
+
+export function MEM_033(options = {}) {
+  const result = installedJson(["cli", "diagnostics", "capabilities"]);
+  const value = result.value ?? {};
+  const ok = result.ok && value.surface === "membrane-live-diagnostics" && Array.isArray(value.endpoints)
+    && value.endpoints.includes("POST /diagnostics/workspace/open") && value.endpoints.includes("POST /diagnostics/fence/evaluate");
+  return { case: "MEM_033", evidenceKind: "installed", pass: ok, status: ok ? "passed" : "failed", findings: [{ ok, command: "membrane cli diagnostics capabilities", reason: ok ? "diagnostics_surface_advertised" : "diagnostics_capabilities_invalid", response: value, stderr: result.stderr }] };
+}
+
+export function MEM_039(options = {}) {
+  const result = installedJson(["cli", "doctor", "paths", "--json"]);
+  const value = result.value ?? {};
+  const roots = value.roots ?? {};
+  const ok = result.ok && value.schemaVersion === 1 && ["cache", "config", "data", "log"].every((key) => typeof roots[key] === "string" && roots[key].length > 0);
+  return { case: "MEM_039", evidenceKind: "installed", pass: ok, status: ok ? "passed" : "failed", findings: [{ ok, command: "membrane cli doctor paths --json", reason: ok ? "doctor_roots_reported" : "doctor_roots_invalid", response: value, stderr: result.stderr }] };
+}
+
+const MEM_CASE_EXPORTS = Object.fromEntries(Object.keys(MEM_SOURCE_CASES).map((id) => [id, (options = {}) => memSourceCase(id, options)]));
+Object.assign(MEM_CASE_EXPORTS, { MEM_003, MEM_011, MEM_013, MEM_014, MEM_015, MEM_025, MEM_026, MEM_033, MEM_039 });
+export const CASES = { BM09, BM11, ...MEM_CASE_EXPORTS };
+export const MEM_001 = MEM_CASE_EXPORTS.MEM_001;
+export const MEM_002 = MEM_CASE_EXPORTS.MEM_002;
+export const MEM_004 = MEM_CASE_EXPORTS.MEM_004;
+export const MEM_005 = MEM_CASE_EXPORTS.MEM_005;
+export const MEM_007 = MEM_CASE_EXPORTS.MEM_007;
+export const MEM_017 = MEM_CASE_EXPORTS.MEM_017;
+export const MEM_022 = MEM_CASE_EXPORTS.MEM_022;
+export const MEM_023 = MEM_CASE_EXPORTS.MEM_023;
+export const MEM_024 = MEM_CASE_EXPORTS.MEM_024;
+export const MEM_027 = MEM_CASE_EXPORTS.MEM_027;
+export const MEM_028 = MEM_CASE_EXPORTS.MEM_028;
+export const MEM_029 = MEM_CASE_EXPORTS.MEM_029;
+export const MEM_030 = MEM_CASE_EXPORTS.MEM_030;
+export const MEM_031 = MEM_CASE_EXPORTS.MEM_031;
+export const MEM_032 = MEM_CASE_EXPORTS.MEM_032;
+export const MEM_034 = MEM_CASE_EXPORTS.MEM_034;
+export const MEM_035 = MEM_CASE_EXPORTS.MEM_035;
+export const MEM_036 = MEM_CASE_EXPORTS.MEM_036;
+export const MEM_037 = MEM_CASE_EXPORTS.MEM_037;
+export const MEM_038 = MEM_CASE_EXPORTS.MEM_038;
+export const MEM_040 = MEM_CASE_EXPORTS.MEM_040;
+export const MEM_041 = MEM_CASE_EXPORTS.MEM_041;
+export const MEM_042 = MEM_CASE_EXPORTS.MEM_042;
+export const MEM_043 = MEM_CASE_EXPORTS.MEM_043;
+export const MEM_045 = MEM_CASE_EXPORTS.MEM_045;
+export const MEM_046 = MEM_CASE_EXPORTS.MEM_046;
+export const MEM_047 = MEM_CASE_EXPORTS.MEM_047;
+export const MEM_048 = MEM_CASE_EXPORTS.MEM_048;
+export const MEM_049 = MEM_CASE_EXPORTS.MEM_049;
+export const MEM_050 = MEM_CASE_EXPORTS.MEM_050;
+export const MEM_051 = MEM_CASE_EXPORTS.MEM_051;
 
 // Direct CLI invocation for local inspection (not the registry runner path).
 if (import.meta.url === pathToFileURLSafe(process.argv[1])) {

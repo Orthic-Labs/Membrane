@@ -19,9 +19,11 @@ use membrane_blueprint::{
     native_blueprint_operation, BlueprintRequest, CancellationToken, NativeBlueprintOperation,
     NativeService, OneShotExecutor, Operation,
 };
+use membrane_federation::blueprint_client::{BlueprintBounds, BlueprintClient, BlueprintQuery};
 use serde_json::Value;
 use std::fs;
 use std::path::PathBuf;
+use std::time::Duration;
 use tempfile::TempDir;
 
 fn expected_evidence() -> Value {
@@ -166,4 +168,19 @@ fn hub_hosted_generation_mismatch_fails_closed() {
     assert_matched_generation(&matched, &evidence);
 
     service.stop().expect("resident Blueprint service stops");
+}
+
+#[test]
+fn native_fixture_recall_crosses_real_blueprint_client_boundary() {
+    let (_guard, root) = fixture_root();
+    let root_str = root.to_string_lossy().into_owned();
+    let operation = native_blueprint_operation();
+    let executor = OneShotExecutor::new(operation.clone());
+    let built = executor.execute(build_request(&root_str, "bm01-build"), CancellationToken::new());
+    assert!(built.ok, "native fixture build must succeed: {:?}", built.error);
+    let generation = built.result.as_ref().and_then(|value| value.get("generationId")).and_then(Value::as_str).expect("generation").to_owned();
+    let query = BlueprintQuery { request_id: "bm01-real-client".into(), repository_id: "bm01-fixture".into(), repository_root: root_str.clone(), worktree: root_str, task: "describe_probe".into(), anchors: Vec::new(), policy_digest: String::new(), expected_generation: Some(generation), symbol: None, bounds: BlueprintBounds::default(), deadline: Duration::from_secs(30) };
+    let response = BlueprintClient::from_operation(operation).query(&query).expect("native producer must satisfy real BlueprintClient contract");
+    assert!(!response.candidates.is_empty());
+    assert!(response.candidates.iter().all(|candidate| !candidate.id.is_empty() && !candidate.source_ref.is_empty()));
 }

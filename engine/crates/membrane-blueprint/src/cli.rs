@@ -7,9 +7,8 @@
 //! [`crate::engine::native_blueprint_operation`], the single owner of
 //! repository graph construction, publication, and query dispatch.
 //!
-//! Not yet wired into [`crate::lib`] module tree (`pub mod cli;` in
-//! `src/lib.rs` is owned by a sibling sub-lane); see this crate's r5
-//! blueprint-repair receipt for the pending wiring note.
+//! The module is exported from the crate root so native callers can use the
+//! same operation owner without reaching into the graph or store modules.
 
 use crate::api::{BlueprintApi, BlueprintError, BlueprintRequest, BlueprintResponse, CancellationToken};
 use crate::engine::native_blueprint_operation;
@@ -83,4 +82,65 @@ pub fn architecture_orientation(
 pub fn status(repo_root: impl Into<String>, deadline_ms: Option<u64>) -> Result<Value, BlueprintError> {
     let response = run_one_shot("cli-status", Operation::Status, repo_root, deadline_ms);
     unwrap_result(response, "blueprint_cli_status_failed", "status failed")
+}
+
+/// Run a bounded query through the canonical native operation. `input` may
+/// contain operation-specific fields (`query`, `seed`, `target`, `direction`,
+/// and limits); this wrapper only binds the repository root and never performs
+/// retrieval or ranking itself.
+pub fn run_query(
+    request_id: impl Into<String>,
+    method: Operation,
+    repo_root: impl Into<String>,
+    mut input: Value,
+    deadline_ms: Option<u64>,
+) -> Result<Value, BlueprintError> {
+    let Value::Object(object) = &mut input else {
+        return Err(BlueprintError::invalid("query input must be an object"));
+    };
+    object.insert("repoRoot".into(), Value::from(repo_root.into()));
+    let mut request = BlueprintRequest::new(request_id, method, "");
+    request.input = input;
+    if let Some(deadline_ms) = deadline_ms {
+        request.deadline_ms = deadline_ms;
+    }
+    unwrap_result(dispatch(request), "blueprint_query_failed", "Blueprint query failed")
+}
+
+/// Source-grounded lexical search over the published native generation.
+pub fn search(
+    repo_root: impl Into<String>,
+    query_text: impl Into<String>,
+    limit: Option<usize>,
+    deadline_ms: Option<u64>,
+) -> Result<Value, BlueprintError> {
+    let mut input = serde_json::json!({"query": query_text.into()});
+    if let Some(limit) = limit { input["maxCandidates"] = Value::from(limit); }
+    run_query("cli-search", Operation::Search, repo_root, input, deadline_ms)
+}
+
+/// Resolve a source-bound seed and return the bounded recall projection.
+pub fn recall(
+    repo_root: impl Into<String>,
+    seed: impl Into<String>,
+    generation: Option<String>,
+    deadline_ms: Option<u64>,
+) -> Result<Value, BlueprintError> {
+    let mut input = serde_json::json!({"seed": seed.into()});
+    if let Some(generation) = generation { input["generation"] = Value::from(generation); }
+    run_query("cli-recall", Operation::Recall, repo_root, input, deadline_ms)
+}
+
+/// Expand a source-bound seed through the published native graph.
+pub fn expand(
+    repo_root: impl Into<String>,
+    seed: impl Into<String>,
+    direction: Option<&str>,
+    max_depth: Option<usize>,
+    deadline_ms: Option<u64>,
+) -> Result<Value, BlueprintError> {
+    let mut input = serde_json::json!({"seed": seed.into()});
+    if let Some(direction) = direction { input["direction"] = Value::from(direction); }
+    if let Some(max_depth) = max_depth { input["maxDepth"] = Value::from(max_depth); }
+    run_query("cli-expand", Operation::Expand, repo_root, input, deadline_ms)
 }

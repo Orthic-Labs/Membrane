@@ -33,6 +33,8 @@ pub mod hub;
 pub mod hub_inputs;
 pub mod hub_readonly_db;
 pub mod installation_manifest;
+pub mod installed_health;
+mod http_server;
 pub mod ledger;
 pub mod live_diagnostics;
 pub mod live_diagnostics_service;

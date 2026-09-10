@@ -15,7 +15,6 @@
 use serde::{Deserialize, Serialize};
 use std::{
     ffi::OsString,
-    io::{Read, Write},
     net::{SocketAddr, TcpStream},
     path::{Path, PathBuf},
     process::{Command, Output, Stdio},
@@ -26,11 +25,13 @@ pub const ACTIVATION_RECEIPT_SCHEMA_VERSION: u32 = 1;
 pub const DEACTIVATION_RECEIPT_SCHEMA_VERSION: u32 = 1;
 pub const ACTIVATION_RECEIPT_FILE: &str = "activation-receipt.json";
 pub const INSTALLED_PORT: u16 = 47_851;
+const WORKSPACE_SCHEMA_VERSION: u32 = 3;
+const WORKSPACE_MIGRATION_RECEIPT_SCHEMA_VERSION: u32 = 1;
+const WORKSPACE_MIGRATION_NAME: &str = "workspace_config_v2_to_v3";
 const LOCK_DIR: &str = ".activation.lock";
 const LOCK_STALE_AFTER: Duration = Duration::from_secs(90);
 const LOCK_WAIT: Duration = Duration::from_secs(15);
 const POLL_INTERVAL: Duration = Duration::from_millis(250);
-const MAX_HEALTH_BYTES: usize = 2 * 1024 * 1024;
 const SERVICE_ID: &str = "membrane-hub";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -129,6 +130,147 @@ pub struct ActivationReceiptV1 {
     pub dry_run: bool,
     pub service: ServiceActivationReceipt,
     pub clients: Vec<ClientActivationReceipt>,
+    /// Optional so existing activation receipts remain readable.
+    #[serde(default)]
+    pub workspace_config_migration: Option<WorkspaceConfigMigrationReceipt>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceConfigMigrationReceipt {
+    pub schema_version: u32,
+    pub migration: String,
+    pub workspace_root: PathBuf,
+    pub migrated: bool,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct WorkspaceConfigV3 {
+    schema_version: u32,
+    workspace_root: PathBuf,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct WorkspaceConfigV2 {
+    schema_version: u32,
+    workspace_root: PathBuf,
+    python_executable: PathBuf,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct WorkspaceConfigV3Output<'a> {
+    schema_version: u32,
+    workspace_root: &'a Path,
+}
+
+/// Installer-owned v2→v3 migration. Runtime resolution remains strict v3.
+/// Existing v3 is an idempotent no-op; v2 is staged beside config then
+/// promoted with the existing Windows write-through replacement helper.
+fn migrate_workspace_config(path: &Path) -> Result<WorkspaceConfigMigrationReceipt, String> {
+    let bytes = std::fs::read(path).map_err(|_| "workspace_config_unreadable".to_string())?;
+    if let Ok(config) = serde_json::from_slice::<WorkspaceConfigV3>(&bytes) {
+        if config.schema_version != WORKSPACE_SCHEMA_VERSION {
+            return Err("workspace_config_schema_unsupported".into());
+        }
+        let root = validated_workspace_root(config.workspace_root)?;
+        return Ok(workspace_migration_receipt(root, false));
+    }
+    let legacy: WorkspaceConfigV2 = serde_json::from_slice(&bytes)
+        .map_err(|_| "workspace_config_invalid".to_string())?;
+    if legacy.schema_version != 2 || !legacy.python_executable.is_absolute() {
+        return Err("workspace_config_schema_unsupported".into());
+    }
+    let root = validated_workspace_root(legacy.workspace_root)?;
+    let encoded = serde_json::to_vec(&WorkspaceConfigV3Output {
+        schema_version: WORKSPACE_SCHEMA_VERSION,
+        workspace_root: &root,
+    })
+    .map_err(|_| "workspace_config_invalid".to_string())?;
+    let parent = path.parent().ok_or_else(|| "workspace_config_invalid".to_string())?;
+    let staged = parent.join(format!(".workspace-{}.tmp", std::process::id()));
+    if let Err(error) = std::fs::write(&staged, encoded) {
+        return Err(format!("stage workspace config migration: {error}"));
+    }
+    if let Err(error) = replace_file(&staged, path) {
+        let _ = std::fs::remove_file(&staged);
+        return Err(error);
+    }
+    Ok(workspace_migration_receipt(root, true))
+}
+
+fn validated_workspace_root(root: PathBuf) -> Result<PathBuf, String> {
+    if !root.is_absolute() {
+        return Err("workspace_root_invalid".into());
+    }
+    let canonical = std::fs::canonicalize(&root)
+        .map_err(|_| "workspace_root_invalid".to_string())?;
+    canonical.is_dir()
+        .then_some(root)
+        .ok_or_else(|| "workspace_root_invalid".to_string())
+}
+
+fn workspace_migration_receipt(root: PathBuf, migrated: bool) -> WorkspaceConfigMigrationReceipt {
+    WorkspaceConfigMigrationReceipt {
+        schema_version: WORKSPACE_MIGRATION_RECEIPT_SCHEMA_VERSION,
+        migration: WORKSPACE_MIGRATION_NAME.to_string(),
+        workspace_root: root,
+        migrated,
+    }
+}
+
+fn migration_config_path() -> Result<Option<PathBuf>, String> {
+    let explicit = std::env::var_os("MEMBRANE_WORKSPACE_CONFIG")
+        .map(PathBuf::from)
+        .filter(|path| !path.as_os_str().is_empty());
+    if let Some(path) = explicit {
+        if !path.is_absolute() {
+            return Err("workspace_config_invalid".into());
+        }
+        return Ok(Some(path));
+    }
+    Ok({
+        #[cfg(windows)]
+        let home = std::env::var_os("USERPROFILE").map(PathBuf::from);
+        #[cfg(not(windows))]
+        let home = std::env::var_os("HOME").map(PathBuf::from);
+        home.map(|home| home.join(".config/membrane/workspace.json"))
+    })
+}
+
+fn workspace_migration_for_activation(
+    dry_run: bool,
+) -> Result<Option<WorkspaceConfigMigrationReceipt>, String> {
+    let Some(path) = migration_config_path()? else { return Ok(None) };
+    workspace_migration_at_path(&path, dry_run)
+}
+
+fn workspace_migration_at_path(path: &Path, dry_run: bool) -> Result<Option<WorkspaceConfigMigrationReceipt>, String> {
+    if !path.is_file() { return Ok(None) }
+    if dry_run {
+        // Inspection must never rewrite config. Report only already-v3 state;
+        // a v2 file remains pending for a real activation.
+        let bytes = std::fs::read(&path)
+            .map_err(|_| "workspace_config_unreadable".to_string())?;
+        if let Ok(config) = serde_json::from_slice::<WorkspaceConfigV3>(&bytes) {
+            if config.schema_version != WORKSPACE_SCHEMA_VERSION {
+                return Err("workspace_config_schema_unsupported".into());
+            }
+            return Ok(Some(workspace_migration_receipt(
+                validated_workspace_root(config.workspace_root)?, false,
+            )));
+        }
+        let legacy: WorkspaceConfigV2 = serde_json::from_slice(&bytes)
+            .map_err(|_| "workspace_config_invalid".to_string())?;
+        if legacy.schema_version != 2 || !legacy.python_executable.is_absolute() {
+            return Err("workspace_config_schema_unsupported".into());
+        }
+        let _ = validated_workspace_root(legacy.workspace_root)?;
+        return Ok(None);
+    }
+    migrate_workspace_config(&path).map(Some)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -247,6 +389,10 @@ fn activate_with_residency(options: ActivationOptions, start_resident: bool) -> 
     require_file(&runtime_membrane, "resolved membrane executable")?;
     require_file(&runtime_tray, "resolved tray executable")?;
     let (workspace_root, port) = installed_runtime(product_root)?;
+    // Migration is installer/activation-owned and happens before state,
+    // locking, health, client, or resident activation effects.
+    let workspace_config_migration =
+        workspace_migration_for_activation(options.dry_run)?;
     let expected_generation = membrane_runtime::release_identity::release_generation();
     if !options.dry_run {
         std::fs::create_dir_all(&workspace_root).map_err(|error| {
@@ -346,6 +492,7 @@ fn activate_with_residency(options: ActivationOptions, start_resident: bool) -> 
             reason: service_reason,
         },
         clients,
+        workspace_config_migration,
     };
     if !options.dry_run {
         persist_receipt(&workspace_root, &receipt)?;
@@ -776,26 +923,37 @@ fn wait_for_health(
 ) -> Result<String, String> {
     let deadline = Instant::now() + timeout;
     loop {
-        match probe_health(port, expected_generation)? {
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() {
+            return Err(format!(
+                "installed Membrane did not become healthy within {}ms",
+                timeout.as_millis()
+            ));
+        }
+        match probe_health_with_timeout(port, expected_generation, remaining)? {
             HealthObservation::Ready { release_generation, .. } => return Ok(release_generation),
             HealthObservation::Foreign(reason) => return Err(reason),
             HealthObservation::Unavailable
             | HealthObservation::NotReady { .. }
             | HealthObservation::PriorGeneration { .. } => {}
         }
-        if Instant::now() >= deadline {
-            return Err(format!(
-                "installed Membrane did not become healthy within {}ms",
-                timeout.as_millis()
-            ));
-        }
         std::thread::sleep(POLL_INTERVAL);
     }
 }
 
 fn probe_health(port: u16, expected_generation: &str) -> Result<HealthObservation, String> {
+    probe_health_with_timeout(port, expected_generation, Duration::from_secs(2))
+}
+
+fn probe_health_with_timeout(
+    port: u16,
+    expected_generation: &str,
+    timeout: Duration,
+) -> Result<HealthObservation, String> {
     let address = SocketAddr::from(([127, 0, 0, 1], port));
-    let mut stream = match TcpStream::connect_timeout(&address, Duration::from_millis(400)) {
+    let deadline = Instant::now() + timeout;
+    let connect_timeout = timeout.min(Duration::from_millis(400));
+    let stream = match TcpStream::connect_timeout(&address, connect_timeout) {
         Ok(stream) => stream,
         Err(error)
             if matches!(
@@ -809,28 +967,19 @@ fn probe_health(port: u16, expected_generation: &str) -> Result<HealthObservatio
         }
         Err(error) => return Err(format!("probe installed service: {error}")),
     };
-    stream
-        .set_read_timeout(Some(Duration::from_secs(2)))
-        .map_err(|error| format!("set activation health read timeout: {error}"))?;
-    stream
-        .set_write_timeout(Some(Duration::from_secs(2)))
-        .map_err(|error| format!("set activation health write timeout: {error}"))?;
-    stream
-        .write_all(
-            format!("GET /health HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nConnection: close\r\n\r\n")
-                .as_bytes(),
-        )
-        .map_err(|error| format!("write activation health request: {error}"))?;
-    let mut raw = Vec::new();
-    stream
-        .take((MAX_HEALTH_BYTES + 1) as u64)
-        .read_to_end(&mut raw)
-        .map_err(|error| format!("read activation health response: {error}"))?;
-    if raw.len() > MAX_HEALTH_BYTES {
-        return Ok(HealthObservation::Foreign(
-            "service on Membrane port returned oversized health response".to_string(),
-        ));
-    }
+    drop(stream);
+    let current = expected_stable_install_root()?;
+    let product_root = current.parent().ok_or("installed current has no product root")?;
+    let token_path = product_root.join("state/tools/.cache/memory/api-token");
+    let token = std::fs::read_to_string(&token_path)
+        .map_err(|_| "installed health credential is unavailable".to_string())?;
+    let remaining = deadline.checked_duration_since(Instant::now())
+        .ok_or_else(|| "installed health deadline expired".to_string())?;
+    let response = membrane_runtime::installed_health::probe_installed(port, token.trim(), remaining, &token_path)
+        .map_err(|reason| format!("installed health proof failed: {reason}"))?;
+    let mut raw = format!("HTTP/1.1 {} Health\r\nContent-Length: {}\r\n\r\n",
+        response.status, response.body.len()).into_bytes();
+    raw.extend_from_slice(&response.body);
     parse_health_response(&raw, expected_generation)
 }
 
@@ -908,7 +1057,45 @@ fn parse_health_response(
             "Membrane health omitted installed runtime origin".to_string(),
         ));
     }
-    if status != 200 || body.get("ok").and_then(serde_json::Value::as_bool) != Some(true) {
+    let database_status = body
+        .pointer("/database/status")
+        .and_then(serde_json::Value::as_str);
+    let catalog_ok = body
+        .get("catalog")
+        .and_then(serde_json::Value::as_object)
+        .and_then(|catalog| catalog.get("status"))
+        .and_then(serde_json::Value::as_str)
+        == Some("ok");
+    let enrolled_repo_count = body
+        .get("enrolledRepoCount")
+        .and_then(serde_json::Value::as_u64);
+    let watcher_running = body
+        .get("watcherRunning")
+        .and_then(serde_json::Value::as_bool)
+        == Some(true);
+    let blueprint_unconfigured = body
+        .pointer("/blueprintWatcher/watcherState")
+        .and_then(serde_json::Value::as_str)
+        == Some("not_configured")
+        && enrolled_repo_count == Some(0)
+        && body
+            .pointer("/blueprintWatcher/watcherDetail")
+            .is_none_or(serde_json::Value::is_null);
+    let blueprint_running = watcher_running
+        && enrolled_repo_count.is_some_and(|count| count > 0)
+        && body.pointer("/blueprintWatcher/watcherState").and_then(serde_json::Value::as_str) == Some("running")
+        && body.pointer("/blueprintWatcher/watcherReady").and_then(serde_json::Value::as_bool) == Some(true)
+        && body.pointer("/blueprintWatcher/watcherDetail").is_some_and(serde_json::Value::is_null);
+    let database_usable = matches!(database_status, Some("ok" | "empty"));
+    let activation_ready_degraded = status == 503
+        && body.get("ok").and_then(serde_json::Value::as_bool) == Some(false)
+        && catalog_ok
+        && database_usable
+        && (blueprint_running || blueprint_unconfigured);
+    if (status != 200 && !activation_ready_degraded)
+        || (body.get("ok").and_then(serde_json::Value::as_bool) != Some(true)
+            && !activation_ready_degraded)
+    {
         return Ok(HealthObservation::NotReady {
             installation_id: installation_id.to_string(),
         });
@@ -2601,6 +2788,7 @@ mod tests {
                 reason: None,
             },
             clients: Vec::new(),
+            workspace_config_migration: None,
         };
         assert!(activation_receipt_owned(
             &receipt,
@@ -2618,6 +2806,36 @@ mod tests {
             &membrane,
             &tray
         ));
+    }
+
+    #[test]
+    fn activation_optional_readiness_never_masks_real_component_failures() {
+        let base = serde_json::json!({
+            "ok": false, "serviceId": "membrane-hub", "nativeOnly": true,
+            "runtimeOrigin": "installed", "releaseGeneration": "g1",
+            "installationId": "install-1", "database": {"status": "empty"},
+            "catalog": {"status": "ok"}, "enrolledRepoCount": 0,
+            "blueprintWatcher": {"watcherState": "not_configured", "watcherRunning": false, "watcherDetail": null}
+        });
+        let observe = |body: &serde_json::Value| {
+            parse_health_response(format!("HTTP/1.1 503 Service Unavailable\r\n\r\n{body}").as_bytes(), "g1").unwrap()
+        };
+        assert!(matches!(observe(&base), HealthObservation::Ready { .. }));
+        let mut broken = base.clone();
+        broken["enrolledRepoCount"] = serde_json::json!(1);
+        broken["blueprintWatcher"]["watcherState"] = serde_json::json!("watcher_unavailable");
+        broken["watcherRunning"] = serde_json::json!(true);
+        broken["blueprintWatcher"]["watcherReady"] = serde_json::json!(false);
+        assert!(matches!(observe(&broken), HealthObservation::NotReady { .. }));
+        let mut corrupt = base.clone();
+        corrupt["blueprintWatcher"]["watcherDetail"] = serde_json::json!("registry corrupt");
+        assert!(matches!(observe(&corrupt), HealthObservation::NotReady { .. }));
+        let mut unknown = base.clone();
+        unknown["catalog"] = serde_json::Value::Null;
+        assert!(matches!(observe(&unknown), HealthObservation::NotReady { .. }));
+        let mut failed_store = base;
+        failed_store["database"]["status"] = serde_json::json!("error");
+        assert!(matches!(observe(&failed_store), HealthObservation::NotReady { .. }));
     }
 
     #[test]
@@ -2702,6 +2920,7 @@ mod tests {
                 reason: None,
             },
             clients: Vec::new(),
+            workspace_config_migration: None,
         };
         let value = serde_json::to_value(receipt).unwrap();
         assert_eq!(value["schemaVersion"], ACTIVATION_RECEIPT_SCHEMA_VERSION);
@@ -2771,10 +2990,85 @@ mod tests {
                 reason: Some("installed Membrane is not running".to_string()),
             },
             clients: Vec::new(),
+            workspace_config_migration: None,
         };
         let value = serde_json::to_value(receipt).expect("inspection receipt JSON");
         assert_eq!(value["dryRun"], true);
         assert_eq!(value["service"]["state"], "unavailable");
         assert_eq!(value["service"]["port"], INSTALLED_PORT);
+    }
+
+    #[test]
+    fn workspace_v2_migration_preserves_root_spelling_and_strips_python() {
+        let directory = tempfile::tempdir().unwrap();
+        let root = directory.path().join("workspace");
+        std::fs::create_dir_all(&root).unwrap();
+        let configured_root = root.join(".");
+        let path = directory.path().join("workspace.json");
+        std::fs::write(&path, serde_json::json!({
+            "schemaVersion": 2,
+            "workspaceRoot": configured_root,
+            "pythonExecutable": "C:\\Python\\python.exe"
+        }).to_string()).unwrap();
+
+        let receipt = migrate_workspace_config(&path).unwrap();
+        assert!(receipt.migrated);
+        let value: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        assert_eq!(value["schemaVersion"], 3);
+        assert_eq!(value["workspaceRoot"], configured_root.to_string_lossy().as_ref());
+        assert!(value.get("pythonExecutable").is_none());
+    }
+
+    #[test]
+    fn workspace_v2_migration_is_idempotent_byte_for_byte() {
+        let directory = tempfile::tempdir().unwrap();
+        let root = directory.path().join("workspace");
+        std::fs::create_dir_all(&root).unwrap();
+        let path = directory.path().join("workspace.json");
+        std::fs::write(&path, serde_json::json!({
+            "schemaVersion": 2,
+            "workspaceRoot": root,
+            "pythonExecutable": "C:\\Python\\python.exe"
+        }).to_string()).unwrap();
+        assert!(migrate_workspace_config(&path).unwrap().migrated);
+        let bytes = std::fs::read(&path).unwrap();
+        assert!(!migrate_workspace_config(&path).unwrap().migrated);
+        assert_eq!(std::fs::read(&path).unwrap(), bytes);
+    }
+
+    #[test]
+    fn workspace_migration_rejects_invalid_schema_and_root() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("workspace.json");
+        std::fs::write(&path, r#"{"schemaVersion": 9, "workspaceRoot": "C:\\missing"}"#)
+            .unwrap();
+        assert!(migrate_workspace_config(&path)
+            .unwrap_err()
+            .contains("workspace_config_schema_unsupported"));
+        std::fs::write(&path, serde_json::json!({
+            "schemaVersion": 2,
+            "workspaceRoot": "relative",
+            "pythonExecutable": "C:\\Python\\python.exe"
+        }).to_string()).unwrap();
+        assert!(migrate_workspace_config(&path)
+            .unwrap_err()
+            .contains("workspace_root_invalid"));
+    }
+
+    #[test]
+    fn workspace_v2_dry_run_does_not_write() {
+        let directory = tempfile::tempdir().unwrap();
+        let root = directory.path().join("workspace");
+        std::fs::create_dir_all(&root).unwrap();
+        let path = directory.path().join("workspace.json");
+        let bytes = serde_json::to_vec(&serde_json::json!({
+            "schemaVersion": 2,
+            "workspaceRoot": root,
+            "pythonExecutable": "C:\\Python\\python.exe"
+        })).unwrap();
+        std::fs::write(&path, &bytes).unwrap();
+        assert!(workspace_migration_at_path(&path, true).unwrap().is_none());
+        assert_eq!(std::fs::read(&path).unwrap(), bytes);
     }
 }

@@ -66,6 +66,7 @@ pub enum MembraneMode {
     /// harness projections.
     Deactivate,
     MigrateLegacy,
+    Init,
 }
 
 impl MembraneMode {
@@ -79,6 +80,7 @@ impl MembraneMode {
             MembraneMode::Activate => "activate",
             MembraneMode::Deactivate => "deactivate",
             MembraneMode::MigrateLegacy => "migrate-legacy",
+            MembraneMode::Init => "init",
         }
     }
 }
@@ -121,6 +123,8 @@ enum Command {
     Status(ActivateArgs),
     /// MBR-210: move recognized legacy state without copying or starting a daemon.
     MigrateLegacy(MigrateLegacyArgs),
+    /// Explicit operator-owned repository enrollment.
+    Init(InitArgs),
 }
 
 #[derive(Debug, clap::Args)]
@@ -221,6 +225,19 @@ struct MigrateLegacyArgs {
     target_root: std::path::PathBuf,
 }
 
+#[derive(Debug, clap::Args)]
+struct InitArgs {
+    root: std::path::PathBuf,
+    #[arg(long)] repository: String,
+    #[arg(long)] scope: String,
+    #[arg(long)] virtual_id: Option<String>,
+    #[arg(long)] tenant_id: Option<String>,
+    #[arg(long)] parent: Vec<String>,
+    #[arg(long)] native: Option<String>,
+    #[arg(long)] config: Option<std::path::PathBuf>,
+    #[arg(long, default_value_t = false)] dry_run: bool,
+}
+
 /// Fully-parsed invocation handed to the dispatcher. The dispatcher never touches argv again.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ParsedInvocation {
@@ -240,6 +257,20 @@ pub struct ParsedInvocation {
     pub uninstall: Option<UninstallInvocation>,
     pub activation: Option<ActivationInvocation>,
     pub migration: Option<MigrationInvocation>,
+    pub init: Option<InitInvocation>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InitInvocation {
+    pub root: std::path::PathBuf,
+    pub repository_id: String,
+    pub scope_id: String,
+    pub virtual_id: Option<String>,
+    pub tenant_id: Option<String>,
+    pub parents: Vec<String>,
+    pub native: Option<String>,
+    pub config: Option<std::path::PathBuf>,
+    pub dry_run: bool,
 }
 
 /// MBR-203: install invocation handed to the dispatcher's install handler.
@@ -338,7 +369,7 @@ fn parse_registry_operation(args: &[OsString]) -> Option<Result<ParsedInvocation
             install: None,
             uninstall: None,
             activation: None,
-            migration: None,
+            migration: None, init: None,
         }),
         Err(error) => {
             // `--help`/`--version` on a registry-derived operation (e.g. `membrane doctor
@@ -377,7 +408,7 @@ where
             install: None,
             uninstall: None,
             activation: None,
-            migration: None,
+            migration: None, init: None,
         });
     }
     if let Some(operation) = parse_registry_operation(&collected) {
@@ -401,7 +432,7 @@ where
             install: None,
             uninstall: None,
             activation: None,
-            migration: None,
+            migration: None, init: None,
         },
         Command::StdioMcp(args) => {
             if args.framing != "jsonl" {
@@ -418,7 +449,7 @@ where
                 install: None,
                 uninstall: None,
                 activation: None,
-                migration: None,
+                migration: None, init: None,
             }
         }
         Command::Hook => ParsedInvocation {
@@ -429,13 +460,13 @@ where
             install: None,
             uninstall: None,
             activation: None,
-            migration: None,
+            migration: None, init: None,
         },
         Command::HookModule(args) => ParsedInvocation {
             mode: MembraneMode::Hook,
             cli_tail: vec![args.id],
             framing: String::new(), port: 0, install: None, uninstall: None,
-            activation: None, migration: None,
+            activation: None, migration: None, init: None,
         },
         Command::Install(args) => ParsedInvocation {
             mode: MembraneMode::Install,
@@ -450,7 +481,7 @@ where
             }),
             uninstall: None,
             activation: None,
-            migration: None,
+            migration: None, init: None,
         },
         Command::Uninstall(args) => ParsedInvocation {
             mode: MembraneMode::Uninstall,
@@ -464,7 +495,7 @@ where
                 dry_run: args.dry_run,
             }),
             activation: None,
-            migration: None,
+            migration: None, init: None,
         },
         Command::Status(args) => ParsedInvocation {
             mode: MembraneMode::Activate,
@@ -480,7 +511,7 @@ where
                 timeout_ms: args.timeout_ms,
                 dry_run: true,
             }),
-            migration: None,
+            migration: None, init: None,
         },
         Command::Activate(args) => ParsedInvocation {
             mode: MembraneMode::Activate,
@@ -496,7 +527,7 @@ where
                 timeout_ms: args.timeout_ms,
                 dry_run: args.dry_run,
             }),
-            migration: None,
+            migration: None, init: None,
         },
         Command::Deactivate(args) => ParsedInvocation {
             mode: MembraneMode::Deactivate,
@@ -512,7 +543,7 @@ where
                 timeout_ms: args.timeout_ms,
                 dry_run: args.dry_run,
             }),
-            migration: None,
+            migration: None, init: None,
         },
         Command::MigrateLegacy(args) => ParsedInvocation {
             mode: MembraneMode::MigrateLegacy,
@@ -525,6 +556,17 @@ where
             migration: Some(MigrationInvocation {
                 legacy_root: args.legacy_root,
                 target_root: args.target_root,
+            }),
+            init: None,
+        },
+        Command::Init(args) => ParsedInvocation {
+            mode: MembraneMode::Init,
+            cli_tail: Vec::new(), framing: String::new(), port: 0,
+            install: None, uninstall: None, activation: None, migration: None,
+            init: Some(InitInvocation {
+                root: args.root, repository_id: args.repository, scope_id: args.scope,
+                virtual_id: args.virtual_id, tenant_id: args.tenant_id, parents: args.parent,
+                native: args.native, config: args.config, dry_run: args.dry_run,
             }),
         },
     };

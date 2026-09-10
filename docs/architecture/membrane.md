@@ -21,7 +21,7 @@
 
 ## 0. Executive decision
 
-**Lifecycle corrections (2026-09-07 & 2026-09-08):** [Explicit execution & resident lifecycle](execution-lifecycle-boundary.md) supersedes daemon-only, tray-off refusal & Hub-only residency statements throughout this document. All explicit operations remain available without residency. Hub or CodeRight daemon holds one installed Membrane controller for full background services; only final holder loss drains them. CodeRight requires installer-owned Membrane, installs it when absent, & never consumes development runtime.
+**Lifecycle corrections (2026-09-07 & 2026-09-08):** [Explicit execution & resident lifecycle](execution-lifecycle-boundary.md) supersedes daemon-only, tray-off refusal & Hub-only residency statements throughout this document. Explicit operations remain available with Hub off through bounded installed execution; background work and auto-refresh require an active Hub or CodeRight daemon holder. Hub or CodeRight daemon holds one installed Membrane controller for full background services; only final holder loss drains them. CodeRight requires installer-owned Membrane, installs it when absent, & never consumes development runtime.
 
 Membrane does not need a larger architecture. It needs a sharper one.
 

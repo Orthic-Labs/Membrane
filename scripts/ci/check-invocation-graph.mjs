@@ -158,8 +158,17 @@ export function rowAgreement(manifestRow, reachableSet) {
 }
 
 export function productionUnresolvedReferences(graph, reachableSet, manifest = undefined) {
+  // References issued from inside a bounded external interpreter row
+  // (target_disposition external-typed-service) are that row's own
+  // host-tool resolution, already accounted for by the manifest, and must
+  // not count as production-reachable unresolved references.
+  const boundedExternalFiles = new Set(
+    (manifest?.rows ?? [])
+      .filter((row) => row.target_disposition === "external-typed-service")
+      .flatMap((row) => row.files ?? []),
+  );
   return (graph.unresolvedReferences ?? []).filter(
-    (reference) => reachableSet.has(reference.from),
+    (reference) => reachableSet.has(reference.from) && !boundedExternalFiles.has(reference.from),
   );
 }
 
@@ -285,8 +294,11 @@ export function validateInvocationGraph({ root, graph, manifest, reconciliation,
   if (existsSync(join(root, SEAL_REL))) {
     let prodInterpreters = 0;
     for (const row of manifest?.rows ?? []) {
+      // Bounded external interpreter rows are typed services the seal
+      // records explicitly; only unbounded interpreter rows block it.
       if (row.production_reachable
           && ["python", "node"].includes(row.runtime)
+          && row.target_disposition !== "external-typed-service"
           ) prodInterpreters++;
     }
     const unresolved = productionUnresolvedReferences(graph, reachableSet, manifest).length;

@@ -3,7 +3,7 @@ import test from "node:test";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { BM09, BM11, extractDescriptorBlocks } from "./mem-windows.mjs";
+import { BM09, BM11, CASES, extractDescriptorBlocks } from "./mem-windows.mjs";
 
 const GOOD_HOOK_SOURCE = `
 pub fn hook_injection_point_descriptors() -> [HookInjectionPointDescriptorV1; 8] {
@@ -179,4 +179,17 @@ test("BM11: the real fixture corpus at its frozen path passes structurally", () 
 test("BM09: the real membrane-protocol hook.rs source passes structurally", () => {
   const result = BM09();
   assert.equal(result.pass, true, JSON.stringify(result.findings));
+});
+
+test("MEM registry coverage: every windows-acceptance mem-windows row has a named export", () => {
+  const ids = [
+    "MEM_001", "MEM_002", "MEM_003", "MEM_004", "MEM_005", "MEM_007", "MEM_011",
+    "MEM_013", "MEM_014", "MEM_015", "MEM_017", "MEM_022", "MEM_023", "MEM_024",
+    "MEM_025", "MEM_026", "MEM_027", "MEM_028", "MEM_029", "MEM_030", "MEM_031",
+    "MEM_032", "MEM_033", "MEM_034", "MEM_035", "MEM_036", "MEM_037", "MEM_038",
+    "MEM_039", "MEM_040", "MEM_041", "MEM_042", "MEM_043", "MEM_045", "MEM_046",
+    "MEM_047", "MEM_048", "MEM_049", "MEM_050", "MEM_051",
+  ];
+  for (const id of ids) assert.equal(typeof CASES[id], "function", `${id} missing`);
+  assert.equal(new Set(ids.map((id) => CASES[id])).size, ids.length);
 });

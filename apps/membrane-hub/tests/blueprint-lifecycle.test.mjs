@@ -20,7 +20,7 @@ test("dashboard does not own resident Blueprint or daemon lifecycle", () => {
 
 test("dashboard proxies Blueprint-backed state through authenticated loopback", () => {
   assert.match(connection, /read_bootstrap_from_stdin/);
-  assert.match(connection, /Authorization: Bearer/);
+  assert.match(connection, /build_loopback_request_headers/);
   assert.match(connection, /parse_loopback_endpoint/);
   assert.match(production, /connection\.get\("\/hub\/snapshot"/);
   assert.match(production, /connection\.get\("\/health"/);

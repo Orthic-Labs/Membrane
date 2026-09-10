@@ -5,6 +5,7 @@
 //! from the served generation and reports bounded work explicitly.
 
 use crate::api::{BlueprintError, BlueprintRequest, RequestContext};
+use crate::contracts::{BlueprintCandidateSetV1, BlueprintCandidateV1};
 use crate::graph::GraphGeneration;
 use crate::model::{GraphEdge, GraphNode, Operation};
 use serde_json::{json, Map, Value};
@@ -60,6 +61,57 @@ fn stale(request: &BlueprintRequest, generation: &GraphGeneration) -> bool {
 fn node_map<'a>(generation: &'a GraphGeneration) -> BTreeMap<&'a str, &'a GraphNode> { generation.nodes.iter().map(|n| (n.id.as_str(), n)).collect() }
 fn node_value(node: &GraphNode) -> Value { serde_json::to_value(node).unwrap_or_else(|_| json!({"id":node.id})) }
 fn edge_value(edge: &GraphEdge) -> Value { serde_json::to_value(edge).unwrap_or_else(|_| json!({"id":edge.id})) }
+
+fn source_evidence(node: &GraphNode) -> Option<(&str, &str)> {
+    let path = node.path.as_deref()?;
+    let hash = node.evidence.iter().find_map(|e| {
+        (e.get("path").and_then(Value::as_str) == Some(path))
+            .then(|| e.get("contentHash").and_then(Value::as_str))
+            .flatten()
+    })?;
+    (!path.is_empty() && !hash.is_empty()).then_some((path, hash))
+}
+
+fn source_bound_candidate(node: &GraphNode) -> Result<BlueprintCandidateV1, Value> {
+    let Some((source_ref, source_hash)) = source_evidence(node) else {
+        return Err(omission("source_evidence_missing", None));
+    };
+    let text = node.name.clone().unwrap_or_else(|| source_ref.to_owned());
+    Ok(BlueprintCandidateV1 {
+        id: node.id.clone(), layer: 3, provider: None, source_kind: "graph".into(),
+        source_ref: source_ref.to_owned(), source_hash: source_hash.to_owned(),
+        trust_class: "workspace_tracked".into(), instruction_policy: "data_only".into(),
+        // Blueprint exposes graph evidence but does not rank across providers.
+        provider_score: 0.0, score_components: BTreeMap::new(), base_commit: None,
+        overlay_digest: None, freshness_class: Some("current".into()), snapshot_id: None,
+        estimated_tokens: 0, protected: false, exact: true, recoverable: true,
+        resolver: "blueprint_graph_generation".into(), text,
+    })
+}
+
+fn candidate_set<'a>(
+    state: &str,
+    nodes: impl IntoIterator<Item = &'a GraphNode>,
+    total_known_count: Option<usize>,
+    truncated: bool,
+    mut omissions: Vec<Value>,
+) -> Value {
+    let mut candidates = Vec::new();
+    for node in nodes {
+        match source_bound_candidate(node) {
+            Ok(candidate) => candidates.push(candidate),
+            Err(omission) => omissions.push(omission),
+        }
+    }
+    let coverage = if state == "complete" && !truncated && omissions.is_empty() { "complete" } else { "partial" };
+    let state = if state == "complete" && coverage == "partial" { "partial" } else { state };
+    let set = BlueprintCandidateSetV1 {
+        schema_version: 1, state: state.to_owned(), candidate_count: candidates.len() as u64,
+        candidates, total_known_count: total_known_count.map(|count| count as u64), truncated,
+        coverage: coverage.into(), freshness: "current".into(), omissions,
+    };
+    serde_json::to_value(set).unwrap_or_else(|_| json!({"schemaVersion":1,"state":"partial","candidates":[],"candidateCount":0,"truncated":true,"coverage":"partial","freshness":"unknown","omissions":[omission("candidate_serialization_failed",None)]}))
+}
 
 fn resolve(generation: &GraphGeneration, raw: &str, limits: Limits, context: &RequestContext) -> Result<(String, Value), BlueprintError> {
     let query = raw.trim();
@@ -153,21 +205,37 @@ fn search(generation: &GraphGeneration, request: &BlueprintRequest, context: &Re
 pub fn execute_query(generation: &GraphGeneration, request: &BlueprintRequest, context: &RequestContext) -> Result<Value, BlueprintError> {
     check(context)?;
     let limits = Limits::from(request, context);
-    if stale(request, generation) || !generation.complete { return Ok(envelope(request, &generation.generation_id, "suppressed", Map::from_iter([("requestedSeed".into(),requested(&request.input,"seed")),("requestedTarget".into(),requested(&request.input,"target")),("requestedGeneration".into(),json!(request.generation)),("omissions".into(),json!([omission(if stale(request,generation) { "stale_generation" } else { "incomplete_generation" },None)]))]))); }
+    if stale(request, generation) || !generation.complete {
+        let reason = if stale(request, generation) { "stale_generation" } else { "incomplete_generation" };
+        let omissions = vec![omission(reason, None)];
+        let set = candidate_set("suppressed", std::iter::empty(), Some(0), true, omissions.clone());
+        return Ok(envelope(request, &generation.generation_id, "suppressed", Map::from_iter([("requestedSeed".into(),requested(&request.input,"seed")),("requestedTarget".into(),requested(&request.input,"target")),("requestedGeneration".into(),json!(request.generation)),("omissions".into(),json!(omissions)),("candidateSet".into(),set)])));
+    }
     match request.method {
         Operation::Search => search(generation, request, context, limits),
         Operation::Resolve => {
-            let raw = request.input.get("target").or_else(|| request.input.get("seed")).or_else(|| request.input.get("nodeId")).or_else(|| request.input.get("query")).and_then(Value::as_str).unwrap_or("");
+            // `symbol` is the existing direct-client spelling.  Retaining it
+            // as an alias makes the native producer backward-compatible while
+            // target remains the canonical Resolve field.
+            let raw = request.input.get("target").or_else(|| request.input.get("symbol")).or_else(|| request.input.get("seed")).or_else(|| request.input.get("nodeId")).or_else(|| request.input.get("query")).and_then(Value::as_str).unwrap_or("");
             let (_id, resolution) = resolve(generation, raw, limits, context)?;
             let state = resolution.get("state").and_then(Value::as_str).unwrap_or("unresolved").to_owned();
-            Ok(envelope(request, &generation.generation_id, &state, Map::from_iter([("requestedTarget".into(),json!(raw)),("resolution".into(),resolution)])))
+            let resolved = resolution.get("candidates").and_then(Value::as_array).into_iter().flatten()
+                .filter_map(|value| serde_json::from_value::<GraphNode>(value.clone()).ok()).collect::<Vec<_>>();
+            let total = resolution.get("candidateCount").and_then(Value::as_u64).map(|count| count as usize);
+            let resolution_omissions = resolution.get("omissions").and_then(Value::as_array).cloned().unwrap_or_default();
+            let set = candidate_set(&state, resolved.iter(), total, state != "resolved", resolution_omissions);
+            Ok(envelope(request, &generation.generation_id, &state, Map::from_iter([("requestedTarget".into(),json!(raw)),("resolution".into(),resolution),("candidateSet".into(),set)])))
         }
         Operation::Expand | Operation::Recall | Operation::Impact => {
             let raw = request.input.get("seed").or_else(|| request.input.get("target")).or_else(|| request.input.get("nodeId")).or_else(|| request.input.get("task")).and_then(Value::as_str).unwrap_or("");
             let (id, resolution) = resolve(generation, raw, limits, context)?;
             if id.is_empty() {
                 let state = resolution.get("state").and_then(Value::as_str).unwrap_or("unresolved").to_owned();
-                return Ok(envelope(request, &generation.generation_id, &state, Map::from_iter([("requestedSeed".into(),json!(raw)),("resolution".into(),resolution),("nodes".into(),json!([])),("edges".into(),json!([])),("omissions".into(),json!([omission("seed_unresolved",None)]))])));
+                let mut omissions = resolution.get("omissions").and_then(Value::as_array).cloned().unwrap_or_default();
+                omissions.push(omission("seed_unresolved", None));
+                let set = candidate_set(&state, std::iter::empty(), Some(0), true, omissions.clone());
+                return Ok(envelope(request, &generation.generation_id, &state, Map::from_iter([("requestedSeed".into(),json!(raw)),("resolution".into(),resolution),("nodes".into(),json!([])),("edges".into(),json!([])),("omissions".into(),json!(omissions)),("candidateSet".into(),set)])));
             }
             let direction = if request.method == Operation::Impact { "in" } else { request.input.get("direction").and_then(Value::as_str).unwrap_or("both") };
             let (ids, edges, depths, mut omissions) = adjacent(generation, &id, direction, limits, context)?;
@@ -191,7 +259,11 @@ pub fn execute_query(generation: &GraphGeneration, request: &BlueprintRequest, c
                 // evidence, not evidence of absence (ImpactFrontierClass::NotObserved).
                 omissions.push(omission(crate::model::ImpactFrontierClass::NotObserved.as_str(), None));
             }
-            Ok(envelope(request, &generation.generation_id, "complete", Map::from_iter([("requestedSeed".into(),json!(raw)),("resolution".into(),resolution), ("root".into(),json!(id)), ("target".into(),json!(if request.method == Operation::Impact {nodes.get(id.as_str()).map(|n| node_value(n)).unwrap_or(json!({"id":id}))} else {Value::Null})), ("direction".into(),json!(direction)), ("nodes".into(),json!(values)), ("edges".into(),json!(edges.iter().map(|e|edge_value(e)).collect::<Vec<_>>())), ("depths".into(),json!(depths)), ("impact".into(),json!(impact_classes)), ("omissions".into(),json!(omissions))])))
+            let candidate_nodes = ids.iter().filter_map(|id| nodes.get(id.as_str()).copied()).collect::<Vec<_>>();
+            let candidate_omissions = omissions.clone();
+            let set = candidate_set("complete", candidate_nodes, Some(ids.len()), !candidate_omissions.is_empty(), candidate_omissions);
+            let state = set.get("state").and_then(Value::as_str).unwrap_or("partial").to_owned();
+            Ok(envelope(request, &generation.generation_id, &state, Map::from_iter([("requestedSeed".into(),json!(raw)),("resolution".into(),resolution), ("root".into(),json!(id)), ("target".into(),json!(if request.method == Operation::Impact {nodes.get(id.as_str()).map(|n| node_value(n)).unwrap_or(json!({"id":id}))} else {Value::Null})), ("direction".into(),json!(direction)), ("nodes".into(),json!(values)), ("edges".into(),json!(edges.iter().map(|e|edge_value(e)).collect::<Vec<_>>())), ("depths".into(),json!(depths)), ("impact".into(),json!(impact_classes)), ("omissions".into(),json!(omissions)), ("candidateSet".into(),set)])))
         }
         Operation::Path => {
             let from = requested(&request.input,"from").as_str().unwrap_or("").to_owned(); let to = requested(&request.input,"to").as_str().unwrap_or("").to_owned();

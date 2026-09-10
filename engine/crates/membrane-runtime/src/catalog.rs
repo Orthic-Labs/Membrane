@@ -34,7 +34,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 /// Schema-version of the catalog. Migrations are additive (`ALTER TABLE ADD` /
 /// `CREATE INDEX`) — never re-shape the Cortex DB, never delete a previously
 /// persisted column.
-pub const CATALOG_SCHEMA_VERSION: i64 = 5;
+pub const CATALOG_SCHEMA_VERSION: i64 = 6;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -308,6 +308,7 @@ CREATE TABLE IF NOT EXISTS delivery_acknowledgements (
     publication_id        TEXT NOT NULL,
     representation_digest TEXT NOT NULL,
     packet_digest         TEXT NOT NULL,
+    host_serialized_digest TEXT NOT NULL,
     acknowledged_at_unix  INTEGER NOT NULL,
     PRIMARY KEY (installation_id, repository_id, request_id, trace_id,
                  context_epoch, publication_id, representation_digest, packet_digest)
@@ -436,6 +437,9 @@ fn migrate(conn: &mut Connection) -> rusqlite::Result<()> {
                                      task_id, session_id, context_epoch, publication_id)
                     );",
                 )?;
+            }
+            6 => {
+                add_column(&tx, "delivery_acknowledgements", "host_serialized_digest", "TEXT NOT NULL DEFAULT ''")?;
             }
             _ => unreachable!(),
         }
@@ -1029,6 +1033,7 @@ pub struct DeliveryAcknowledgementRecordV1 {
     pub publication_id: String,
     pub representation_digest: String,
     pub packet_digest: String,
+    pub host_serialized_digest: String,
 }
 
 impl DeliveryAcknowledgementRecordV1 {
@@ -1037,6 +1042,7 @@ impl DeliveryAcknowledgementRecordV1 {
             &self.repository_id, &self.request_id, &self.trace_id, &self.task_id, &self.session_id,
             &self.context_epoch, &self.publication_id,
             &self.representation_digest, &self.packet_digest,
+            &self.host_serialized_digest,
         ].iter().all(|value| !value.trim().is_empty())
     }
 }
@@ -1167,13 +1173,13 @@ pub(crate) fn record_delivery_acknowledgement(
     let changed = conn.execute(
         "INSERT OR IGNORE INTO delivery_acknowledgements
             (installation_id, repository_id, request_id, trace_id, task_id, session_id, context_epoch,
-             publication_id, representation_digest, packet_digest, acknowledged_at_unix)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+             publication_id, representation_digest, packet_digest, host_serialized_digest, acknowledged_at_unix)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
         params![
             installation_id, acknowledgement.repository_id.as_str(), acknowledgement.request_id.as_str(),
             acknowledgement.trace_id.as_str(), acknowledgement.task_id.as_str(), acknowledgement.session_id.as_str(),
             acknowledgement.context_epoch.as_str(), acknowledgement.publication_id.as_str(), acknowledgement.representation_digest.as_str(),
-            acknowledgement.packet_digest.as_str(), ContextCatalog::now_unix(),
+            acknowledgement.packet_digest.as_str(), acknowledgement.host_serialized_digest.as_str(), ContextCatalog::now_unix(),
         ],
     )?;
     Ok(changed > 0)
@@ -1192,12 +1198,13 @@ pub fn has_delivery_acknowledgement(
         "SELECT EXISTS(SELECT 1 FROM delivery_acknowledgements
           WHERE installation_id = ?1 AND repository_id = ?2 AND request_id = ?3
             AND trace_id = ?4 AND task_id = ?5 AND session_id = ?6 AND context_epoch = ?7 AND publication_id = ?8
-            AND representation_digest = ?9 AND packet_digest = ?10)",
+            AND representation_digest = ?9 AND packet_digest = ?10 AND host_serialized_digest = ?11)",
         params![
             installation_id, acknowledgement.repository_id.as_str(), acknowledgement.request_id.as_str(),
             acknowledgement.trace_id.as_str(), acknowledgement.task_id.as_str(), acknowledgement.session_id.as_str(),
             acknowledgement.context_epoch.as_str(), acknowledgement.publication_id.as_str(), acknowledgement.representation_digest.as_str(),
             acknowledgement.packet_digest.as_str(),
+            acknowledgement.host_serialized_digest.as_str(),
         ],
         |row| row.get::<_, bool>(0),
     )

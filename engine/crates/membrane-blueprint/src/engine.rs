@@ -39,7 +39,20 @@ impl BlueprintOperation for NativeBlueprintOperation {
                 }
                 build_and_publish(request, context, &root, &db_path)
             }
-            Operation::Status | Operation::DbStatus => status(request, context, &root, &db_path),
+            Operation::Status | Operation::DbStatus => status(request, context, &root, &db_path)
+                .and_then(|value| bounded_generation_response(request, value)),
+            Operation::FindingsGet => {
+                // Findings are a projection over the same persisted native
+                // generation used by query operations. Keep this dispatch in
+                // the native owner so installed CLI callers cannot fall back
+                // to a second JS detector or an unpinned live scan.
+                let connection = store::open_store_read_only(&db_path).map_err(store_error)?;
+                let generation = store::load_generation(&connection)
+                    .map_err(store_error)?
+                    .ok_or_else(|| BlueprintError::new("blueprint_store_missing", "no persisted Blueprint generation exists"))?;
+                let state_dir = root.join(".agent").join("blueprint").join("findings-baselines");
+                crate::findings::execute_findings(&generation, request, context, &state_dir)
+            }
             Operation::Search | Operation::Resolve | Operation::Recall | Operation::Expand
             | Operation::Impact | Operation::Path | Operation::Architecture => {
                 let (generation, source_observation) = load_current_with_observation(&db_path)?;
@@ -92,11 +105,14 @@ fn store_path(root: &Path) -> PathBuf { root.join(".agent").join("graph").join("
 
 fn build_and_publish(request: &BlueprintRequest, context: &RequestContext, root: &Path, db_path: &Path) -> Result<Value, BlueprintError> {
     context.check()?;
-    // `graph::build_generation` has no cooperative cancellation seam.  Keep
-    // the operation synchronous so no detached worker can outlive this call;
-    // cancellation/deadline is enforced at every safe pre-save boundary.
-    let graph = graph::build_generation(root, &GraphOptions::default())
-        .map_err(|error| BlueprintError::new("blueprint_build_failed", error.to_string()))?;
+    // Keep graph construction synchronous so no detached worker can outlive
+    // this call; its checkpoints observe request cancellation & deadline.
+    let graph = graph::build_generation_with_cancellation(root, &GraphOptions::default(), &context.cancellation)
+        .map_err(|error| match error {
+            graph::GraphError::Cancelled if context.cancellation.deadline_expired() => BlueprintError::deadline(),
+            graph::GraphError::Cancelled => BlueprintError::cancelled(),
+            error => BlueprintError::new("blueprint_build_failed", error.to_string()),
+        })?;
     context.check()?;
     let generation_id = graph.generation_id.clone();
     let mut connection = open_store(db_path)?;
@@ -108,7 +124,7 @@ fn build_and_publish(request: &BlueprintRequest, context: &RequestContext, root:
     });
     store::save_generation(&mut connection, &to_store_generation(&graph, observation.clone()))
         .map_err(store_error)?;
-    Ok(json!({
+    bounded_generation_response(request, json!({
         "schemaVersion": 1,
         "operation": request.method.as_str(),
         "state": "fresh",
@@ -117,11 +133,34 @@ fn build_and_publish(request: &BlueprintRequest, context: &RequestContext, root:
         "storePath": db_path.to_string_lossy(),
         "sourceHash": graph.source_hash,
         "complete": graph.complete,
+        "truncationReasons": graph.truncation_reasons,
         "counts": {"nodes": graph.nodes.len(), "edges": graph.edges.len(), "files": graph.files.len()},
         "sourceClock": request.input.get("sourceClock").cloned().unwrap_or(Value::Null),
         "eventKind": request.input.get("eventKind").cloned().unwrap_or(Value::Null),
         "sourceObservation": observation,
     }))
+}
+
+// Detailed omissions remain in the durable generation. Project only as many
+// as fit on wire, accounting for the actual response envelope & UTF-8 bytes.
+fn bounded_generation_response(request: &BlueprintRequest, mut value: Value) -> Result<Value, BlueprintError> {
+    let count = value["truncationReasons"].as_array().map_or(0, Vec::len);
+    value["truncationReasonCount"] = json!(count);
+    value["truncationReasonsOmitted"] = json!(0);
+    loop {
+        let response = crate::api::BlueprintResponse::success(
+            request.request_id.clone(), request.generation.clone(), value.clone());
+        match response.validate(crate::api::Bounds::default()) {
+            Ok(()) => return Ok(value),
+            Err(error) => {
+                let Some(reasons) = value["truncationReasons"].as_array_mut() else { return Err(error); };
+                if reasons.pop().is_none() { return Err(error); }
+                let omitted = count - reasons.len();
+                value["truncationReasonsOmitted"] = json!(omitted);
+                value["omissions"] = json!([{"reason": "response_projection", "field": "truncationReasons", "count": omitted}]);
+            }
+        }
+    }
 }
 
 fn status(request: &BlueprintRequest, context: &RequestContext, root: &Path, db_path: &Path) -> Result<Value, BlueprintError> {
@@ -137,8 +176,12 @@ fn status(request: &BlueprintRequest, context: &RequestContext, root: &Path, db_
         Err(error) => return Err(error),
     };
     context.check()?;
-    let current = graph::build_generation(root, &GraphOptions::default())
-        .map_err(|error| BlueprintError::new("blueprint_status_failed", error.to_string()))?;
+    let current = graph::build_generation_with_cancellation(root, &GraphOptions::default(), &context.cancellation)
+        .map_err(|error| match error {
+            graph::GraphError::Cancelled if context.cancellation.deadline_expired() => BlueprintError::deadline(),
+            graph::GraphError::Cancelled => BlueprintError::cancelled(),
+            error => BlueprintError::new("blueprint_status_failed", error.to_string()),
+        })?;
     context.check()?;
     let state = if generation.source_hash == current.source_hash { "fresh" } else { "stale" };
     Ok(status_value(request, root, db_path, state, Some(&generation), None))
@@ -155,6 +198,8 @@ fn status_value(request: &BlueprintRequest, root: &Path, db_path: &Path, state: 
         "repoRoot": root.to_string_lossy(),
         "storePath": db_path.to_string_lossy(),
         "detail": detail,
+        "complete": generation.map(|g| g.complete),
+        "truncationReasons": generation.map(|g| g.truncation_reasons.clone()).unwrap_or_default(),
     })
 }
 
@@ -250,4 +295,27 @@ fn store_error(error: StoreError) -> BlueprintError {
         StoreError::Sqlite(_) | StoreError::Migration(_) | StoreError::Json(_) | StoreError::InvalidGeneration(_) | StoreError::Path(_) => "blueprint_store_corrupt",
     };
     BlueprintError::new(code, error.to_string())
+}
+
+#[cfg(test)]
+mod response_projection_tests {
+    use super::*;
+
+    #[test]
+    fn oversized_omission_projection_preserves_coverage_and_accounts_for_every_reason() {
+        let request = BlueprintRequest::new("projection", Operation::Build, "D:/repo");
+        let reasons: Vec<String> = (0..169).map(|index| format!("unsupported_file_bytes:{index}/{}", "long-path/".repeat(30))).collect();
+        let original = json!({"complete": false, "truncationReasons": reasons});
+        let projected = bounded_generation_response(&request, original.clone()).unwrap();
+        let retained = projected["truncationReasons"].as_array().unwrap();
+        let omitted = projected["truncationReasonsOmitted"].as_u64().unwrap() as usize;
+        assert!(omitted > 0);
+        assert_eq!(retained.len() + omitted, 169);
+        assert_eq!(retained, &original["truncationReasons"].as_array().unwrap()[..retained.len()]);
+        assert_eq!(projected["complete"], false);
+        assert_eq!(projected["omissions"][0]["count"], omitted);
+        crate::api::BlueprintResponse::success(request.request_id, None, projected)
+            .validate(crate::api::Bounds::default()).unwrap();
+        assert_eq!(original["truncationReasons"].as_array().unwrap().len(), 169);
+    }
 }

@@ -39,6 +39,13 @@ foreach ($module in @('Microsoft.PowerShell.Security', 'Microsoft.PowerShell.Uti
 }
 Add-Type -AssemblyName System.Net.Http
 $script:HubProcess = $null
+$script:TrayProcess = $null
+$script:DaemonProcess = $null
+$script:DashboardProcess = $null
+$script:TrayPath = $null
+$script:DaemonPath = $null
+$script:DashboardPath = $null
+$script:DashboardIdentity = $null
 # Keep qualification isolated from checkout-local runtimes while retaining
 # system Git, which Blueprint uses for repository fingerprinting.
 $script:GitPath = (Get-Command git.exe -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty Source)
@@ -54,6 +61,7 @@ $script:AdaptEvidence = $null
 $script:State = $null
 $script:InitialInstallRoot = $null
 $script:InitialEvidence = $null
+$script:NativeInitEvidence = $null
 $script:UpgradeEvidence = $null
 $script:ActivationDryRun = $null
 $script:Activation = $null
@@ -207,29 +215,99 @@ function Save-RuntimeLogEvidence([string]$Label) {
 
 function Invoke-Activation([string]$Root) {
   Write-Host "[qualification] Invoke-Activation $(Get-Date -Format 'HH:mm:ss')"
-  # The real activation a customer install performs: reconciles every client
-  # config, registers PATH, launches the resident tray and waits for health.
+  # Silent installation reconciles bindings only. Resident qualification
+  # subsequently opens the real Hub holder before waiting for service health.
   # Output is evidence either way; a non-zero exit fails qualification with it.
   $membrane = Join-Path $Root 'membrane.exe'
   Require (Test-Path -LiteralPath $membrane -PathType Leaf) "installed membrane.exe is missing at $membrane"
-  # Native stderr must not become a terminating error before it is captured.
-  $previousErrorAction = $ErrorActionPreference
-  $ErrorActionPreference = 'Continue'
-  try {
-    $output = & $membrane activate --install-root $Root --timeout-ms 90000 2>&1 | ForEach-Object { "$_" } | Out-String
-    $exit = $LASTEXITCODE
-  } finally { $ErrorActionPreference = $previousErrorAction }
   $evidenceRoot = $env:RIGHT_GIT_QUALIFICATION_EVIDENCE_ROOT
   if (-not $evidenceRoot) { $evidenceRoot = $EvidencePath }
+  $activationTimeoutMs = 90000
+  $processExitBoundMs = 5000
+  $captureRoot = Join-Path ([IO.Path]::GetTempPath()) "membrane-activation-$([guid]::NewGuid().ToString('N'))"
+  $stdoutPath = Join-Path $captureRoot 'stdout.log'
+  $stderrPath = Join-Path $captureRoot 'stderr.log'
+  $stdout = ''
+  $stderr = ''
+  $exit = $null
+  $failure = $null
+  $timedOut = $false
+  $process = $null
+  try {
+    New-Item -ItemType Directory -Path $captureRoot -Force -ErrorAction Stop | Out-Null
+    $commandProcessor = Join-Path $env:WINDIR 'System32\cmd.exe'
+    Require (Test-Path -LiteralPath $commandProcessor -PathType Leaf) "system command processor is missing: $commandProcessor"
+    # Let cmd.exe own direct file redirection so Start-Process creates no
+    # asynchronous stream bookkeeping retained by resident descendants. Every
+    # token is a fixed canonical path or integer & remains quoted inside one
+    # hidden system command-processor invocation; no PATH lookup is involved.
+    $commandLine = '""' + $membrane + '" activate --install-root "' + $Root +
+      '" --bindings-only --timeout-ms ' + [string]$activationTimeoutMs + ' 1>"' + $stdoutPath +
+      '" 2>"' + $stderrPath + '"'
+    $process = Start-Process -FilePath $commandProcessor -ArgumentList @('/d', '/s', '/c', $commandLine) `
+      -WorkingDirectory $Root -PassThru -WindowStyle Hidden
+    if (-not $process.WaitForExit($activationTimeoutMs)) {
+      $timedOut = $true
+      try { & (Join-Path $env:WINDIR 'System32\taskkill.exe') /PID $process.Id /T /F 2>$null | Out-Null } catch { }
+      if (-not $process.WaitForExit($processExitBoundMs)) {
+        $failure = "membrane activate timed out after $activationTimeoutMs ms and did not exit within $processExitBoundMs ms"
+      } else {
+        $failure = "membrane activate timed out after $activationTimeoutMs ms"
+      }
+    } else {
+      # Give the direct process handle a tight second bound to settle before
+      # reading files; this never waits on the resident tray descendant.
+      Require ($process.WaitForExit($processExitBoundMs)) 'membrane activate process did not settle within 5000 ms'
+      $process.Refresh()
+      Require $process.HasExited 'membrane activate process exit state is unavailable'
+      $candidateExit = $process.ExitCode
+      Require ($null -ne $candidateExit) 'membrane activate exit code is unavailable'
+      $exit = [int]$candidateExit
+    }
+  } catch {
+    if (-not $failure) { $failure = $_.Exception.Message }
+  }
+  $readCapture = {
+    param([string]$Path)
+    $stream = $null
+    $reader = $null
+    try {
+      # Resident tray inherits these handles; permit shared reads while it
+      # remains alive, without changing captured bytes or waiting on it.
+      $share = [IO.FileShare]::ReadWrite -bor [IO.FileShare]::Delete
+      $stream = [IO.FileStream]::new($Path, [IO.FileMode]::Open, [IO.FileAccess]::Read, $share)
+      $reader = [IO.StreamReader]::new($stream, [Text.UTF8Encoding]::new($false), $true)
+      return $reader.ReadToEnd()
+    } finally {
+      if ($reader) { $reader.Dispose() }
+      elseif ($stream) { $stream.Dispose() }
+    }
+  }
+  try { if (Test-Path -LiteralPath $stdoutPath -PathType Leaf) { $stdout = & $readCapture $stdoutPath } } catch { $stdout = "<stdout unavailable: $($_.Exception.Message)>" }
+  try { if (Test-Path -LiteralPath $stderrPath -PathType Leaf) { $stderr = & $readCapture $stderrPath } } catch { $stderr = "<stderr unavailable: $($_.Exception.Message)>" }
+  $output = $stdout
+  $combinedOutput = if ([string]::IsNullOrEmpty($stderr)) { $stdout } else { "$stdout`r`n$stderr" }
   try {
     New-Item -ItemType Directory -Path $evidenceRoot -Force -ErrorAction Stop | Out-Null
-    $output | Set-Content -LiteralPath (Join-Path $evidenceRoot 'activation.log') -Encoding utf8
+    $stdout | Set-Content -LiteralPath (Join-Path $evidenceRoot 'activation-stdout.log') -Encoding utf8
+    $stderr | Set-Content -LiteralPath (Join-Path $evidenceRoot 'activation-stderr.log') -Encoding utf8
+    $combinedOutput | Set-Content -LiteralPath (Join-Path $evidenceRoot 'activation.log') -Encoding utf8
+    [ordered]@{
+      schema = 'membrane.activation-process.v1'
+      executable = $membrane
+      exitCode = $exit
+      timedOut = $timedOut
+      stdout = (Join-Path $evidenceRoot 'activation-stdout.log')
+      stderr = (Join-Path $evidenceRoot 'activation-stderr.log')
+    } | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $evidenceRoot 'activation-process.json') -Encoding utf8
   } catch {}
+  if ($failure) { [void](Save-RuntimeLogEvidence 'activation'); throw "$failure`nstdout:`n$stdout`nstderr:`n$stderr" }
   if ($exit -ne 0) { [void](Save-RuntimeLogEvidence 'activation') }
-  Require ($exit -eq 0) "membrane activate exited $exit`n$output"
+  Require ($exit -eq 0) "membrane activate exited $exit`n$combinedOutput"
   $parsed = $null
   try { $parsed = $output | ConvertFrom-Json } catch { throw "membrane activate did not emit JSON:`n$output" }
   Require ([string]$parsed.runtimeOrigin -eq 'installed') "activation reported runtimeOrigin $($parsed.runtimeOrigin)"
+  try { if (Test-Path -LiteralPath $captureRoot) { Remove-Item -LiteralPath $captureRoot -Recurse -Force -ErrorAction SilentlyContinue } } catch {}
   return [ordered]@{ exitCode = $exit; runtimeOrigin = [string]$parsed.runtimeOrigin; service = $parsed.service; clients = @($parsed.clients | ForEach-Object { [ordered]@{ client = $_.client; before = $_.before; after = $_.after; changed = $_.changed } }) }
 }
 
@@ -369,92 +447,74 @@ function Get-RuntimePort([string]$Root) {
   return 47851
 }
 
-function Get-BlueprintEndpoint {
-  Require (-not [string]::IsNullOrWhiteSpace($env:USERPROFILE)) 'USERPROFILE is unavailable for Blueprint endpoint'
-  $sha = [Security.Cryptography.SHA256]::Create()
-  try { $hex = ([BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($env:USERPROFILE))) -replace '-', '').ToLowerInvariant() }
-  finally { $sha.Dispose() }
-  return "\\.\pipe\membrane-blueprint-$($hex.Substring(0, 16))"
-}
-
-function Invoke-BlueprintPipe([string]$Endpoint, [string]$Method, [hashtable]$Payload = @{}, [int]$DeadlineMs = 30000) {
-  $pipeName = $Endpoint.Substring($Endpoint.LastIndexOf('\') + 1)
-  $client = [IO.Pipes.NamedPipeClientStream]::new('.', $pipeName, [IO.Pipes.PipeDirection]::InOut, [IO.Pipes.PipeOptions]::Asynchronous)
-  try {
-    $client.Connect([Math]::Min($DeadlineMs, 5000))
-    # NamedPipeClientStream does not implement stream timeouts on Windows;
-    # connect deadline plus service protocol deadline provides bounded calls.
-    try { $client.ReadTimeout = $DeadlineMs + 500 } catch { }
-    try { $client.WriteTimeout = $DeadlineMs } catch { }
-    $writer = [IO.StreamWriter]::new($client, [Text.UTF8Encoding]::new($false), 4096, $true); $writer.AutoFlush = $true
-    $reader = [IO.StreamReader]::new($client, [Text.UTF8Encoding]::new($false), $false, 4096, $true)
-    $request = [ordered]@{ protocolVersion = 1; requestId = [guid]::NewGuid().ToString(); repoId = $null; generation = $null; method = $Method; deadlineMs = $DeadlineMs; input = $Payload }
-    $writer.WriteLine(($request | ConvertTo-Json -Compress -Depth 20)); $line = $reader.ReadLine(); Require (-not [string]::IsNullOrWhiteSpace($line)) "Blueprint $Method returned no response"; return $line | ConvertFrom-Json
-  } finally { $client.Dispose() }
-}
-
-function Invoke-BlueprintPipeUntilReady([string]$Endpoint, [string]$Method, [hashtable]$Payload, [int]$Timeout) {
-  $deadline = (Get-Date).AddSeconds($Timeout); $response = $null
-  do { try { $response = Invoke-BlueprintPipe $Endpoint $Method $Payload ([Math]::Min(30000, $Timeout * 1000)) } catch { $response = $null }; if ($response.ok -eq $true) { return $response }; Start-Sleep -Milliseconds 250 } while ((Get-Date) -lt $deadline)
-  return $response
-}
-
 function Assert-BlueprintResident([string]$Root, [string]$WorkspaceRoot) {
   Write-Host "[qualification] Assert-BlueprintResident $(Get-Date -Format 'HH:mm:ss')"
-  $typedStates = @('root_not_enrolled', 'not_configured', 'graph_missing', 'missing_graph', 'stale_blocked', 'generation_mismatch')
-  $endpoint = Get-BlueprintEndpoint; $status = $null; $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+  # Hub health/process identity proves resident watcher ownership. Blueprint's
+  # supported production surface is membrane.exe's bounded native CLI; no
+  # retired standalone endpoint protocol is part of qualification.
+  $result = Invoke-BlueprintOneShot $Root $WorkspaceRoot
+  Require ($result.status -eq 'pass') 'Hub-hosted Blueprint native status did not pass'
+  Require ($script:ActiveHubHealth -and $script:ActiveHubHealth.subsystems -contains 'blueprint') 'Hub health omitted Blueprint watcher subsystem'
+  $membrane = Join-Path $Root 'membrane.exe'
+  $statusPayload = $result.Payload
+  $graphGeneration = [string]$statusPayload.generationId
+  if (-not $graphGeneration -and $statusPayload.result) { $graphGeneration = [string]$statusPayload.result.generationId }
+  Require ($graphGeneration -match '^xxh128:[0-9a-f]{32}$') "native Blueprint status returned invalid graph generation: $graphGeneration"
+  $freshnessState = if ($statusPayload.state) { [string]$statusPayload.state } elseif ($statusPayload.result) { [string]$statusPayload.result.state } else { '' }
+  Require ($freshnessState -eq 'fresh') "native Blueprint watcher freshness is not current: $freshnessState"
+  $watchMarker = "watcher_marker_$([guid]::NewGuid().ToString('N'))"
+  $watchFile = Join-Path $WorkspaceRoot 'watcher-qualification.mjs'
+  Write-NativeText $watchFile "export function $watchMarker() { return '$watchMarker'; }`n"
+  $watchDeadline = (Get-Date).AddSeconds($TimeoutSeconds)
+  $watchPayload = $null
   do {
+    Start-Sleep -Milliseconds 500
     try {
-      $status = Invoke-BlueprintPipe $endpoint 'status' @{ repoRoot = $WorkspaceRoot }
-      if ($status.ok -eq $true -or $typedStates -contains [string]$status.error.code) { break }
-    } catch {
-      $script:LastBlueprintPipeError = $_.Exception.Message
-      $status = $null
-    }
-    Start-Sleep -Milliseconds 250
-  } while ((Get-Date) -lt $deadline)
-  $pipeDetail = if ($script:LastBlueprintPipeError) { ": $script:LastBlueprintPipeError" } else { '' }
-  Require ($null -ne $status) "Hub-hosted Blueprint returned no status envelope$pipeDetail"
-  if ($status.ok -eq $true) {
-    Require ($status.result -and [string]$status.result.state -in @('fresh', 'degraded', 'running')) 'Hub-hosted Blueprint status is not serving'
-    $enrollment = if ([int]$status.result.runtime.enrolledRepoCount -gt 0) { 'enrolled' } else { 'not_configured' }
-    $graph = [string]$status.result.state
-  } else {
-    Require ($typedStates -contains [string]$status.error.code) "Hub-hosted Blueprint status failed with untyped error: $($status.error.code)"
-    $enrollment = if ([string]$status.error.code -in @('root_not_enrolled', 'not_configured')) { 'not_configured' } else { 'unknown' }
-    $graph = [string]$status.error.code
-  }
-  $findings = Invoke-BlueprintPipe $endpoint 'findings.get' @{ repoRoot = $WorkspaceRoot; allowStale = $false }
-  Require ($null -ne $findings) 'Hub-hosted Blueprint findings.get returned no envelope'
-  if ($findings.ok -eq $true) { Require ($findings.result.kind -eq 'findings.get') 'Hub-hosted Blueprint findings.get result is invalid'; $findingsState = 'success' }
-  else { Require ($typedStates -contains [string]$findings.error.code) "Hub-hosted Blueprint findings.get failed with untyped error: $($findings.error.code)"; $findingsState = [string]$findings.error.code }
-  $recall = Invoke-BlueprintPipe $endpoint 'recall' @{ repoRoot = $WorkspaceRoot; query = 'native qualification' }
-  Require ($null -ne $recall) 'Hub-hosted Blueprint recall returned no envelope'
-  if ($recall.ok -eq $true) { Require ([string]$recall.result.action -in @('allow', 'continue', 'block', 'noop')) 'Hub-hosted Blueprint recall result is invalid'; $recallState = 'success' }
-  else { Require ($typedStates -contains [string]$recall.error.code) "Hub-hosted Blueprint recall failed with untyped error: $($recall.error.code)"; $recallState = [string]$recall.error.code }
-  $mismatch = Invoke-BlueprintPipe $endpoint 'findings.get' @{ repoRoot = $WorkspaceRoot; generation = "sha256:$([string]::new('0', 64))"; allowStale = $false }
-  Require ($mismatch.ok -eq $false -and @('generation_mismatch', 'stale_blocked') -contains [string]$mismatch.error.code) 'Blueprint generation mismatch did not fail closed'
-  return [ordered]@{ endpoint = $endpoint; status = 'pass'; enrollment = $enrollment; graph = $graph; findings = $findingsState; recall = $recallState; generationMismatch = 'pass'; hubOwned = $true }
+      $candidate = Invoke-BlueprintOneShot $Root $WorkspaceRoot
+      $candidatePayload = $candidate.Payload
+      $candidateGeneration = [string]$candidatePayload.generationId
+      $candidateState = [string]$candidatePayload.state
+      if ($candidateGeneration -and $candidateGeneration -ne $graphGeneration -and $candidateState -eq 'fresh') { $watchPayload = $candidatePayload; break }
+    } catch { }
+  } while ((Get-Date) -lt $watchDeadline)
+  Require ($null -ne $watchPayload) 'Blueprint watcher did not publish a newer fresh generation after isolated file mutation'
+  $watchGeneration = [string]$watchPayload.generationId
+  $search = Invoke-NativeProcess $membrane ("cli blueprint search --repo-root $(Quote-NativeArgument $WorkspaceRoot) --query " + (Quote-NativeArgument $watchMarker)) '' $Root
+  Require ([string]$search.Stdout -match [regex]::Escape($watchMarker)) 'Blueprint watcher generation does not expose mutated symbol through native query'
+  $recall = Invoke-NativeProcess $membrane ("cli blueprint recall --repo-root $(Quote-NativeArgument $WorkspaceRoot) --query " + (Quote-NativeArgument $watchMarker)) '' $Root
+  $recallPayload = Read-NativeOutput $recall.Stdout 'native Blueprint recall'
+  Require ([string]$recallPayload.generationId -eq $watchGeneration) 'native Blueprint recall returned a different graph generation'
+  Require ([string]$recallPayload.state -eq 'complete' -and $null -ne $recallPayload.candidateSet -and $null -ne $recallPayload.resolution) 'native Blueprint recall omitted complete graph resolution'
+  Require (@($recallPayload.nodes).Count -gt 0 -and [string]$recall.Stdout -match [regex]::Escape($watchMarker)) 'native Blueprint recall did not recover watched symbol'
+  $mismatchGeneration = 'xxh128:' + [string]::new('0', 32)
+  $mismatch = Invoke-NativeProcessAllowFailure $membrane ("cli blueprint findings.get --repo-root $(Quote-NativeArgument $WorkspaceRoot) --generation $mismatchGeneration") '' $Root
+  $mismatchPayload = if (-not [string]::IsNullOrWhiteSpace($mismatch.Stdout)) { Read-NativeOutput $mismatch.Stdout 'native Blueprint generation mismatch' } else { $null }
+  $mismatchCode = if ($mismatchPayload.error.code) { [string]$mismatchPayload.error.code } elseif ($mismatchPayload.result.error.code) { [string]$mismatchPayload.result.error.code } else { [string]$mismatch.Stderr }
+  Require ($mismatch.ExitCode -ne 0 -and $mismatchCode -match '(?i)generation_mismatch|stale_blocked') "native Blueprint generation mismatch did not fail closed: exit=$($mismatch.ExitCode) response=$mismatchCode"
+  return [ordered]@{ transport = 'membrane.exe cli blueprint'; status = 'pass'; enrollment = 'native'; graph = $freshnessState; generation = $graphGeneration; watcher = 'hub-health-and-freshness'; watcherMutation = 'pass'; watcherGeneration = $watchGeneration; watcherQuery = 'pass'; findings = 'generation_mismatch'; recall = 'success'; generationMismatch = 'pass'; hubOwned = $true }
 }
 
 function Invoke-BlueprintOneShot([string]$Root, [string]$WorkspaceRoot) {
   Write-Host "[qualification] Invoke-BlueprintOneShot $(Get-Date -Format 'HH:mm:ss')"
-  $launcher = Join-Path $Root 'runtime\blueprint\bin\blueprint.cmd'; Require (Test-Path -LiteralPath $launcher -PathType Leaf) 'installed Blueprint launcher is missing'
-  $psi = [Diagnostics.ProcessStartInfo]::new(); $psi.FileName = $env:ComSpec; $psi.WorkingDirectory = Split-Path -Parent $launcher; $psi.UseShellExecute = $false; $psi.RedirectStandardOutput = $true; $psi.RedirectStandardError = $true; $psi.CreateNoWindow = $true
-  $psi.Arguments = '/d /s /c ""{0}" status --json --root "{1}""' -f $launcher.Replace('"', '""'), $WorkspaceRoot.Replace('"', '""')
-  $process = [Diagnostics.Process]::new(); $process.StartInfo = $psi; Require $process.Start() 'could not start bounded Blueprint one-shot'; $stdout = $process.StandardOutput.ReadToEnd(); $stderr = $process.StandardError.ReadToEnd(); Require ($process.WaitForExit($TimeoutSeconds * 1000)) 'bounded Blueprint one-shot timed out'; Require ($process.ExitCode -in @(0, 2)) "bounded Blueprint one-shot failed: $stderr"
-  try { $payload = $stdout | ConvertFrom-Json } catch { throw "bounded Blueprint one-shot returned invalid JSON: $($_.Exception.Message)" }
-  Require ($null -ne $payload) 'bounded Blueprint one-shot returned no status payload'
+  $membrane = Join-Path $Root 'membrane.exe'
+  Require (Test-Path -LiteralPath $membrane -PathType Leaf) 'installed native Blueprint host is missing'
+  $arguments = "cli blueprint status --repo-root $(Quote-NativeArgument $WorkspaceRoot)"
+  $result = Invoke-NativeProcess $membrane $arguments '' $Root
+  $stdout = [string]$result.Stdout
+  try { $payload = $stdout | ConvertFrom-Json } catch { throw "bounded native Blueprint one-shot returned invalid JSON: $($_.Exception.Message)`n$stdout" }
+  Require ($null -ne $payload) 'bounded native Blueprint one-shot returned no status payload'
   $typedMissing = @('missing', 'not_configured', 'root_not_enrolled', 'graph_missing', 'missing_graph')
   $state = [string]$payload.state
+  if (-not $state -and $payload.result) { $state = [string]$payload.result.state }
   $errorCode = [string]$payload.error.code
+  if (-not $errorCode -and $payload.result) { $errorCode = [string]$payload.result.error.code }
   if ($state -notin @('fresh', 'degraded', 'running')) {
     Require ($typedMissing -contains $state -or $typedMissing -contains $errorCode) "bounded Blueprint one-shot returned untyped status: state=$state code=$errorCode"
   }
   $outputHash = [Security.Cryptography.SHA256]::Create()
   try { $outputSha256 = ([BitConverter]::ToString($outputHash.ComputeHash([Text.Encoding]::UTF8.GetBytes($stdout))) -replace '-', '').ToLowerInvariant() }
   finally { $outputHash.Dispose() }
-  return [ordered]@{ status = 'pass'; exitCode = $process.ExitCode; state = if ($state) { $state } else { $errorCode }; availability = if ($state -in @('fresh', 'degraded', 'running')) { 'available' } else { 'not_configured' }; outputSha256 = $outputSha256 }
+  return [ordered]@{ status = 'pass'; executable = $membrane; arguments = $arguments; exitCode = 0; Payload = $payload; state = if ($state) { $state } else { $errorCode }; availability = if ($state -in @('fresh', 'degraded', 'running')) { 'available' } else { 'not_configured' }; outputSha256 = $outputSha256 }
 }
 
 function Get-ProcessTree([int]$ProcessId) {
@@ -472,6 +532,42 @@ function Get-ProcessTree([int]$ProcessId) {
     }
   }
   return @($root + $rows)
+}
+
+function Get-InstalledProcessRows([string]$ExecutablePath) {
+  $full = [IO.Path]::GetFullPath($ExecutablePath)
+  return @(Get-CimInstance Win32_Process -ErrorAction Stop | Where-Object {
+    $_.ExecutablePath -and ([IO.Path]::GetFullPath([string]$_.ExecutablePath) -ieq $full)
+  })
+}
+
+function Capture-InstalledProcess([string]$ExecutablePath, [string]$Label, [int]$ExpectedParentId = -1) {
+  $rows = @(Get-InstalledProcessRows $ExecutablePath)
+  Require ($rows.Count -eq 1) "$Label is not exactly one installed process (observed $($rows.Count))"
+  $row = $rows[0]
+  if ($ExpectedParentId -ge 0) {
+    Require ([int]$row.ParentProcessId -eq $ExpectedParentId) "$Label parent $($row.ParentProcessId) does not match expected $ExpectedParentId"
+  }
+  $process = Get-Process -Id ([int]$row.ProcessId) -ErrorAction Stop
+  Require (-not $process.HasExited) "$Label exited during identity capture"
+  $creation = [string]$row.CreationDate
+  Require (-not [string]::IsNullOrWhiteSpace($creation)) "$Label creation identity is missing"
+  return [pscustomobject]@{
+    Process = $process
+    ProcessId = [int]$row.ProcessId
+    ParentProcessId = [int]$row.ParentProcessId
+    ExecutablePath = [IO.Path]::GetFullPath([string]$row.ExecutablePath)
+    Creation = $creation
+  }
+}
+
+function Assert-InstalledProcessIdentity($Identity, [string]$Label) {
+  $rows = @(Get-CimInstance Win32_Process -ErrorAction Stop | Where-Object { [int]$_.ProcessId -eq $Identity.ProcessId })
+  Require ($rows.Count -eq 1) "$Label process identity disappeared"
+  $row = $rows[0]
+  Require ([IO.Path]::GetFullPath([string]$row.ExecutablePath) -ieq $Identity.ExecutablePath) "$Label executable path changed"
+  Require ([int]$row.ParentProcessId -eq $Identity.ParentProcessId) "$Label parent process changed"
+  Require ([string]$row.CreationDate -eq $Identity.Creation) "$Label creation identity changed"
 }
 
 function Add-NativeWindowProbe {
@@ -525,106 +621,55 @@ namespace MembraneQualification {
 '@
 }
 
-function Assert-NativeSteadyState([int]$ProcessId, [string]$BlueprintNode, [string]$BlueprintNodeSha256) {
+function Assert-NativeSteadyState([int]$TrayProcessId, [int]$DaemonProcessId, [string]$TrayExecutable, [string]$DaemonExecutable, $DashboardIdentity) {
   Write-Host "[qualification] Assert-NativeSteadyState $(Get-Date -Format 'HH:mm:ss')"
   $latest = @()
-  $rendererPath = $null
-  # Rust Hub publishes health as soon as its service child handshakes, while
-  # Windows may materialize that child's Blueprint watcher a little later.
-  # Wait for the one required resident watcher inside the same bounded
-  # qualification deadline before sampling steady state; a missing watcher
-  # still fails typed instead of being hidden by an unbounded wait.
-  $readyDeadline = (Get-Date).AddSeconds([Math]::Max(5, $TimeoutSeconds))
-  $readyService = @()
-  $readyWatcher = @()
-  do {
-    $latest = @(Get-ProcessTree $ProcessId)
-    $readyDescendants = @($latest | Where-Object { [uint32]$_.ProcessId -ne [uint32]$ProcessId })
-    $readyService = @($readyDescendants | Where-Object { $_.Name -match '(?i)^node(?:\.exe)?$' -and $_.CommandLine -match '(?i)blueprint\.mjs.*\bservice\b.*\brun\b' })
-    $readyWatcher = @($readyDescendants | Where-Object { $_.Name -match '(?i)^node(?:\.exe)?$' -and $_.CommandLine -match '(?i)blueprint-watch\.mjs.*\bstart\b' })
-    if ($readyService.Count -eq 1 -and $readyWatcher.Count -eq 1) { break }
-    $hubProcess = Get-Process -Id $ProcessId -ErrorAction SilentlyContinue
-    Require ($null -ne $hubProcess -and -not $hubProcess.HasExited) 'Hub exited while waiting for Blueprint watcher readiness'
-    Start-Sleep -Milliseconds 250
-  } while ((Get-Date) -lt $readyDeadline)
-  Require ($readyService.Count -eq 1) "Hub did not expose exactly one Blueprint service process before steady-state sampling (observed $($readyService.Count))"
-  Require ($readyWatcher.Count -eq 1) "Hub did not expose exactly one Blueprint watcher process before steady-state sampling (observed $($readyWatcher.Count))"
+  $trayFull = [IO.Path]::GetFullPath($TrayExecutable)
+  $daemonFull = [IO.Path]::GetFullPath($DaemonExecutable)
+  $webViewPath = $null
   for ($sample = 0; $sample -lt [Math]::Max(1, $SteadyStateSamples); $sample++) {
-    # WMI can retain a just-exited short-lived child for one query tick. Keep
-    # only processes still present in the OS before classifying ancestry so a
-    # completed Git fingerprint cannot appear as an orphan.
-    $latest = @(Get-ProcessTree $ProcessId | Where-Object {
+    $latest = @(Get-ProcessTree $TrayProcessId | Where-Object {
       $candidate = Get-Process -Id ([int]$_.ProcessId) -ErrorAction SilentlyContinue
       $null -ne $candidate -and -not $candidate.HasExited
     })
-    $descendants = @($latest | Where-Object { [uint32]$_.ProcessId -ne [uint32]$ProcessId })
-    $blueprintService = @($descendants | Where-Object { $_.Name -match '(?i)^node(?:\.exe)?$' -and $_.CommandLine -match '(?i)blueprint\.mjs.*\bservice\b.*\brun\b' })
-    $blueprintWatcher = @($descendants | Where-Object { $_.Name -match '(?i)^node(?:\.exe)?$' -and $_.CommandLine -match '(?i)blueprint-watch\.mjs.*\bstart\b' })
-    $processSummary = (@($descendants | ForEach-Object { "[$($_.Name)] $($_.CommandLine)" }) -join ' | ')
-    Require ($blueprintService.Count -eq 1) "Hub did not expose exactly one Blueprint service process (observed $($blueprintService.Count); descendants: $processSummary)"
-    Require ($blueprintWatcher.Count -eq 1) "Hub did not expose exactly one Blueprint watcher process (observed $($blueprintWatcher.Count); descendants: $processSummary)"
-    # First-use graph recovery is a Hub-owned, singleflight Blueprint build.
-    # It runs as another child of service run using the same inventory-bound
-    # Node executable; admit that worker (and any equivalent Blueprint helper)
-    # without weakening the one-service/one-watcher residency invariant.
-    $residentIds = @($blueprintService.ProcessId + $blueprintWatcher.ProcessId)
-    $blueprintWorkers = @($descendants | Where-Object {
-      $_.Name -match '(?i)^node(?:\.exe)?$' -and
-        $_.ExecutablePath -and
-        ([IO.Path]::GetFullPath($_.ExecutablePath) -ieq [IO.Path]::GetFullPath($BlueprintNode)) -and
-        ([uint32]$_.ProcessId -notin @($residentIds)) -and
-        $_.CommandLine -match '(?i)blueprint(?:-[A-Za-z0-9_-]+)?\.mjs\b'
-    })
-    $blueprintProcesses = @($blueprintService + $blueprintWatcher + $blueprintWorkers)
-    foreach ($blueprintProcess in $blueprintProcesses) {
-      Require ($blueprintProcess.ExecutablePath -and ([IO.Path]::GetFullPath($blueprintProcess.ExecutablePath) -ieq [IO.Path]::GetFullPath($BlueprintNode))) 'Blueprint process executable is not the inventory-bound node.exe'
-      Require ((Hash-File $blueprintProcess.ExecutablePath) -ieq $BlueprintNodeSha256) 'Blueprint process executable hash does not match inventory'
+    $tray = @($latest | Where-Object { [int]$_.ProcessId -eq $TrayProcessId })
+    Require ($tray.Count -eq 1) 'installed tray exited during native steady-state sampling'
+    Require ([IO.Path]::GetFullPath([string]$tray[0].ExecutablePath) -ieq $trayFull) 'native steady-state tray path is not the installed tray'
+    $daemon = @($latest | Where-Object { [int]$_.ProcessId -eq $DaemonProcessId })
+    Require ($daemon.Count -eq 1) 'tray-owned installed daemon is missing during native steady-state sampling'
+    Require ([IO.Path]::GetFullPath([string]$daemon[0].ExecutablePath) -ieq $daemonFull) 'native steady-state daemon path is not the installed daemon'
+    Require ([int]$daemon[0].ParentProcessId -eq $TrayProcessId) 'installed daemon is not owned by the installed tray'
+    $forbidden = @($latest | Where-Object { $_.Name -match '(?i)^(node|nodejs|python|pythonw|python3|pip|npm|npx)(\.exe)?$' })
+    Require ($forbidden.Count -eq 0) "native-only steady-state contains retired interpreter process: $($forbidden.Name -join ', ')"
+    # Dashboard is the active Hub holder during this sample. Its renderer
+    # subtree is allowed only under the exact bootstrapped Hub identity.
+    Require ($null -ne $DashboardIdentity) 'dashboard holder identity is missing during steady-state sampling'
+    $dashboard = @($latest | Where-Object { [int]$_.ProcessId -eq [int]$DashboardIdentity.ProcessId })
+    Require ($dashboard.Count -eq 1) 'dashboard holder exited during steady-state sampling'
+    Require ([int]$dashboard[0].ParentProcessId -eq $TrayProcessId) 'dashboard holder has unexpected parent'
+    Require ([IO.Path]::GetFullPath([string]$dashboard[0].ExecutablePath) -ieq $DashboardIdentity.ExecutablePath) 'dashboard holder executable changed'
+    Require ([string]$dashboard[0].CreationDate -eq $DashboardIdentity.Creation) 'dashboard holder process identity changed'
+    $allowed = @($TrayProcessId, $DaemonProcessId, [int]$DashboardIdentity.ProcessId)
+    $pendingChildren = @([int]$DashboardIdentity.ProcessId)
+    while ($pendingChildren.Count -gt 0) {
+      $children = @($latest | Where-Object { [int]$_.ParentProcessId -in $pendingChildren })
+      $pendingChildren = @()
+      foreach ($child in $children) {
+        Require ($child.Name -ieq 'msedgewebview2.exe') "dashboard contains unexpected helper: $($child.Name)"
+        Require (-not [string]::IsNullOrWhiteSpace([string]$child.ExecutablePath)) 'WebView2 executable identity is missing'
+        $childPath = [IO.Path]::GetFullPath([string]$child.ExecutablePath)
+        if ($null -eq $webViewPath) {
+          $signature = Get-AuthenticodeSignature -LiteralPath $childPath
+          Require ($signature.Status -eq 'Valid' -and $signature.SignerCertificate.Subject -match 'O=Microsoft Corporation(?:,|$)') 'dashboard WebView2 helper is not Microsoft-signed'
+          $webViewPath = $childPath
+        }
+        Require ($childPath -ieq $webViewPath) 'dashboard WebView2 helper path changed'
+        $allowed += [int]$child.ProcessId
+        $pendingChildren += [int]$child.ProcessId
+      }
     }
-    $rendererProcesses = @($descendants | Where-Object { $_.Name -match '(?i)^msedgewebview2(?:\.exe)?$' -and $_.ExecutablePath })
-    Require ($rendererProcesses.Count -gt 0) 'installed Hub has no WebView2 renderer descendant'
-    foreach ($rendererProcess in $rendererProcesses) {
-      $path = [IO.Path]::GetFullPath($rendererProcess.ExecutablePath)
-      Require (Test-Path -LiteralPath $path -PathType Leaf) 'WebView2 renderer executable path is missing'
-      $signature = Get-AuthenticodeSignature -LiteralPath $path
-      Require ($signature.Status -eq 'Valid') "WebView2 renderer is not signed: $path"
-      if ($null -eq $rendererPath) { $rendererPath = $path } else { Require ($rendererPath -ieq $path) 'WebView2 renderer path changed during steady-state sampling' }
-    }
-    # Windows may materialize a hidden console host for a bundled Blueprint
-    # Node process even with CREATE_NO_WINDOW/windowsHide. It is an OS host,
-    # not a Membrane-owned runtime; admit only signed System32 hosts directly
-    # parented by inventory-bound Blueprint actors.
-    $blueprintConsoleHosts = @($descendants | Where-Object {
-      $_.Name -match '(?i)^conhost(?:\.exe)?$' -and
-        $_.ExecutablePath -and
-        ([IO.Path]::GetFullPath($_.ExecutablePath) -ieq ([IO.Path]::Combine($env:WINDIR, 'System32', 'conhost.exe'))) -and
-        ([uint32]$_.ParentProcessId -in @($blueprintProcesses.ProcessId))
-    })
-    # Repository fingerprinting is delegated to the host Git executable. Keep
-    # this bounded to the PATH-resolved binary and its direct Blueprint parent;
-    # Git may itself receive a System32 console host on Windows.
-    $blueprintGitProcesses = @($descendants | Where-Object {
-      $_.Name -match '(?i)^git(?:\.exe)?$' -and
-        $_.ExecutablePath -and
-        $script:GitPath -and
-        ([IO.Path]::GetFullPath($_.ExecutablePath) -ieq [IO.Path]::GetFullPath($script:GitPath)) -and
-        ((Hash-File $_.ExecutablePath) -ieq (Hash-File $script:GitPath)) -and
-        ([uint32]$_.ParentProcessId -in @($blueprintProcesses.ProcessId))
-    })
-    $blueprintGitConsoleHosts = @($descendants | Where-Object {
-      $_.Name -match '(?i)^conhost(?:\.exe)?$' -and
-        $_.ExecutablePath -and
-        ([IO.Path]::GetFullPath($_.ExecutablePath) -ieq ([IO.Path]::Combine($env:WINDIR, 'System32', 'conhost.exe'))) -and
-        ([uint32]$_.ParentProcessId -in @($blueprintGitProcesses.ProcessId))
-    })
-    $unexpected = @($descendants | Where-Object {
-      $blueprint = $_.ProcessId -in @($blueprintProcesses.ProcessId)
-      $renderer = $_.ProcessId -in @($rendererProcesses.ProcessId)
-      $consoleHost = $_.ProcessId -in @($blueprintConsoleHosts.ProcessId + $blueprintGitConsoleHosts.ProcessId)
-      $git = $_.ProcessId -in @($blueprintGitProcesses.ProcessId)
-      -not ($blueprint -or $renderer -or $consoleHost -or $git)
-    })
-    $unexpectedSummary = (@($unexpected | ForEach-Object { "[$($_.Name)] path=$($_.ExecutablePath) parent=$($_.ParentProcessId) cmd=$($_.CommandLine)" }) -join ' | ')
-    Require ($unexpected.Count -eq 0) "native-only steady-state process tree violated: $unexpectedSummary"
+    $unexpected = @($latest | Where-Object { [int]$_.ProcessId -notin $allowed })
+    Require ($unexpected.Count -eq 0) "native-only steady-state contains unexpected resident process: $($unexpected.Name -join ', ')"
     if ($sample + 1 -lt [Math]::Max(1, $SteadyStateSamples)) { Start-Sleep -Milliseconds 500 }
   }
   return $latest
@@ -698,9 +743,14 @@ function Assert-TrayAndPopup([int]$ProcessId) {
   $shell = [MembraneQualification.NativeWindowProbe]::Find('Shell_TrayWnd', $null)
   Require ($shell -ne [IntPtr]::Zero) 'Windows notification area is unavailable'
   $element = Find-TrayElement
+  $pattern = $null
   if ($null -ne $element) {
+    # A discoverable notification element need not expose InvokePattern.
+    $available = $element.TryGetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern, [ref]$pattern)
+    if (-not $available) { $pattern = $null }
+  }
+  if ($null -ne $pattern) {
     try {
-      $pattern = $element.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern)
       $pattern.Invoke()
     } catch { throw "Membrane tray icon could not be activated: $($_.Exception.Message)" }
   } else {
@@ -714,39 +764,59 @@ function Assert-TrayAndPopup([int]$ProcessId) {
     Start-Sleep -Milliseconds 100
     Require ([MembraneQualification.NativeWindowProbe]::PostTrayClick($trayWindows[0].Handle, $true)) 'Membrane tray icon release could not be posted'
   }
-  Start-Sleep -Milliseconds 750
-  $windows = @(Get-WindowRows $ProcessId)
-  $visible = @($windows | Where-Object { $_.Visible })
-  Require ($visible.Count -gt 0) 'Membrane popup did not become visible after tray activation'
-  Require (@($windows | Where-Object { $_.Title -match '(?i)Membrane Hub' }).Count -ge 2) 'Hub and popup windows were not both created'
+  $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+  do {
+    $windows = @(Get-WindowRows $ProcessId)
+    $popover = @($windows | Where-Object { $_.Visible -and $_.Title -eq 'Membrane' })
+    if ($popover.Count -eq 1) { break }
+    Start-Sleep -Milliseconds 250
+  } while ((Get-Date) -lt $deadline)
+  Require ($popover.Count -eq 1) 'exactly one Membrane tray popover did not become visible after tray activation'
+  Require (-not [string]::IsNullOrWhiteSpace([string]$popover[0].ClassName)) 'Membrane tray popover native window class is missing'
 }
 
-function Assert-Dashboard([string]$HubExecutable, [int]$ProcessId) {
+function Assert-Dashboard([string]$HubExecutable, [int]$TrayProcessId) {
   Write-Host "[qualification] Assert-Dashboard $(Get-Date -Format 'HH:mm:ss')"
-  $previousPath = $env:PATH
+  Require ($script:TrayPath -and (Test-Path -LiteralPath $script:TrayPath -PathType Leaf)) 'installed tray path is unavailable for dashboard bootstrap'
+  $before = @(Get-InstalledProcessRows $HubExecutable | ForEach-Object { [int]$_.ProcessId })
+  $signal = Start-Process -FilePath $script:TrayPath -ArgumentList @('--open-dashboard') -WorkingDirectory $InstallRoot -PassThru -WindowStyle Hidden
   try {
-    $env:PATH = $script:SafePath
-    $second = Start-Process -FilePath $HubExecutable -PassThru -WindowStyle Hidden
+    Require ($signal.WaitForExit(10000)) 'tray dashboard signal did not exit through single-instance cutover'
+    Require ($signal.ExitCode -eq 0) "tray dashboard signal failed with exit code $($signal.ExitCode)"
   } finally {
-    $env:PATH = $previousPath
+    if ($signal -and -not $signal.HasExited) { Stop-Process -Id $signal.Id -Force -ErrorAction SilentlyContinue }
   }
-  try {
-    Require ($second.WaitForExit(10000)) 'second Hub invocation did not exit through single-instance cutover'
-    Require ($second.ExitCode -eq 0) "second Hub invocation failed with exit code $($second.ExitCode)"
-  } finally {
-    if ($second -and -not $second.HasExited) { Stop-Process -Id $second.Id -Force -ErrorAction SilentlyContinue }
+  $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+  do {
+    $hubRows = @(Get-InstalledProcessRows $HubExecutable | Where-Object {
+      ([int]$_.ProcessId -notin $before) -and ([int]$_.ParentProcessId -eq $TrayProcessId)
+    })
+    if ($hubRows.Count -eq 1) { break }
+    Start-Sleep -Milliseconds 250
+  } while ((Get-Date) -lt $deadline)
+  Require ($hubRows.Count -eq 1) "tray did not bootstrap exactly one installed Hub child (observed $($hubRows.Count))"
+  $script:DashboardProcess = Get-Process -Id ([int]$hubRows[0].ProcessId) -ErrorAction Stop
+  $script:DashboardPath = [IO.Path]::GetFullPath([string]$hubRows[0].ExecutablePath)
+  Require (-not $script:DashboardProcess.HasExited) 'bootstrapped Hub exited before dashboard assertion'
+  $script:DashboardIdentity = [pscustomobject]@{
+    ProcessId = [int]$hubRows[0].ProcessId
+    ParentProcessId = [int]$hubRows[0].ParentProcessId
+    ExecutablePath = $script:DashboardPath
+    Creation = [string]$hubRows[0].CreationDate
   }
+  Require (-not [string]::IsNullOrWhiteSpace($script:DashboardIdentity.Creation)) 'bootstrapped Hub creation identity is missing'
   Start-Sleep -Milliseconds 500
-  $windows = @(Get-WindowRows $ProcessId)
-  Require (@($windows | Where-Object { $_.Visible -and $_.Title -match '(?i)Membrane Hub' }).Count -gt 0) 'Hub dashboard did not become visible through single-instance cutover'
+  $windows = @(Get-WindowRows $script:DashboardProcess.Id)
+  Require (@($windows | Where-Object { $_.Visible -and $_.Title -match '(?i)Membrane Hub' }).Count -gt 0) 'Hub dashboard did not become visible through tray bootstrap'
+  return [ordered]@{ processId = $script:DashboardProcess.Id; parentProcessId = $TrayProcessId; executablePath = $script:DashboardPath }
 }
 
 function Assert-RendererWindows([int]$ProcessId) {
   Write-Host "[qualification] Assert-RendererWindows $(Get-Date -Format 'HH:mm:ss')"
   $windows = @(Get-WindowRows $ProcessId)
-  $hubWindows = @($windows | Where-Object { $_.Title -match '(?i)^Membrane Hub' })
-  Require ($hubWindows.Count -ge 2) 'installed Hub did not create both embedded dashboard and popup renderer windows'
-  Require (@($hubWindows | Where-Object { [string]::IsNullOrWhiteSpace($_.ClassName) }).Count -eq 0) 'installed renderer window class is missing'
+  $hubWindows = @($windows | Where-Object { $_.Visible -and $_.Title -eq 'Membrane Hub' })
+  Require ($hubWindows.Count -eq 1) 'installed Hub did not create exactly one visible on-demand dashboard renderer window'
+  Require (-not [string]::IsNullOrWhiteSpace([string]$hubWindows[0].ClassName)) 'installed dashboard renderer window class is missing'
   return @($hubWindows | ForEach-Object {
     [ordered]@{ title = [string]$_.Title; className = [string]$_.ClassName; visible = [bool]$_.Visible }
   })
@@ -754,20 +824,24 @@ function Assert-RendererWindows([int]$ProcessId) {
 
 function Assert-NativeHostCutover([string]$Root, [string]$HubExecutable) {
   Write-Host "[qualification] Assert-NativeHostCutover $(Get-Date -Format 'HH:mm:ss')"
-  $hubPublisher = Assert-SignedFile $HubExecutable 'installed Hub'
-  $blueprintRoot = Join-Path $Root 'runtime\blueprint'
-  $blueprintNode = Join-Path $blueprintRoot 'lib\node.exe'
-  $blueprintLauncher = Join-Path $blueprintRoot 'bin\blueprint.cmd'
-  Require (Test-Path -LiteralPath $blueprintNode -PathType Leaf) 'installed Blueprint runtime node.exe is missing'
-  Require (Test-Path -LiteralPath $blueprintLauncher -PathType Leaf) 'installed Blueprint launcher is missing'
+  $hubPublisher = ''
+  if ($Profile -eq 'signed-release') {
+    $hubPublisher = Assert-SignedFile $HubExecutable 'installed Hub'
+  }
   $forbidden = @(Get-ChildItem -LiteralPath $Root -File -Recurse -ErrorAction SilentlyContinue |
-    Where-Object { $_.Name -match '(?i)^(node|nodejs|python|pythonw|python3|pip|npm|npx)(\.exe)?$' -and -not $_.FullName.StartsWith($blueprintRoot, [System.StringComparison]::OrdinalIgnoreCase) })
-  Require ($forbidden.Count -eq 0) "installed package carries an undeclared interpreter runtime: $($forbidden.FullName -join ', ')"
+    Where-Object { $_.Name -match '(?i)^(node|nodejs|python|pythonw|python3|pip|npm|npx)(\.exe)?$' })
+  Require ($forbidden.Count -eq 0) "installed package carries a retired interpreter runtime: $($forbidden.FullName -join ', ')"
   $inventoryPath = Join-Path $Root 'runtime\runtime-inventory.json'
   Require (Test-Path -LiteralPath $inventoryPath -PathType Leaf) 'installed runtime inventory is missing'
   $inventory = Read-JsonFile $inventoryPath 'installed runtime inventory'
   Require ($inventory.schemaVersion -eq 3 -and $inventory.target -eq 'x86_64-pc-windows-msvc') 'installed runtime inventory identity is invalid'
-  Require ([string]$inventory.components.blueprint.treeSha256 -match '^[0-9a-f]{64}$' -and [int]$inventory.components.blueprint.fileCount -gt 0) 'installed Blueprint inventory metadata is invalid'
+  Require (@($inventory.composition | Where-Object { $_ -eq 'blueprint' }).Count -eq 1) 'installed runtime composition does not contain exactly one Blueprint axis'
+  $blueprintContract = @($inventory.entries | Where-Object { $_.component -eq 'blueprint-contract' })
+  Require ($blueprintContract.Count -eq 1 `
+    -and [string]$blueprintContract[0].axis -eq 'blueprint' `
+    -and [string]$blueprintContract[0].delivery -eq 'resource' `
+    -and -not [string]::IsNullOrWhiteSpace([string]$blueprintContract[0].installerPath) `
+    -and [string]$blueprintContract[0].sha256 -match '^[0-9a-f]{64}$') 'installed Blueprint contract inventory entry is invalid'
   $runtimeRoot = [IO.Path]::GetFullPath((Join-Path $Root 'runtime')).TrimEnd('\') + '\'
   Require ($inventory.entries -is [array] -and $inventory.entries.Count -gt 0) 'installed runtime inventory entries are missing'
   $membraneEntry = @($inventory.entries | Where-Object { $_.delivery -eq 'externalBin' -and $_.component -eq 'membrane-command' })
@@ -779,10 +853,12 @@ function Assert-NativeHostCutover([string]$Root, [string]$HubExecutable) {
   $cortex = Get-InstalledSidecar $Root 'cortex' $cortexEntry[0]
   $tray = Get-InstalledSidecar $Root 'membrane-tray' $trayEntry[0]
   $daemon = Get-InstalledSidecar $Root 'membrane-daemon' $daemonEntry[0]
-  [void](Assert-SignedFile $membrane 'installed membrane native host' $hubPublisher)
-  [void](Assert-SignedFile $cortex 'installed cortex native host' $hubPublisher)
-  [void](Assert-SignedFile $tray 'installed membrane tray sidecar' $hubPublisher)
-  [void](Assert-SignedFile $daemon 'installed membrane daemon sidecar' $hubPublisher)
+  if ($Profile -eq 'signed-release') {
+    [void](Assert-SignedFile $membrane 'installed membrane native host' $hubPublisher)
+    [void](Assert-SignedFile $cortex 'installed cortex native host' $hubPublisher)
+    [void](Assert-SignedFile $tray 'installed membrane tray sidecar' $hubPublisher)
+    [void](Assert-SignedFile $daemon 'installed membrane daemon sidecar' $hubPublisher)
+  }
   foreach ($component in @('membrane-command', 'cortex-cli', 'membrane-tray', 'membrane-daemon')) {
     Require (@($inventory.entries | Where-Object { $_.delivery -eq 'externalBin' -and $_.component -eq $component }).Count -eq 1) "installed runtime inventory sidecar entry is missing or duplicated: $component"
   }
@@ -817,11 +893,7 @@ function Assert-NativeHostCutover([string]$Root, [string]$HubExecutable) {
     Require ($actual -ieq [string]$entry.sha256) "installed inventory hash mismatch: $relative"
     $inventoryEvidence += [ordered]@{ path = $relative.Replace('\', '/'); sha256 = $actual }
   }
-  Require (@($inventory.entries | Where-Object { $_.component -eq 'blueprint-runtime' -and $_.delivery -eq 'installedComponent' }).Count -gt 0) 'installed runtime inventory omits Blueprint component'
-  $blueprintEntry = @($inventory.entries | Where-Object { $_.component -eq 'blueprint-runtime' -and $_.installerPath -match '(?i)(^|[\\/])lib[\\/]node\.exe$' })
-  Require ($blueprintEntry.Count -eq 1) 'installed runtime inventory does not uniquely bind Blueprint node.exe'
-  Require ((Hash-File $blueprintNode) -ieq [string]$blueprintEntry[0].sha256) 'installed Blueprint node.exe hash does not match inventory'
-  return [pscustomobject]@{ Hub = $HubExecutable; Membrane = $membrane; Cortex = $cortex; Tray = $tray; Daemon = $daemon; BlueprintNode = $blueprintNode; BlueprintNodeSha256 = [string]$blueprintEntry[0].sha256; BlueprintRuntime = $blueprintRoot; RuntimeInventory = $inventoryPath; RuntimeInventoryEvidence = $inventoryEvidence; Publisher = $hubPublisher }
+  return [pscustomobject]@{ Hub = $HubExecutable; Membrane = $membrane; Cortex = $cortex; Tray = $tray; Daemon = $daemon; RuntimeInventory = $inventoryPath; RuntimeInventoryEvidence = $inventoryEvidence; Publisher = $hubPublisher }
 }
 
 function Invoke-NativeProcess([string]$Executable, [string]$Arguments, [string]$InputText = '', [string]$WorkingDirectory = $InstallRoot, [hashtable]$Environment = @{}) {
@@ -849,6 +921,24 @@ function Invoke-NativeProcess([string]$Executable, [string]$Arguments, [string]$
   Require ($process.WaitForExit($TimeoutSeconds * 1000)) "native process timed out: $Executable $Arguments"
   Require ($process.ExitCode -eq 0) "native process failed ($($process.ExitCode)): $Executable $Arguments :: $stderr"
   return [pscustomobject]@{ Stdout = $stdout; Stderr = $stderr; Executable = $Executable; Arguments = $Arguments; WorkingDirectory = $WorkingDirectory }
+}
+
+function Invoke-NativeProcessAllowFailure([string]$Executable, [string]$Arguments, [string]$InputText = '', [string]$WorkingDirectory = $InstallRoot) {
+  $start = [Diagnostics.ProcessStartInfo]::new(); $start.FileName = $Executable; $start.Arguments = $Arguments; $start.WorkingDirectory = $WorkingDirectory
+  $start.UseShellExecute = $false; $start.CreateNoWindow = $true; $start.RedirectStandardInput = $true; $start.RedirectStandardOutput = $true; $start.RedirectStandardError = $true
+  $start.EnvironmentVariables['PATH'] = $script:SafePath
+  $process = [Diagnostics.Process]::new(); $process.StartInfo = $start
+  Require ($process.Start()) "could not start native process: $Executable"
+  if (-not [string]::IsNullOrEmpty($InputText)) { $process.StandardInput.Write($InputText) }
+  $process.StandardInput.Close(); $stdout = $process.StandardOutput.ReadToEnd(); $stderr = $process.StandardError.ReadToEnd()
+  Require ($process.WaitForExit($TimeoutSeconds * 1000)) "native process timed out: $Executable $Arguments"
+  return [pscustomobject]@{ Stdout = $stdout; Stderr = $stderr; ExitCode = [int]$process.ExitCode; Executable = $Executable; Arguments = $Arguments; WorkingDirectory = $WorkingDirectory }
+}
+
+function Invoke-InstalledHealth([string]$Executable, [int]$TimeoutSeconds, [string]$Phase) {
+  $result = Invoke-NativeProcessAllowFailure $Executable "cli health --timeout-seconds $TimeoutSeconds" '' $InstallRoot
+  Require ($result.ExitCode -eq 0) "installed authenticated health failed during ${Phase}: $($result.Stderr)"
+  try { return ($result.Stdout | ConvertFrom-Json) } catch { throw "installed authenticated health returned invalid JSON during $Phase" }
 }
 
 function Quote-NativeArgument([string]$Value) {
@@ -994,7 +1084,8 @@ function Invoke-NativeMcp([string]$Executable, [switch]$ExerciseAll, [hashtable]
     'membrane_context', 'membrane_source_read', 'membrane_blueprint',
     'membrane_knowledge_propose', 'membrane_checkpoint_save', 'membrane_checkpoint_load',
     'membrane_working_context', 'membrane_temporal_fact', 'membrane_scratchpad',
-    'membrane_feedback', 'membrane_diagnostic_workspace', 'membrane_diagnostic_mutation',
+    'membrane_feedback', 'membrane_memory', 'membrane_memory_read', 'membrane_ledger',
+    'membrane_diagnostic_workspace', 'membrane_diagnostic_mutation',
     'membrane_diagnostic_snapshot', 'membrane_diagnostic_fence',
     'membrane_diagnostic_capabilities', 'membrane_diagnostic_baseline',
     'membrane_diagnostic_provider'
@@ -1010,6 +1101,9 @@ function Invoke-NativeMcp([string]$Executable, [switch]$ExerciseAll, [hashtable]
     membrane_temporal_fact = [ordered]@{ repository = 'windows-qualification'; caller = $caller; operation = 'query'; subject = 'qualification'; predicate = 'state'; asOf = '2026-01-01T00:00:00Z' }
     membrane_scratchpad = [ordered]@{ repository = 'windows-qualification'; caller = $caller; operation = 'clear'; sessionId = 'qualification-session'; taskId = 'qualification-task' }
     membrane_feedback = [ordered]@{ repository = 'windows-qualification'; caller = $caller; outcome = 'used' }
+    membrane_memory = [ordered]@{ repository = 'windows-qualification'; caller = $caller; operation = 'recall'; query = 'qualification'; limit = 1 }
+    membrane_memory_read = [ordered]@{ repository = 'windows-qualification'; caller = $caller; id = 'qualification-missing-memory' }
+    membrane_ledger = [ordered]@{ repository = 'windows-qualification'; caller = $caller; operation = 'status' }
     membrane_diagnostic_workspace = [ordered]@{ operation = 'status'; repoId = 'windows-qualification'; worktreeId = 'windows-qualification'; projectRoot = $script:QualificationWorkspace }
     membrane_diagnostic_mutation = [ordered]@{ operation = 'unsupported'; repoId = 'windows-qualification'; worktreeId = 'windows-qualification'; projectRoot = $script:QualificationWorkspace }
     membrane_diagnostic_snapshot = [ordered]@{ operation = 'get'; repoId = 'windows-qualification'; worktreeId = 'windows-qualification'; projectRoot = $script:QualificationWorkspace }
@@ -1043,10 +1137,10 @@ function Invoke-NativeMcp([string]$Executable, [switch]$ExerciseAll, [hashtable]
   $listing = @($responses | Where-Object { $_.id -eq 2 }) | Select-Object -First 1
   Require ($null -ne $initialize -and $null -ne $initialize.result.serverInfo) 'MCP initialize response is invalid'
   $tools = @($listing.result.tools)
-  Require ($tools.Count -eq 17) "MCP tools/list returned $($tools.Count) tools; expected 17"
+  Require ($tools.Count -eq $allTools.Count) "MCP tools/list returned $($tools.Count) tools; expected $($allTools.Count)"
   $actualNames = (@($tools.name) | Sort-Object) -join ','
   $expectedNames = ($allTools | Sort-Object) -join ','
-  Require ($actualNames -eq $expectedNames) 'MCP tools/list does not match the 17-tool registry'
+  Require ($actualNames -eq $expectedNames) 'MCP tools/list does not match the exact qualification registry'
   $calls = @($responses | Where-Object { [int]$_.id -ge 100 })
   Require ($calls.Count -eq $callNames.Count) "MCP returned $($calls.Count) tool responses; expected $($callNames.Count)"
   foreach ($call in $calls) {
@@ -1059,10 +1153,24 @@ function Invoke-NativeMcp([string]$Executable, [switch]$ExerciseAll, [hashtable]
 	  return [pscustomobject]@{ Responses = $responses.ToArray(); Tools = @($tools); Calls = @($calls) }
 }
 
+function Get-InstalledResidentAuthPaths {
+  Require ($null -ne $script:ActiveHubHealth) 'Hub MCP authentication requires health identity'
+  $stableCurrent = [string]$script:ActiveHubHealth.stableInstallRoot
+  Require (-not [string]::IsNullOrWhiteSpace($stableCurrent)) 'Hub health omitted stable install root'
+  $stableCurrent = [IO.Path]::GetFullPath($stableCurrent)
+  Require ($stableCurrent -ieq ([IO.Path]::GetFullPath($InstallRoot))) 'Hub health stable install root is not the active installed current'
+  $stateRoot = Join-Path (Split-Path -Parent $stableCurrent) 'state'
+  [pscustomobject]@{
+    TokenPath = Join-Path $stateRoot 'tools\.cache\memory\api-token'
+    IdentityPath = Join-Path $stateRoot 'tools\.cache\memory\installation.json'
+  }
+}
+
 function Invoke-HubMcpCall([string]$Name, $Payload) {
   Require ($null -ne $script:ActiveHubHealth -and $script:ActiveHubPort) "Hub MCP call $Name requires an active Hub"
-  $tokenPath = Join-Path $script:QualificationWorkspace 'tools\.cache\memory\api-token'
-  $identityPath = Join-Path $script:QualificationWorkspace 'tools\.cache\memory\installation.json'
+  $authPaths = Get-InstalledResidentAuthPaths
+  $tokenPath = $authPaths.TokenPath
+  $identityPath = $authPaths.IdentityPath
   Require (Test-Path -LiteralPath $tokenPath -PathType Leaf) 'Hub MCP token is missing'
   Require (Test-Path -LiteralPath $identityPath -PathType Leaf) 'Hub MCP installation identity is missing'
   $token = (Get-Content -LiteralPath $tokenPath -Raw).Trim()
@@ -1193,32 +1301,43 @@ function Start-AndVerifyHub([string]$Phase, [string]$ExpectedVersion, [string]$E
   $hub = Get-InstalledExecutable $InstallRoot
   $installedVersion = Get-ArtifactVersion $hub "installed Hub during $Phase"
   Require ($installedVersion -eq $ExpectedVersion) "installed Hub version $installedVersion does not match expected $ExpectedVersion during $Phase"
-  # A real `membrane activate` (Invoke-Activation) launches the resident tray
-  # exactly as a customer install does. Adopt that process when it is running
-  # from the installed root; start one only when nothing is resident.
-  $resident = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object { $_.ExecutablePath -and ($_.ExecutablePath -ieq $hub) })
-  if ($resident.Count -ge 1) {
-    $script:HubProcess = Get-Process -Id ([int]$resident[0].ProcessId)
-  } else {
-    $previousPath = $env:PATH
-    try {
-      $env:PATH = $script:SafePath
-      $script:HubProcess = Start-Process -FilePath $hub -WorkingDirectory $InstallRoot -PassThru
-    } finally {
-      $env:PATH = $previousPath
-    }
+  $native = Assert-NativeHostCutover $InstallRoot $hub
+  $script:TrayPath = $native.Tray
+  $script:DaemonPath = $native.Daemon
+  $trayRows = @(Get-InstalledProcessRows $script:TrayPath)
+  if ($trayRows.Count -eq 0) {
+    # Tray starts transport within its bounded pre-holder grace. The real
+    # dashboard below acquires Hub ownership before semantic catch-up finishes.
+    $script:TrayProcess = Start-Process -FilePath $script:TrayPath -ArgumentList @('--activate') -WorkingDirectory $InstallRoot -PassThru -WindowStyle Hidden
+    $trayDeadline = (Get-Date).AddSeconds(10)
+    do {
+      $trayRows = @(Get-InstalledProcessRows $script:TrayPath)
+      if ($trayRows.Count -eq 1) { break }
+      Start-Sleep -Milliseconds 100
+    } while ((Get-Date) -lt $trayDeadline)
   }
+  Require ($trayRows.Count -eq 1) "installed tray is not exactly one resident process during $Phase (observed $($trayRows.Count))"
+  $script:TrayProcess = Get-Process -Id ([int]$trayRows[0].ProcessId) -ErrorAction Stop
+  Require (-not $script:TrayProcess.HasExited) "installed tray exited during $Phase"
+  $trayIdentity = Capture-InstalledProcess $script:TrayPath "installed tray during $Phase"
+  [void](Assert-Dashboard $hub $trayIdentity.ProcessId)
+  $daemonIdentity = $null
   $port = Get-RuntimePort $InstallRoot
   $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
   do {
+    $daemonRows = @(Get-InstalledProcessRows $script:DaemonPath | Where-Object { [int]$_.ParentProcessId -eq $trayIdentity.ProcessId })
+    if ($daemonRows.Count -eq 1) {
+      try { $daemonIdentity = Capture-InstalledProcess $script:DaemonPath "tray-owned daemon during $Phase" $trayIdentity.ProcessId } catch { $daemonIdentity = $null }
+    }
     try {
-      $health = Invoke-RestMethod -Uri "http://127.0.0.1:$port/health" -TimeoutSec 3
-      if ($health.ok -eq $true) { break }
+      $health = Invoke-InstalledHealth (Join-Path $InstallRoot 'membrane.exe') 3 $Phase
+      if ($health.ok -eq $true -and $null -ne $daemonIdentity) { break }
     } catch { }
     Start-Sleep -Milliseconds 500
   } while ((Get-Date) -lt $deadline)
-  Require ($null -ne $script:HubProcess -and -not $script:HubProcess.HasExited) "Hub exited during $Phase"
-  try { $health = Invoke-RestMethod -Uri "http://127.0.0.1:$port/health" -TimeoutSec 5 } catch {
+  Require ($null -ne $daemonIdentity) "tray-owned installed daemon did not become resident during $Phase"
+  $script:DaemonProcess = $daemonIdentity.Process
+  try { $health = Invoke-InstalledHealth (Join-Path $InstallRoot 'membrane.exe') 5 $Phase } catch {
     $logs = Save-RuntimeLogEvidence "hub-health-$($Phase -replace '[^a-z0-9]+','-')"
     throw "Hub health unavailable during $Phase (port $port; runtime logs copied to $logs)"
   }
@@ -1230,6 +1349,8 @@ function Start-AndVerifyHub([string]$Phase, [string]$ExpectedVersion, [string]$E
   $generation = Normalize-Generation $health.releaseGeneration "Hub releaseGeneration during $Phase"
   if (-not [string]::IsNullOrWhiteSpace($ExpectedGeneration)) { Require ($generation -eq $ExpectedGeneration) "Hub releaseGeneration does not match expected generation during $Phase" }
   if (-not [string]::IsNullOrWhiteSpace($ForbiddenGeneration)) { Require ($generation -ne $ForbiddenGeneration) "Hub downgrade retained current releaseGeneration during $Phase" }
+  $trayIdentity | Add-Member -NotePropertyName Generation -NotePropertyValue $generation
+  $daemonIdentity | Add-Member -NotePropertyName Generation -NotePropertyValue $generation
   Require ([int]$health.protocolVersion -eq 1 -and [int]$health.schemaVersion -eq 1) "Hub protocol/schema handshake is invalid during $Phase"
   Require ($health.nativeOnly -eq $true) "Hub did not attest nativeOnly during $Phase"
   $script:ActiveHubHealth = $health
@@ -1237,20 +1358,27 @@ function Start-AndVerifyHub([string]$Phase, [string]$ExpectedVersion, [string]$E
   $subsystems = @($health.subsystems | Sort-Object)
   Require (($subsystems -join ',') -eq 'adapt,blueprint,cortex,ledger,pull,push') "Hub six-subsystem health is invalid during $Phase"
   Require (@($health.capabilities) -contains 'memory') "Hub health omitted memory capability during $Phase"
-  $native = Assert-NativeHostCutover $InstallRoot $hub
-  $assets = @(Assert-RendererWindows $script:HubProcess.Id)
-  $tree = @(Assert-NativeSteadyState $script:HubProcess.Id $native.BlueprintNode $native.BlueprintNodeSha256)
+  Assert-InstalledProcessIdentity $trayIdentity "installed tray during $Phase"
+  Assert-InstalledProcessIdentity $daemonIdentity "tray-owned daemon during $Phase"
+  $tree = @(Assert-NativeSteadyState $trayIdentity.ProcessId $daemonIdentity.ProcessId $native.Tray $native.Daemon $script:DashboardIdentity)
+  $assets = @()
   $mcp = $null
   $blueprint = $null
   if ($Full) {
-    Assert-TrayAndPopup $script:HubProcess.Id
-    Assert-Dashboard $hub $script:HubProcess.Id
+    Assert-TrayAndPopup $trayIdentity.ProcessId
+    $assets = @(Assert-RendererWindows $script:DashboardProcess.Id)
     $mcp = Invoke-NativeMcp $native.Membrane -ExerciseAll
     $blueprint = Assert-BlueprintResident $InstallRoot $script:QualificationWorkspace
-    $tree = @(Assert-NativeSteadyState $script:HubProcess.Id $native.BlueprintNode $native.BlueprintNodeSha256)
   }
+  $script:HubProcess = $script:DashboardProcess
   return [pscustomobject]@{
     Hub = $hub
+    Tray = $native.Tray
+    Daemon = $native.Daemon
+    TrayProcess = $trayIdentity
+    DaemonProcess = $daemonIdentity
+    DashboardProcess = $script:DashboardProcess
+    DashboardIdentity = $script:DashboardIdentity
     Native = $native
     Port = $port
     Version = $installedVersion
@@ -1267,44 +1395,20 @@ function Start-AndVerifyHub([string]$Phase, [string]$ExpectedVersion, [string]$E
 
 function Start-AndVerifyPreviousHub([string]$ExpectedVersion) {
   Write-Host "[qualification] Start-AndVerifyPreviousHub $(Get-Date -Format 'HH:mm:ss')"
-  $phase = 'downgrade'
-  $hub = Get-InstalledExecutable $InstallRoot
-  $installedVersion = Get-ArtifactVersion $hub "installed Hub during $phase"
-  Require ($installedVersion -eq $ExpectedVersion) "installed Hub version $installedVersion does not match expected $ExpectedVersion during $phase"
-  $previousPath = $env:PATH
-  try {
-    $env:PATH = $script:SafePath
-    $script:HubProcess = Start-Process -FilePath $hub -WorkingDirectory $InstallRoot -PassThru
-  } finally {
-    $env:PATH = $previousPath
-  }
-  Start-Sleep -Seconds 2
-  Require ($null -ne $script:HubProcess -and -not $script:HubProcess.HasExited) 'previous signed Hub did not remain running during downgrade'
-  $tree = @(Get-ProcessTree $script:HubProcess.Id)
-  Require ($tree.Count -ge 1) 'previous signed Hub process tree was unavailable during downgrade'
+  $verified = Start-AndVerifyHub 'downgrade' $ExpectedVersion '' $currentGeneration
   return [pscustomobject]@{
-    hub = $hub
-    version = $installedVersion
-    processTree = @(Convert-ProcessEvidence $tree)
+    hub = $verified.Hub
+    version = $verified.Version
+    processTree = @($verified.ProcessTree)
     installedContent = @(Get-InstalledContentEvidence $InstallRoot)
   }
 }
 
-function Test-BlueprintPipeClosed([string]$Endpoint) {
-  $pipeName = $Endpoint.Substring($Endpoint.LastIndexOf('\') + 1)
-  $client = [IO.Pipes.NamedPipeClientStream]::new('.', $pipeName, [IO.Pipes.PipeDirection]::InOut, [IO.Pipes.PipeOptions]::Asynchronous)
-  try {
-    try { $client.Connect(250); return $false }
-    catch [TimeoutException] { return $true }
-    catch [IO.IOException] { return $true }
-  } finally { $client.Dispose() }
-}
-
-function Assert-QualificationProcessTreeGone([int[]]$ProcessIds, [string]$Root) {
+function Assert-QualificationProcessTreeGone([int[]]$ProcessIds) {
   $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
   do {
     $live = @(Get-CimInstance Win32_Process -ErrorAction Stop | Where-Object {
-      ($ProcessIds -contains [int]$_.ProcessId) -or ($_.ExecutablePath -and $_.ExecutablePath.StartsWith($Root.TrimEnd('\') + '\', [StringComparison]::OrdinalIgnoreCase))
+      $ProcessIds -contains [int]$_.ProcessId
     })
     if ($live.Count -eq 0) { return }
     Start-Sleep -Milliseconds 250
@@ -1313,33 +1417,56 @@ function Assert-QualificationProcessTreeGone([int[]]$ProcessIds, [string]$Root) 
 }
 
 function Stop-QualificationHub {
-  if ($null -eq $script:HubProcess) { $script:ActiveHubHealth = $null; $script:ActiveHubPort = $null; return }
-  $hubPid = $script:HubProcess.Id
-  $rootProcess = Get-Process -Id $hubPid -ErrorAction SilentlyContinue
-  if ($null -eq $rootProcess -or $rootProcess.HasExited) {
-    Assert-QualificationProcessTreeGone @($hubPid) $InstallRoot
-    Require (Test-BlueprintPipeClosed (Get-BlueprintEndpoint)) 'Blueprint named pipe remained open after Hub shutdown'
-    $script:HubProcess = $null
-    $script:ActiveHubHealth = $null; $script:ActiveHubPort = $null
-    return
+  if ($null -eq $script:TrayProcess -and $null -eq $script:DashboardProcess) { $script:ActiveHubHealth = $null; $script:ActiveHubPort = $null; return }
+  $trayPid = if ($script:TrayProcess) { $script:TrayProcess.Id } else { -1 }
+  $daemonPid = if ($script:DaemonProcess) { $script:DaemonProcess.Id } else { -1 }
+  $hubPid = if ($script:DashboardProcess) { $script:DashboardProcess.Id } else { -1 }
+  $ids = @($trayPid, $daemonPid, $hubPid) | Where-Object { $_ -gt 0 }
+  # Snapshot owned descendants before parents exit; unrelated installed clients
+  # are not members of this qualification's presentation/controller tree.
+  $ids = @($ids; foreach ($ownerId in $ids) {
+    Get-ProcessTree $ownerId | ForEach-Object { [int]$_.ProcessId }
+  }) | Sort-Object -Unique
+  # Closing presentation first releases authenticated Hub holder lease; daemon
+  # then performs final-holder drain under tray supervision.
+  if ($script:DashboardProcess) {
+    $liveHub = Get-Process -Id $hubPid -ErrorAction SilentlyContinue
+    if ($liveHub -and -not $liveHub.HasExited) {
+      [void]$liveHub.CloseMainWindow()
+      if (-not $liveHub.WaitForExit([Math]::Min(10000, $TimeoutSeconds * 1000))) {
+        # Failure-only cleanup for an unresponsive presentation process.
+        $taskkill = Join-Path $env:WINDIR 'System32\taskkill.exe'
+        [void](Start-Process -FilePath $taskkill -ArgumentList @('/PID', [string]$hubPid, '/T', '/F') -Wait -PassThru -WindowStyle Hidden)
+      }
+    }
   }
-  $tree = @(Get-ProcessTree $hubPid)
-  $ids = @($tree.ProcessId | ForEach-Object { [int]$_ })
-  # PowerShell's Process.Kill(bool) overload is unavailable on Windows
-  # PowerShell builds used by qualification; killing captured IDs one by one
-  # also risks PID reuse. taskkill's scoped tree operation is atomic for this
-  # exact Hub root, then process/path assertions prove no orphan remained.
-  $taskkill = Join-Path $env:WINDIR 'System32\taskkill.exe'
-  $killer = Start-Process -FilePath $taskkill -ArgumentList @('/PID', [string]$hubPid, '/T', '/F') -Wait -PassThru -WindowStyle Hidden
-  if ($killer.ExitCode -ne 0) {
-    # taskkill reports a race-specific nonzero code when Hub exits between
-    # tree capture & scoped termination. Accept only after exact captured IDs
-    # have disappeared; any survivor remains a hard qualification failure.
-    $remaining = @(Get-CimInstance Win32_Process -ErrorAction Stop | Where-Object { $ids -contains [int]$_.ProcessId })
-    Require ($remaining.Count -eq 0) "could not terminate qualification process tree $($ids -join ','): taskkill exit $($killer.ExitCode)"
+  $drainDeadline = (Get-Date).AddSeconds($TimeoutSeconds)
+  $daemonExited = $false
+  do {
+    $daemonLive = if ($daemonPid -gt 0) { Get-Process -Id $daemonPid -ErrorAction SilentlyContinue } else { $null }
+    if ($null -eq $daemonLive -or $daemonLive.HasExited) { $daemonExited = $true; break }
+    Start-Sleep -Milliseconds 250
+  } while ((Get-Date) -lt $drainDeadline)
+  Require $daemonExited 'final-holder daemon drain did not complete within qualification timeout'
+  if ($script:TrayProcess) {
+    $liveTray = Get-Process -Id $trayPid -ErrorAction SilentlyContinue
+    if ($liveTray -and -not $liveTray.HasExited) {
+      [void]$liveTray.CloseMainWindow()
+      [void]$liveTray.WaitForExit([Math]::Min(5000, $TimeoutSeconds * 1000))
+    }
   }
-  Assert-QualificationProcessTreeGone $ids $InstallRoot
-  Require (Test-BlueprintPipeClosed (Get-BlueprintEndpoint)) 'Blueprint named pipe remained open after Hub shutdown'
+  $remainingTray = if ($trayPid -gt 0) { Get-Process -Id $trayPid -ErrorAction SilentlyContinue } else { $null }
+  if ($remainingTray -and -not $remainingTray.HasExited) {
+    # Failure-only exact cleanup after typed daemon drain; never kill runtime
+    # before holder release has been observed.
+    $taskkill = Join-Path $env:WINDIR 'System32\taskkill.exe'
+    [void](Start-Process -FilePath $taskkill -ArgumentList @('/PID', [string]$trayPid, '/T', '/F') -Wait -PassThru -WindowStyle Hidden)
+  }
+  Assert-QualificationProcessTreeGone $ids
+  $script:TrayProcess = $null
+  $script:DaemonProcess = $null
+  $script:DashboardProcess = $null
+  $script:DashboardIdentity = $null
   $script:HubProcess = $null
   $script:ActiveHubHealth = $null; $script:ActiveHubPort = $null
 }
@@ -1437,12 +1564,22 @@ $script:QualificationWorkspace = Join-Path ([System.IO.Path]::GetTempPath()) "me
 New-Item -ItemType Directory -Path $script:QualificationWorkspace -Force | Out-Null
 $script:PreviousMembraneWorkspaceRoot = [Environment]::GetEnvironmentVariable('MEMBRANE_WORKSPACE_ROOT', 'Process')
 $script:PreviousMembraneWorkspaceConfig = [Environment]::GetEnvironmentVariable('MEMBRANE_WORKSPACE_CONFIG', 'Process')
+$script:PreviousMembraneProjectRegistry = [Environment]::GetEnvironmentVariable('MEMBRANE_PROJECT_REGISTRY', 'Process')
 $script:WorkspaceConfigPath = Join-Path $script:QualificationWorkspace 'workspace.json'
 Seed-WorkspaceV2Config $script:WorkspaceConfigPath $script:QualificationWorkspace
 Initialize-QualificationRepository $script:QualificationWorkspace
-# Hub owns enrollment. Bind every installed Hub phase to this exact configured
-# workspace so Blueprint status/findings/recall address an enrolled actor,
-# rather than an unrelated fresh root supplied only to request payloads.
+# Isolated canonical registry input exercises resident watching; native
+# enrollment behavior requires separate qualification.
+$registryBindings = @{}
+$registryBindings[$script:QualificationWorkspace] = [ordered]@{
+  repository_id = 'windows-qualification'
+  scope_id = 'windows-qualification'
+  scope_descriptor = [ordered]@{ kind = 'filesystem'; path = 'windows-qualification' }
+  grant_policy = [ordered]@{ level = 'read-only' }
+}
+$registryPath = Join-Path $script:QualificationWorkspace 'project-registry.json'
+Write-NativeText $registryPath ([ordered]@{ schema_version = 2; bindings = $registryBindings } | ConvertTo-Json -Depth 10)
+$env:MEMBRANE_PROJECT_REGISTRY = $registryPath
 $env:MEMBRANE_WORKSPACE_ROOT = $script:QualificationWorkspace
 $env:MEMBRANE_WORKSPACE_CONFIG = $script:WorkspaceConfigPath
 
@@ -1451,15 +1588,34 @@ $dataMarker = $null
 $dataHash = $null
 try {
   $initialTarget = Invoke-Installer $installerPath
-  # Silent installs never activate. Prove the installed layout passes the
+  # Prove the installed layout passes the
   # product's own activation validation, with its output on record, before the
   # Hub is started.
   $script:ActivationDryRun = Invoke-ActivationDryRun $InstallRoot
-  # Then the real activation a customer's install performs; it launches the
-  # resident tray, which Start-AndVerifyHub adopts.
+  # Reconcile bindings through silent-install activation. Start-AndVerifyHub
+  # then opens the real Hub holder before waiting for resident service health.
   $script:Activation = Invoke-Activation $InstallRoot
   $first = Start-AndVerifyHub 'initial install' $currentVersion $currentGeneration '' -Full
   $script:InitialEvidence = $first
+  $initArgs = 'init ' + (Quote-NativeArgument $script:QualificationWorkspace) + ' --repository windows-qualification --scope windows-qualification'
+  $initResult = Invoke-NativeProcess $first.Native.Membrane $initArgs '' $InstallRoot
+  $initReceipt = Read-NativeOutput $initResult.Stdout 'installed native init'
+  Require ($initReceipt.action -eq 'enroll') 'native init omitted enrollment receipt'
+  Require ((Normalize-ComparablePath ([string]$initReceipt.root)) -eq (Normalize-ComparablePath $script:QualificationWorkspace)) 'native init enrolled wrong root'
+  $initRegistry = Read-JsonFile $registryPath 'native init registry'
+  $matchingBindings = @($initRegistry.bindings.PSObject.Properties | Where-Object {
+    (Normalize-ComparablePath $_.Name) -eq (Normalize-ComparablePath $script:QualificationWorkspace)
+  })
+  Require ($matchingBindings.Count -eq 1) 'native init must persist exactly one canonical root binding'
+  $initBinding = $matchingBindings[0].Value
+  Require ($initBinding.repository_id -eq 'windows-qualification' -and $initBinding.scope_id -eq 'windows-qualification') 'native init persisted wrong identity'
+  $installedBinding = $initBinding.provider_config.installation_binding
+  Require ($null -ne $installedBinding) 'native init omitted installed binding'
+  Require ((Normalize-ComparablePath ([string]$installedBinding.stableCurrent)) -eq (Normalize-ComparablePath $InstallRoot)) 'native init selected wrong installed current'
+  Require (-not [string]::IsNullOrWhiteSpace([string]$installedBinding.installationId)) 'native init omitted installation identity'
+  Require (-not [string]::IsNullOrWhiteSpace([string]$installedBinding.serviceInstanceId)) 'native init omitted service identity'
+  Require (($installedBinding | ConvertTo-Json -Depth 20 -Compress) -eq ($initReceipt.installation_binding | ConvertTo-Json -Depth 20 -Compress)) 'native init receipt differs from persisted installed binding'
+  $script:NativeInitEvidence = [ordered]@{ receipt = $initReceipt; registry = $registryPath; binding = $initBinding }
   $script:WorkspaceConfigInitialSha256 = Assert-WorkspaceConfigMigrated $script:WorkspaceConfigPath 'initial startup'
   $script:WorkspaceMigrationEvidence = [ordered]@{
     contract = 'workspace-config-v2-to-v3-startup-migration-v1'
@@ -1542,6 +1698,15 @@ try {
   }
   $certification = if ($Profile -eq 'signed-release') { 'signed-release' } else { 'unsigned-functional' }
   $installedContentEvidence = Get-InstalledContentEvidence $InstallRoot
+  # Preserve concrete lifecycle actions performed by this runner. These records
+  # are observations from the native qualification path, never copied status
+  # claims; consumers must still require every scenario they need.
+  $lifecycleObservations = @(
+    [ordered]@{ id = 'holder-exit'; lane = 'LC-01'; action = 'Stop-QualificationHub'; observed = ($null -ne $script:UpgradeEvidence -and $null -ne $script:UpgradeEvidence.DaemonProcess); before = @($script:UpgradeEvidence.ProcessTree); after = @(); processIdentity = $script:UpgradeEvidence.DaemonProcess }
+    [ordered]@{ id = 'survivor-continuity'; lane = 'LC-01'; action = 'durable-state-hash-compare'; observed = ($dataHash -and (Hash-File $dataMarker) -eq $dataHash); beforeHash = $dataHash; afterHash = if (Test-Path -LiteralPath $dataMarker) { Hash-File $dataMarker } else { $null } }
+    [ordered]@{ id = 'source-mutation-watcher'; lane = 'LC-01'; action = 'Assert-BlueprintResident'; observed = ($null -ne $script:UpgradeEvidence.Blueprint -and $script:UpgradeEvidence.Blueprint.watcherMutation -eq 'pass'); evidence = $script:UpgradeEvidence.Blueprint }
+    [ordered]@{ id = 'native-only-process-tree'; lane = 'NCL-05'; action = 'Assert-NativeSteadyState'; observed = ($script:UpgradeEvidence.Native -and $script:UpgradeEvidence.ProcessTree); before = @($script:UpgradeEvidence.ProcessTree); artifact = $installedContentEvidence }
+  )
   $receipt = [ordered]@{
     schema = 'membrane.windows-installed-qualification.v1'
     generatedAt = [DateTime]::UtcNow.ToString('o')
@@ -1576,20 +1741,22 @@ try {
     }
     runtime = [ordered]@{
       inventory = [ordered]@{ path = $script:UpgradeEvidence.Native.RuntimeInventory; entries = $script:UpgradeEvidence.Native.RuntimeInventoryEvidence }
-      blueprint = [ordered]@{ root = $script:UpgradeEvidence.Native.BlueprintRuntime; node = $script:UpgradeEvidence.Native.BlueprintNode; bounded = $true; hubOwned = $true }
+      blueprint = [ordered]@{ host = $script:UpgradeEvidence.Native.Membrane; resident = $false; oneShot = $script:BlueprintOneShot }
       adapt = $script:AdaptEvidence
       workspaceConfigMigration = $script:WorkspaceMigrationEvidence
       hubHosted = $script:UpgradeEvidence.Blueprint
       hubOffOneShot = $script:BlueprintOneShot
+      lifecycleObservations = $lifecycleObservations
     }
     environment = [ordered]@{
       path = $script:SafePath
       developmentCheckoutRequired = $false
       networkInterpreterFetch = $false
       forbiddenInterpreterDescendants = @('node', 'nodejs', 'python', 'pythonw', 'python3', 'py')
-      allowedBlueprintInterpreter = [ordered]@{ root = $script:UpgradeEvidence.Native.BlueprintRuntime; executable = $script:UpgradeEvidence.Native.BlueprintNode; bounded = $true; hubOwned = $true }
+      blueprintInterpreter = 'none-resident-native-cli'
     }
     initial = $script:InitialEvidence
+    nativeInit = $script:NativeInitEvidence
     downgradeContract = $transitionContract
     downgrade = $rollback
     upgradeContract = 'full-native-upgrade-uninstall-v1'
@@ -1625,10 +1792,19 @@ try {
     # Never phrase this as a signed-release PASS.
     Write-Output "Windows installed qualification passed (unsigned-functional, internal profile only): $(Hash-File $installerPath)"
   }
+} catch {
+  $script:PrimaryQualificationFailure = $_
+  Write-Host "[qualification] primary failure: $($_.Exception.Message)"
+  throw
 } finally {
-  Stop-QualificationHub
+  try { Stop-QualificationHub } catch {
+    if ($script:PrimaryQualificationFailure) {
+      Write-Warning "qualification cleanup also failed: $($_.Exception.Message)"
+    } else { throw }
+  }
   if ($dataMarker -and (Test-Path -LiteralPath $dataMarker)) { Remove-Item -LiteralPath $dataMarker -Force -ErrorAction SilentlyContinue }
   if ($script:QualificationWorkspace -and (Test-Path -LiteralPath $script:QualificationWorkspace)) { Remove-Item -LiteralPath $script:QualificationWorkspace -Recurse -Force -ErrorAction SilentlyContinue }
   if ($null -eq $script:PreviousMembraneWorkspaceRoot) { Remove-Item Env:MEMBRANE_WORKSPACE_ROOT -ErrorAction SilentlyContinue } else { $env:MEMBRANE_WORKSPACE_ROOT = $script:PreviousMembraneWorkspaceRoot }
   if ($null -eq $script:PreviousMembraneWorkspaceConfig) { Remove-Item Env:MEMBRANE_WORKSPACE_CONFIG -ErrorAction SilentlyContinue } else { $env:MEMBRANE_WORKSPACE_CONFIG = $script:PreviousMembraneWorkspaceConfig }
+  if ($null -eq $script:PreviousMembraneProjectRegistry) { Remove-Item Env:MEMBRANE_PROJECT_REGISTRY -ErrorAction SilentlyContinue } else { $env:MEMBRANE_PROJECT_REGISTRY = $script:PreviousMembraneProjectRegistry }
 }

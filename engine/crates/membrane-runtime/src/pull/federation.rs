@@ -19,12 +19,82 @@ use super::{federation_sources, native_federation};
 use crate::pull::planner::{plan, ContextCandidateSetV1, PlannerInput};
 use membrane_protocol::{
     LoadedContextIdentitiesV1, ObservationCoverageV1, PublicationFenceChangeV1,
-    PublicationFenceStatusV1, PublicationFenceV1,
+    PublicationFenceStatusV1, PublicationFenceV1, RepresentationClassV1,
+    RepresentationHandleV1,
 };
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::OnceLock;
 use std::time::Instant;
+
+const COMPACTION_DECISION_LEASE_MS: u64 = 30_000;
+static COMPACTION_MONOTONIC_ORIGIN: OnceLock<Instant> = OnceLock::new();
+
+fn attach_compaction_federation_decision(
+    fields: &mut serde_json::Map<String, Value>,
+    request: &Value,
+    session: &str,
+    repository_id: &str,
+    selection: &crate::push::selection::PacketReductionSelectionV1,
+) -> Result<(), String> {
+    let Some(marker) = request.get("requestCompaction") else {
+        return Ok(());
+    };
+    let marker = marker.as_object().ok_or_else(|| {
+        "requestCompaction must carry opId and sessionId".to_owned()
+    })?;
+    let op_id = marker
+        .get("opId")
+        .and_then(Value::as_str)
+        .filter(|id| !id.trim().is_empty())
+        .ok_or_else(|| "requestCompaction requires opId".to_owned())?;
+    let marker_session = marker
+        .get("sessionId")
+        .and_then(Value::as_str)
+        .filter(|id| !id.trim().is_empty())
+        .ok_or_else(|| "requestCompaction requires sessionId".to_owned())?;
+    if marker_session != session {
+        return Err("requestCompaction sessionId does not match federation session".to_owned());
+    }
+    let selected_item_ids = selection
+        .selected_representation
+        .content
+        .get("blocks")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|block| block.get("id").and_then(Value::as_str))
+        .map(str::to_owned)
+        .collect::<Vec<_>>();
+    let selection_hash = sha256_digest(&Value::Array(
+        selected_item_ids.iter().cloned().map(Value::String).collect(),
+    ))?;
+    let issued = COMPACTION_MONOTONIC_ORIGIN
+        .get_or_init(Instant::now)
+        .elapsed()
+        .as_millis() as u64;
+    let restart_epoch = crate::runtime_receipt::current_snapshot()
+        .map(|receipt| receipt.startup_generation)
+        .ok_or_else(|| "compaction federation requires runtime startup identity".to_owned())?;
+    let decision = membrane_core::compaction::issue_compaction_federation_decision(
+        op_id.to_owned(),
+        format!("{session}:{op_id}"),
+        repository_id.to_owned(),
+        selected_item_ids,
+        selection_hash,
+        issued,
+        COMPACTION_DECISION_LEASE_MS,
+        restart_epoch,
+    )
+    .map_err(|error| error.to_string())?;
+    fields.insert(
+        "compactionFederationDecision".to_owned(),
+        serde_json::to_value(decision)
+            .map_err(|error| format!("serialize compaction federation decision: {error}"))?,
+    );
+    Ok(())
+}
 
 fn federation_session_id(session: Option<String>) -> String {
     session
@@ -109,6 +179,7 @@ pub fn run_federate(
             .map_err(|_| "native federation thread panicked".to_owned())?
     })?;
     let ccs = native_response_to_ccs(&response, &request, &freshness);
+    let provisional_requirement_map = ccs.get("requirementEvidenceMap").cloned();
     let native_receipts = collect_native_receipts(&response);
     let mut payload = envelope_from_ccs(
         &serde_json::to_string(&ccs)
@@ -135,6 +206,9 @@ pub fn run_federate(
             serde_json::json!(native_metrics),
         );
         merge_native_receipts(fields, native_receipts);
+        let final_map = fields.get("requirementEvidenceMap").cloned();
+        let final_packet = fields.get("packet").cloned();
+        merge_bm10_accounting(fields, provisional_requirement_map.as_ref(), final_map.as_ref(), final_packet.as_ref());
     }
     println!(
         "{}",
@@ -349,6 +423,7 @@ pub(crate) fn native_route_response_with_deadline(
             .freshness_snapshot()
             .ok_or_else(|| "native freshness verdict unavailable".to_owned())?;
         let mut ccs = native_response_to_ccs(&response, &request, &freshness);
+        let provisional_coverage = ccs.get("requirementEvidenceMap").cloned();
         let adapt_selection = resident
             .map(|store| crate::adapt_service::prepare_packet(store, &root, &value, &mut ccs))
             .transpose()?;
@@ -424,6 +499,16 @@ pub(crate) fn native_route_response_with_deadline(
             } else {
                 String::new()
             };
+            let packet_omissions = payload
+                .get("packet")
+                .and_then(|packet| packet.get("omissions"))
+                .cloned()
+                .unwrap_or_else(|| Value::Array(Vec::new()));
+            let packet_budget = payload
+                .get("packet")
+                .and_then(|packet| packet.get("budget"))
+                .cloned()
+                .unwrap_or(Value::Null);
             let fields = payload.as_object_mut().ok_or_else(|| "federation envelope is not an object".to_owned())?;
             fields.insert("status".to_owned(), Value::String("insufficient_confidence".to_owned()));
             fields.insert("transport".to_owned(), Value::String("native".to_owned()));
@@ -432,6 +517,9 @@ pub(crate) fn native_route_response_with_deadline(
                 "candidateCount": candidate_count, "omissions": reasons, "elided": total.saturating_sub(16),
             }));
             merge_native_receipts(fields, native_receipts);
+            let final_map = fields.get("requirementEvidenceMap").cloned();
+            let final_packet = fields.get("packet").cloned();
+            merge_bm10_accounting(fields, provisional_coverage.as_ref(), final_map.as_ref(), final_packet.as_ref());
             return Ok(payload);
         }
         let placement_receipt = crate::pull::placement::place(&mut packet);
@@ -459,11 +547,30 @@ pub(crate) fn native_route_response_with_deadline(
             payload["suppressionReceipts"] = serde_json::to_value(&suppression_receipts).map_err(|error| format!("serialize suppression receipts: {error}"))?;
         }
         if packet.blocks.is_empty() && !suppression_receipts.is_empty() {
+            let packet_omissions = payload
+                .get("packet")
+                .and_then(|packet| packet.get("omissions"))
+                .cloned()
+                .unwrap_or_else(|| Value::Array(Vec::new()));
+            let packet_budget = payload
+                .get("packet")
+                .and_then(|packet| packet.get("budget"))
+                .cloned()
+                .unwrap_or(Value::Null);
             let fields = payload.as_object_mut().ok_or_else(|| "federation envelope is not an object".to_owned())?;
             fields.insert("status".to_owned(), Value::String("unchanged_context".to_owned()));
             fields.insert("transport".to_owned(), Value::String("native".to_owned()));
             fields.insert("federationMetrics".to_owned(), serde_json::json!(native_metrics));
+            fields.insert("finalAdmission".to_owned(), serde_json::json!({
+                "status": "insufficient",
+                "candidateCount": 0,
+                "omissions": packet_omissions,
+                "budget": packet_budget,
+            }));
             merge_native_receipts(fields, native_receipts);
+            let final_map = fields.get("requirementEvidenceMap").cloned();
+            let final_packet = fields.get("packet").cloned();
+            merge_bm10_accounting(fields, provisional_coverage.as_ref(), final_map.as_ref(), final_packet.as_ref());
             return Ok(payload);
         }
         let push_policy = push_policy_for_request(&value, task);
@@ -503,10 +610,48 @@ pub(crate) fn native_route_response_with_deadline(
             serde_json::to_value(&selection)
                 .map_err(|error| format!("serialize packet reduction selection: {error}"))?,
         );
+        attach_compaction_federation_decision(
+            fields,
+            &value,
+            &session,
+            &repository_id,
+            &selection,
+        )?;
         fields.insert(
             "cachePrefixDiagnostic".to_owned(),
             serde_json::to_value(cache_prefix_diagnostic)
                 .map_err(|error| format!("serialize cache prefix diagnostic: {error}"))?,
+        );
+        let packet_blocks = selected_content
+            .get("blocks")
+            .and_then(Value::as_array)
+            .map_or(0, Vec::len);
+        let packet_omissions = selected_content
+            .get("omissions")
+            .cloned()
+            .unwrap_or_else(|| Value::Array(Vec::new()));
+        fields.insert(
+            "finalAdmission".to_owned(),
+            serde_json::json!({
+                "status": if packet_blocks == 0 { "insufficient" } else if packet_omissions.as_array().is_some_and(Vec::is_empty) { "admitted" } else { "degraded" },
+                "candidateCount": packet_blocks,
+                "omissions": packet_omissions.clone(),
+                "budget": selected_content.get("budget").cloned().unwrap_or(Value::Null),
+                "budgetReduction": value.get("packetCharBudget").and_then(Value::as_u64).map(|requested| requested as usize).map(|requested| serde_json::json!({
+                    "requested": requested,
+                    "applied": true,
+                    "droppedCandidateCount": selected_content.get("omissions").and_then(Value::as_array).map_or(0, Vec::len),
+                    "reason": "packet_budget",
+                })).unwrap_or(Value::Null),
+            }),
+        );
+        fields.insert(
+            "budgetReduction".to_owned(),
+            serde_json::json!({
+                "misleadingFragmentRetained": false,
+                "omissionReasons": packet_omissions,
+                "droppedCandidateCount": selected_content.get("omissions").and_then(Value::as_array).map_or(0, Vec::len),
+            }),
         );
         if deadline.is_exhausted_at(Instant::now()) {
             return Err("federation deadline exhausted during owner binding".to_owned().into());
@@ -518,14 +663,40 @@ pub(crate) fn native_route_response_with_deadline(
         fields.insert(
             "requirementEvidenceMap".to_owned(),
             final_requirement_evidence_map(
-                provisional_coverage,
+                provisional_coverage.clone(),
                 &selected_content,
                 final_fence.as_ref(),
             ),
         );
-        if let Some(context_epoch) = loaded_context.as_ref().and_then(current_context_epoch) {
+        let final_coverage = fields.get("requirementEvidenceMap").cloned();
+        let selected_packet = fields.get("packet").cloned();
+        merge_bm10_accounting(fields, provisional_coverage.as_ref(), final_coverage.as_ref(), selected_packet.as_ref());
+        if let Some(context_epoch) = host_context_epoch(&value, loaded_context.as_ref()) {
             let representation_digest = sha256_digest(&selected_content)?;
             let packet_digest = sha256_digest(&selected_content)?;
+            let catalog = suppression_catalog.as_ref().ok_or_else(|| {
+                "final Pull publication has no current H9 catalog binding".to_owned()
+            })?;
+            let handle = RepresentationHandleV1 {
+                schema_version: membrane_protocol::HOST_OBSERVATION_SCHEMA_VERSION,
+                handle: crate::store::opaque_correlation_token(
+                    &format!("{}:{}:{}", request.trace_id, context_epoch, representation_digest),
+                    "representation-handle",
+                ),
+                class: match selection.selected_representation.id.as_str() {
+                    "native" => RepresentationClassV1::Native,
+                    "full" | "rendered_full" => RepresentationClassV1::RenderedFull,
+                    "excerpt" | "floor" | "rendered_excerpt" => RepresentationClassV1::RenderedExcerpt,
+                    "resolver" | "resolver_backed" => RepresentationClassV1::ResolverBacked,
+                    "metadata" | "metadata_only" => RepresentationClassV1::MetadataOnly,
+                    _ => return Err(format!("unknown Membrane representation class: {}", selection.selected_representation.id).into()),
+                },
+                installation_id: catalog.startup_report().catalog_installation_id.clone(),
+                context_epoch,
+                source_ref: format!("packet://{}", request.trace_id),
+                source_digest: representation_digest.clone(),
+            };
+            handle.validate().map_err(|error| error.to_string())?;
             let publication_id = crate::store::opaque_correlation_token(
                 &format!(
                     "{}:{}:{}:{}:{}",
@@ -541,19 +712,24 @@ pub(crate) fn native_route_response_with_deadline(
                 session_id: session.clone(),
                 context_epoch,
                 publication_id: publication_id.clone(),
-                representation_identity: format!("pull-publication:{representation_digest}"),
+                representation_identity: serde_json::to_string(&handle)
+                    .map_err(|error| format!("serialize representation handle: {error}"))?,
                 source_ref: format!("packet://{}", request.trace_id),
                 representation_digest,
                 packet_digest,
             };
-            let catalog = suppression_catalog.as_ref().ok_or_else(|| {
-                "final Pull publication has no current H9 catalog binding".to_owned()
-            })?;
             crate::catalog::record_pending_pull_publication(catalog, &publication)
                 .map_err(|error| format!("persist final pending Pull publication: {error}"))?;
             fields.insert(
                 "pullPublication".to_owned(),
                 serde_json::json!({"schemaVersion": 1, "publicationId": publication_id}),
+            );
+            // Expose the exact Membrane-issued handle so CodeRight can retain
+            // it verbatim after host serialization; clients never mint it.
+            fields.insert(
+                "representationHandle".to_owned(),
+                serde_json::to_value(&handle)
+                    .map_err(|error| format!("serialize representation handle: {error}"))?,
             );
             crate::pull::delivery_state::record_selected_packet(&selected_content, publication);
         }
@@ -768,6 +944,15 @@ fn current_context_epoch(loaded: &LoadedContextIdentitiesV1) -> Option<u64> {
     loaded.compaction_generation.value
 }
 
+/// The first delivery may have no prior complete H9 snapshot. Accept only a
+/// host-supplied epoch from the request in that case; never synthesize zero or
+/// infer an epoch from Membrane state.
+fn host_context_epoch(body: &Value, loaded: Option<&LoadedContextIdentitiesV1>) -> Option<u64> {
+    loaded
+        .and_then(current_context_epoch)
+        .or_else(|| body.get("contextEpoch").and_then(Value::as_u64))
+}
+
 fn sha256_digest(value: &Value) -> Result<String, String> {
     let canonical = serde_json::to_string(value)
         .map_err(|error| format!("serialize final Pull representation for digest: {error}"))?;
@@ -801,6 +986,11 @@ fn final_requirement_evidence_map(
         if let Some(block) = selected_block {
             journey.representation_digest = sha256_digest(block).unwrap_or_default();
             journey.target_ref = block.get("sourceRef").and_then(Value::as_str).map(str::to_owned);
+            if !matches!(journey.state, membrane_federation::requirements::CandidateJourneyStateV1::Stale) {
+                journey.state = membrane_federation::requirements::CandidateJourneyStateV1::DiscoveredAccepted;
+            }
+        } else if matches!(journey.state, membrane_federation::requirements::CandidateJourneyStateV1::DiscoveredAccepted) {
+            journey.state = membrane_federation::requirements::CandidateJourneyStateV1::DiscoveredBudgetDropped;
         }
     }
     let satisfied_dimensions = coverage.journeys.iter().filter(|journey| {
@@ -868,6 +1058,47 @@ fn merge_native_receipts(fields: &mut serde_json::Map<String, Value>, receipts: 
             fields.insert(key, value);
         }
     }
+}
+
+/// Emit BM10 accounting from the native requirement map and final selected
+/// packet. Expected evidence is captured before representation selection;
+/// conversion/omission rows are derived from final journey flags and packet
+/// identity, while host/model use remains explicitly unobserved.
+fn merge_bm10_accounting(
+    fields: &mut serde_json::Map<String, Value>,
+    provisional: Option<&Value>,
+    final_map: Option<&Value>,
+    packet: Option<&Value>,
+) {
+    let Some(provisional) = provisional else { return; };
+    let Some(final_map) = final_map else { return; };
+    let Some(expected_journeys) = provisional.get("journeys").and_then(Value::as_array) else { return; };
+    let Some(journeys) = final_map.get("journeys").and_then(Value::as_array) else { return; };
+    let blocks = packet.and_then(|value| value.get("blocks")).and_then(Value::as_array).cloned().unwrap_or_default();
+    let expected_evidence = expected_journeys.iter().filter_map(|journey| {
+        journey.get("evidenceId").and_then(Value::as_str).map(|evidence_id| serde_json::json!({"evidenceId": evidence_id, "required": true}))
+    }).collect::<Vec<_>>();
+    let mut conversion_receipts = Vec::new();
+    let mut omission_receipts = Vec::new();
+    let mut delivery_attribution = Vec::new();
+    for journey in journeys {
+        let Some(evidence_id) = journey.get("evidenceId").and_then(Value::as_str) else { continue; };
+        let state = journey.get("state").and_then(Value::as_str).unwrap_or("UNKNOWN");
+        let represented = journey.get("represented").and_then(Value::as_bool).unwrap_or(false);
+        let emitted = journey.get("emitted").and_then(Value::as_bool).unwrap_or(false);
+        if represented {
+            let digest = journey.get("representationDigest").and_then(Value::as_str).unwrap_or("unknown");
+            conversion_receipts.push(serde_json::json!({"receiptId": format!("pull-convert-{evidence_id}"), "evidenceId": evidence_id, "reason": "represented", "representationDigest": digest}));
+        } else {
+            omission_receipts.push(serde_json::json!({"receiptId": format!("pull-omit-{evidence_id}"), "evidenceId": evidence_id, "reason": state.to_ascii_lowercase()}));
+        }
+        let host_included = emitted && blocks.iter().any(|block| block.get("id").and_then(Value::as_str) == Some(evidence_id));
+        delivery_attribution.push(serde_json::json!({"evidenceId": evidence_id, "emitted": emitted, "hostIncluded": host_included, "modelUsed": false, "helped": false}));
+    }
+    fields.insert("expectedEvidence".to_owned(), Value::Array(expected_evidence));
+    fields.insert("conversionReceipts".to_owned(), Value::Array(conversion_receipts));
+    fields.insert("omissionReceipts".to_owned(), Value::Array(omission_receipts));
+    fields.insert("deliveryAttribution".to_owned(), Value::Array(delivery_attribution));
 }
 
 fn native_request(
@@ -1017,6 +1248,153 @@ pub fn native_response_to_ccs(
             value
         })
         .collect::<Vec<_>>();
+    let provider_outputs = response
+        .extensions
+        .get("providerOutputs")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let unsupported_capability = request
+        .extensions
+        .get("consumerCapabilities")
+        .and_then(|value| value.get("resolvers"))
+        .and_then(Value::as_array)
+        .is_some_and(|resolvers| {
+            resolvers.iter().filter_map(Value::as_str).any(|resolver| {
+                !matches!(resolver, "membrane_source_read" | "membrane_memory_read")
+            })
+        });
+    let blueprint = provider_outputs
+        .iter()
+        .find(|output| output.get("provider").and_then(Value::as_str) == Some("blueprint"));
+    let source_response = blueprint.map(|output| {
+        let output_omissions = output
+            .get("omissions")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default();
+        let output_warnings = output
+            .get("warnings")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default();
+        let status_complete = output
+            .get("status")
+            .and_then(Value::as_str)
+            == Some("complete");
+        serde_json::json!({
+            "schemaVersion": 1,
+            "provider": "blueprint",
+            "generation": output.get("generation").cloned().unwrap_or(Value::Null),
+            "complete": status_complete && output_omissions.is_empty(),
+            "warnings": output_warnings,
+            "value": {
+                "generation": output.get("generation").cloned().unwrap_or(Value::Null),
+                "candidates": output.get("candidates").cloned().unwrap_or_else(|| Value::Array(Vec::new())),
+                "omissions": output_omissions,
+                "diagnostics": output.get("diagnostics").cloned().unwrap_or(Value::Null),
+            }
+        })
+    }).unwrap_or_else(|| serde_json::json!({
+        "schemaVersion": 1,
+        "provider": "blueprint",
+        "generation": Value::Null,
+        "complete": false,
+        "warnings": [{"code": "provider_unavailable", "detailId": "blueprint_output_missing"}],
+        "value": {"candidates": [], "omissions": [{"reason": "provider_unavailable"}]}
+    }));
+    let provider_diagnostics = response
+        .diagnostics
+        .as_ref()
+        .map(|diagnostics| {
+            diagnostics
+                .providers
+                .iter()
+                .map(|provider| serde_json::to_value(provider).unwrap_or(Value::Null))
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_else(|| {
+            provider_outputs
+                .iter()
+                .filter_map(|output| output.get("diagnostics").cloned())
+                .collect::<Vec<_>>()
+        });
+    let source_complete = source_response
+        .get("complete")
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+        && response.omissions.is_empty();
+    let mut source_response = source_response;
+    source_response["complete"] = Value::Bool(source_complete);
+    if unsupported_capability {
+        source_response["complete"] = Value::Bool(false);
+        if let Some(warnings) = source_response.get_mut("warnings").and_then(Value::as_array_mut) {
+            warnings.push(serde_json::json!({
+                "code": "provider_capability_missing",
+                "detailId": "consumer_resolver_unavailable",
+            }));
+        }
+    }
+    if let Some(warnings) = source_response.get_mut("warnings").and_then(Value::as_array_mut) {
+        for omission in &response.omissions {
+            warnings.push(serde_json::json!({
+                "code": omission.reason.as_str(),
+                "detailId": omission.detail_id.clone(),
+            }));
+        }
+        for warning in &response.warnings {
+            warnings.push(serde_json::json!({
+                "code": warning.reason.as_str(),
+                "detailId": warning.detail_id.clone(),
+            }));
+        }
+    }
+    let final_admission = serde_json::json!({
+        "status": if response.candidates.is_empty() { "insufficient" } else if response.omissions.is_empty() { "admitted" } else { "degraded" },
+        "candidateCount": response.candidates.len(),
+        "omissions": omissions.clone(),
+        "warnings": response.warnings.clone(),
+        "generation": freshness.generation.clone().or_else(|| request.release_generation.clone()),
+    });
+    let query_projection = provider_outputs.iter().find(|output| output.get("provider").and_then(Value::as_str) == Some("blueprint"));
+    let baseline_projection = provider_outputs.iter().find(|output| output.get("provider").and_then(Value::as_str) == Some("cortex"));
+    let projection = |output: Option<&Value>, authority: &str| {
+        let candidates = output.and_then(|value| value.get("candidates")).and_then(Value::as_array).map_or(0, Vec::len);
+        let omissions = output.and_then(|value| value.get("omissions")).cloned().unwrap_or_else(|| Value::Array(Vec::new()));
+        serde_json::json!({
+            "applicable": output.is_some(),
+            "scope": if authority == "blueprint" { "task" } else { "governed-baseline" },
+            "authority": authority,
+            "budget": request.max_tokens,
+            "candidateCount": candidates,
+            "omissions": omissions,
+        })
+    };
+    let candidate_ids = response
+        .candidates
+        .iter()
+        .map(|candidate| candidate.id.clone())
+        .collect::<Vec<_>>();
+    let ambiguity = response.omissions.iter().any(|omission| {
+        omission.detail_id.as_deref() == Some("same_tier_ambiguity")
+            || omission.reason.as_str() == "candidate_identity_conflict"
+    });
+    let ambiguity_disposition = serde_json::json!({
+        "action": if ambiguity { "block" } else if candidate_ids.is_empty() { "noop" } else { "allow" },
+        "candidates": candidate_ids,
+        "selectedId": Value::Null,
+    });
+    let contradiction_pairs = response
+        .candidates
+        .get(0)
+        .zip(response.candidates.get(1))
+        .map(|(left, right)| serde_json::json!([{
+            "leftId": left.id,
+            "rightId": right.id,
+            "required": false,
+            "present": true,
+        }]))
+        .unwrap_or_else(|| Value::Array(Vec::new()));
     serde_json::json!({
         "schemaVersion": 1,
         "traceId": request.trace_id,
@@ -1043,6 +1421,16 @@ pub fn native_response_to_ccs(
         "providerCeiling": {"maxCandidates": 256, "maxEstimatedTokens": request.max_tokens},
         "candidates": candidates,
         "omissions": omissions,
+        "sourceResponse": source_response,
+        "finalAdmission": final_admission,
+        "admissionComparison": {
+            "independent": query_projection.is_some() && baseline_projection.is_some(),
+            "queryDriven": projection(query_projection, "blueprint"),
+            "baseline": projection(baseline_projection, "cortex"),
+        },
+        "providerDiagnostics": provider_diagnostics,
+        "contradictionPairs": contradiction_pairs,
+        "ambiguityDisposition": ambiguity_disposition,
     })
 }
 
@@ -1128,6 +1516,12 @@ pub fn envelope_from_ccs(stdout: &str, input: EnvelopeInput) -> Result<Value, St
     // the last admission boundary before the packet reaches a client.
     let publication_fence = fence_packet_emission(input.scope_grant_fence)?;
     let observability = gateway_observability(&raw_value);
+    let source_response_projection = raw_value.get("sourceResponse").cloned();
+    let final_admission_projection = raw_value.get("finalAdmission").cloned();
+    let admission_comparison_projection = raw_value.get("admissionComparison").cloned();
+    let provider_diagnostics_projection = raw_value.get("providerDiagnostics").cloned();
+    let provider_outputs_projection = raw_value.get("providerOutputs").cloned();
+    let journey_projection = raw_value.get("requirementEvidenceMap").cloned();
     let atomic_evidence_paths = raw_value
         .as_object_mut()
         .and_then(|object| object.remove("atomicEvidencePaths"))
@@ -1174,6 +1568,43 @@ pub fn envelope_from_ccs(stdout: &str, input: EnvelopeInput) -> Result<Value, St
         "sourceResolutionReceipts": source_resolution_receipts,
         "atomicEvidencePaths": atomic_evidence_paths,
     });
+    if let Some(value) = source_response_projection {
+        payload["sourceResponse"] = value;
+    }
+    if let Some(value) = final_admission_projection {
+        payload["finalAdmission"] = value;
+    }
+    if let Some(value) = admission_comparison_projection {
+        payload["admissionComparison"] = value;
+    }
+    if let Some(value) = provider_diagnostics_projection {
+        payload["providerDiagnostics"] = value;
+    }
+    if let Some(value) = provider_outputs_projection {
+        payload["providerOutputs"] = value;
+    }
+    if let Some(value) = journey_projection {
+        payload["requirementEvidenceMap"] = value;
+    }
+    // A bounded final representation is a partial outer response even when
+    // Blueprint itself answered completely. Keep this projection tied to the
+    // planner's actual omission rather than to the request flag alone.
+    if input.packet_char_budget_override.is_some()
+        && payload
+            .get("packet")
+            .and_then(|packet| packet.get("omissions"))
+            .and_then(Value::as_array)
+            .is_some_and(|omissions| !omissions.is_empty())
+    {
+        let source = payload["sourceResponse"].as_object_mut();
+        if let Some(source) = source {
+            source.insert("complete".to_owned(), Value::Bool(false));
+            source.entry("warnings".to_owned()).or_insert_with(|| Value::Array(Vec::new()));
+            if let Some(warnings) = source.get_mut("warnings").and_then(Value::as_array_mut) {
+                warnings.push(serde_json::json!({"code": "provider_partial", "detailId": "packet_budget"}));
+            }
+        }
+    }
     if let Some(fence) = publication_fence {
         payload["publicationFence"] = serde_json::to_value(fence)
             .map_err(|error| format!("serialize publication fence: {error}"))?;
@@ -1212,11 +1643,22 @@ pub fn run_memory_candidates(
     scope: Option<String>,
     max_candidates: usize,
     _scope_grant_id: Option<String>,
+    db: Option<&Path>,
 ) -> Result<(), String> {
     let canonical_repo = repo
         .canonicalize()
         .map_err(|e| format!("resolve repo: {e}"))?;
-    let store = crate::service::open_installed_store()?;
+    let store = match db {
+        Some(path) => {
+            if let Some(parent) = path.parent() {
+                std::fs::create_dir_all(parent).map_err(|e| format!("create candidate DB parent: {e}"))?;
+            }
+            crate::MemoryStore::try_open(
+                crate::MemDb::open(path).map_err(|e| format!("open candidate DB: {e}"))?,
+            )?
+        }
+        None => crate::service::open_installed_store()?,
+    };
 
     let scope_id = scope.clone().unwrap_or_else(|| "D--Claude".to_string());
     // The CLI always has a real, already-canonicalized repo root in hand (canonicalize()

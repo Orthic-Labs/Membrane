@@ -26,13 +26,14 @@ test("Windows installed qualification is package-only & signature-bound", () => 
 test("qualification exercises native stdio MCP discovery & every registry tool", () => {
   assert.match(lower, /stdio-mcp/);
   assert.match(lower, /tools\/list/);
-  assert.match(lower, /tools\.count -eq 17/);
+  assert.match(lower, /tools\.count -eq \$alltools\.count/);
   assert.match(lower, /membrane\.toolsets\.v1/);
   for (const name of [
     "membrane_context", "membrane_source_read", "membrane_blueprint",
     "membrane_knowledge_propose", "membrane_checkpoint_save", "membrane_checkpoint_load",
     "membrane_working_context", "membrane_temporal_fact", "membrane_scratchpad",
-    "membrane_feedback", "membrane_diagnostic_workspace", "membrane_diagnostic_mutation",
+    "membrane_feedback", "membrane_memory", "membrane_memory_read", "membrane_ledger",
+    "membrane_diagnostic_workspace", "membrane_diagnostic_mutation",
     "membrane_diagnostic_snapshot", "membrane_diagnostic_fence",
     "membrane_diagnostic_capabilities", "membrane_diagnostic_baseline",
     "membrane_diagnostic_provider",
@@ -42,9 +43,9 @@ test("qualification exercises native stdio MCP discovery & every registry tool",
 test("qualification covers tray, popup, renderer, native cutover & forbidden descendants", () => {
   for (const term of [
     "Shell_TrayWnd", "Find-TrayElement", "Assert-TrayAndPopup", "Assert-RendererWindows",
-    "Assert-Dashboard", "msedgewebview2", "Assert-NativeHostCutover",
-    "native-only steady-state", "^node(?:\\.exe)?$", "exactly one Blueprint service process", "exactly one Blueprint watcher process", "blueprint\\.mjs.*\\bservice\\b.*\\brun\\b",
-    "blueprint-watch\\.mjs.*\\bstart\\b", "blueprintGitProcesses", "blueprintGitConsoleHosts", "-not ($blueprint -or $renderer -or $consoleHost -or $git)", "unexpected",
+    "Assert-Dashboard", "exactly one visible on-demand dashboard renderer window", "Assert-NativeHostCutover", "TrayProcessId", "DaemonProcessId",
+    "native-only steady-state", "retired interpreter process", "installed daemon is not owned by the installed tray",
+    "--open-dashboard", "bootstrapped Hub", "unexpected",
   ]) assert.ok(lower.includes(term.toLowerCase()), term);
   assert.match(lower, /windows notification area is unavailable/);
   for (const field of ["serviceId", "installationId", "cortexStoreId", "releaseGeneration", "protocolVersion", "schemaVersion", "nativeOnly", "subsystems", "capabilities"]) assert.ok(source.includes(field), field);
@@ -55,7 +56,7 @@ test("qualification covers tray, popup, renderer, native cutover & forbidden des
 test("qualification proves current -> transition -> upgrade or repair state continuity & uninstall residue", () => {
   assert.match(lower, /invoke-installer \$installerpath[\s\S]*(?:invoke-installer \$previouspath[\s\S]*invoke-installer \$installerpath|invoke-installer \$installerpath)/);
   assert.match(lower, /start-andverifyprevioushub \$previousversion/);
-  assert.match(lower, /previous signed hub did not remain running during downgrade/);
+  assert.match(lower, /tray-owned installed daemon did not become resident during \$phase/);
   assert.match(lower, /downgrade\s*=\s*\$rollback/);
   assert.match(lower, /transitioncontract\s*=\s*'signed-version-liveness-durable-state-v1'/);
   assert.match(lower, /transitioncontract\s*=\s*'first-stable-layout-repair-v1'/);
@@ -78,19 +79,41 @@ test("qualification proves current -> transition -> upgrade or repair state cont
   assert.match(lower, /previous installer version .* is not older than current/);
   assert.match(lower, /expectedgeneration/);
   assert.match(lower, /forbiddengeneration/);
-  assert.match(lower, /second hub invocation did not exit/);
+  assert.match(lower, /tray dashboard signal did not exit/);
+  assert.match(lower, /closing presentation first releases authenticated hub holder lease/);
+  assert.match(lower, /final-holder daemon drain did not complete/);
   assert.match(lower, /assert-qualificationprocesstreegone/);
-  assert.match(lower, /named pipe remained open/);
+  assert.doesNotMatch(lower, /membrane-blueprint-|namedpipeclientstream|named pipe remained open/);
 });
 
 test("qualification binds exact installed renderer, sidecar, & Blueprint process paths", () => {
   assert.match(lower, /count -eq 1/);
   assert.match(lower, /installerpath/);
   assert.match(lower, /sidecar is missing at inventory path/);
-  assert.match(lower, /blueprint process executable is not the inventory-bound node/);
-  assert.match(lower, /webview2 renderer is not signed/);
+  assert.match(lower, /bounded native blueprint one-shot/);
+  assert.match(lower, /cli blueprint status --repo-root/);
+  assert.match(lower, /tray-owned installed daemon/);
+  assert.match(lower, /hub dashboard did not become visible through tray bootstrap/);
   assert.match(lower, /findings\.get/);
   assert.match(lower, /blueprint recall/);
+  assert.doesNotMatch(lower, /invoke-blueprintpipe|get-blueprintendpoint/);
+  assert.match(lower, /membrane\.exe cli blueprint/);
+});
+
+test("Blueprint qualification uses supported native CLI & proves typed negative seam", () => {
+  assert.match(lower, /invoke-blueprintoneshot/);
+  assert.match(lower, /hub health omitted blueprint watcher subsystem/);
+  for (const term of [
+    "cli blueprint recall --repo-root",
+    "cli blueprint findings.get --repo-root",
+    "generationMismatch = 'pass'",
+    "generation_mismatch|stale_blocked",
+    "watcher = 'hub-health-and-freshness'",
+    "watcher-qualification.mjs",
+    "newer fresh generation after isolated file mutation",
+    "watcherMutation = 'pass'",
+    "watcherQuery = 'pass'",
+  ]) assert.ok(lower.includes(term.toLowerCase()), term);
 });
 
 test("qualification binds all four native sidecars", () => {
@@ -168,7 +191,8 @@ test("qualification binds Blueprint requests to Hub-enrolled workspace & typed o
   assert.match(source, /PreviousMembraneWorkspaceRoot/);
   assert.match(source, /MEMBRANE_WORKSPACE_ROOT\s*=\s*\$script:QualificationWorkspace/);
   assert.ok(source.indexOf("$env:MEMBRANE_WORKSPACE_ROOT = $script:QualificationWorkspace") < source.indexOf("Start-AndVerifyHub 'initial install'"));
-  assert.match(lower, /hub owns enrollment/);
+  assert.match(lower, /enrollment = 'native'/);
+  assert.match(lower, /hubowned = \$true/);
   assert.match(lower, /typedmissing/);
   assert.match(lower, /root_not_enrolled/);
   assert.match(lower, /graph_missing/);

@@ -61,3 +61,22 @@ fn scope_grant_rejects_bad_signature_and_round_trips() {
     assert!(serde_json::from_value::<ScopeGrantV1>(wire).is_err());
     assert_eq!(serde_json::from_value::<ScopeGrantV1>(serde_json::to_value(grant).unwrap()).unwrap().generation_id, None);
 }
+
+#[test]
+fn blueprint_candidate_set_requires_source_bound_candidate_v1_fields() {
+    let candidate = BlueprintCandidateV1 {
+        id: "symbol:src/lib.rs::run".into(), layer: 3, provider: None,
+        source_kind: "graph".into(), source_ref: "src/lib.rs".into(), source_hash: "sha256:abc".into(),
+        trust_class: "workspace_tracked".into(), instruction_policy: "data_only".into(), provider_score: 0.0,
+        score_components: Default::default(), base_commit: None, overlay_digest: None,
+        freshness_class: Some("current".into()), snapshot_id: None, estimated_tokens: 0,
+        protected: false, exact: true, recoverable: true, resolver: "blueprint_graph_generation".into(), text: "run".into(),
+    };
+    let set = BlueprintCandidateSetV1 { schema_version: 1, state: "resolved".into(), candidates: vec![candidate.clone()], candidate_count: 1, total_known_count: Some(1), truncated: false, coverage: "complete".into(), freshness: "current".into(), omissions: vec![] };
+    assert!(set.validate().is_ok());
+    let wire = serde_json::to_value(&set).unwrap();
+    assert_eq!(wire["candidates"][0]["sourceRef"], "src/lib.rs");
+    let mut unbound = candidate;
+    unbound.source_hash.clear();
+    assert!(unbound.validate().is_err());
+}

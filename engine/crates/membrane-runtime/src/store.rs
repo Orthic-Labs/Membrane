@@ -1682,6 +1682,7 @@ pub struct SkillResolvedRead {
 }
 
 fn default_embedder() -> (Arc<dyn Embedder>, Option<String>, bool) {
+    configure_bundled_embedder();
     #[cfg(feature = "fastembed")]
     {
         if std::env::var("MEMBRANE_ALLOW_HASH").as_deref() == Ok("1") {
@@ -1716,6 +1717,28 @@ fn default_embedder() -> (Arc<dyn Embedder>, Option<String>, bool) {
         // here.
         let issue = "built without the fastembed feature: embeddings are hash-256, not semantic. Recall matches lexically only, and a clean doctor run is not evidence of semantic health.".to_string();
         (Arc::new(HashEmbedder::new()), Some(issue), true)
+    }
+}
+
+fn configure_bundled_embedder() {
+    #[cfg(windows)]
+    {
+        let Some(root) = std::env::current_exe()
+            .ok()
+            .and_then(|path| path.parent().map(std::path::PathBuf::from))
+        else {
+            return;
+        };
+        let model = root.join("runtime/resources/semantic-embed-model");
+        let runtime = root.join("runtime/resources/semantic-embed-runtime/onnxruntime.dll");
+        if std::env::var_os("CODERIGHT_EMBED_MODEL_DIR").is_none()
+            && model.join("model_q4.onnx").is_file()
+        {
+            std::env::set_var("CODERIGHT_EMBED_MODEL_DIR", model);
+        }
+        if std::env::var_os("ORT_DYLIB_PATH").is_none() && runtime.is_file() {
+            std::env::set_var("ORT_DYLIB_PATH", runtime);
+        }
     }
 }
 

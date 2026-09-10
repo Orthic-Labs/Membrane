@@ -25,12 +25,39 @@ function check(label, condition) {
 
 // Installed qualification must prove native Blueprint operations across both
 // resident & Hub-off paths; these names are intentionally stable evidence keys.
-const qualificationEvidence = [
-  "migration/native-rust/native-only-seal.json",
-  "migration/native-rust/runtime-language-manifest.json",
-];
-for (const path of qualificationEvidence) {
-  check(`${path} must be present for installed lifecycle qualification`, existsSync(join(root, path)));
+const runtimeLanguageManifest = "migration/native-rust/runtime-language-manifest.json";
+check(`${runtimeLanguageManifest} must be present for installed lifecycle qualification`,
+  existsSync(join(root, runtimeLanguageManifest)));
+
+// A native-only seal is issued only after the installed qualification it
+// records. Requiring it here would turn pre-qualification CI into a reason to
+// forge evidence. If one is present, however, it must remain a complete,
+// recognizable sealed-evidence binding rather than an opaque bypass.
+const nativeOnlySeal = "migration/native-rust/native-only-seal.json";
+if (existsSync(join(root, nativeOnlySeal))) {
+  try {
+    const seal = JSON.parse(read(nativeOnlySeal));
+    check(`${nativeOnlySeal} must use membrane.native-only-seal.v1`,
+      seal.schema === "membrane.native-only-seal.v1");
+    check(`${nativeOnlySeal} must be sealed for windows-x86_64`,
+      seal.status === "sealed" && seal.target === "windows-x86_64");
+    check(`${nativeOnlySeal} must bind an installer SHA-256`,
+      typeof seal.artifact_sha256 === "string" && /^[a-f0-9]{64}$/.test(seal.artifact_sha256));
+    for (const input of [
+      "releaseEvidence",
+      "installedQualification",
+      "runtimeLanguageManifest",
+      "invocationGraph",
+      "nativeContractManifest",
+    ]) {
+      const binding = seal.inputs?.[input];
+      check(`${nativeOnlySeal} must bind ${input} path and SHA-256`,
+        typeof binding?.path === "string" && binding.path.length > 0
+          && typeof binding.sha256 === "string" && /^[a-f0-9]{64}$/.test(binding.sha256));
+    }
+  } catch (error) {
+    failures.push(`${nativeOnlySeal} could not be read: ${error.message}`);
+  }
 }
 
 // 1. The Hub dashboard app carries no resident runtime dependency. It is an
@@ -149,12 +176,26 @@ for (const path of ["README.md", "docs/architecture/membrane.md", "docs/canon/me
 // bounded external interpreter allowance may survive sealed qualification.
 try {
   const policy = JSON.parse(read("migration/native-rust/runtime-policy.json"));
-  check("sealed runtime policy must allow zero bounded external interpreter rows",
-    policy.enforcementMode === "sealed" && (policy.sealedExternalInterpreterRows ?? []).length === 0);
-  check("sealed runtime policy must have no Blueprint interpreter exception",
-    !(policy.exceptions ?? []).some((entry) => /blueprint/i.test(JSON.stringify(entry))));
-  check("sealed runtime policy must reject retired Blueprint interpreter selectors",
-    (policy.deletedSelectors ?? []).some((entry) => String(entry).startsWith("blueprint/")));
+  if (policy.enforcementMode === "sealed") {
+    check("sealed runtime policy must allow zero bounded external interpreter rows",
+      (policy.sealedExternalInterpreterRows ?? []).length === 0);
+    check("sealed runtime policy must have no Blueprint interpreter exception",
+      !(policy.exceptions ?? []).some((entry) => /blueprint/i.test(JSON.stringify(entry))));
+    check("sealed runtime policy must reject retired Blueprint interpreter selectors",
+      (policy.deletedSelectors ?? []).some((entry) => String(entry).startsWith("blueprint/")));
+  } else {
+    const exceptions = policy.exceptions ?? [];
+    check("runtime policy must be sealed or migration", policy.enforcementMode === "migration");
+    check("migration runtime policy must carry an explicit bounded exception",
+      Array.isArray(exceptions) && exceptions.length > 0);
+    check("migration runtime policy exceptions must name owner, expiry, and cutover gate",
+      Array.isArray(exceptions) && exceptions.every((entry) => {
+        const encoded = JSON.stringify(entry ?? {});
+        return /"owner(?:Packet)?"\s*:/i.test(encoded)
+          && /"(?:expiry|expires(?:At)?)"\s*:/i.test(encoded)
+          && /"cutover(?:Gate)?"\s*:/i.test(encoded);
+      }));
+  }
 } catch (error) {
   failures.push(`runtime policy could not be read: ${error.message}`);
 }

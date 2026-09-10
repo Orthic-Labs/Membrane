@@ -28,12 +28,34 @@ test("every required CTX case export exists and is callable against the live rep
     assert.ok(typeof cases[exportName] === "function", `missing export ${exportName}`);
     const result = cases[exportName]();
     assert.equal(result.id, id);
-    assert.equal(result.kind, "structural");
-    assert.ok(Array.isArray(result.evidence) || typeof result.evidence === "object");
+    if (id === "CTX-018") {
+      if (result.kind === "installed") {
+        assert.equal(result.evidenceKind, "installed");
+        assert.ok(["passed", "failed"].includes(result.status));
+        assert.equal(result.pass, result.status === "passed");
+        if (result.status === "passed") {
+          assert.equal(result.detail?.saved, true);
+          assert.equal(result.detail?.loaded, true);
+          assert.equal(result.detail?.closed, true);
+        }
+      } else {
+        assert.equal(result.kind, "structural");
+        assert.equal(result.evidenceKind, "source");
+      }
+    } else {
+      assert.equal(result.kind, "structural");
+      assert.ok(Array.isArray(result.evidence) || typeof result.evidence === "object");
+    }
     if (PARTIAL_IDS.has(id)) {
       assert.ok(typeof result.note === "string" && result.note.length > 0, `${id} is documented PARTIAL but carries no residual note`);
     }
   }
+});
+
+test("installed Cortex probe fails closed when stable CLI is unreachable", () => {
+  const result = cases.probeInstalled({ cliPath: "membrane-binary-that-does-not-exist-xyz" });
+  assert.equal(result.status, "blocked");
+  assert.equal(result.evidenceKind, "installed");
 });
 
 // ---------------------------------------------------------------------------

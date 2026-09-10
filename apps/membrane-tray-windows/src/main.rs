@@ -57,6 +57,11 @@ unsafe extern "system" {
 }
 
 fn main() -> Result<(), slint::PlatformError> {
+    let log_ready = supervisor::init_lifecycle_log();
+    supervisor::lifecycle_event(
+        "tray_startup",
+        serde_json::json!({"stage":"entry", "logReady": log_ready}),
+    );
     let args = std::env::args().collect::<Vec<_>>();
     if args.iter().any(|arg| arg == "--self-test") {
         println!("membrane-tray-windows: PASS");
@@ -69,9 +74,18 @@ fn main() -> Result<(), slint::PlatformError> {
     let activation_launch = args.iter().any(|arg| arg == "--activate");
     let replacement_launch = args.iter().any(|arg| arg == "--replace");
     let open_dashboard_on_start = args.iter().any(|arg| arg == "--open-dashboard");
-    let instance_event = instance::InstanceEvent::acquire()
-        .map_err(|error| slint::PlatformError::Other(error.to_string()))?;
+    let instance_event = match instance::InstanceEvent::acquire() {
+        Ok(event) => event,
+        Err(error) => {
+            supervisor::lifecycle_event(
+                "tray_startup",
+                serde_json::json!({"stage":"instance_acquire_failed", "error": error.to_string()}),
+            );
+            return Err(slint::PlatformError::Other(error.to_string()));
+        }
+    };
     if !instance_event.is_primary() {
+        supervisor::lifecycle_event("tray_startup", serde_json::json!({"stage":"secondary_instance"}));
         if replacement_launch {
             let _ = instance_event.signal(instance::InstanceSignal::Replace);
         } else if activation_launch {
@@ -81,6 +95,7 @@ fn main() -> Result<(), slint::PlatformError> {
         }
         return Ok(());
     }
+    supervisor::lifecycle_event("tray_startup", serde_json::json!({"stage":"primary_instance"}));
     if replacement_launch {
         return Ok(());
     }
@@ -90,8 +105,16 @@ fn main() -> Result<(), slint::PlatformError> {
     let tray_status = demo_state
         .map(|state| tray::Status::from_state(state))
         .unwrap_or(tray::Status::Starting);
-    let tray_icon = tray::create_tray(tray_status)
-        .map_err(|error| slint::PlatformError::Other(error.to_string()))?;
+    let tray_icon = match tray::create_tray(tray_status) {
+        Ok(icon) => icon,
+        Err(error) => {
+            supervisor::lifecycle_event(
+                "tray_startup",
+                serde_json::json!({"stage":"tray_create_failed", "error": error.to_string()}),
+            );
+            return Err(slint::PlatformError::Other(error.to_string()));
+        }
+    };
 
     // Pick the renderer before the first window exists: keep the GPU renderer on
     // real desktops, use Slint's software renderer on GPU-less hosts.
@@ -102,18 +125,44 @@ fn main() -> Result<(), slint::PlatformError> {
             if selected_renderer == renderer::Renderer::Default
                 && renderer::looks_like_gpu_failure(&error.to_string()) =>
         {
-            eprintln!(
-                "membrane-tray: default renderer failed to initialize ({error}); retrying with software renderer"
+            supervisor::lifecycle_event(
+                "tray_startup",
+                serde_json::json!({"stage":"renderer_fallback", "error": error.to_string()}),
             );
             selected_renderer = renderer::force_software();
-            TrayPopover::new()?
+            match TrayPopover::new() {
+                Ok(popover) => popover,
+                Err(error) => {
+                    supervisor::lifecycle_event(
+                        "tray_startup",
+                        serde_json::json!({"stage":"renderer_software_failed", "error": error.to_string()}),
+                    );
+                    return Err(error);
+                }
+            }
         }
-        Err(error) => return Err(error),
+        Err(error) => {
+            supervisor::lifecycle_event(
+                "tray_startup",
+                serde_json::json!({"stage":"renderer_failed", "error": error.to_string()}),
+            );
+            return Err(error);
+        }
     };
     let _ = selected_renderer;
-    popover.hide()?;
+    if let Err(error) = popover.hide() {
+        supervisor::lifecycle_event(
+            "tray_startup",
+            serde_json::json!({"stage":"popover_hide_failed", "error": error.to_string()}),
+        );
+        return Err(error);
+    }
 
     let resolved_workspace = workspace::resolve();
+    supervisor::lifecycle_event(
+        "tray_startup",
+        serde_json::json!({"stage":"workspace_resolved", "ok": resolved_workspace.is_ok()}),
+    );
     let daemon_path = resolved_workspace
         .as_ref()
         .ok()
@@ -175,9 +224,14 @@ fn main() -> Result<(), slint::PlatformError> {
     } else {
         let now = supervisor::now_unix_ms();
         if let Err(reason) = resolved_workspace {
+            supervisor::lifecycle_event(
+                "tray_startup",
+                serde_json::json!({"stage":"startup_blocked", "reason": reason}),
+            );
             supervisor.borrow_mut().block_startup(reason, now);
         } else {
             supervisor.borrow_mut().start_process(now);
+            supervisor::lifecycle_event("tray_startup", serde_json::json!({"stage":"daemon_launch_requested"}));
         }
         apply_observation(&popover, &supervisor.borrow(), first_run, login_enabled);
     }
@@ -334,6 +388,10 @@ fn main() -> Result<(), slint::PlatformError> {
         }
 
         if !demo_mode {
+            // The running timer drains authenticated snapshot updates,
+            // including fenced remote resident-holder status, so a Hub /
+            // CodeRight-owned daemon can clear tray startup grace without a
+            // second local holder authority.
             timer_supervisor.borrow_mut().tick(now);
         }
         if instance_event.take_signal(instance::InstanceSignal::Activate) {

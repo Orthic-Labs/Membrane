@@ -1,5 +1,5 @@
 use membrane_federation::requirements::{
-    compile_requirement_set, coverage_map, plan_acquisition, CandidateJourneyV1, EvidenceDimensionV1,
+    compile_requirement_set, coverage_map, plan_acquisition, CandidateJourneyStateV1, CandidateJourneyV1, EvidenceDimensionV1,
     ProviderCapabilityV1, RequirementFactV1,
 };
 use membrane_protocol::ProviderId;
@@ -76,7 +76,7 @@ fn dropped_or_unemitted_exact_target_is_unsatisfied() {
         dimension: EvidenceDimensionV1::CurrentState, provider: ProviderId::LiveFiles,
         source_hash: "sha256:source".into(), representation_digest: "sha256:representation".into(), target_ref: Some("foo.rs".into()),
         acquired: true, eligible: true, admitted: true, represented: true, fenced: true,
-        emitted: false, retained: false, dropped: true,
+        emitted: false, retained: false, dropped: true, state: CandidateJourneyStateV1::DiscoveredBudgetDropped,
     }], &capabilities);
     assert!(coverage.unsatisfied.contains(&EvidenceDimensionV1::CurrentState));
 }
@@ -95,7 +95,7 @@ fn journey_binding_prevents_cross_dimension_coverage() {
         dimension: EvidenceDimensionV1::CurrentState, provider: ProviderId::LiveFiles,
         source_hash: "sha256:source".into(), representation_digest: "sha256:representation".into(), target_ref: None,
         acquired: true, eligible: true, admitted: true, represented: true, fenced: true,
-        emitted: true, retained: false, dropped: false,
+        emitted: true, retained: false, dropped: false, state: CandidateJourneyStateV1::DiscoveredAccepted,
     }], &capabilities);
     assert!(coverage.unsatisfied.contains(&EvidenceDimensionV1::Policy));
     assert!(coverage.unsatisfied.contains(&EvidenceDimensionV1::Diagnostics));
@@ -114,7 +114,7 @@ fn source_and_representation_constraints_require_exact_match() {
         dimension: EvidenceDimensionV1::CurrentState, provider: ProviderId::LiveFiles,
         source_hash: "sha256:wrong-source".into(), representation_digest: "sha256:wrong-representation".into(), target_ref: None,
         acquired: true, eligible: true, admitted: true, represented: true, fenced: true,
-        emitted: true, retained: false, dropped: false,
+        emitted: true, retained: false, dropped: false, state: CandidateJourneyStateV1::DiscoveredAccepted,
     };
     assert!(coverage_map(&requirements, vec![wrong.clone()], &capabilities).unsatisfied.contains(&EvidenceDimensionV1::CurrentState));
     let right = CandidateJourneyV1 { source_hash: "sha256:right-source".into(), representation_digest: "sha256:right-representation".into(), ..wrong };
@@ -134,9 +134,17 @@ fn exact_target_and_provider_capability_cannot_cross_bind() {
         dimension: EvidenceDimensionV1::CurrentState, provider: ProviderId::LiveFiles,
         source_hash: "sha256:source".into(), representation_digest: "sha256:representation".into(),
         target_ref: Some("other.rs".into()), acquired: true, eligible: true, admitted: true,
-        represented: true, fenced: true, emitted: true, retained: false, dropped: false,
+        represented: true, fenced: true, emitted: true, retained: false, dropped: false, state: CandidateJourneyStateV1::Stale,
     };
     assert!(coverage_map(&requirements, vec![wrong_target.clone()], &capabilities).unsatisfied.contains(&EvidenceDimensionV1::CurrentState));
     let wrong_provider = CandidateJourneyV1 { provider: ProviderId::Rules, target_ref: Some("foo.rs".into()), ..wrong_target };
     assert!(coverage_map(&requirements, vec![wrong_provider], &capabilities).unsatisfied.contains(&EvidenceDimensionV1::CurrentState));
+}
+
+#[test]
+fn journey_states_are_typed_without_claiming_host_use() {
+    let state = CandidateJourneyStateV1::AdapterDropped;
+    assert_eq!(serde_json::to_value(state).unwrap(), "ADAPTER_DROPPED");
+    let parsed: CandidateJourneyStateV1 = serde_json::from_value(serde_json::json!("EXECUTION_FAILURE")).unwrap();
+    assert_eq!(parsed, CandidateJourneyStateV1::ExecutionFailure);
 }

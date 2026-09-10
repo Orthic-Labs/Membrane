@@ -213,6 +213,19 @@ fn blueprint_failure(operation: &str, failure: BlueprintError) -> Value {
     error(operation, code, format!("{}: {}", failure.code, failure.message))
 }
 
+fn blueprint_success(operation: &str, data: Value) -> Value {
+    let data = match data {
+        Value::Object(mut object) => {
+            // Native query payloads carry generation/state; public MCP data
+            // also carries requested sub-operation for envelope consumers.
+            object.insert("operation".into(), Value::String(operation.to_owned()));
+            Value::Object(object)
+        }
+        other => other,
+    };
+    success("membrane_blueprint", data)
+}
+
 fn canonical_query_limits(arguments: &Value, input: &mut Value) {
     if let Some(limit) = arguments.get("limit").and_then(Value::as_u64) {
         input["maxCandidates"] = Value::from(limit);
@@ -384,6 +397,7 @@ struct HubTransportExecutor {
     release_generation: String,
     session_id: String,
     token: String,
+    token_path: std::path::PathBuf,
 }
 
 #[derive(Default)]
@@ -447,6 +461,7 @@ impl HubTransportExecutor {
             release_generation: String::new(),
             session_id,
             token,
+            token_path: runtime.token,
         };
         let health = executor.health()?;
         if health.get("installationId").and_then(Value::as_str)
@@ -470,44 +485,12 @@ impl HubTransportExecutor {
     }
 
     fn health(&self) -> Result<Value, String> {
-        let address = SocketAddrV4::new(Ipv4Addr::LOCALHOST, self.port);
-        let mut stream = TcpStream::connect_timeout(&address.into(), Duration::from_secs(2))
+        let reply = crate::installed_health::probe_installed(self.port, &self.token, Duration::from_secs(2), &self.token_path)
             .map_err(|error| format!("Hub health unavailable: {error}"))?;
-        stream
-            .set_read_timeout(Some(Duration::from_secs(2)))
-            .map_err(|error| error.to_string())?;
-        stream
-            .set_write_timeout(Some(Duration::from_secs(2)))
-            .map_err(|error| error.to_string())?;
-        let host = format!("127.0.0.1:{}", self.port);
-        let request = format!("GET /health HTTP/1.0\r\nHost: {host}\r\nConnection: close\r\n\r\n");
-        stream
-            .write_all(request.as_bytes())
-            .map_err(|error| error.to_string())?;
-        let mut response = Vec::new();
-        stream
-            .take((MAX_OPERATION_BYTES * 2) as u64)
-            .read_to_end(&mut response)
-            .map_err(|error| error.to_string())?;
-        let split = response
-            .windows(4)
-            .position(|window| window == b"\r\n\r\n")
-            .ok_or_else(|| {
-                format!(
-                    "Hub health response malformed: no header terminator in {} byte(s): {}",
-                    response.len(),
-                    preview(&response)
-                )
-            })?;
-        let head = std::str::from_utf8(&response[..split]).map_err(|error| error.to_string())?;
-        let status = head.lines().next().unwrap_or("");
-        if !status.contains(" 200 ") {
-            return Err(format!(
-                "Hub health unavailable: hub answered {status}: {}",
-                preview(&response[split + 4..])
-            ));
+        if reply.status != 200 {
+            return Err(format!("Hub health unavailable: HTTP {}: {}", reply.status, preview(&reply.body)));
         }
-        serde_json::from_slice(&response[split + 4..]).map_err(|error| error.to_string())
+        serde_json::from_slice(&reply.body).map_err(|error| error.to_string())
     }
 
     fn post_json(&self, path: &str, payload: &str) -> Result<Value, String> {
@@ -806,7 +789,7 @@ fn execute_blueprint(arguments: &Value) -> Value {
             "resolve",
             json!({"repoRoot":root,"nodeId":arguments.get("node").and_then(Value::as_str).unwrap_or("")}),
         ),
-        "reference" | "references" => (
+        "expand" | "reference" | "references" => (
             "expand",
             {
                 let mut input = canonical_seed_target(root, arguments);
@@ -875,7 +858,7 @@ fn execute_blueprint(arguments: &Value) -> Value {
     request.input = input;
     let response = crate::blueprint_one_shot::dispatch_native(request, CancellationToken::new());
     if response.ok {
-        return success(name, response.result.unwrap_or(Value::Null));
+        return blueprint_success(operation, response.result.unwrap_or(Value::Null));
     }
     blueprint_failure(
         name,
@@ -2374,6 +2357,7 @@ mod hub_transport_tests {
             release_generation: "release-test".into(),
             session_id: "session-test".into(),
             token: "token-test".into(),
+            token_path: std::path::PathBuf::new(),
         };
         let response = executor.execute("membrane_blueprint", &json!({}));
         assert_eq!(

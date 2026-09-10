@@ -25,6 +25,7 @@ use crate::store::{
 use axum::body::Bytes;
 use axum::extract::rejection::BytesRejection;
 use axum::extract::{DefaultBodyLimit, Request, State};
+use axum::extract::Extension;
 use axum::http::{header, HeaderMap, Method, StatusCode, Uri};
 use axum::middleware::Next;
 use axum::response::{Html, IntoResponse, Response};
@@ -465,6 +466,8 @@ struct AppState {
     idempotency: Arc<IdempotencyRegistry>,
     resident_controller: Arc<std::sync::Mutex<crate::residency::ResidentController>>,
     resident_identity: Option<membrane_protocol::ResidentControllerIdentityV1>,
+    loopback_signer: Option<Arc<membrane_client::LoopbackAuthSigner>>,
+    loopback_replay: Arc<std::sync::Mutex<membrane_client::LoopbackReplayCache>>,
     #[cfg(test)]
     test_control: Arc<TestControl>,
 }
@@ -957,6 +960,21 @@ impl Drop for WorkerExecutionGuard {
 /// a parallel one. Creating the fallback file also applies the platform's
 /// owner-only permissions when needed.
 pub fn configured_api_token(db_path: &std::path::Path) -> Result<String, String> {
+    if let Ok(exe) = std::env::current_exe() {
+        let installed_shape = exe.parent().is_some_and(|parent| {
+            parent.file_name().is_some_and(|name| name == "current")
+                || parent.parent().and_then(std::path::Path::file_name).is_some_and(|name| name == "versions")
+        });
+        if installed_shape {
+            let runtime = crate::service::runtime_from_installed_exe(&exe)
+                .map_err(|error| format!("credential_migration_required: {error}"))?;
+            return configured_installed_api_token(
+                std::env::var_os("MEMBRANE_API_TOKEN"),
+                std::env::var_os("MEMBRANE_API_TOKEN_FILE").map(std::path::PathBuf::from),
+                &runtime.token,
+            );
+        }
+    }
     let fallback = db_path
         .parent()
         .unwrap_or_else(|| std::path::Path::new("."))
@@ -966,6 +984,199 @@ pub fn configured_api_token(db_path: &std::path::Path) -> Result<String, String>
         std::env::var_os("MEMBRANE_API_TOKEN_FILE").map(std::path::PathBuf::from),
         &fallback,
     )
+}
+
+fn configured_installed_api_token(
+    raw: Option<std::ffi::OsString>,
+    configured: Option<std::path::PathBuf>,
+    canonical_path: &std::path::Path,
+) -> Result<String, String> {
+    if raw.is_some() {
+        return Err("credential_migration_required: installed runtime rejects environment token substitution".into());
+    }
+    if let Some(path) = configured {
+        let same = path == canonical_path || std::fs::canonicalize(&path).ok()
+            .zip(std::fs::canonicalize(canonical_path).ok()).is_some_and(|(left, right)| left == right);
+        if !same { return Err("credential_migration_required: installed token path differs from canonical authority".into()); }
+    }
+    token_from_file_or_create(canonical_path)
+        .map_err(|error| format!("credential_migration_required: {error}"))?;
+    let token = std::fs::read_to_string(canonical_path)
+        .map_err(|error| format!("credential_migration_required: {error}"))?;
+    if token.len() != 64 || !token.bytes().all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte)) {
+        return Err("credential_migration_required: installed credential must contain exactly 64 lowercase hexadecimal bytes".into());
+    }
+    Ok(token)
+}
+
+/// Canonical installed owner migration. A legacy token is treated as an
+/// opaque byte sequence: it is fingerprinted, replaced with a protected
+/// generated token only while that fingerprint remains current, then reread.
+/// No credential material is emitted in the typed migration event.
+pub(crate) fn migrate_installed_credential(
+    token_path: &std::path::Path,
+) -> Result<bool, String> {
+    let migrated = cortex_store::installation_identity::with_identity_lock(token_path, || {
+        let metadata = std::fs::symlink_metadata(token_path);
+        if let Ok(metadata) = &metadata {
+            if metadata.file_type().is_symlink() || !metadata.is_file() {
+                return Err(cortex_store::installation_identity::InstallationIdentityError::Invalid("credential path is not a regular file".into()));
+            }
+        } else if let Err(error) = metadata {
+            if error.kind() != std::io::ErrorKind::NotFound { return Err(cortex_store::installation_identity::InstallationIdentityError::Invalid(format!("inspect credential: {error}"))); }
+        }
+        let bytes = match std::fs::read(token_path) {
+            Ok(bytes) => bytes,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+            Err(error) => return Err(cortex_store::installation_identity::InstallationIdentityError::Invalid(format!("read credential: {error}"))),
+        };
+        let valid = bytes.len() == 64 && bytes.iter().all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(byte));
+        if valid { return Ok(false); }
+        let fingerprint = hex::encode(sha2::Sha256::digest(&bytes));
+        let mut random = [0u8; 32];
+        getrandom::fill(&mut random).map_err(|error| cortex_store::installation_identity::InstallationIdentityError::Invalid(format!("generate credential: {error}")))?;
+        let candidate = hex(&random);
+        let temporary = token_path.with_file_name(format!(".{}.{}.{}.migration.tmp", token_path.file_name().and_then(|n| n.to_str()).unwrap_or("api-token"), std::process::id(), hex(&random[..6])));
+        let mut options = std::fs::OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)] { use std::os::unix::fs::OpenOptionsExt; options.mode(0o600); }
+        #[cfg(windows)]
+        let mut file = windows_create_owner_only_token_file(&temporary).map_err(|error| cortex_store::installation_identity::InstallationIdentityError::Invalid(format!("create protected credential: {error}")))?;
+        #[cfg(not(windows))]
+        let mut file = options.open(&temporary).map_err(|error| cortex_store::installation_identity::InstallationIdentityError::Invalid(format!("create protected credential: {error}")))?;
+        use std::io::Write as _;
+        let write_result = file.write_all(candidate.as_bytes()).and_then(|_| file.sync_all());
+        drop(file);
+        if let Err(error) = write_result {
+            let _ = std::fs::remove_file(&temporary);
+            return Err(cortex_store::installation_identity::InstallationIdentityError::Invalid(format!("write protected credential: {error}")));
+        }
+        let replaced = cortex_store::installation_identity::atomic_replace_prepared_if_fingerprint(token_path, &fingerprint, &temporary);
+        let _ = std::fs::remove_file(&temporary);
+        let replaced = replaced?;
+        if !replaced {
+            let winner = std::fs::read(token_path).map_err(|error| cortex_store::installation_identity::InstallationIdentityError::Invalid(format!("reread competing credential: {error}")))?;
+            if winner.len() != 64 || !winner.iter().all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(byte)) {
+                return Err(cortex_store::installation_identity::InstallationIdentityError::Invalid("competing credential is noncanonical".into()));
+            }
+            return Ok(false);
+        }
+        let winner = std::fs::read(token_path).map_err(|error| cortex_store::installation_identity::InstallationIdentityError::Invalid(format!("reread migrated credential: {error}")))?;
+        if winner != candidate.as_bytes() { return Ok(false); }
+        // Existing prepare_service_start performs the single startup-generation
+        // increment and publishes its claim immediately after this cutover.
+        Ok(true)
+    }).map_err(|error| format!("credential migration: {error}"))?;
+    if migrated { eprintln!("{{\"event\":\"credential_migrated\",\"kind\":\"protected_token\"}}"); }
+    Ok(migrated)
+}
+
+/// Prepare the sole installed credential owner before a tray launches its
+/// daemon child. Paths come only from active installed `current`.
+pub fn prepare_installed_credential_for_exe(exe: &std::path::Path) -> Result<(), String> {
+    let runtime = crate::service::runtime_from_installed_exe(exe)
+        .map_err(|error| format!("credential_migration_required: {error}"))?;
+    migrate_installed_credential(&runtime.token)?;
+    configured_installed_api_token(None, None, &runtime.token).map(|_| ())
+}
+
+#[cfg(test)]
+mod installed_credential_tests {
+    use super::{configured_installed_api_token, migrate_installed_credential, prepare_installed_credential_for_exe};
+
+    #[test]
+    fn installed_credential_rejects_substitution_and_noncanonical_file_bytes() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("api-token");
+        let token = configured_installed_api_token(None, None, &path).unwrap();
+        assert_eq!(token.len(), 64);
+        assert_eq!(configured_installed_api_token(None, Some(path.clone()), &path).unwrap(), token);
+        assert!(configured_installed_api_token(Some("override".into()), None, &path)
+            .unwrap_err().starts_with("credential_migration_required:"));
+        assert!(configured_installed_api_token(None, Some(root.path().join("other")), &path)
+            .unwrap_err().starts_with("credential_migration_required:"));
+        for invalid in ["legacy".to_owned(), "A".repeat(64), format!("{token}\n")] {
+            std::fs::write(&path, &invalid).unwrap();
+            assert!(configured_installed_api_token(None, None, &path)
+                .unwrap_err().starts_with("credential_migration_required:"));
+            assert_eq!(std::fs::read_to_string(&path).unwrap(), invalid);
+        }
+    }
+
+    #[test]
+    fn weak_credential_migrates_to_canonical_bytes() {
+        let root = tempfile::tempdir().unwrap();
+        let token = root.path().join("api-token");
+        std::fs::write(&token, b"legacy\n").unwrap();
+        assert!(migrate_installed_credential(&token).unwrap());
+        let winner = std::fs::read(&token).unwrap();
+        assert_eq!(winner.len(), 64);
+        assert!(winner.iter().all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(byte)));
+        assert!(!migrate_installed_credential(&token).unwrap());
+    }
+
+    #[test]
+    fn concurrent_migrators_share_one_winner() {
+        let root = tempfile::tempdir().unwrap();
+        let token = root.path().join("api-token");
+        std::fs::write(&token, b"legacy\n").unwrap();
+        let threads = (0..4).map(|_| {
+            let path = token.clone();
+            std::thread::spawn(move || (migrate_installed_credential(&path).unwrap(), std::fs::read(&path).unwrap()))
+        }).collect::<Vec<_>>();
+        let results = threads.into_iter().map(|thread| thread.join().unwrap()).collect::<Vec<_>>();
+        assert_eq!(results.iter().filter(|(migrated, _)| *migrated).count(), 1);
+        assert!(results.windows(2).all(|pair| pair[0].1 == pair[1].1));
+        let winner = std::fs::read(&token).unwrap();
+        assert_eq!(winner.len(), 64);
+        assert!(winner.iter().all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(byte)));
+    }
+
+    #[test]
+    fn installed_prepare_rejects_uninstalled_exe_without_touching_token() {
+        let root = tempfile::tempdir().unwrap();
+        let token = root.path().join("api-token");
+        std::fs::write(&token, b"legacy\n").unwrap();
+        let result = prepare_installed_credential_for_exe(&root.path().join("membrane-daemon.exe"));
+        assert!(result.unwrap_err().starts_with("credential_migration_required:"));
+        assert_eq!(std::fs::read(&token).unwrap(), b"legacy\n");
+    }
+
+    #[cfg(any(unix, windows))]
+    #[test]
+    fn installed_prepare_migrates_weak_and_creates_missing_before_launch() {
+        #[cfg(unix)]
+        use std::os::unix::fs::symlink;
+        let root = tempfile::tempdir().unwrap();
+        let version = root.path().join("versions").join("v1");
+        std::fs::create_dir_all(&version).unwrap();
+        let current = root.path().join("current");
+        #[cfg(unix)]
+        symlink(&version, &current).unwrap();
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt as _;
+            let status = std::process::Command::new("cmd")
+                .creation_flags(0x0800_0000)
+                .arg("/C").arg("mklink").arg("/J").arg(&current).arg(&version)
+                .status().unwrap();
+            assert!(status.success());
+        }
+        let state = root.path().join("state/tools/.cache/memory");
+        std::fs::create_dir_all(&state).unwrap();
+        let identity = state.join("installation.json");
+        cortex_store::installation_identity::load_or_create_installation(&identity, &[]).unwrap();
+        let exe = version.join("membrane-daemon");
+        std::fs::write(&exe, b"fixture").unwrap();
+        let token = state.join("api-token");
+        std::fs::write(&token, b"legacy\n").unwrap();
+        prepare_installed_credential_for_exe(&exe).unwrap();
+        let winner = std::fs::read(&token).unwrap();
+        assert_eq!(winner.len(), 64);
+        std::fs::remove_file(&token).unwrap();
+        prepare_installed_credential_for_exe(&exe).unwrap();
+        assert_eq!(std::fs::read(&token).unwrap().len(), 64);
+    }
 }
 
 fn configured_api_token_from_sources(
@@ -986,6 +1197,13 @@ fn configured_api_token_from_sources(
 }
 
 fn token_from_file_or_create(path: &std::path::Path) -> Result<String, String> {
+    cortex_store::installation_identity::with_identity_lock(path, || {
+        token_from_file_or_create_unlocked(path)
+            .map_err(cortex_store::installation_identity::InstallationIdentityError::Invalid)
+    }).map_err(|error| error.to_string())
+}
+
+fn token_from_file_or_create_unlocked(path: &std::path::Path) -> Result<String, String> {
     match read_token_file(path) {
         Ok(token) => return Ok(token),
         Err(error) if error.kind() != std::io::ErrorKind::NotFound => {
@@ -1052,7 +1270,6 @@ fn token_from_file_or_create(path: &std::path::Path) -> Result<String, String> {
     let publish = (|| -> Result<(), String> {
         use std::io::Write as _;
         file.write_all(token.as_bytes())
-            .and_then(|_| file.write_all(b"\n"))
             .and_then(|_| file.sync_all())
             .map_err(|error| format!("write Cortex API token: {error}"))?;
         std::fs::hard_link(&temp_path, path).map_err(|error| error.to_string())?;
@@ -1913,6 +2130,7 @@ async fn wait_for_idempotent_response(
 
 async fn dispatch(
     State(state): State<AppState>,
+    verified: Option<Extension<(membrane_client::LoopbackRequestFields, membrane_client::LoopbackIdentityFields)>>,
     method: Method,
     uri: Uri,
     headers: HeaderMap,
@@ -1948,7 +2166,7 @@ async fn dispatch(
             "lifecycle_draining",
         );
     }
-    if !is_public_path(path) && !authorized(&headers, state.api_token.as_deref()) {
+    if !is_public_path(path) && verified.is_none() && !authorized(&headers, state.api_token.as_deref()) {
         return reject(StatusCode::UNAUTHORIZED, "valid bearer token required");
     }
     if !is_public_path(path) {
@@ -2467,6 +2685,12 @@ async fn livez(State(state): State<AppState>) -> Response {
             "serviceGeneration": crate::release_identity::service_generation(),
             "releaseGeneration": crate::release_identity::release_generation(),
             "runtimeOrigin": runtime_origin(),
+            // Unsigned liveness is discovery-only: expose the same identity
+            // tuple used by strict health/runtime binding checks.
+            "installationId": state.store.installation_id(),
+            "cortexStoreId": state.store.cortex_store_id(),
+            "startupGeneration": state.resident_identity.as_ref().map(|identity| identity.startup_generation),
+            "stableInstallRoot": state.resident_identity.as_ref().map(|identity| identity.stable_current.clone()),
         })
         .to_string(),
     )
@@ -2494,6 +2718,8 @@ async fn detailed_health(State(state): State<AppState>, _uri: Uri) -> Response {
     let planner_schema_error_count = Arc::clone(&state.planner_schema_error_count);
     let workers = Arc::clone(&state.workers);
     let workers_for_job = Arc::clone(&workers);
+    let loopback_replay = Arc::clone(&state.loopback_replay);
+    let require_resident_watcher = state.resident_identity.is_some();
     let (result_sender, result_receiver) = tokio::sync::oneshot::channel();
     let job = Box::new(move || {
         let _diagnostics_permit = diagnostics_permit;
@@ -2507,7 +2733,9 @@ async fn detailed_health(State(state): State<AppState>, _uri: Uri) -> Response {
             &planner_latency,
             &planner_last_fallback,
             &planner_schema_error_count,
+            Some(&loopback_replay),
             Some(&workers_for_job),
+            require_resident_watcher,
         );
         let _ = result_sender.send(result);
     });
@@ -2527,6 +2755,91 @@ async fn detailed_health(State(state): State<AppState>, _uri: Uri) -> Response {
             "diagnostics_executor_unavailable",
         ),
         Err(_) => workers.reject_overload(StatusCode::SERVICE_UNAVAILABLE, "diagnostics_timeout"),
+    }
+}
+
+#[cfg(test)]
+mod health_route_qualification {
+    use super::*;
+    #[tokio::test]
+    async fn health_route_uses_resident_loopback_auth_and_livez_stays_unsigned() {
+        use axum::body::{to_bytes, Body};
+        use axum::http::{Request, StatusCode};
+        use membrane_client::{
+            build_loopback_request_headers, verify_loopback_response_headers,
+            LoopbackAuthSigner, LoopbackIdentityFields, LoopbackRequestFields,
+        };
+        use sha2::{Digest, Sha256};
+        use tower::ServiceExt;
+
+        let store = MemoryStore::new();
+        let identity = membrane_protocol::ResidentControllerIdentityV1 {
+            installation_id: store.installation_id().to_string(),
+            cortex_store_id: store.cortex_store_id(),
+            release_generation: crate::release_identity::release_generation(),
+            startup_generation: 7,
+            stable_current: r"C:\Membrane\current".to_string(),
+        };
+        let token = "ab".repeat(32);
+        let signer = LoopbackAuthSigner::from_hex_token(&token).unwrap();
+        let expected = LoopbackIdentityFields {
+            installation_id: identity.installation_id.clone(),
+            cortex_store_id: identity.cortex_store_id.clone(),
+            release_generation: identity.release_generation.clone(),
+            startup_generation: identity.startup_generation,
+            stable_install_root: identity.stable_current.clone(),
+        };
+        let nonce = LoopbackAuthSigner::generate_nonce().unwrap();
+        let expiry = LoopbackAuthSigner::bounded_expiry(now_unix_ms() / 1000, 30);
+        let request_headers = build_loopback_request_headers(
+            &signer, &expected, "GET", "/health", "127.0.0.1:8765", "", &[], nonce, expiry,
+        )
+        .unwrap();
+        let request_fields = LoopbackRequestFields {
+            method: "GET".into(),
+            target: "/health".into(),
+            host: "127.0.0.1:8765".into(),
+            content_type: String::new(),
+            body_sha256: Sha256::digest(&[]).into(),
+            identity: expected.clone(),
+            nonce,
+            expiry_unix_secs: expiry,
+        };
+        let control = Arc::new(TestControl::default());
+        let app = build_router_inner(
+            store,
+            None,
+            None,
+            8765,
+            Some(token),
+            Duration::from_secs(2),
+            4,
+            Arc::clone(&control),
+            Some(identity.clone()),
+        );
+        let mut signed = Request::get("/health");
+        for (name, value) in request_headers {
+            signed = signed.header(name, value);
+        }
+        let response = app.clone().oneshot(signed.body(Body::empty()).unwrap()).await.unwrap();
+        let (response_parts, response_body) = response.into_parts();
+        assert_ne!(response_parts.status, StatusCode::UNAUTHORIZED);
+        let body = to_bytes(response_body, MAX_BODY_BYTES).await.unwrap();
+        let response_headers = response_parts
+            .headers
+            .iter()
+            .map(|(name, value)| (name.as_str().to_string(), value.to_str().unwrap().to_string()))
+            .collect::<Vec<_>>();
+        verify_loopback_response_headers(
+            &signer, &response_headers, &request_fields, response_parts.status.as_u16(), &body, &expected,
+            now_unix_ms() / 1000,
+        )
+        .expect("signed /health response must verify");
+
+        let unsigned = app.clone().oneshot(Request::get("/health").body(Body::empty()).unwrap()).await.unwrap();
+        assert_eq!(unsigned.status(), StatusCode::UNAUTHORIZED);
+        let livez = app.oneshot(Request::get("/livez").body(Body::empty()).unwrap()).await.unwrap();
+        assert_eq!(livez.status(), StatusCode::OK);
     }
 }
 
@@ -2550,6 +2863,7 @@ fn build_router(
             request_timeout,
             max_concurrent_requests,
             Arc::new(TestControl::default()),
+            None,
         )
     }
     #[cfg(not(test))]
@@ -2573,9 +2887,12 @@ fn build_router_inner(
     request_timeout: Duration,
     max_concurrent_requests: usize,
     #[cfg(test)] test_control: Arc<TestControl>,
+    #[cfg(test)] resident_identity_override: Option<membrane_protocol::ResidentControllerIdentityV1>,
 ) -> Router {
     let resident_controller = Arc::new(std::sync::Mutex::new(crate::residency::ResidentController::new()));
     let resident_identity = installed_resident_identity(&store);
+    #[cfg(test)]
+    let resident_identity = resident_identity.or(resident_identity_override);
     #[cfg(not(test))]
     {
         let controller = Arc::clone(&resident_controller);
@@ -2620,6 +2937,12 @@ fn build_router_inner(
         idempotency: Arc::new(IdempotencyRegistry::new(IDEMPOTENCY_REGISTRY_CAPACITY)),
         resident_controller,
         resident_identity,
+        loopback_signer: api_token.as_ref().and_then(|token| {
+            membrane_client::LoopbackAuthSigner::from_hex_token(token).ok().map(Arc::new)
+        }),
+        loopback_replay: Arc::new(std::sync::Mutex::new(
+            membrane_client::LoopbackReplayCache::new(),
+        )),
         #[cfg(test)]
         test_control,
     };
@@ -2644,9 +2967,8 @@ fn build_router_inner(
         "serviceGeneration": crate::release_identity::service_generation(),
         "protocolVersion": 1,
         "schemaVersion": 1,
-        // Blueprint is still served by the bundled Node runtime. Do not claim
-        // native-only until that production path and its package are removed.
-        "nativeOnly": false,
+        // All landed resident subsystems are served by the native runtime.
+        "nativeOnly": true,
         "subsystems": ["pull", "push", "cortex", "blueprint", "ledger", "adapt"],
         "capabilities": ["memory", "diagnostics"],
     });
@@ -2654,8 +2976,12 @@ fn build_router_inner(
     let app = Router::new()
         .route("/livez", get(livez))
         .route("/health", get(detailed_health))
-        .with_state(state)
-        .merge(workload);
+        .with_state(state.clone())
+        .merge(workload)
+        .layer(axum::middleware::from_fn_with_state(
+            state,
+            loopback_auth_ingress,
+        ));
     // Live Diagnostics operational surface (design §12). Explicit routes
     // bypass the `dispatch` fallback where every other non-public route
     // authenticates, so the merged router carries its own bearer gate fed
@@ -2692,6 +3018,7 @@ fn router_for_tests_with_control(
         request_timeout,
         max_concurrent_requests,
         Arc::clone(&control),
+        None,
     );
     (
         router.layer(axum::middleware::from_fn(test_authorization)),
@@ -2994,6 +3321,26 @@ pub(crate) fn explicit_memory_response(store: &MemoryStore,
     operation: membrane_protocol::explicit::ExplicitOperation,
     request: &serde_json::Map<String, Value>) -> (u16, Value) {
     use membrane_protocol::explicit::ExplicitOperation as Op;
+    if operation == Op::AdaptCompare {
+        let request: membrane_adapt::comparison::CandidateComparisonV1 =
+            match serde_json::from_value(Value::Object(request.clone())) {
+                Ok(value) => value,
+                Err(error) => return (400, json!({"code":"invalid_request","error":format!("invalid ADP-076 comparison: {error}")})),
+            };
+        let decision = match membrane_adapt::comparison::compare(&request) {
+            Ok(value) => value,
+            Err(error) => return (400, json!({"code":"invalid_request","error":error})),
+        };
+        let decision_value = match serde_json::to_value(&decision) {
+            Ok(value) => value,
+            Err(error) => return (500, json!({"code":"internal_error","error":error.to_string()})),
+        };
+        let receipt = match crate::adapt_service::journal(store, &request.scope, "adapt.comparison", &request.comparison_id, decision_value.clone()) {
+            Ok(value) => value,
+            Err(error) => return (500, json!({"code":"store_error","error":error})),
+        };
+        return (200, json!({"decision":decision_value,"receipt":receipt}));
+    }
     if operation == Op::ActivityRead {
         let limit = request.get("limit").and_then(Value::as_u64).unwrap_or(20).min(10_000) as usize;
         return (200, store.activity_json(limit));
@@ -5199,6 +5546,8 @@ fn health_response(
         planner_last_fallback,
         planner_schema_error_count,
         None,
+        None,
+        false,
     )
 }
 
@@ -5208,7 +5557,9 @@ fn health_response_with_workers(
     planner_latency: &crate::pull::metrics::PlannerLatency,
     planner_last_fallback: &crate::pull::metrics::LastFallback,
     planner_schema_error_count: &std::sync::atomic::AtomicU64,
+    loopback_replay: Option<&std::sync::Mutex<membrane_client::LoopbackReplayCache>>,
     workers: Option<&WorkerAdmission>,
+    require_resident_watcher: bool,
 ) -> (u16, String) {
     let mut payload = match serde_json::from_str::<Value>(&store.detailed_health_json().to_string())
     {
@@ -5222,12 +5573,24 @@ fn health_response_with_workers(
     payload["cortexStoreId"] = json!(store.cortex_store_id());
     payload["protocolVersion"] = json!(1);
     payload["schemaVersion"] = json!(1);
-    // Blueprint is still served by the bundled Node runtime. Do not claim
-    // native-only until that production path and its package are removed.
-    payload["nativeOnly"] = json!(false);
+    // All landed resident subsystems are served by the native runtime.
+    payload["nativeOnly"] = json!(true);
     payload["runtimeOrigin"] = json!(runtime_origin());
     payload["subsystems"] = json!(["pull", "push", "cortex", "blueprint", "ledger", "adapt"]);
     payload["capabilities"] = json!(["memory", "diagnostics"]);
+    let blueprint_watcher = crate::service::resident_blueprint_status();
+    payload["watcherRunning"] = blueprint_watcher
+        .get("watcherRunning")
+        .cloned()
+        .unwrap_or(Value::Bool(false));
+    payload["enrolledRepoCount"] = blueprint_watcher
+        .get("enrolledRepoCount")
+        .cloned()
+        .unwrap_or(Value::from(0));
+    payload["subsystemStatus"] = json!({
+        "blueprint": blueprint_watcher.clone(),
+    });
+    payload["blueprintWatcher"] = blueprint_watcher;
     let store_healthy = payload.get("ok").and_then(Value::as_bool) == Some(true);
     let (count, p50, p95) = planner_latency.snapshot();
     let last_fb = planner_last_fallback.snapshot();
@@ -5274,7 +5637,18 @@ fn health_response_with_workers(
         .and_then(|receipt| receipt.stable_install_root.as_ref())
         .map_or(Value::Null, |root| json!(root));
     payload["runtimeReceipt"] = runtime_receipt.map_or(Value::Null, |receipt| json!(receipt));
-    let status = if store_healthy && catalog_healthy {
+    let replay_snapshot = loopback_replay.and_then(|cache| cache.lock().ok().map(|mut cache| cache.snapshot(now_unix_ms() / 1000)));
+    let protected_replay_saturated = replay_snapshot.as_ref().is_some_and(|snapshot| snapshot.reserved.active >= snapshot.reserved.limit);
+    payload["loopbackReplay"] = replay_snapshot.map_or(Value::Null, |snapshot| json!({
+        "general": { "active": snapshot.general.active, "limit": snapshot.general.limit,
+            "earliestExpiryUnixSecs": snapshot.general.earliest_expiry_unix_secs },
+        "reserved": { "active": snapshot.reserved.active, "limit": snapshot.reserved.limit,
+            "earliestExpiryUnixSecs": snapshot.reserved.earliest_expiry_unix_secs }
+    }));
+    if protected_replay_saturated { payload["ok"] = Value::Bool(false); payload["readiness"] = Value::String("ReplayAdmissionSaturated".into()); }
+    let watcher_healthy = !require_resident_watcher || (payload["watcherRunning"].as_bool() == Some(true)
+        && payload["enrolledRepoCount"].as_u64().is_some_and(|count| count > 0));
+    let status = if store_healthy && catalog_healthy && watcher_healthy && !protected_replay_saturated {
         StatusCode::OK.as_u16()
     } else {
         StatusCode::SERVICE_UNAVAILABLE.as_u16()
@@ -5303,11 +5677,197 @@ fn installed_resident_identity(
 }
 
 fn resident_services_ready(state: &AppState) -> bool {
-    // Store/catalog health is insufficient: Blueprint remains an external
-    // bundled Node service & exposes no runtime-owned watcher handle here.
-    // Do not certify resident readiness until factory injects that handle.
-    let _ = state;
-    false
+    let watcher = crate::service::resident_blueprint_status();
+    if state.resident_identity.is_none()
+        || !crate::service::lifecycle_control().admission_open()
+        || state
+            .store
+            .detailed_health_json()
+            .get("ok")
+            .and_then(Value::as_bool)
+            != Some(true)
+        || watcher.get("watcherRunning").and_then(Value::as_bool) != Some(true)
+        || watcher.get("watcherReady").and_then(Value::as_bool) != Some(true)
+    {
+        return false;
+    }
+
+    state.catalog.as_deref().is_none_or(|catalog| {
+        std::panic::catch_unwind(|| catalog::health_snapshot(catalog))
+            .ok()
+            .and_then(|snapshot| {
+                snapshot
+                    .get("status")
+                    .and_then(Value::as_str)
+                    .map(str::to_owned)
+            })
+            .as_deref()
+            == Some("ok")
+    })
+}
+
+fn loopback_identity(
+    identity: &membrane_protocol::ResidentControllerIdentityV1,
+) -> membrane_client::LoopbackIdentityFields {
+    membrane_client::LoopbackIdentityFields {
+        installation_id: identity.installation_id.clone(),
+        cortex_store_id: identity.cortex_store_id.clone(),
+        release_generation: identity.release_generation.clone(),
+        startup_generation: identity.startup_generation,
+        stable_install_root: identity.stable_current.clone(),
+    }
+}
+
+fn loopback_header_pairs(
+    headers: &axum::http::HeaderMap,
+) -> Result<Vec<(String, String)>, Response> {
+    headers.iter().map(|(name, value)| {
+        value.to_str()
+            .map(|value| (name.as_str().to_ascii_lowercase(), value.to_owned()))
+            .map_err(|_| reject(StatusCode::BAD_REQUEST, "loopback-auth header is not valid ASCII"))
+    }).collect()
+}
+
+fn loopback_partition(
+    method: &Method,
+    path: &str,
+    body: &[u8],
+) -> Result<membrane_client::LoopbackReplayPartition, Response> {
+    if *method == Method::POST && path == "/resident-holder" {
+        let request = serde_json::from_slice::<membrane_protocol::ResidentHolderRequestV1>(body)
+            .map_err(|_| reject(StatusCode::BAD_REQUEST, "resident holder request invalid"))?;
+        return Ok(match request.operation {
+            membrane_protocol::ResidentHolderOperationV1::Renew
+            | membrane_protocol::ResidentHolderOperationV1::Release =>
+                membrane_client::LoopbackReplayPartition::Reserved,
+            membrane_protocol::ResidentHolderOperationV1::Acquire
+            | membrane_protocol::ResidentHolderOperationV1::Status
+            | membrane_protocol::ResidentHolderOperationV1::SubscribeLoss =>
+                membrane_client::LoopbackReplayPartition::General,
+        });
+    }
+    Ok(membrane_client::LoopbackReplayPartition::General)
+}
+
+/// Verify SDK-owned resident routes before dispatch effects, reserve replay
+/// capacity, then bind response proof to nonce/status/raw body/identity.
+/// Routes outside SDK allowlist keep existing bearer policy. /livez remains
+/// the explicit unsigned liveness exemption.
+async fn loopback_auth_ingress(
+    State(state): State<AppState>,
+    request: Request,
+    next: Next,
+) -> Response {
+    // Generic non-resident servers retain their existing transport contract.
+    if state.resident_identity.is_none() {
+        return next.run(request).await;
+    }
+    let method = request.method().clone();
+    let path = request.uri().path().to_owned();
+    let target = request.uri().path_and_query()
+        .map(|value| value.as_str().to_owned())
+        .unwrap_or_else(|| path.clone());
+    let canonical_path = membrane_client::loopback_routes::is_authorized("GET", &path)
+        || membrane_client::loopback_routes::is_authorized("POST", &path);
+    if !canonical_path || (method == Method::GET && target == "/livez") {
+        return next.run(request).await;
+    }
+    let Some(signer) = state.loopback_signer.as_deref() else {
+        return reject(StatusCode::SERVICE_UNAVAILABLE, "loopback-auth credential unavailable");
+    };
+    let Some(controller_identity) = state.resident_identity.as_ref() else {
+        return reject(StatusCode::CONFLICT, "installed resident identity unavailable");
+    };
+    let identity = loopback_identity(controller_identity);
+    let (parts, request_body) = request.into_parts();
+    let headers = match loopback_header_pairs(&parts.headers) {
+        Ok(headers) => headers,
+        Err(response) => return response,
+    };
+    let body = match axum::body::to_bytes(request_body, MAX_PUSH_BODY_BYTES).await {
+        Ok(body) => body,
+        Err(_) => return reject(StatusCode::PAYLOAD_TOO_LARGE, "request body too large"),
+    };
+    let content_type = headers.iter().find(|(name, _)| name == "content-type")
+        .map(|(_, value)| value.as_str()).unwrap_or("");
+    let host = headers.iter().find(|(name, _)| name == "host")
+        .map(|(_, value)| value.as_str()).unwrap_or("");
+    let verified = match membrane_client::verify_loopback_request_headers(
+        signer, &headers, method.as_str(), &target, host, content_type, &body,
+        &identity, now_unix_ms() / 1000,
+    ) {
+        Ok(request) => request,
+        Err(_) => return reject(StatusCode::UNAUTHORIZED, "invalid loopback-auth request"),
+    };
+    let partition = match loopback_partition(&method, &path, &body) {
+        Ok(partition) => partition,
+        Err(response) => return response,
+    };
+    let admission = state.loopback_replay.lock()
+        .map_err(|_| membrane_client::ClientError::Internal { message: "loopback-auth replay cache unavailable".into() })
+        .and_then(|mut cache| cache.admit(
+            partition, verified.nonce, verified.expiry_unix_secs, now_unix_ms() / 1000,
+        ));
+    let replay_error = match admission {
+        Ok(()) => None,
+        Err(error) => Some(match error {
+            membrane_client::ClientError::Protocol { code, details, .. } => retryable_reject(
+                StatusCode::TOO_MANY_REQUESTS,
+                &serde_json::json!({
+                    "error": format!("loopback-auth replay admission {code}"),
+                    "kind": code.clone(),
+                    "retryAfterMs": details.get("retryAfterMs").cloned().unwrap_or(Value::Null),
+                }).to_string(),
+                &code,
+            ),
+            _ => reject(StatusCode::SERVICE_UNAVAILABLE, "loopback-auth replay cache unavailable"),
+        }),
+    };
+    let auth = (verified, identity);
+    if let Some(response) = replay_error {
+        let (mut response_parts, response_body) = response.into_parts();
+        let response_body = axum::body::to_bytes(response_body, MAX_PUSH_BODY_BYTES).await
+            .map_err(|_| ()).unwrap_or_default();
+        if let Ok(response_headers) = membrane_client::build_loopback_response_headers(
+            signer, &auth.1, auth.0.nonce, response_parts.status.as_u16(), &response_body,
+            auth.0.expiry_unix_secs,
+        ) {
+            for (name, value) in response_headers {
+                if let (Ok(name), Ok(value)) = (
+                    axum::http::header::HeaderName::from_bytes(name.as_bytes()),
+                    axum::http::HeaderValue::from_str(&value),
+                ) { response_parts.headers.insert(name, value); }
+            }
+        }
+        return Response::from_parts(response_parts, axum::body::Body::from(response_body));
+    }
+    let mut request = Request::from_parts(parts, axum::body::Body::from(body));
+    request.extensions_mut().insert(auth.clone());
+    let response = next.run(request).await;
+    let (mut response_parts, response_body) = response.into_parts();
+    let response_body = match axum::body::to_bytes(response_body, MAX_PUSH_BODY_BYTES).await {
+        Ok(body) => body,
+        Err(_) => return reject(StatusCode::INTERNAL_SERVER_ERROR, "loopback-auth response unavailable"),
+    };
+    let response_headers = match membrane_client::build_loopback_response_headers(
+        signer, &auth.1, auth.0.nonce, response_parts.status.as_u16(), &response_body,
+        auth.0.expiry_unix_secs,
+    ) {
+        Ok(headers) => headers,
+        Err(_) => return reject(StatusCode::INTERNAL_SERVER_ERROR, "loopback-auth response signing failed"),
+    };
+    for (name, value) in response_headers {
+        let name = match axum::http::header::HeaderName::from_bytes(name.as_bytes()) {
+            Ok(name) => name,
+            Err(_) => return reject(StatusCode::INTERNAL_SERVER_ERROR, "loopback-auth response headers invalid"),
+        };
+        let value = match axum::http::HeaderValue::from_str(&value) {
+            Ok(value) => value,
+            Err(_) => return reject(StatusCode::INTERNAL_SERVER_ERROR, "loopback-auth response headers invalid"),
+        };
+        response_parts.headers.insert(name, value);
+    }
+    Response::from_parts(response_parts, axum::body::Body::from(response_body))
 }
 
 fn runtime_origin_from(value: Option<&str>) -> &'static str {
@@ -5956,18 +6516,20 @@ pub(crate) fn run(
             let listener = tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, port))
                 .await
                 .map_err(|error| error.to_string())?;
+            // Transport readiness is independent from background catch-up.
+            // `/health` remains unavailable until the enrolled watcher has a
+            // live generation, while lifecycle holders can attach during the
+            // bounded initial build.
             lifecycle.mark_ready(port);
             let shutdown = lifecycle.clone();
-            let server = std::future::IntoFuture::into_future(
-                axum::serve(
-                    listener,
-                    app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
-                )
-                .with_graceful_shutdown(async move {
+            let server = crate::http_server::serve(
+                listener,
+                app,
+                async move {
                     while !shutdown.shutdown_requested() {
                         tokio::time::sleep(Duration::from_millis(10)).await;
                     }
-                }),
+                },
             );
             tokio::pin!(server);
             let shutdown_observer = lifecycle.clone();
@@ -6717,7 +7279,7 @@ mod tests {
         assert!(payload["cortexStoreId"]
             .as_str()
             .is_some_and(|value| value.starts_with("sha256:")));
-        assert_eq!(payload["nativeOnly"], false);
+        assert_eq!(payload["nativeOnly"], true);
         assert_eq!(payload["subsystems"].as_array().map(Vec::len), Some(6));
         assert_eq!(payload["capabilities"], json!(["memory", "diagnostics"]));
     }
@@ -9698,5 +10260,81 @@ mod tests {
             StatusCode::BAD_REQUEST,
             "garbage X-Membrane-Manifest header must produce 400"
         );
+    }
+
+    #[test]
+    fn detailed_health_projects_protected_replay_saturation_as_typed_unready() {
+        let store = MemoryStore::new();
+        let mut replay = membrane_client::LoopbackReplayCache::new();
+        let now = now_unix_ms() / 1000;
+        for index in 0..membrane_client::LOOPBACK_REPLAY_RESERVED {
+            let mut nonce = [0; membrane_client::LOOPBACK_NONCE_OCTETS];
+            nonce[..8].copy_from_slice(&(index as u64).to_be_bytes());
+            replay
+                .admit(
+                    membrane_client::LoopbackReplayPartition::Reserved,
+                    nonce,
+                    now.saturating_add(60),
+                    now,
+                )
+                .expect("synthetic protected replay fixture admits");
+        }
+        let replay = std::sync::Mutex::new(replay);
+        let (status, body) = health_response_with_workers(
+            &store,
+            None,
+            &crate::pull::metrics::PlannerLatency::new(),
+            &crate::pull::metrics::LastFallback::new(),
+            &std::sync::atomic::AtomicU64::new(0),
+            Some(&replay),
+            None,
+            false,
+        );
+        let payload: Value = serde_json::from_str(&body).expect("health JSON");
+        assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE.as_u16());
+        assert_eq!(payload["ok"], false);
+        assert_eq!(payload["readiness"], "ReplayAdmissionSaturated");
+        assert_eq!(
+            payload["loopbackReplay"]["reserved"]["active"],
+            membrane_client::LOOPBACK_REPLAY_RESERVED
+        );
+        assert_eq!(
+            payload["loopbackReplay"]["reserved"]["limit"],
+            membrane_client::LOOPBACK_REPLAY_RESERVED
+        );
+    }
+
+    #[test]
+    fn detailed_health_reconciles_expired_protected_replay_entries() {
+        let store = MemoryStore::new();
+        let mut replay = membrane_client::LoopbackReplayCache::new();
+        let now = now_unix_ms() / 1000;
+        for index in 0..membrane_client::LOOPBACK_REPLAY_RESERVED {
+            let mut nonce = [0; membrane_client::LOOPBACK_NONCE_OCTETS];
+            nonce[..8].copy_from_slice(&(index as u64).to_be_bytes());
+            replay
+                .admit(
+                    membrane_client::LoopbackReplayPartition::Reserved,
+                    nonce,
+                    now.saturating_sub(1),
+                    now.saturating_sub(2),
+                )
+                .expect("synthetic expired replay fixture admits");
+        }
+        let replay = std::sync::Mutex::new(replay);
+        let (_status, body) = health_response_with_workers(
+            &store,
+            None,
+            &crate::pull::metrics::PlannerLatency::new(),
+            &crate::pull::metrics::LastFallback::new(),
+            &std::sync::atomic::AtomicU64::new(0),
+            Some(&replay),
+            None,
+            false,
+        );
+        let payload: Value = serde_json::from_str(&body).expect("health JSON");
+        assert_eq!(payload["loopbackReplay"]["reserved"]["active"], 0);
+        assert_ne!(payload["readiness"], "ReplayAdmissionSaturated");
+        assert_eq!(payload["loopbackReplay"]["reserved"]["earliestExpiryUnixSecs"], Value::Null);
     }
 }

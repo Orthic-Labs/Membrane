@@ -263,6 +263,17 @@ export async function runInstalledPathHarness(options = {}) {
 // production signing verification (see docs/architecture/execution-lifecycle-boundary.md).
 export const EVIDENCE_KINDS = new Set(["source", "component", "integration", "installed", "host", "task-outcome"]);
 
+// Only evidence produced by an exercised runtime can close an unsigned
+// functional qualification. Source/component/integration findings remain
+// useful structural diagnostics, but they cannot be promoted to closure.
+export const FUNCTIONAL_EVIDENCE_KINDS = new Set(["installed", "host", "task-outcome"]);
+
+export function classifyFunctionalEvidence(status, evidenceKind) {
+  if (status !== "passed") return { status: "failed", reason: "case did not pass" };
+  if (FUNCTIONAL_EVIDENCE_KINDS.has(evidenceKind)) return { status: "passed", reason: null };
+  return { status: "structural", reason: `evidenceKind ${evidenceKind} is not runtime evidence` };
+}
+
 export function deriveCaseGroup(row) {
   if (nonEmptyString(row?.group)) return row.group;
   const id = String(row?.id ?? "");
@@ -299,45 +310,48 @@ export function selectGroupCases(cases, group) {
   return selected;
 }
 
-const defaultImportCaseModule = (workspaceRoot) => (specifier) => import(pathToFileURL(resolve(workspaceRoot, specifier)).href);
+const defaultImportCaseModule = (caseSourceRoot) => (specifier) => import(pathToFileURL(resolve(caseSourceRoot, specifier)).href);
 
 // Runs exactly one registry case to a terminal (never skipped) result: a case
 // missing its declared module or export fails instead of being silently
 // dropped, and a case that does not record a recognized evidenceKind fails
 // instead of being counted as passed.
 export async function runOneRegistryCase(row, context) {
-  const { workspaceRoot, profile, platform, evidencePath, importCaseModule = defaultImportCaseModule(workspaceRoot) } = context;
+  const { workspaceRoot, caseSourceRoot = workspaceRoot, profile, platform, evidencePath, importCaseModule = defaultImportCaseModule(caseSourceRoot) } = context;
   if (!nonEmptyString(row?.caseFile) || !nonEmptyString(row?.caseExport)) {
-    return { id: row?.id ?? null, status: "failed", evidenceKind: null, reason: "case registry row is missing caseFile or caseExport" };
+    return { id: row?.id ?? null, status: "failed", functionalStatus: "failed", evidenceKind: null, reason: "case registry row is missing caseFile or caseExport" };
   }
   let moduleExports;
   try {
     moduleExports = await importCaseModule(row.caseFile);
   } catch (error) {
-    return { id: row.id, status: "failed", evidenceKind: null, reason: `case module ${row.caseFile} failed to load: ${error.message}` };
+    return { id: row.id, status: "failed", functionalStatus: "failed", evidenceKind: null, reason: `case module ${row.caseFile} failed to load: ${error.message}` };
   }
   const caseFunction = moduleExports?.[row.caseExport];
   if (typeof caseFunction !== "function") {
-    return { id: row.id, status: "failed", evidenceKind: null, reason: `case module ${row.caseFile} has no export ${row.caseExport}` };
+    return { id: row.id, status: "failed", functionalStatus: "failed", evidenceKind: null, reason: `case module ${row.caseFile} has no export ${row.caseExport}` };
   }
   let outcome;
   try {
-    outcome = await caseFunction({ row, workspaceRoot, profile, platform, evidencePath });
+    outcome = await caseFunction({ row, workspaceRoot, caseSourceRoot, profile, platform, evidencePath });
   } catch (error) {
-    return { id: row.id, status: "failed", evidenceKind: null, reason: `case ${row.id} threw: ${error.message}` };
+    return { id: row.id, status: "failed", functionalStatus: "failed", evidenceKind: null, reason: `case ${row.id} threw: ${error.message}` };
   }
   if (!outcome || typeof outcome !== "object") {
-    return { id: row.id, status: "failed", evidenceKind: null, reason: `case ${row.id} returned no result` };
+    return { id: row.id, status: "failed", functionalStatus: "failed", evidenceKind: null, reason: `case ${row.id} returned no result` };
   }
   if (!EVIDENCE_KINDS.has(outcome.evidenceKind)) {
-    return { id: row.id, status: "failed", evidenceKind: outcome.evidenceKind ?? null, reason: `case ${row.id} did not record a recognized evidenceKind` };
+    return { id: row.id, status: "failed", functionalStatus: "failed", evidenceKind: outcome.evidenceKind ?? null, reason: `case ${row.id} did not record a recognized evidenceKind` };
   }
+  const caseStatus = outcome.status === "passed" ? "passed" : "failed";
+  const functional = classifyFunctionalEvidence(caseStatus, outcome.evidenceKind);
   return {
     id: row.id,
-    status: outcome.status === "passed" ? "passed" : "failed",
+    status: caseStatus,
+    functionalStatus: functional.status,
     evidenceKind: outcome.evidenceKind,
     detail: outcome.detail ?? null,
-    reason: outcome.reason ?? null,
+    reason: outcome.reason ?? functional.reason,
   };
 }
 
@@ -353,6 +367,7 @@ export async function runRegistryQualification(options = {}) {
     group,
     evidencePath,
     workspaceRoot = resolve(HERE, "../.."),
+    caseSourceRoot = workspaceRoot,
     now = () => new Date().toISOString(),
     importCaseModule,
   } = options;
@@ -373,7 +388,7 @@ export async function runRegistryQualification(options = {}) {
   const terminal = [];
   const results = [];
   for (const id of discovered) {
-    const result = await runOneRegistryCase(byId.get(id), { workspaceRoot, profile, platform, evidencePath, importCaseModule });
+    const result = await runOneRegistryCase(byId.get(id), { workspaceRoot, caseSourceRoot, profile, platform, evidencePath, importCaseModule });
     executed.push(result.id);
     terminal.push(result.id);
     results.push(result);
@@ -390,6 +405,7 @@ export async function runRegistryQualification(options = {}) {
     if (result.evidenceKind) evidenceKindCounts[result.evidenceKind] = (evidenceKindCounts[result.evidenceKind] ?? 0) + 1;
   }
   const failed = results.filter((result) => result.status !== "passed");
+  const functionalFailed = results.filter((result) => result.functionalStatus !== "passed");
 
   const summary = {
     schema: "membrane.registry-qualification.v1",
@@ -397,6 +413,8 @@ export async function runRegistryQualification(options = {}) {
     profile,
     group,
     caseRegistryPath,
+    workspaceRoot,
+    caseSourceRoot,
     evidencePath,
     generatedAt: now(),
     requiredIds: discovered,
@@ -404,8 +422,9 @@ export async function runRegistryQualification(options = {}) {
     terminalIds: terminal,
     results,
     evidenceKindCounts,
-    status: failed.length === 0 ? "passed" : "failed",
-    unsignedFunctional: true,
+    status: failed.length === 0 && functionalFailed.length === 0 ? "passed" : "failed",
+    functionalStatus: functionalFailed.length === 0 ? "passed" : "failed",
+    unsignedFunctional: functionalFailed.length === 0,
     signedReleasePass: false,
   };
   atomicJson(evidencePath, summary);
@@ -421,7 +440,9 @@ function cli() {
     const profile = value("--profile");
     const group = value("--group");
     const evidencePath = value("--evidence") ? resolve(value("--evidence")) : undefined;
-    runRegistryQualification({ platform, profile, caseRegistryPath, group, evidencePath })
+    const workspaceRoot = resolve(value("--workspace-root") || resolve(HERE, "../.."));
+    const caseSourceRoot = resolve(value("--case-source-root") || workspaceRoot);
+    runRegistryQualification({ platform, profile, caseRegistryPath, group, evidencePath, workspaceRoot, caseSourceRoot })
       .then((summary) => {
         process.stdout.write(`${JSON.stringify({ status: summary.status, group: summary.group, evidencePath, requiredCount: summary.requiredIds.length })}\n`);
         process.exitCode = summary.status === "passed" ? 0 : 2;

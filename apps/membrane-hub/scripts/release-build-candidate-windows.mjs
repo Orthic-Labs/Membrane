@@ -48,8 +48,8 @@ const startedAt = new Date().toISOString();
 rmSync(artifactRoot, { recursive: true, force: true });
 mkdirSync(payload, { recursive: true });
 
-run("cargo", ["build", "--locked", "--manifest-path", "../../engine/Cargo.toml", "--release", "--target", target, "-p", "cortex", "-p", "membrane", "-p", "membrane-runtime", "--bin", "cortex", "--bin", "membrane", "--bin", "membrane-daemon"]);
-run("cargo", ["build", "--locked", "--manifest-path", "../membrane-tray-windows/Cargo.toml", "--release", "--target", target]);
+run("cargo", ["build", "--locked", "--manifest-path", "../../engine/Cargo.toml", "--release", "--target", target, "-p", "cortex", "-p", "membrane", "-p", "membrane-runtime", "--bin", "cortex", "--bin", "membrane", "--bin", "membrane-daemon", "--features", "membrane-runtime/fastembed"]);
+run("cargo", ["build", "--locked", "--manifest-path", "../membrane-tray-windows/Cargo.toml", "--release", "--target", target, "--features", "membrane-runtime/fastembed"]);
 
 const cargoTarget = output("cargo", ["metadata", "--locked", "--format-version", "1", "--no-deps", "--manifest-path", "engine/Cargo.toml"]);
 const engineTarget = JSON.parse(cargoTarget).target_directory;

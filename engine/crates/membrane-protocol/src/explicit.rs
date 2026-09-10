@@ -30,7 +30,7 @@ pub enum ExplicitOwnerMode { BoundedExplicit }
 #[serde(rename_all = "snake_case")]
 pub enum ExplicitOperation {
     Binding, Activity, ActivityRead, Delete, Federate, Get, List, Metrics, Put, Recall,
-    Remember, RememberConsolidated, Scopes, Search, Use, Diagnostic,
+    Remember, RememberConsolidated, Scopes, Search, Use, Diagnostic, AdaptCompare,
 }
 
 impl ExplicitOperation {

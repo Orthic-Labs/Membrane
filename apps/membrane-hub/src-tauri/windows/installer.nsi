@@ -163,6 +163,26 @@ Function RunTray
   nsis_tauri_utils::RunAsUser "$INSTDIR\current\membrane-tray.exe" ""
 FunctionEnd
 
+; Same-version repair must not leave a retired Blueprint Node payload below the
+; exact candidate version tree. This helper never addresses $INSTDIR\current:
+; it first removes a reparse point non-recursively, otherwise removes only the
+; exact retired subtree. $R0 is the fail-closed status returned to Section Install.
+Function RemoveRetiredBlueprintRuntime
+  StrCpy $R0 0
+  ${If} ${FileExists} "$INSTDIR\versions\${VERSION}\runtime\blueprint\*.*"
+    ExecWait '"$SYSDIR\cmd.exe" /d /c fsutil reparsepoint query "$INSTDIR\versions\${VERSION}\runtime\blueprint" >nul 2>&1' $1
+    ${If} $1 == 0
+      RMDir "$INSTDIR\versions\${VERSION}\runtime\blueprint"
+    ${Else}
+      RMDir /r "$INSTDIR\versions\${VERSION}\runtime\blueprint"
+    ${EndIf}
+    ${If} ${FileExists} "$INSTDIR\versions\${VERSION}\runtime\blueprint\*.*"
+      StrCpy $R0 1
+      Return
+    ${EndIf}
+  ${EndIf}
+FunctionEnd
+
 Function .onInit
   ${GetOptions} $CMDLINE "/P" $PassiveMode
   ${IfNot} ${Errors}
@@ -306,7 +326,15 @@ Section Install
   stop_done:
   ${Log} "stop-running-product ok"
 
-  ; 1. Extract the release straight into place. The bundler's resource entries
+  ; 1. Remove the exact retired Blueprint payload before a same-version overlay.
+  StrCpy $InstallStep "remove-retired-blueprint-runtime"
+  Call RemoveRetiredBlueprintRuntime
+  ${If} $R0 <> 0
+    Goto install_failed
+  ${EndIf}
+  ${Log} "remove-retired-blueprint-runtime ok"
+
+  ; 2. Extract the release straight into place. The bundler's resource entries
   ;    are already rooted at versions\<version>\..., so with $OUTDIR at the
   ;    product root each File lands in its final path: no staging copy, no
   ;    MAX_PATH doubling. Same-version repair overwrites in place.

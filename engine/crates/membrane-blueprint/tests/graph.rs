@@ -5,6 +5,9 @@ use membrane_blueprint::index::{tokenize_identifier, LexicalIndex};
 use std::fs;
 use tempfile::tempdir;
 
+#[cfg(windows)]
+use std::os::windows::fs::OpenOptionsExt;
+
 fn fixture() -> tempfile::TempDir {
     let dir = tempdir().unwrap();
     fs::create_dir_all(dir.path().join("src")).unwrap();
@@ -23,6 +26,26 @@ fn scan_is_confined_sorted_and_typed() {
     assert_eq!(paths, vec!["ignored.txt", "src/app.ts", "src/main.py", "src/worker.py"]);
     let canonical_root = fs::canonicalize(dir.path()).unwrap();
     assert!(report.files.iter().all(|file| file.absolute_path.starts_with(&canonical_root)));
+}
+
+#[cfg(windows)]
+#[test]
+fn sharing_violation_is_reported_as_partial_then_recovers() {
+    let dir = tempdir().unwrap();
+    let blocked = dir.path().join("blocked.rs");
+    fs::write(&blocked, "fn blocked() {}\n").unwrap();
+    let handle = fs::OpenOptions::new().read(true).share_mode(0).open(&blocked).unwrap();
+
+    let partial = scan_repository(dir.path(), &ScanOptions::default()).unwrap();
+    assert!(partial.traversal_truncated);
+    assert!(partial.truncation_reasons.iter().any(|reason| reason == "file_read_error"));
+    assert!(partial.skipped.iter().any(|entry| entry.path == "blocked.rs" && entry.state == "unavailable" && entry.reason.starts_with("file_read_error:")));
+    drop(handle);
+
+    let recovered = scan_repository(dir.path(), &ScanOptions::default()).unwrap();
+    assert!(!recovered.traversal_truncated);
+    assert!(recovered.truncation_reasons.is_empty());
+    assert!(recovered.files.iter().any(|file| file.path == "blocked.rs"));
 }
 
 #[test]

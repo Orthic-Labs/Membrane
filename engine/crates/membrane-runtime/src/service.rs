@@ -7,6 +7,9 @@ use serde::Deserialize;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, Mutex, OnceLock, RwLock};
+use std::time::Duration;
+
+use membrane_blueprint::{BlueprintRequest, CancellationToken, NativeService, Operation, ServiceStatus};
 
 const LIFECYCLE_READY_WAIT: std::time::Duration = std::time::Duration::from_secs(30);
 
@@ -88,7 +91,22 @@ impl LifecycleControl {
             }
         }
         self.admission_open.store(false, Ordering::Release);
-        self.shutdown_requested.store(true, Ordering::Release);
+        let first_drain = !self
+            .shutdown_requested
+            .swap(true, Ordering::AcqRel);
+        if first_drain {
+            let reason = self
+                .command()
+                .or_else(|| self.failure())
+                .unwrap_or_else(|| "unspecified".to_string());
+            eprintln!(
+                "{}",
+                serde_json::json!({
+                    "event": "lifecycle_drain_requested",
+                    "reason": reason,
+                })
+            );
+        }
         self.ready.1.notify_all();
     }
 
@@ -148,6 +166,306 @@ impl LifecycleControl {
 
 static LIFECYCLE_CONTROL: OnceLock<RwLock<LifecycleControl>> = OnceLock::new();
 static HUB_RUNTIME_ACTIVE: AtomicBool = AtomicBool::new(false);
+
+struct ResidentRepo {
+    root: String,
+    service: Arc<NativeService>,
+    generation_id: String,
+    generation_complete: bool,
+}
+
+struct ResidentBlueprintState {
+    repos: Vec<ResidentRepo>,
+    enrolled_repo_count: u64,
+    registry_error: Option<String>,
+    cancellation: CancellationToken,
+}
+
+struct ResidentBlueprint {
+    state: Arc<Mutex<ResidentBlueprintState>>,
+    lifecycle: LifecycleControl,
+    supervisor: Option<std::thread::JoinHandle<()>>,
+}
+
+static RESIDENT_BLUEPRINT: OnceLock<Mutex<Option<ResidentBlueprint>>> = OnceLock::new();
+
+/// Start the one resident native Blueprint watcher for the installed Hub.
+/// Enrollment is read from the canonical installation registry; no watcher
+/// is created for an absent or malformed registry. The returned status is
+/// consumed by health, while this same service owns polling, refresh and drain.
+pub fn start_resident_blueprint() -> Result<(), String> {
+    let slot = RESIDENT_BLUEPRINT.get_or_init(|| Mutex::new(None));
+    let mut current = slot
+        .lock()
+        .map_err(|_| "resident Blueprint state unavailable".to_string())?;
+    if let Some(existing) = current.take() {
+        let running = existing
+            .state
+            .lock()
+            .map(|state| (state.enrolled_repo_count == 0 || state.repos.len() == state.enrolled_repo_count as usize)
+                && state.repos.iter().all(|repo| repo.service.status() == ServiceStatus::Running))
+            .unwrap_or(false);
+        if running {
+            *current = Some(existing);
+            return Ok(());
+        }
+        // A failed supervisor leaves a terminal service object behind. Drop
+        // it before rebuilding so the next start owns a live watcher.
+        drop(existing);
+    }
+    let registry = crate::authorization::load_installation_registry().map_err(|error| error.to_string())?;
+    let roots = enrolled_roots(&registry)?;
+    let cancellation = CancellationToken::new();
+    let enrolled_repo_count = roots.len() as u64;
+    let state = Arc::new(Mutex::new(ResidentBlueprintState {
+        enrolled_repo_count,
+        repos: Vec::new(),
+        registry_error: None,
+        cancellation,
+    }));
+    let lifecycle = lifecycle_control();
+    let supervised = Arc::clone(&state);
+    let supervisor_lifecycle = lifecycle.clone();
+    let supervisor = std::thread::Builder::new()
+        .name("membrane-blueprint-resident-watcher".into())
+        .spawn(move || {
+            eprintln!("{}", serde_json::json!({"event":"resident_blueprint_initialization", "stage":"started", "enrolledRepoCount": enrolled_repo_count}));
+            while !supervisor_lifecycle.shutdown_requested() {
+                if !supervise_resident_repositories(&supervised) {
+                    break;
+                }
+                reconcile_resident_repositories(&supervised);
+                std::thread::sleep(Duration::from_millis(250));
+            }
+            eprintln!("{}", serde_json::json!({"event":"resident_blueprint_initialization", "stage":"stopped"}));
+            drain_resident_repositories(&supervised);
+        })
+        .map_err(|error| {
+            drain_resident_repositories(&state);
+            format!("resident Blueprint supervisor unavailable: {error}")
+        })?;
+    *current = Some(ResidentBlueprint {
+        state,
+        lifecycle,
+        supervisor: Some(supervisor),
+    });
+    Ok(())
+}
+
+fn enrolled_roots(registry: &crate::authorization::InstallationRegistryV1) -> Result<Vec<PathBuf>, String> {
+    let mut roots = registry
+        .bindings()
+        .iter()
+        .map(|binding| PathBuf::from(&binding.root).canonicalize().map_err(|error| format!("resident Blueprint enrollment root unavailable: {error}")))
+        .collect::<Result<Vec<_>, _>>()?;
+    if let Some(root) = roots.iter().find(|root| !root.is_dir()) {
+        return Err(format!("resident Blueprint enrollment root is not a directory: {}", root.display()));
+    }
+    roots.sort_by(|left, right| left.to_string_lossy().cmp(&right.to_string_lossy()));
+    roots.dedup();
+    Ok(roots)
+}
+
+fn build_resident_repo(root: &Path, cancellation: &CancellationToken) -> Result<ResidentRepo, String> {
+    let started = std::time::Instant::now();
+    eprintln!("{}", serde_json::json!({"event":"resident_blueprint_repository_build", "stage":"started", "root":root}));
+    let service = Arc::new(NativeService::resident(membrane_blueprint::NativeBlueprintOperation, root.to_path_buf()));
+    service.start().map_err(|error| format!("resident Blueprint startup service start: {error}"))?;
+    let mut build = BlueprintRequest::new(format!("resident-build-{}", std::process::id()), Operation::Build, root.to_string_lossy());
+    build.deadline_ms = 120_000;
+    let response = service.dispatch(build, cancellation.clone());
+    eprintln!("{}", serde_json::json!({"event":"resident_blueprint_repository_build", "stage":if response.ok { "completed" } else { "failed" }, "root":root, "elapsedMs":started.elapsed().as_millis()}));
+    let generation_id = response.result.as_ref().and_then(|result| result.get("generationId")).and_then(serde_json::Value::as_str).map(str::to_owned);
+    let complete = response.result.as_ref().and_then(|result| result.get("complete")).and_then(serde_json::Value::as_bool) == Some(true);
+    if !response.ok || generation_id.is_none() {
+        let detail = response.error.map(|error| format!("resident Blueprint startup initial build {}: {}", error.code, error.message)).unwrap_or_else(|| "resident Blueprint startup initial build failed".into());
+        let _ = service.drain();
+        return Err(detail);
+    }
+    let Some(generation_id) = generation_id else {
+        let _ = service.drain();
+        return Err("resident Blueprint startup initial build returned no generation".into());
+    };
+    Ok(ResidentRepo { root: root.to_string_lossy().into_owned(), service, generation_id, generation_complete: complete })
+}
+
+fn supervise_resident_repositories(state: &Arc<Mutex<ResidentBlueprintState>>) -> bool {
+    let services = {
+        let Ok(mut state) = state.lock() else { return false };
+        state.repos.retain(|repo| repo.service.status() == ServiceStatus::Running);
+        state.repos.iter().map(|repo| (repo.root.clone(), Arc::clone(&repo.service))).collect::<Vec<_>>()
+    };
+    let cancellation = state
+        .lock()
+        .map(|state| state.cancellation.clone())
+        .unwrap_or_default();
+    let mut status = true;
+    for (root, service) in &services {
+        if service.supervise_with_cancellation(cancellation.clone()) != ServiceStatus::Running {
+            let readiness = service.readiness();
+            let detail = format!("resident Blueprint watcher {root}: {:?}: {}", readiness.status,
+                readiness.detail.as_deref().unwrap_or("watcher unavailable without detail"));
+            eprintln!("{}", serde_json::json!({"event":"resident_blueprint_supervision", "stage":"failed", "root":root, "error":detail}));
+            if let Ok(mut state) = state.lock() { state.registry_error = Some(detail); }
+            status = false;
+            break;
+        }
+    }
+    if status {
+        if let Ok(mut state) = state.lock() {
+            for repo in &mut state.repos {
+                if let Some((generation_id, complete)) = repo.service.generation_metadata() {
+                    repo.generation_id = generation_id;
+                    repo.generation_complete = complete;
+                }
+            }
+        }
+    }
+    status
+}
+
+fn reconcile_resident_repositories(state: &Arc<Mutex<ResidentBlueprintState>>) {
+    let registry = match crate::authorization::load_installation_registry() {
+        Ok(registry) => registry,
+        Err(error) => {
+            mark_registry_error(state, error.to_string());
+            return;
+        }
+    };
+    let roots = match enrolled_roots(&registry) {
+        Ok(roots) => roots,
+        Err(error) => {
+            mark_registry_error(state, error);
+            return;
+        }
+    };
+    let desired = roots.iter().map(|root| root.to_string_lossy().into_owned()).collect::<std::collections::BTreeSet<_>>();
+    let (existing, cancellation) = {
+        let Ok(mut state) = state.lock() else { return };
+        state.enrolled_repo_count = desired.len() as u64;
+        let mut removed = Vec::new();
+        state.repos.retain(|repo| {
+            let keep = desired.contains(&repo.root);
+            if !keep { removed.push(Arc::clone(&repo.service)); }
+            keep
+        });
+        drop(removed);
+        (state.repos.iter().map(|repo| repo.root.clone()).collect::<std::collections::BTreeSet<_>>(), state.cancellation.clone())
+    };
+    let mut additions = Vec::new();
+    let mut build_errors = Vec::new();
+    for root in roots {
+        let key = root.to_string_lossy().into_owned();
+        if existing.contains(&key) { continue; }
+        match build_resident_repo(&root, &cancellation) {
+            Ok(repo) => additions.push(repo),
+            Err(error) => build_errors.push(error),
+        }
+    }
+    if let Ok(mut state) = state.lock() {
+        let added_count = additions.len();
+        for repo in additions {
+            if desired.contains(&repo.root) && !state.repos.iter().any(|current| current.root == repo.root) {
+                state.repos.push(repo);
+            }
+        }
+        state.registry_error = build_errors.into_iter().next();
+        if let Some(error) = &state.registry_error {
+            eprintln!("{}", serde_json::json!({"event":"resident_blueprint_initialization", "stage":"failed", "error": error}));
+        } else if added_count > 0 {
+            eprintln!("{}", serde_json::json!({"event":"resident_blueprint_initialization", "stage":"completed", "repoCount": state.repos.len()}));
+        }
+    }
+}
+
+fn mark_registry_error(state: &Arc<Mutex<ResidentBlueprintState>>, error: String) {
+    if let Ok(mut state) = state.lock() {
+        state.repos.clear();
+        state.enrolled_repo_count = 0;
+        state.registry_error = Some(error);
+    }
+}
+
+fn drain_resident_repositories(state: &Arc<Mutex<ResidentBlueprintState>>) {
+    if let Ok(mut state) = state.lock() {
+        for repo in state.repos.drain(..) { let _ = repo.service.drain(); }
+    }
+}
+
+fn stop_resident_blueprint() -> Result<(), String> {
+    let Some(slot) = RESIDENT_BLUEPRINT.get() else {
+        return Ok(());
+    };
+    let resident = slot
+        .lock()
+        .map_err(|_| "resident Blueprint state unavailable".to_string())?
+        .take();
+    if let Some(resident) = resident {
+        drop(resident);
+    }
+    Ok(())
+}
+
+impl Drop for ResidentBlueprint {
+    fn drop(&mut self) {
+        self.state.lock().ok().map(|state| state.cancellation.cancel());
+        self.lifecycle.request_drain(Some("resident_runtime_exit"));
+        if let Some(supervisor) = self.supervisor.take() {
+            let _ = supervisor.join();
+        }
+        drain_resident_repositories(&self.state);
+    }
+}
+
+/// Actual resident watcher state for health and Hub composition.
+pub fn resident_blueprint_status() -> serde_json::Value {
+    let Some(slot) = RESIDENT_BLUEPRINT.get() else {
+        return serde_json::json!({
+            "watcherRunning": false,
+            "enrolledRepoCount": 0,
+            "watcherIdentity": null,
+        });
+    };
+    let Ok(current) = slot.lock() else {
+        return serde_json::json!({"watcherRunning": false, "enrolledRepoCount": 0});
+    };
+    let Some(resident) = current.as_ref() else {
+        return serde_json::json!({
+            "watcherRunning": false,
+            "enrolledRepoCount": 0,
+            "watcherIdentity": null,
+        });
+    };
+    let Ok(state) = resident.state.lock() else {
+        return serde_json::json!({"watcherRunning": false, "enrolledRepoCount": 0});
+    };
+    let watcher_running = state.enrolled_repo_count > 0
+        && state.repos.len() == state.enrolled_repo_count as usize
+        && state.repos.iter().all(|repo| repo.service.status() == ServiceStatus::Running);
+    let watcher_ready = watcher_running && state.repos.iter().all(|repo| repo.service.is_ready());
+    let coverage = if state.enrolled_repo_count > 0
+        && state.repos.len() == state.enrolled_repo_count as usize
+        && state.repos.iter().all(|repo| repo.generation_complete) { "complete" } else { "partial" };
+    let identities = state.repos.iter().map(|repo| {
+        let events = repo.service.events();
+        serde_json::json!({
+            "root": repo.root,
+            "generationId": repo.generation_id,
+            "complete": repo.generation_complete,
+            "eventSequence": events.last().map(|event| event.sequence).unwrap_or(0),
+            "lastEvent": events.last().map(|event| event.kind.clone()),
+        })
+    }).collect::<Vec<_>>();
+    serde_json::json!({
+        "watcherRunning": watcher_running,
+        "watcherReady": watcher_ready,
+        "watcherState": if watcher_ready { "running" } else if state.enrolled_repo_count == 0 { "not_configured" } else { "watcher_unavailable" },
+        "watcherCoverage": coverage,
+        "watcherDetail": state.registry_error.clone().or_else(|| (coverage == "partial").then_some("generation_partial_coverage".into())),
+        "enrolledRepoCount": state.enrolled_repo_count,
+        "watcherIdentity": identities,
+    })
+}
 
 pub fn install_lifecycle_control(control: LifecycleControl) -> Result<(), String> {
     let slot = LIFECYCLE_CONTROL.get_or_init(|| RwLock::new(LifecycleControl::default()));
@@ -364,6 +682,29 @@ pub(crate) fn runtime_from_installed_exe(exe: &Path) -> Result<Runtime, String> 
     runtime_from_installed_state(&state, current.to_path_buf(), version_root)
 }
 
+/// Public, read-only projection used by explicit native enrollment. It derives
+/// paths from the signed executable's active `current` installation; it never
+/// falls back to workspace or process CWD state.
+pub fn installed_binding_projection() -> Result<serde_json::Value, String> {
+    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+    let runtime = runtime_from_installed_exe(&exe)?;
+    let identity_path = crate::installation_identity::InstallationPaths::defaults_for_workspace(&runtime.workspace_root).identity;
+    let identity: serde_json::Value = serde_json::from_slice(&std::fs::read(&identity_path)
+        .map_err(|e| format!("read installed identity {}: {e}", identity_path.display()))?)
+        .map_err(|e| format!("parse installed identity: {e}"))?;
+    Ok(serde_json::json!({
+        "workspaceRoot": runtime.workspace_root,
+        "stableCurrent": runtime.stable_current,
+        "host": "127.0.0.1",
+        "port": runtime.port,
+        "endpoint": format!("http://127.0.0.1:{}", runtime.port),
+        "db": runtime.db,
+        "tokenPath": runtime.token,
+        "installationId": identity.get("installation_id").cloned().unwrap_or(serde_json::Value::Null),
+        "serviceInstanceId": identity.get("current_service_instance_id").cloned().unwrap_or(serde_json::Value::Null),
+    }))
+}
+
 fn runtime_from_installed_state(
     state: &Path,
     stable_current: PathBuf,
@@ -382,7 +723,11 @@ fn runtime_from_installed_state(
         workspace_root: state.to_path_buf(),
         db: tools.join(".cache/memory/cortex-engine.db"),
         token: tools.join(".cache/memory/api-token"),
-        ort: version_root.join(ort_name),
+        ort: if cfg!(windows) {
+            version_root.join("runtime/resources/semantic-embed-runtime").join(ort_name)
+        } else {
+            version_root.join(ort_name)
+        },
         hf_home: tools.join(".cache/fastembed"),
         port: 47_851,
         origin: "installed",
@@ -536,6 +881,9 @@ fn run_runtime(runtime: Runtime) -> Result<(), String> {
             "[startup] embedder: hash-256 (this build has no fastembed feature); recall matches lexically only"
         );
     }
+    if runtime.origin == "installed" {
+        crate::serve::migrate_installed_credential(&runtime.token)?;
+    }
     let (identity, claim) = prepare_runtime_identity(&runtime)?;
     let workspace_root = &runtime.workspace_root;
     // Publish the IPC handshake manifest before any peer can connect. This
@@ -551,7 +899,11 @@ fn run_runtime(runtime: Runtime) -> Result<(), String> {
         .map_err(|error| format!("publish installation manifest: {error}"))?;
     std::env::set_var("MEMBRANE_INSTALLATION_ID", &identity.installation_id);
     std::env::set_var("MEMBRANE_SERVICE_INSTANCE_ID", &claim.service_instance_id);
-    crate::serve::run(
+    // Start only after all pre-serve initialization can still fail. Startup
+    // errors therefore leave no detached watcher behind, while health is
+    // never published without a running, enrolled native service.
+    start_resident_blueprint()?;
+    let result = crate::serve::run(
         runtime
             .db
             .to_str()
@@ -559,7 +911,9 @@ fn run_runtime(runtime: Runtime) -> Result<(), String> {
         runtime.port,
         &identity,
         &claim,
-    )
+    );
+    stop_resident_blueprint()?;
+    result
 }
 
 #[cfg(test)]
@@ -664,6 +1018,8 @@ mod tests {
         assert_eq!(runtime.port, 47_851);
         assert_eq!(runtime.workspace_root, state);
         assert_eq!(runtime.stable_current, Some(current));
+        #[cfg(windows)]
+        assert_eq!(runtime.ort, version.join("runtime/resources/semantic-embed-runtime/onnxruntime.dll"));
         assert_eq!(runtime.version_root, Some(version));
         assert_eq!(runtime.origin, "installed");
     }
@@ -757,5 +1113,29 @@ mod tests {
             .join(format!("{:020}", claim.startup_generation))
             .join(format!("{}.json", claim.service_instance_id))
             .is_file());
+    }
+
+    #[test]
+    fn migrated_credential_then_prepare_advances_generation_once() {
+        let temp = tempfile::tempdir().unwrap();
+        let runtime = Runtime {
+            workspace_root: temp.path().to_path_buf(),
+            db: temp.path().join("tools/.cache/memory/cortex-engine.db"),
+            token: temp.path().join("tools/.cache/memory/api-token"),
+            ort: temp.path().join("tools/bin/onnxruntime.dll"),
+            hf_home: temp.path().join("tools/.cache/fastembed"),
+            port: 47851,
+            origin: "installed",
+            stable_current: None,
+            version_root: None,
+        };
+        std::fs::create_dir_all(runtime.token.parent().unwrap()).unwrap();
+        std::fs::write(&runtime.token, b"legacy\n").unwrap();
+        let paths = crate::installation_identity::InstallationPaths::for_workspace(&runtime.workspace_root);
+        crate::installation_identity::load_or_create_installation(&paths.identity, &[]).unwrap();
+        assert!(crate::serve::migrate_installed_credential(&runtime.token).unwrap());
+        let (identity, claim) = prepare_runtime_identity(&runtime).unwrap();
+        assert_eq!(identity.startup_generation, 1);
+        assert_eq!(claim.startup_generation, 1);
     }
 }

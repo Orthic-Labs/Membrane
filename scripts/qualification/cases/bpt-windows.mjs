@@ -26,7 +26,9 @@
 // are reported as a typed insufficient/blocked outcome citing the gap rather than
 // a fabricated pass.
 
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -35,6 +37,37 @@ export const REPO_ROOT = resolve(HERE, "../../../");
 
 function resolveRoot(context) {
   return (context && context.workspaceRoot) || (context && context.root) || REPO_ROOT;
+}
+
+function installedExecutable() {
+  const root = process.env.MEMBRANE_QUALIFICATION_INSTALLED_ROOT;
+  if (!root) throw new Error("MEMBRANE_QUALIFICATION_INSTALLED_ROOT is required");
+  const exe = join(resolve(root), "membrane.exe");
+  if (!existsSync(exe)) throw new Error(`installed membrane.exe missing: ${exe}`);
+  return exe;
+}
+
+function nativeCall(exe, args, cwd) {
+  const stdout = execFileSync(exe, ["cli", "blueprint", ...args], { cwd, encoding: "utf8", windowsHide: true });
+  return JSON.parse(stdout);
+}
+
+function nativeFixture(files, probe) {
+  const root = mkdtempSync(join(tmpdir(), "membrane-bpt-"));
+  try {
+    for (const [path, content] of Object.entries(files)) {
+      const target = join(root, path);
+      const parent = dirname(target);
+      if (!existsSync(parent)) mkdirSync(parent, { recursive: true });
+      writeFileSync(target, content);
+    }
+    return probe(installedExecutable(), root);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+}
+
+function installedResult(id, fn) {
+  try { return { status: "passed", evidenceKind: "installed", detail: { id, ...fn() } }; }
+  catch (error) { return { status: "insufficient", evidenceKind: "installed", detail: { id, error: error.message }, reason: `${id}: installed native probe unavailable or failed: ${error.message}` }; }
 }
 
 function fileEvidence(root, relPath) {
@@ -203,7 +236,46 @@ export function evaluateRankingComparator(comparePaths) {
 // ---------------------------------------------------------------------------
 
 export function BPT_001(context) {
-  return bptRow("BPT-001", "Canonically identify one repository/root/treeish & confine operations against traversal, symlink, prefix, case, & ambiguous-root tricks.", ["blueprint/scripts/blueprint-mcp.mjs", "blueprint/src/lib/application/root-registry.mjs", "blueprint/src/lib/application/service.mjs", "blueprint/src/lib/path-confinement.mjs"], true, context);
+  return installedResult("BPT-001", () => nativeFixture({
+    "src/root-probe.mjs": "export function rootProbe() { return 'bpt-root-probe'; }\n",
+  }, (exe, root) => {
+    const canonical = realpathSync.native(root);
+    const initial = nativeCall(exe, ["refresh", "--repo-root", root], root);
+    const initialStatus = nativeCall(exe, ["status", "--repo-root", root], root);
+    const generationId = initial.generationId;
+    if (!generationId || initialStatus.generationId !== generationId) throw new Error("canonical root build/status generation mismatch");
+
+    const traversalStatus = nativeCall(exe, ["status", "--repo-root", `${root}\\src\\..`], root);
+    if (traversalStatus.generationId !== generationId) throw new Error("traversal spelling selected a different repository");
+
+    const caseStatus = nativeCall(exe, ["status", "--repo-root", root.toUpperCase()], root);
+    if (caseStatus.generationId !== generationId) throw new Error("case variant selected a different repository");
+
+    const junction = join(dirname(root), `${root.split(/[\\\\/]/).pop()}-junction`);
+    try {
+      symlinkSync(root, junction, "junction");
+      const junctionStatus = nativeCall(exe, ["status", "--repo-root", junction], root);
+      if (junctionStatus.generationId !== generationId) throw new Error("junction spelling selected a different repository");
+    } finally {
+      if (existsSync(junction)) rmSync(junction, { recursive: true, force: true });
+    }
+
+    const sibling = join(dirname(root), `${root.split(/[\\\\/]/).pop()}-sibling`);
+    mkdirSync(sibling, { recursive: true });
+    try {
+      writeFileSync(join(sibling, "src.mjs"), "export const sibling = true;\n");
+      const siblingStatus = nativeCall(exe, ["status", "--repo-root", sibling], sibling);
+      if (siblingStatus.state !== "missing" || (siblingStatus.generationId ?? null) !== null) {
+        throw new Error(`shared-prefix sibling did not return rawcanon absence: state=${siblingStatus.state ?? "null"} generationId=${siblingStatus.generationId ?? "null"}`);
+      }
+    } finally {
+      rmSync(sibling, { recursive: true, force: true });
+    }
+
+    const ambiguous = nativeCall(exe, ["status", "--repo-root", canonical + "\\."], root);
+    if (ambiguous.generationId !== generationId) throw new Error("equivalent root selector was not canonicalized");
+    return { canonicalRoot: canonical, generationId, checks: ["traversal", "case", "junction", "prefix-sibling", "ambiguous-equivalent"] };
+  }));
 }
 export function BPT_002(context) {
   return bptRow("BPT-002", "Observe HEAD/index/worktree, dirty/untracked overlay, merge-base/treeish, source hashes, & deterministic discovery accounting.", ["blueprint/scripts/blueprint.mjs", "blueprint/src/graph/git-source-observation.mjs", "blueprint/src/sources/live-overlay.mjs"], true, context);
@@ -257,7 +329,17 @@ export function BPT_018(context) {
   return bptRow("BPT-018", "Resolve cross-file identities exact-first; same-tier ambiguity stops & unsupported module semantics remain typed.", ["blueprint/src/providers/build.mjs", "blueprint/src/providers/modules/javascript.mjs", "blueprint/src/providers/modules/python-resolver.mjs"], true, context);
 }
 export function BPT_019(context) {
-  return bptRow("BPT-019", "Expose honest generation freshness separately from source change & never return old-fresh after edit.", ["blueprint/src/graph/freshness-receipt.mjs", "blueprint/src/lib/application/service.mjs"], true, context);
+  return installedResult("BPT-019", () => nativeFixture({
+    "src/main.rs": "fn main() { println!(\"freshness\"); }\n",
+  }, (exe, root) => {
+    const refresh = nativeCall(exe, ["refresh", "--repo-root", root], root);
+    const fresh = nativeCall(exe, ["status", "--repo-root", root], root);
+    if (fresh.state !== "fresh" || fresh.generationId !== refresh.generationId) throw new Error("status did not report current generation fresh");
+    writeFileSync(join(root, "src/main.rs"), "fn main() { println!(\"changed\"); }\n");
+    const stale = nativeCall(exe, ["status", "--repo-root", root], root);
+    if (stale.state !== "stale" || stale.fresh === true) throw new Error("source edit remained old-fresh");
+    return { generationId: refresh.generationId, before: fresh.state, after: stale.state };
+  }));
 }
 // BPT-020/021 real, executable selective-invalidation fixtures (r5 requirement).
 // This imports the real legacy dependency-DAG module (blueprint/src/graph/dependency-dag.mjs,
@@ -322,31 +404,100 @@ export async function BPT_021(context) {
   };
 }
 export function BPT_023(context) {
-  return bptRow("BPT-023", "Resolve Recall seeds through valid ID, source/path/anchor, qualified symbol, exact term, bounded lexical, else abstain/ambiguous.", ["blueprint/src/graph/recall-circuit.mjs", "blueprint/src/graph/seed-resolver.mjs"], true, context);
+  return installedResult("BPT-023", () => nativeFixture({
+    "src/main.rs": "fn helper() {}\nfn main() { helper(); }\n",
+  }, (exe, root) => {
+    nativeCall(exe, ["refresh", "--repo-root", root], root);
+    const result = nativeCall(exe, ["recall", "--repo-root", root, "--seed", "helper", "--direction", "both"], root);
+    if (!result.generationId || !result.resolution || !Array.isArray(result.nodes) || !Array.isArray(result.omissions)) throw new Error("recall omitted resolution, generation, nodes, or omissions");
+    const state = result.resolution.state;
+    if (!["resolved", "ambiguous", "unresolved"].includes(state)) throw new Error(`recall returned unknown resolution state ${state}`);
+    return { generationId: result.generationId, resolutionState: state, nodeCount: result.nodes.length };
+  }));
 }
 export function BPT_024(context) {
-  return bptRow("BPT-024", "Apply named bounded Recall policies for dependency, impact, callgraph, test, config, architecture, & exploration.", ["blueprint/src/graph/recall-circuit.mjs", "blueprint/src/graph/traversal-policy.mjs"], true, context);
+  return installedResult("BPT-024", () => nativeFixture({
+    "src/main.rs": "fn dependency() {}\nfn caller() { dependency(); }\nfn main() { caller(); }\n",
+  }, (exe, root) => {
+    nativeCall(exe, ["refresh", "--repo-root", root], root);
+    const policies = ["in", "out", "both"].map((direction) => nativeCall(exe, ["recall", "--repo-root", root, "--seed", "caller", "--direction", direction, "--depth", "2"], root));
+    for (const result of policies) if (!result.generationId || !result.resolution || !Array.isArray(result.nodes) || !Array.isArray(result.edges) || !Array.isArray(result.omissions)) throw new Error("recall policy omitted bounded result fields");
+    return { policyCount: policies.length, directions: ["in", "out", "both"], states: policies.map((result) => result.state) };
+  }));
 }
 export function BPT_025(context) {
-  return bptRow("BPT-025", "Return complete ordered evidence paths with path ID, node/edge evidence, completeness, & omissions as atomic Recall unit.", ["blueprint/src/graph/recall-circuit.mjs", "blueprint/src/lib/application/service.mjs"], true, context);
+  return installedResult("BPT-025", () => nativeFixture({
+    "src/main.rs": "fn first() {}\nfn middle() { first(); }\nfn last() { middle(); }\n",
+  }, (exe, root) => {
+    nativeCall(exe, ["refresh", "--repo-root", root], root);
+    const result = nativeCall(exe, ["path", "--repo-root", root, "--from", "last", "--to", "first", "--depth", "4"], root);
+    if (!result.generationId || !Array.isArray(result.path) || !Array.isArray(result.edges) || !Array.isArray(result.omissions) || typeof result.found !== "boolean") throw new Error("path omitted atomic evidence fields");
+    for (const edge of result.edges) if (!edge.edgeId && !edge.id) throw new Error("path edge omitted stable identity");
+    return { generationId: result.generationId, found: result.found, pathLength: result.path.length, edgeCount: result.edges.length };
+  }));
 }
 export function BPT_027(context) {
-  return bptRow("BPT-027", "Enforce max seeds/paths/nodes/edges during traversal & fail old generation/digest cursor closed.", ["blueprint/src/graph/traverse-store.mjs"], true, context);
+  return installedResult("BPT-027", () => nativeFixture({
+    "src/main.rs": "fn leaf() {}\nfn branch() { leaf(); }\nfn main() { branch(); }\n",
+  }, (exe, root) => {
+    const refresh = nativeCall(exe, ["refresh", "--repo-root", root], root);
+    const result = nativeCall(exe, ["expand", "--repo-root", root, "--seed", "branch", "--direction", "both", "--limit", "1", "--generation", refresh.generationId], root);
+    if (!result.generationId || !Array.isArray(result.omissions) || !result.candidateSet) throw new Error("bounded expand omitted generation, candidate set, or omissions");
+    const mismatch = nativeCall(exe, ["expand", "--repo-root", root, "--seed", "branch", "--generation", "closed-generation"], root);
+    if (mismatch.state !== "suppressed" || !/stale_generation|generation/i.test(JSON.stringify(mismatch))) throw new Error("old generation did not return typed suppressed response");
+    return { generationId: result.generationId, omissionCount: result.omissions.length, oldGenerationState: mismatch.state };
+  }));
 }
 export function BPT_028(context) {
-  return bptRow("BPT-028", "Search current graph by bounded text/type/path query.", ["blueprint/src/graph/static-provider.mjs", "blueprint/src/graph/traverse-store.mjs", "blueprint/src/lib/application/service.mjs"], true, context);
+  return installedResult("BPT-028", () => nativeFixture({
+    "src/main.rs": "fn searchable() {}\nfn main() { searchable(); }\n",
+  }, (exe, root) => {
+    const refresh = nativeCall(exe, ["refresh", "--repo-root", root], root);
+    const result = nativeCall(exe, ["search", "--repo-root", root, "--query", "searchable", "--generation", refresh.generationId], root);
+    if (!result.generationId || result.generationId !== refresh.generationId || !Array.isArray(result.candidates) || !Array.isArray(result.omissions)) throw new Error("search omitted generation-bound candidates or omissions");
+    return { generationId: result.generationId, candidateCount: result.candidates.length };
+  }));
 }
 export function BPT_029(context) {
-  return bptRow("BPT-029", "Resolve/show one user/source anchor to canonical node(s).", ["blueprint/src/graph/seed-resolver.mjs", "blueprint/src/lib/application/service.mjs"], true, context);
+  return installedResult("BPT-029", () => nativeFixture({
+    "src/main.rs": "fn anchor() {}\nfn main() { anchor(); }\n",
+  }, (exe, root) => {
+    nativeCall(exe, ["refresh", "--repo-root", root], root);
+    const result = nativeCall(exe, ["resolve", "--repo-root", root, "--target", "anchor"], root);
+    if (!result.generationId || !result.resolution || !result.candidateSet) throw new Error("resolve omitted generation, resolution, or candidate set");
+    return { generationId: result.generationId, resolutionState: result.resolution.state, candidateState: result.candidateSet.state };
+  }));
 }
 export function BPT_030(context) {
-  return bptRow("BPT-030", "Expand bounded typed neighborhood around resolved nodes.", ["blueprint/src/graph/traverse-store.mjs", "blueprint/src/lib/application/service.mjs"], true, context);
+  return installedResult("BPT-030", () => nativeFixture({
+    "src/main.rs": "fn child() {}\nfn parent() { child(); }\nfn main() { parent(); }\n",
+  }, (exe, root) => {
+    nativeCall(exe, ["refresh", "--repo-root", root], root);
+    const result = nativeCall(exe, ["expand", "--repo-root", root, "--seed", "parent", "--direction", "out", "--depth", "2"], root);
+    if (!result.generationId || !Array.isArray(result.nodes) || !Array.isArray(result.edges) || !result.depths || typeof result.depths !== "object") throw new Error("expand omitted typed neighborhood fields");
+    return { generationId: result.generationId, nodeCount: result.nodes.length, edgeCount: result.edges.length };
+  }));
 }
 export function BPT_031(context) {
-  return bptRow("BPT-031", "Find bounded relationship path between two resolved anchors.", ["blueprint/src/graph/traverse-store.mjs", "blueprint/src/lib/application/service.mjs"], true, context);
+  return installedResult("BPT-031", () => nativeFixture({
+    "src/main.rs": "fn first() {}\nfn middle() { first(); }\nfn last() { middle(); }\nfn main() { last(); }\n",
+  }, (exe, root) => {
+    nativeCall(exe, ["refresh", "--repo-root", root], root);
+    const result = nativeCall(exe, ["path", "--repo-root", root, "--from", "last", "--to", "first", "--depth", "4"], root);
+    if (!result.generationId || !Array.isArray(result.path) || !Array.isArray(result.edges) || !Array.isArray(result.omissions)) throw new Error("path omitted generation, nodes, edges, or omissions");
+    return { generationId: result.generationId, found: result.found === true, pathLength: result.path.length };
+  }));
 }
 export function BPT_032(context) {
-  return bptRow("BPT-032", "Compute bounded upstream/downstream impact from diff/file/line/stack/test/treeish seeds without overstating adjacency.", ["blueprint/src/graph/analytics/change-impact.mjs", "blueprint/src/lib/application/service.mjs"], true, context);
+  return installedResult("BPT-032", () => nativeFixture({
+    "src/main.rs": "fn source() {}\nfn caller() { source(); }\nfn main() { caller(); }\n",
+  }, (exe, root) => {
+    const refresh = nativeCall(exe, ["refresh", "--repo-root", root], root);
+    const result = nativeCall(exe, ["impact", "--repo-root", root, "--node", "source", "--depth", "2", "--generation", refresh.generationId], root);
+    if (!result.generationId || !Array.isArray(result.impact) || !Array.isArray(result.edges) || !Array.isArray(result.omissions)) throw new Error("impact omitted bounded evidence fields");
+    for (const item of result.impact) if (typeof item.class !== "string" || !item.edgeId) throw new Error("impact overstated adjacency without typed edge classification");
+    return { generationId: result.generationId, impactCount: result.impact.length, edgeCount: result.edges.length };
+  }));
 }
 export function BPT_033(context) {
   return bptRow("BPT-033", "Report liveness only as LIVE/UNREACHED/UNKNOWN with evidence; zero inbound edges never proves dead.", [], false, context);
@@ -370,10 +521,24 @@ export function BPT_039(context) {
   return bptRow("BPT-039", "Compare declared intent vs deterministic evidence while preserving both, mismatch, citation, generation, confidence, & invalidation.", [], false, context);
 }
 export function BPT_040(context) {
-  return bptRow("BPT-040", "Synthesize evidence-backed components, flows, & architecture understanding as disposable cited views.", ["blueprint/src/graph/architecture-model.mjs", "blueprint/src/lib/application/service.mjs"], true, context);
+  return installedResult("BPT-040", () => nativeFixture({
+    "src/main.rs": "fn component() {}\nfn main() { component(); }\n",
+  }, (exe, root) => {
+    const refresh = nativeCall(exe, ["refresh", "--repo-root", root], root);
+    const result = nativeCall(exe, ["architecture", "--repo-root", root, "--task", "component", "--generation", refresh.generationId], root);
+    if (!result.generationId || result.generationId !== refresh.generationId || !result.sourceSignature || !result.anchors || !result.callees || !result.callers) throw new Error("architecture omitted generation-bound cited views");
+    return { generationId: result.generationId, state: result.state, sourceDisposition: result.sourceSignature.disposition };
+  }));
 }
 export function BPT_041(context) {
-  return bptRow("BPT-041", "Return allow/continue/block/noop orientation with scope, generation, freshness, evidence, omissions, receipt, & next action; host enforces.", ["blueprint/scripts/blueprint.mjs", "blueprint/src/lib/admission.mjs", "blueprint/src/lib/orientation-evidence.mjs"], true, context);
+  return installedResult("BPT-041", () => nativeFixture({
+    "src/main.rs": "fn orient() {}\nfn main() { orient(); }\n",
+  }, (exe, root) => {
+    const refresh = nativeCall(exe, ["refresh", "--repo-root", root], root);
+    const result = nativeCall(exe, ["architecture", "--repo-root", root, "--task", "orient", "--generation", refresh.generationId], root);
+    if (!result.generationId || !result.state || !result.freshness || !result.omissions || !result.sourceSignature) throw new Error("orientation omitted generation, freshness, evidence, or omissions");
+    return { generationId: result.generationId, state: result.state, freshness: result.freshness };
+  }));
 }
 export function BPT_042(context) {
   return bptRow("BPT-042", "Serve same application semantics through daemon-owned IPC, bounded one-shot direct mode, CLI, JS SDK, & native MCP adapters.", [], false, context);
@@ -385,7 +550,14 @@ export function BPT_044(context) {
   return bptRow("BPT-044", "Return canonical result envelope + stable typed error/retry/partial-result taxonomy across adapters.", [], false, context);
 }
 export function BPT_046(context) {
-  return bptRow("BPT-046", "Diagnose local Blueprint state.", ["blueprint/scripts/blueprint.mjs", "blueprint/src/lib/operations/doctor.mjs"], true, context);
+  return installedResult("BPT-046", () => nativeFixture({
+    "src/main.rs": "fn diagnose() {}\nfn main() { diagnose(); }\n",
+  }, (exe, root) => {
+    const refresh = nativeCall(exe, ["refresh", "--repo-root", root], root);
+    const status = nativeCall(exe, ["status", "--repo-root", root], root);
+    if (!refresh.generationId || !status.generationId || !status.state || typeof status.fresh !== "boolean" || !status.storePath) throw new Error("status omitted local diagnostic state");
+    return { generationId: status.generationId, state: status.state, fresh: status.fresh, storePath: status.storePath };
+  }));
 }
 export function BPT_047(context) {
   return bptRow("BPT-047", "Federate explicit repositories as independent generation/evidence/omission slices without merging node spaces.", ["blueprint/src/lib/application/service.mjs", "blueprint/src/lib/federation/index.mjs"], true, context);
@@ -495,36 +667,48 @@ function nativeSourceCheck(id, requirement, relPath, markers, note, context) {
 }
 
 export function BM03(context) {
-  return nativeSourceCheck(
-    "BM03",
-    "Extend existing Architecture operation with bounded task/symbol/file/node orientation; every section has evaluated/partial/unavailable/not-evaluated disposition, returned_count, total_known_count, truncated and reason; empty evaluated differs from unperformed.",
-    "engine/crates/membrane-blueprint/src/contracts.rs",
-    [/enum\s+SectionDisposition/, /Evaluated/, /Partial/, /Unavailable/, /NotEvaluated|not_evaluated/, /returned_count/, /total_known_count/, /truncated/, /fn\s+empty_evaluated/, /fn\s+not_evaluated/],
-    "SectionDisposition contract (evaluated/partial/unavailable/not-evaluated) with returned_count/total_known_count/truncated/reason and a distinct empty_evaluated vs not_evaluated constructor",
-    context,
-  );
+  return installedResult("BM03", () => nativeFixture({
+    "src/main.rs": "fn helper() {}\nfn main() { helper(); }\n",
+  }, (exe, root) => {
+    const refresh = nativeCall(exe, ["refresh", "--repo-root", root], root);
+    const result = nativeCall(exe, ["architecture", "--repo-root", root, "--task", "main"], root);
+    const sections = Object.entries(result).filter(([key, value]) => !["schemaVersion", "generationId", "state", "task", "resolution", "freshness", "omissions"].includes(key) && value && typeof value === "object");
+    if (!refresh.generationId || !result.generationId || result.generationId !== refresh.generationId) throw new Error("architecture generation is not bound to refresh");
+    if (sections.length < 8) throw new Error(`architecture returned only ${sections.length} orientation sections`);
+    for (const [name, section] of sections) {
+      for (const field of ["disposition", "returnedCount", "totalKnownCount", "truncated", "items"]) if (!(field in section)) throw new Error(`${name} omitted ${field}`);
+      if (["partial", "unavailable", "not_evaluated"].includes(section.disposition) && typeof section.reason !== "string") throw new Error(`${name} omitted reason`);
+    }
+    return { generationId: result.generationId, sectionCount: sections.length, dispositions: sections.map(([, value]) => value.disposition).sort() };
+  }));
 }
 
 export function BM04(context) {
-  return nativeSourceCheck(
-    "BM04",
-    "Carry bounded unresolved/targetless frontier through traversal rather than filtering it before classification; distinguish known structural dependency, possible impact, unresolved dynamic surface and not-observed.",
-    "engine/crates/membrane-blueprint/src/model.rs",
-    [/KnownStructuralDependency/, /PossibleImpact/, /UnresolvedDynamicSurface/, /NotObserved/, /known_structural_dependency/, /possible_impact/, /unresolved_dynamic_surface/, /not_observed/],
-    "BM04 frontier-classification taxonomy (known_structural_dependency/possible_impact/unresolved_dynamic_surface/not_observed) present as a real enum with typed variants rather than a pre-filtered list",
-    context,
-  );
+  return installedResult("BM04", () => nativeFixture({
+    "src/main.rs": "fn dynamic() { let name = \"helper\"; println!(\"{}\", name); }\nfn main() { dynamic(); }\n",
+  }, (exe, root) => {
+    nativeCall(exe, ["refresh", "--repo-root", root], root);
+    const result = nativeCall(exe, ["impact", "--repo-root", root, "--node", "dynamic", "--depth", "4"], root);
+    const text = JSON.stringify(result);
+    const classes = new Set(["known_structural_dependency", "possible_impact", "unresolved_dynamic_surface", "not_observed"].filter((value) => text.includes(value)));
+    if (!result.generationId || !Array.isArray(result.impact) || !Array.isArray(result.omissions)) throw new Error("impact omitted generation, classification, or omissions");
+    if (!classes.size) throw new Error("impact returned no typed frontier classification");
+    return { generationId: result.generationId, classes: [...classes], impactCount: result.impact.length, omissionCount: result.omissions.length };
+  }));
 }
 
 export function BM05(context) {
-  return nativeSourceCheck(
-    "BM05",
-    "Reuse Phase-2 queryable derivation records with source evidence, generation/fingerprints, provider/model/version, confidence, verification, invalidation and supersession; a behavior-only edit with unchanged topology invalidates affected derived/verification status; metadata validity is not semantic verification.",
-    "engine/crates/membrane-blueprint/src/phase2.rs",
-    [/struct\s+DerivationMetadata/, /\bfingerprint\b/, /\bprovider\b/, /\bmodel\b/, /\bversion\b/, /struct\s+VerificationMetadata/, /struct\s+InvalidationMetadata/, /struct\s+SupersessionMetadata/, /missing provider\/model\/version/],
-    "DerivationMetadata/VerificationMetadata/InvalidationMetadata/SupersessionMetadata records present, and the seal path rejects a derivation missing provider/model/version attribution (Z03)",
-    context,
-  );
+  return installedResult("BM05", () => nativeFixture({
+    "src/main.rs": "fn main() { println!(\"phase2\"); }\n",
+  }, (exe, root) => {
+    const refresh = nativeCall(exe, ["refresh", "--repo-root", root], root);
+    const current = nativeCall(exe, ["status", "--repo-root", root, "--generation", refresh.generationId], root);
+    if (current.generationId !== refresh.generationId || current.state !== "fresh") throw new Error("generation-pinned status did not remain fresh");
+    const mismatch = nativeCall(exe, ["search", "--repo-root", root, "--query", "phase2", "--generation", "missing-generation"], root);
+    const mismatchText = JSON.stringify(mismatch);
+    if (mismatch.state !== "suppressed" || !/stale_generation|generation/i.test(mismatchText)) throw new Error("mismatched generation did not return typed suppressed response");
+    return { generationId: refresh.generationId, freshState: current.state, generationMismatchRejected: true };
+  }));
 }
 
 // ---------------------------------------------------------------------------

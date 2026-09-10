@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://membrane/schemas/operations/membrane-blueprint.v1.schema.json",
   "title": "MembraneBlueprintV1",
-  "description": "MBR-301: operation-specific contract for the membrane_blueprint MCP tool (added by MBR-401). Bounded Blueprint architecture, symbol, reference, impact, snapshot, and changes views with generation freshness and source-hash resolver handles, via mcp/server.mjs blueprintCapability()/blueprintBatchCapability(). The sub-operation is carried in `operation` (architecture, symbol, reference, references, impact, changes, snapshot_get, snapshot_list, changes_since); a request with an `items` array instead runs the MBR-402 fail-closed batch path and returns per-item receipts.",
+  "description": "MBR-301: operation-specific contract for the membrane_blueprint MCP tool. Native search, recall, and expand projections are served from one bounded generation authority; legacy sanitized views and batch receipts remain supported. The sub-operation is carried in `operation`.",
   "type": "object",
   "additionalProperties": false,
   "required": ["schemaVersion", "operation", "errorVersion", "result"],
@@ -104,10 +104,62 @@
       "additionalProperties": false,
       "required": ["operation", "sourceGeneration", "freshness", "items"],
       "properties": {
-        "operation": { "type": "string", "enum": ["architecture", "symbol", "reference", "references", "impact"] },
+        "operation": { "type": "string", "enum": ["architecture", "search", "recall", "expand", "symbol", "reference", "references", "impact"] },
         "sourceGeneration": { "type": ["string", "null"] },
         "freshness": { "oneOf": [{ "$ref": "#/$defs/freshness" }, { "type": "null" }] },
         "items": { "type": "array", "items": { "$ref": "#/$defs/blueprintNodeItem" } }
+      }
+    },
+    "nativeGraphNode": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "generationId", "evidence"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "kind": { "type": "string", "minLength": 1 },
+        "path": { "type": ["string", "null"] },
+        "name": { "type": ["string", "null"] },
+        "generationId": { "type": "string" },
+        "evidence": { "type": "array", "items": { "type": "object" } }
+      }
+    },
+    "nativeSearchOutput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["operation", "schemaVersion", "generationId", "state", "candidates", "omissions"],
+      "properties": {
+        "operation": { "const": "search" },
+        "schemaVersion": { "const": 1 },
+        "generationId": { "type": "string", "minLength": 1 },
+        "state": { "type": "string", "minLength": 1 },
+        "query": { "type": "string" },
+        "requestedQuery": { "type": "string" },
+        "candidates": { "type": "array", "items": { "$ref": "#/$defs/nativeGraphNode" } },
+        "omissions": { "type": "array", "items": { "type": "object" } }
+      }
+    },
+    "nativeGraphOutput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["operation", "schemaVersion", "generationId", "state", "omissions"],
+      "properties": {
+        "operation": { "type": "string", "enum": ["recall", "expand"] },
+        "schemaVersion": { "const": 1 },
+        "generationId": { "type": "string", "minLength": 1 },
+        "state": { "type": "string", "minLength": 1 },
+        "requestedSeed": {},
+        "requestedTarget": {},
+        "requestedGeneration": {},
+        "resolution": {},
+        "candidateSet": {},
+        "root": { "type": "string" },
+        "target": {},
+        "direction": { "type": "string" },
+        "nodes": { "type": "array", "items": { "$ref": "#/$defs/nativeGraphNode" } },
+        "edges": { "type": "array", "items": { "type": "object" } },
+        "depths": { "type": "object" },
+        "impact": {},
+        "omissions": { "type": "array", "items": { "type": "object" } }
       }
     },
     "blueprintChangesOutput": {
@@ -249,6 +301,8 @@
     },
     "blueprintOutput": {
       "oneOf": [
+        { "$ref": "#/$defs/nativeSearchOutput" },
+        { "$ref": "#/$defs/nativeGraphOutput" },
         { "$ref": "#/$defs/blueprintNodeListOutput" },
         { "$ref": "#/$defs/blueprintChangesOutput" },
         { "$ref": "#/$defs/blueprintSnapshotGetOutput" },

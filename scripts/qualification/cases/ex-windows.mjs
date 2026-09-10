@@ -34,6 +34,7 @@
 // negative controls in ex-windows.test.mjs (if authored) inject the
 // forbidden pattern into a fixture root without mutating real source.
 
+import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -166,10 +167,19 @@ function exclusionCheck(id, title, patterns, context) {
     total: all.length,
   };
   const staticPass = hits.length === 0;
+  let installedInventory = { status: "unavailable", reason: "MEMBRANE_QUALIFICATION_INSTALLED_ROOT is not configured" };
+  const installedRoot = process.env.MEMBRANE_QUALIFICATION_INSTALLED_ROOT;
+  const installedExe = installedRoot && join(resolve(installedRoot), "membrane.exe");
+  if (installedExe && existsSync(installedExe)) {
+    try {
+      const buildInfo = JSON.parse(execFileSync(installedExe, ["cli", "build-info"], { cwd: root, encoding: "utf8", windowsHide: true }));
+      installedInventory = { status: "observed", runtimeOrigin: buildInfo.runtimeOrigin ?? buildInfo.runtime_origin, generation: buildInfo.releaseGeneration ?? buildInfo.release_generation ?? buildInfo.generation };
+    } catch (error) { installedInventory = { status: "failed", reason: error.message }; }
+  }
   return {
     status: staticPass ? "insufficient" : "failed",
     evidenceKind: "source",
-    detail: { id, title, scanned, hits },
+    detail: { id, title, scanned, hits, installedInventory },
     reason: staticPass
       ? id +
         ": " +

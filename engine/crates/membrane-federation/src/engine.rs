@@ -511,6 +511,14 @@ impl FederationEngine {
         let mut response = merged.response(normalized.request_id, normalized.trace_id);
         let metrics = metrics(&started, &active, &schedule, &merged);
         response.diagnostics = Some(diagnostics(&metrics));
+        // Keep the owner-produced lane envelopes available to downstream Pull
+        // projection.  Normalized merge intentionally strips no extension,
+        // but response consumers need the original status/diagnostic/omission
+        // boundary to distinguish an empty answer from a skipped lane.
+        response.extensions.insert(
+            "providerOutputs".to_owned(),
+            serde_json::to_value(&schedule.outputs).unwrap_or(serde_json::Value::Array(Vec::new())),
+        );
         response.extensions.insert(
             "correctiveRetrieval".to_owned(),
             serde_json::to_value(corrective_receipt).unwrap_or(serde_json::Value::Null),
@@ -520,6 +528,7 @@ impl FederationEngine {
             serde_json::to_value(&acquisition_plan).unwrap_or(serde_json::Value::Null),
         );
         let mut journeys = Vec::new();
+        let mut journey_keys = std::collections::BTreeSet::new();
         for candidate in &response.candidates {
             let Some(provider) = candidate.provider.as_deref().and_then(ProviderId::parse) else {
                 continue;
@@ -538,7 +547,7 @@ impl FederationEngine {
                     source_hash: candidate.source_hash.clone(),
                     // Final Push representation is owned by runtime pipeline;
                     // source identity cannot impersonate its representation.
-                    representation_digest: String::new(),
+                    representation_digest: "unknown".to_owned(),
                     target_ref: Some(candidate.source_ref.clone()),
                     acquired: true,
                     eligible: true,
@@ -548,6 +557,56 @@ impl FederationEngine {
                     emitted: false,
                     retained: false,
                     dropped: false,
+                    state: crate::requirements::CandidateJourneyStateV1::DiscoveredAccepted,
+                });
+                journey_keys.insert((candidate.id.clone(), fact.dimension.clone(), fact.binding_digest.clone()));
+            }
+        }
+        // A required fact with no admitted candidate still has a journey. The
+        // explicit unknown source identity prevents absence from being read as
+        // a successful retrieval and gives BM10 a stable NOT_DISCOVERED row.
+        for fact in normalized.requirements.facts.iter().filter(|fact| fact.required) {
+            let covered = journeys.iter().any(|journey| {
+                journey.dimension == fact.dimension
+                    && journey.requirement_binding_digest == fact.binding_digest
+            });
+            if covered { continue; }
+            let provider = acquisition_plan.providers.iter().copied().find(|provider| {
+                capability_catalog.iter().any(|capability| {
+                    capability.provider == *provider
+                        && capability.dimensions.contains(&fact.dimension)
+                })
+            }).unwrap_or(ProviderId::Blueprint);
+            let evidence_id = format!(
+                "requirement:{}:{}:{}",
+                normalized.requirements.task_id,
+                fact.rule_id,
+                fact.binding_digest
+            );
+            if journey_keys.insert((evidence_id.clone(), fact.dimension.clone(), fact.binding_digest.clone())) {
+                let state = merged
+                    .omissions
+                    .iter()
+                    .find(|omission| omission.provider == provider)
+                    .map(journey_state_for_omission)
+                    .unwrap_or(crate::requirements::CandidateJourneyStateV1::NotDiscovered);
+                journeys.push(CandidateJourneyV1 {
+                    evidence_id,
+                    requirement_binding_digest: fact.binding_digest.clone(),
+                    dimension: fact.dimension.clone(),
+                    provider,
+                    source_hash: "unknown".to_owned(),
+                    representation_digest: "unknown".to_owned(),
+                    target_ref: fact.exact_target.clone(),
+                    acquired: false,
+                    eligible: false,
+                    admitted: false,
+                    represented: false,
+                    fenced: false,
+                    emitted: false,
+                    retained: false,
+                    dropped: true,
+                    state,
                 });
             }
         }
@@ -697,6 +756,27 @@ impl FederationEngine {
                 )
             })
             .collect()
+    }
+}
+
+fn journey_state_for_omission(
+    omission: &ProviderOmissionV1,
+) -> crate::requirements::CandidateJourneyStateV1 {
+    match omission.reason {
+        ReasonCode::GenerationIncoherent => crate::requirements::CandidateJourneyStateV1::Stale,
+        ReasonCode::ProviderCancelled | ReasonCode::ProviderTimeout | ReasonCode::ProviderFailed => {
+            crate::requirements::CandidateJourneyStateV1::ExecutionFailure
+        }
+        ReasonCode::ProviderUnavailable | ReasonCode::ProviderMalformed => {
+            crate::requirements::CandidateJourneyStateV1::AdapterDropped
+        }
+        ReasonCode::CandidateIdentityConflict => {
+            crate::requirements::CandidateJourneyStateV1::DiscoveredRejected
+        }
+        ReasonCode::DeadlineExhausted | ReasonCode::Cancelled => {
+            crate::requirements::CandidateJourneyStateV1::ExecutionFailure
+        }
+        _ => crate::requirements::CandidateJourneyStateV1::NotDiscovered,
     }
 }
 
@@ -968,10 +1048,37 @@ fn metrics(
                 attributes.insert("queue_ms".to_owned(), timing.queue_ms.to_string());
                 attributes.insert("start_ms".to_owned(), timing.start_ms.to_string());
                 attributes.insert("end_ms".to_owned(), timing.end_ms.to_string());
+                let output = schedule
+                    .outputs
+                    .iter()
+                    .find(|output| output.provider == timing.provider);
+                if let Some(output) = output {
+                    attributes.insert("status".to_owned(), output.status.as_str().to_owned());
+                    attributes.insert("generation".to_owned(), output.generation.clone().unwrap_or_else(|| "unknown".to_owned()));
+                    attributes.insert("freshness".to_owned(), output.diagnostics.as_ref()
+                        .and_then(|diagnostics| diagnostics.attributes.get("freshness").cloned())
+                        .unwrap_or_else(|| "unknown".to_owned()));
+                    attributes.insert("cancellation".to_owned(), (output.status == membrane_protocol::FederationProviderStatusV1::Cancelled || schedule.cancelled).to_string());
+                    attributes.insert("errors".to_owned(), output.diagnostics.as_ref()
+                        .and_then(|diagnostics| diagnostics.attributes.get("errors").cloned())
+                        .unwrap_or_else(|| "[]".to_owned()));
+                    attributes.insert("fallback".to_owned(), output.diagnostics.as_ref()
+                        .and_then(|diagnostics| diagnostics.attributes.get("fallback").cloned())
+                        .unwrap_or_else(|| "none".to_owned()));
+                    attributes.insert("candidateCount".to_owned(), output.candidates.len().to_string());
+                } else {
+                    attributes.insert("status".to_owned(), "missing".to_owned());
+                    attributes.insert("generation".to_owned(), "unknown".to_owned());
+                    attributes.insert("freshness".to_owned(), "unknown".to_owned());
+                    attributes.insert("cancellation".to_owned(), schedule.cancelled.to_string());
+                    attributes.insert("errors".to_owned(), "[]".to_owned());
+                    attributes.insert("fallback".to_owned(), "none".to_owned());
+                    attributes.insert("candidateCount".to_owned(), "0".to_owned());
+                }
                 ProviderDiagnosticsV1 {
                     provider: timing.provider,
                     elapsed_ms: Some(timing.end_ms.saturating_sub(timing.start_ms)),
-                    generation: None,
+                    generation: output.and_then(|value| value.generation.clone()),
                     attributes,
                 }
             })

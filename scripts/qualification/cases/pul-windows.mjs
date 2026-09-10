@@ -36,6 +36,7 @@
 // negative controls in pul-windows.test.mjs work without mutating real
 // source).
 
+import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -55,6 +56,25 @@ function readFileSafe(root, relPath) {
   } catch {
     return null;
   }
+}
+
+function installedPull(options, id, assertions) {
+  const root = process.env.MEMBRANE_QUALIFICATION_INSTALLED_ROOT;
+  if (!root) return null;
+  const exe = join(resolve(root), "membrane.exe");
+  if (!existsSync(exe)) return { id, status: "failed", evidenceKind: "installed", reason: `installed membrane.exe missing: ${exe}` };
+  try {
+    const raw = execFileSync(exe, ["cli", "pull", "federate", "--repo", resolveRoot(options), "--task", "qualification_probe", "--max-tokens", "256"], { cwd: resolveRoot(options), encoding: "utf8", windowsHide: true });
+    const value = JSON.parse(raw);
+    assertions(value);
+    return { id, status: "passed", evidenceKind: "installed", detail: { id, transport: value.transport, packet: value.packet, receipts: value.receipts } };
+  } catch (error) {
+    return { id, status: "failed", evidenceKind: "installed", reason: `${id} installed native Pull assertion failed: ${error.message}` };
+  }
+}
+
+function readyOrStructural(id, options, relPaths, markers, note, assertions) {
+  return installedPull(options, id, assertions) ?? structuralCheck(id, options, relPaths, markers, note);
 }
 
 // Structural attestation: file exists and contains at least one of the
@@ -85,6 +105,7 @@ function structuralCheck(id, options, relPaths, markers, note) {
   }
   return {
     id,
+    status: "insufficient",
     kind: "structural",
     pass: hits.length > 0,
     reason: hits.length > 0
@@ -185,8 +206,14 @@ export function PUL_021(options) {
     [/order|ordering/i, /receipt/i], "deterministic fixed-order fusion with named receipt");
 }
 export function PUL_022(options) {
-  return structuralCheck("PUL-022", options, ["engine/crates/membrane-federation/src/merge.rs", "engine/crates/membrane-core/src/fusion.rs"],
-    [/rrf|reciprocal/i], "named/versioned RRF without mixing provider-local scores");
+  return readyOrStructural("PUL-022", options, ["engine/crates/membrane-federation/src/merge.rs", "engine/crates/membrane-core/src/fusion.rs"],
+    [/rrf|reciprocal/i], "named/versioned RRF without mixing provider-local scores", (value) => {
+      if (value.transport !== "native") throw new Error("Pull transport is not native");
+      if (!value.packet || !Array.isArray(value.packet.blocks)) throw new Error("native Pull omitted packet blocks");
+      if (!Array.isArray(value.receipts)) throw new Error("native Pull omitted receipts");
+      const text = JSON.stringify(value);
+      if (!/fusion|rrf|reciprocal/i.test(text)) throw new Error("native Pull omitted fusion strategy evidence");
+    });
 }
 export function PUL_023(options) {
   return structuralCheck("PUL-023", options, ["engine/crates/membrane-federation/src/merge.rs", "engine/crates/membrane-core/src/fusion.rs"],
@@ -213,16 +240,27 @@ export function PUL_028(options) {
     [/ceiling/i], "reconciled selected/delivered tokens under one ceiling");
 }
 export function PUL_029(options) {
-  return structuralCheck("PUL-029", options, "engine/crates/membrane-runtime/src/pull/federation.rs",
-    [/revocation|policy_epoch|policyEpoch/i], "grant/epoch/revocation re-observed immediately before publication");
+  return readyOrStructural("PUL-029", options, "engine/crates/membrane-runtime/src/pull/federation.rs",
+    [/revocation|policy_epoch|policyEpoch/i], "grant/epoch/revocation re-observed immediately before publication", (value) => {
+      if (value.transport !== "native") throw new Error("Pull transport is not native");
+      if (!value.finalAdmission || !Array.isArray(value.finalAdmission.omissions)) throw new Error("native Pull omitted final admission");
+    });
 }
 export function PUL_030(options) {
-  return structuralCheck("PUL-030", options, "engine/crates/membrane-runtime/src/pull/federation.rs",
-    [/policy_changed|PolicyChanged/i], "typed policy_changed with no stale-authorized publication");
+  return readyOrStructural("PUL-030", options, "engine/crates/membrane-runtime/src/pull/federation.rs",
+    [/policy_changed|PolicyChanged/i], "typed policy_changed with no stale-authorized publication", (value) => {
+      if (value.transport !== "native") throw new Error("Pull transport is not native");
+      if (value.packet?.blocks?.length && value.finalAdmission?.status === "insufficient") throw new Error("native Pull published blocks despite insufficient admission");
+    });
 }
 export function PUL_031(options) {
-  return structuralCheck("PUL-031", options, "engine/crates/membrane-protocol/src/federation.rs",
-    [/receipt/i, /omission/i], "Pull receipts with journey/omission/coverage/accounting fields");
+  return readyOrStructural("PUL-031", options, "engine/crates/membrane-protocol/src/federation.rs",
+    [/receipt/i, /omission/i], "Pull receipts with journey/omission/coverage/accounting fields", (value) => {
+      if (value.transport !== "native") throw new Error("Pull transport is not native");
+      if (!value.requirementEvidenceMap || !Array.isArray(value.requirementEvidenceMap.journeys)) throw new Error("native Pull omitted CandidateJourneyV1 map");
+      if (!Array.isArray(value.receipts) || !value.receipts.length) throw new Error("native Pull omitted receipts");
+      if (!Array.isArray(value.omissions ?? value.packet?.omissions)) throw new Error("native Pull omitted omission accounting");
+    });
 }
 export function PUL_032(options) {
   return structuralCheck("PUL-032", options, "engine/crates/membrane-runtime/src/pull/delivery_acknowledgement.rs",
@@ -241,24 +279,38 @@ export function PUL_036(options) {
     [/reconcil/i], "publication authorization re-reconciled immediately before emission");
 }
 export function PUL_037(options) {
-  return structuralCheck("PUL-037", options, "engine/crates/membrane-runtime/src/pull/delivery_state.rs",
-    [/suppress|suppression/i, /horizon|expiry/i], "bounded-horizon delivery suppression with typed restoration");
+  return readyOrStructural("PUL-037", options, "engine/crates/membrane-runtime/src/pull/delivery_state.rs",
+    [/suppress|suppression/i, /horizon|expiry/i], "bounded-horizon delivery suppression with typed restoration", (value) => {
+      if (value.transport !== "native") throw new Error("Pull transport is not native");
+      if (!Array.isArray(value.packet?.blocks)) throw new Error("native Pull omitted packet blocks");
+      if (value.packet?.blocks?.length === 0 && !Array.isArray(value.suppressionReceipts)) throw new Error("native Pull empty delivery omitted suppression receipts");
+    });
 }
 export function PUL_039(options) {
-  return structuralCheck("PUL-039", options, "engine/crates/membrane-runtime/src/cache_prefix.rs",
-    [/prefix/i], "byte-stable reusable packet prefix across equivalent requests");
+  return readyOrStructural("PUL-039", options, "engine/crates/membrane-runtime/src/cache_prefix.rs",
+    [/prefix/i], "byte-stable reusable packet prefix across equivalent requests", (value) => {
+      if (value.transport !== "native") throw new Error("Pull transport is not native");
+      if (!value.cachePrefixDiagnostic || typeof value.cachePrefixDiagnostic !== "object") throw new Error("native Pull omitted cache prefix diagnostic");
+    });
 }
 export function PUL_040(options) {
-  return structuralCheck("PUL-040", options, "engine/crates/membrane-runtime/src/pull/placement.rs",
-    [/placement|semantic class/i], "versioned semantic placement after admission");
+  return readyOrStructural("PUL-040", options, "engine/crates/membrane-runtime/src/pull/placement.rs",
+    [/placement|semantic class/i], "versioned semantic placement after admission", (value) => {
+      if (value.transport !== "native") throw new Error("Pull transport is not native");
+      if (!value.placementReceipt || typeof value.placementReceipt !== "object") throw new Error("native Pull omitted placement receipt");
+    });
 }
 export function PUL_041(options) {
   return structuralCheck("PUL-041", options, "engine/crates/membrane-runtime/src/pull/federation_sources.rs",
     [/aggregate|per.?target/i], "aggregate multi-repository evidence with per-target source identity");
 }
 export function PUL_042(options) {
-  return structuralCheck("PUL-042", options, "engine/crates/membrane-runtime/src/pull/federation.rs",
-    [/resolver|unsupported/i], "resolver-only selection gated on negotiated callable owner resolver");
+  return readyOrStructural("PUL-042", options, "engine/crates/membrane-runtime/src/pull/federation.rs",
+    [/resolver|unsupported/i], "resolver-only selection gated on negotiated callable owner resolver", (value) => {
+      if (value.transport !== "native") throw new Error("Pull transport is not native");
+      if (!value.finalAdmission || !Array.isArray(value.finalAdmission.omissions)) throw new Error("native Pull omitted final admission omissions");
+      if (!value.packet || !Array.isArray(value.packet.blocks)) throw new Error("native Pull omitted final packet");
+    });
 }
 
 // ---------------------------------------------------------------------------

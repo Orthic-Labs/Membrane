@@ -53,15 +53,77 @@
 // integration owner is the only actor who may bind a `pass` result from this
 // module to a CTX-Q installed acceptance row.
 
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync, mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { spawnSync } from "node:child_process";
+import { tmpdir } from "node:os";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = resolve(HERE, "../../../");
 
+export function probeInstalled(options = {}) {
+  const cli = options.cliPath || process.env.MEMBRANE_CLI_PATH || "membrane";
+  const version = spawnSync(cli, ["--version"], { encoding: "utf8", windowsHide: true, timeout: 15000 });
+  if (version.error || version.status !== 0) return { status: "blocked", evidenceKind: "installed", reason: "installed Membrane CLI --version probe failed" };
+  const doctor = spawnSync(cli, ["cli", "doctor", "--json"], { encoding: "utf8", windowsHide: true, timeout: 35000 });
+  if (doctor.error || doctor.status !== 0) return { status: "failed", evidenceKind: "installed", reason: `Cortex doctor probe failed: ${String(doctor.stderr || "").trim()}` };
+  let payload;
+  try { payload = JSON.parse(doctor.stdout); } catch { return { status: "failed", evidenceKind: "installed", reason: "Cortex doctor returned non-JSON output" }; }
+  if (payload.system !== "Membrane" || typeof payload.status !== "string" || !Array.isArray(payload.checks)) {
+    return { status: "failed", evidenceKind: "installed", reason: "Cortex doctor response lacks stable system/status/checks fields" };
+  }
+  return { status: "passed", evidenceKind: "installed", detail: { cli, version: String(version.stdout || "").trim(), doctor: payload }, reason: "stable installed CLI returned a typed Cortex doctor response" };
+}
+
 function resolveRoot(options) {
   return (options && options.root) || REPO_ROOT;
+}
+
+function nativeCli(options = {}, args, input) {
+  const cli = options.cliPath || process.env.MEMBRANE_CLI_PATH || "membrane";
+  const result = spawnSync(cli, ["cli", ...args], { encoding: "utf8", windowsHide: true, timeout: 35000, input });
+  if (result.error || result.status !== 0) throw new Error(String(result.stderr || result.error?.message || `native CLI exited ${result.status}`));
+  const lines = String(result.stdout || "").split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  for (let i = lines.length - 1; i >= 0; i -= 1) {
+    try { return JSON.parse(lines[i]); } catch {}
+  }
+  throw new Error("native CLI returned no JSON result");
+}
+
+// Run a bounded Cortex workflow against a throwaway database.  This helper is
+// deliberately independent of source-marker scans: a successful probe proves
+// the installed CLI opened the isolated store, wrote a record, and read its
+// durable projection.  Callers still decide whether that surface is sufficient
+// for their stronger acceptance requirement.
+function isolatedCortexWorkflow(options = {}, body) {
+  const cli = options.cliPath || process.env.MEMBRANE_CLI_PATH || "membrane";
+  const version = spawnSync(cli, ["--version"], { encoding: "utf8", windowsHide: true, timeout: 15000 });
+  if (version.error || version.status !== 0) {
+    return { available: false, reason: "installed Membrane CLI --version probe failed" };
+  }
+  const dir = mkdtempSync(join(tmpdir(), "ctx-cortex-installed-"));
+  const db = join(dir, "cortex.sqlite");
+  const content = join(dir, "record.txt");
+  const scope = resolve(dir);
+  try {
+    writeFileSync(content, "Always use concise output for this isolated Cortex acceptance fixture.", "utf8");
+    const put = nativeCli({ cliPath: cli }, ["--db", db, "put", "standing-preference", "--scope", scope, "--tier", "Semantic", "--record-type", "preference", "--authority", "A1", "--producer", "manual", "--file", content]);
+    const listResult = spawnSync(cli, ["cli", "--db", db, "list"], { encoding: "utf8", windowsHide: true, timeout: 35000 });
+    if (listResult.error || listResult.status !== 0 || !String(listResult.stdout || "").trim()) throw new Error(String(listResult.stderr || "native list returned no output").trim());
+    const list = String(listResult.stdout).trim();
+    // A matching query is used solely to assert a real typed recall envelope;
+    // the stronger unrelated-query standing projection assertion stays
+    // explicitly unsupported until installed Adapt/Baseline producer exists.
+    const recallResult = spawnSync(cli, ["cli", "--db", db, "recall", "Always", "-k", "10", "--scope", scope], { encoding: "utf8", windowsHide: true, timeout: 35000 });
+    if (recallResult.error || recallResult.status !== 0 || !String(recallResult.stdout || "").trim()) throw new Error(String(recallResult.stderr || "native recall returned no output").trim());
+    const recall = String(recallResult.stdout).trim();
+    return { available: true, cli, version: String(version.stdout || "").trim(), db, scope, put, list, recall, ...(body ? body({ cli, db, scope, put, list, recall }) : {}) };
+  } catch (error) {
+    return { available: true, cli, db, scope, failed: true, reason: `isolated native Cortex workflow failed: ${error.message}` };
+  } finally {
+    try { rmSync(dir, { recursive: true, force: true }); } catch {}
+  }
 }
 
 function readFileSafe(root, relPath) {
@@ -89,6 +151,7 @@ function structuralCheck(id, options, relPaths, markers, note) {
       kind: "structural",
       evidenceKind: "source",
       pass: false,
+      status: "failed",
       reason: `none of the canonical implementation files exist: ${files.join(", ")}`,
       evidence: files,
       note,
@@ -108,6 +171,7 @@ function structuralCheck(id, options, relPaths, markers, note) {
     kind: "structural",
     evidenceKind: "source",
     pass: hits.length > 0,
+    status: hits.length > 0 ? "passed" : "failed",
     reason: hits.length > 0
       ? `found ${hits.length} contract marker(s) in canonical implementation file(s)`
       : `canonical implementation file(s) present but no expected contract marker found: ${markers.map(String).join(", ")}`,
@@ -123,6 +187,11 @@ function structuralCheck(id, options, relPaths, markers, note) {
 // built/running code, so it must never claim a higher evidence boundary.
 function insufficientResult(id, reason, note) {
   return { id, kind: "insufficient", evidenceKind: "source", pass: false, status: "insufficient", reason, note };
+}
+
+function insufficientWithInstalledProbe(id, reason, note, probe) {
+  const result = insufficientResult(id, reason, note);
+  return { ...result, evidenceKind: probe.available && !probe.failed ? "installed" : result.evidenceKind, detail: { nativeWorkflow: probe.available && !probe.failed ? "write-list-recall-passed" : "unavailable", failure: probe.failed ? probe.reason : undefined } };
 }
 
 function walk(root, relDir, out) {
@@ -256,8 +325,35 @@ export function CTX_017(options) {
     "BM07 repair: MemoryStore::record_evidence_relation/evidence_relations_from give supports/contradicts/derived_from a durable production ingest+traversal path alongside supersedes; restart/replay and installed traversal proof remain unrun by this edit-only pass (PARTIAL).");
 }
 export function CTX_018(options) {
-  return structuralCheck("CTX-018", options, "engine/crates/membrane-runtime/src/checkpoint.rs",
+  const structural = structuralCheck("CTX-018", options, "engine/crates/membrane-runtime/src/checkpoint.rs",
     [/checkpoint/i, /retire|list|load|save/i]);
+  const cli = options?.cliPath || process.env.MEMBRANE_CLI_PATH || "membrane";
+  const probe = spawnSync(cli, ["--version"], { encoding: "utf8", windowsHide: true, timeout: 15000 });
+  if (probe.error || probe.status !== 0) return structural;
+  const dir = mkdtempSync(join(tmpdir(), "ctx-checkpoint-"));
+  const db = join(dir, "checkpoint.sqlite");
+  const input = join(dir, "checkpoint.json");
+  const id = `ctx-018-${process.pid}-${Date.now()}`;
+  const checkpoint = {
+    checkpointId: id, installationId: "qualification", client: "windows-acceptance",
+    sessionId: id, repositoryId: "isolated", worktreeRev: "fixture", scopeId: "fixture",
+    summary: "isolated checkpoint lifecycle", createdAtMs: 1, expiresAtMs: 4102444800000, sourceRefs: [],
+  };
+  try {
+    writeFileSync(input, JSON.stringify(checkpoint), "utf8");
+    const saved = nativeCli({ cliPath: cli }, ["--db", db, "checkpoint", "save", "--input", input]);
+    const loaded = nativeCli({ cliPath: cli }, ["--db", db, "checkpoint", "load", id]);
+    if (saved.saved !== true || saved.checkpoint_id !== id || loaded.checkpoint?.checkpointId !== id || loaded.checkpoint?.summary !== checkpoint.summary) {
+      return { ...structural, kind: "installed", evidenceKind: "installed", pass: false, status: "failed", reason: "checkpoint save/load did not preserve typed identity and summary" };
+    }
+    const closed = nativeCli({ cliPath: cli }, ["--db", db, "checkpoint", "done", id]);
+    if (closed.closed !== true || closed.checkpoint_id !== id) return { ...structural, kind: "installed", evidenceKind: "installed", pass: false, status: "failed", reason: "checkpoint close did not return typed closure" };
+    return { id: "CTX-018", kind: "installed", evidenceKind: "installed", pass: true, status: "passed", detail: { db, checkpointId: id, saved: true, loaded: true, closed: true }, reason: "isolated native checkpoint save/load/close lifecycle preserved typed identity" };
+  } catch (error) {
+    return { id: "CTX-018", kind: "installed", evidenceKind: "installed", pass: false, status: "failed", reason: `native checkpoint lifecycle failed: ${error.message}` };
+  } finally {
+    try { rmSync(dir, { recursive: true, force: true }); } catch {}
+  }
 }
 export function CTX_019(options) {
   return structuralCheck("CTX-019", options, "engine/crates/membrane-runtime/src/cortex_lifecycle.rs",
@@ -364,13 +460,14 @@ export function BM06(options) {
   const struct_ = structuralCheck("BM06", options,
     "engine/crates/membrane-runtime/src/memory_provider.rs",
     [/pub fn produce_baseline_projection/, /BASELINE_TASK_MARKER/, /taste_delivery_inventory/, /baseline_reasons::/]);
+  const installed = isolatedCortexWorkflow(options);
   if (!struct_.pass) {
-    return insufficientResult("BM06", struct_.reason,
-      "Bounded stable/current/constraints/preferences projection over admitted Cortex records is not yet implemented as a query-independent standing surface; no baseline-projection contract marker found.");
+    return insufficientWithInstalledProbe("BM06", struct_.reason,
+      `Bounded stable/current/constraints/preferences projection over admitted Cortex records is not yet implemented as a query-independent standing surface; no baseline-projection contract marker found. ${installed.reason || ""}`.trim(), installed);
   }
-  return insufficientResult("BM06",
-    "produce_baseline_projection (engine/crates/membrane-runtime/src/memory_provider.rs) sources a fixed, non-task trace id (BASELINE_TASK_MARKER) rather than deriving from any query, reuses Adapt/Taste's own query-independent selection verbatim (taste_delivery_inventory), and reports typed omissions (baseline_reasons::OUT_OF_SCOPE/LIFECYCLE_INELIGIBLE/UNVERIFIED/CONTENT_UNAVAILABLE/ADAPT_INVENTORY_UNAVAILABLE) plus a freshness block — all present in source. It returns a provider-side ContextCandidateSet, never an admitted context block, so Pull retains final admission. This pass still performs no functional proof against a running store (an unrelated query actually receiving the projection, an unavailable Adapt inventory actually degrading to typed-unavailable rather than a fabricated empty pass) — that requires the installed/functional evidence boundary the integration owner runs after a build.",
-    "IMPLEMENT_THEN_RUN per packet; no runtime result claimed.");
+  return insufficientWithInstalledProbe("BM06",
+    `Native isolated Cortex write/list/recall workflow: ${installed.available && !installed.failed ? "passed" : installed.reason}. The installed CLI exposes no native baseline/standing projection producer or Adapt inventory injection surface, so this case cannot prove an unrelated query receives an applicable standing preference. Source contract is present (fixed BASELINE_TASK_MARKER, Taste inventory, typed omissions, freshness, provider-side candidate set); Pull final admission remains unproven.`,
+    "IMPLEMENT_THEN_RUN per packet; no runtime result claimed.", installed);
 }
 
 // BM06 negativeControls, each a real executable check.
@@ -401,13 +498,14 @@ export function BM07(options) {
   const struct_ = structuralCheck("BM07", options,
     "engine/crates/membrane-runtime/src/store.rs",
     [/pub fn record_evidence_relation/, /pub fn evidence_relations_from/, /"supports" \| "contradicts" \| "derived_from"/]);
+  const installed = isolatedCortexWorkflow(options);
   if (!struct_.pass) {
-    return insufficientResult("BM07", struct_.reason,
-      "Durable supports/contradicts/derived_from ingest and full traversal distinguishing replacement/enrichment/derivation is not yet closed.");
+    return insufficientWithInstalledProbe("BM07", struct_.reason,
+      `Durable supports/contradicts/derived_from ingest and full traversal distinguishing replacement/enrichment/derivation is not yet closed. ${installed.reason || ""}`.trim(), installed);
   }
-  return insufficientResult("BM07",
-    "The CTX-017 residual this row named — only `supersedes` had a durable persistence path, while supports/contradicts/derived_from were convergence-ready in cortex_store::memdb (schema, admission gate, traversal filter) but never durably ingested by a production caller — is closed at the source level: MemoryStore::record_evidence_relation (engine/crates/membrane-runtime/src/store.rs) now admits supports/contradicts/derived_from edges through cortex_store::memdb::MemDb::record_canonical_relation_on inside one committed transaction (same guarantee apply_lifecycle_input_on already gave `supersedes`), refusing self-reference, missing endpoints and cross-scope edges; MemoryStore::evidence_relations_from reads them back through cortex_core::relation_category, which keeps Derivation (`derived_from`) from ever being read back mixed in with Observation (`supports`/`contradicts`). What remains unproven by this edit-only pass: restart/replay durability and bounded coherent episode proposals against a running store, which require the installed/functional evidence boundary — no runtime result is claimed here.",
-    "IMPLEMENT_THEN_RUN per packet; no runtime result claimed.");
+  return insufficientWithInstalledProbe("BM07",
+    `Native isolated Cortex write/list/recall workflow: ${installed.available && !installed.failed ? "passed" : installed.reason}. Installed CLI has no native evidence-relation ingest/traversal, restart/replay fixture, or episode-proposal producer command, so no functional BM07 pass is claimed. Source contract now includes durable relation ingest/readback with category separation; enrichment, derivation, episode-gate, utility-decay, and Pull-sufficiency behavior remain unproven at installed boundary.`,
+    "IMPLEMENT_THEN_RUN per packet; no runtime result claimed.", installed);
 }
 
 // BM07 negativeControls, each a real executable anti-pattern scan.

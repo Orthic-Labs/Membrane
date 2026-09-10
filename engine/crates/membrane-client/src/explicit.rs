@@ -31,6 +31,14 @@ pub struct InstalledExplicitClient {
     transport: Arc<ExplicitOwnerTransport>,
 }
 
+/// Authenticated response from native ADP-076 comparison. Decision & receipt
+/// remain JSON so client crate does not duplicate membrane-adapt domain types.
+#[derive(Debug, Clone)]
+pub struct AdaptComparisonResponse {
+    pub decision: Value,
+    pub receipt: Value,
+}
+
 fn incompatible(message: &str) -> ClientError { ClientError::Incompatible { message: message.into() } }
 
 pub fn verify_explicit_binding(candidate: &KnownCandidate, binding: &ExplicitOwnerBindingV1,
@@ -114,6 +122,14 @@ impl InstalledExplicitClient {
             return Err(ClientError::from_json_error(&response.data));
         }
         Ok(response.data)
+    }
+    /// Invoke native ADP-076 comparison through the bound installed owner.
+    pub fn compare_adapt(&self, request: Map<String, Value>, options: &CallOptions) -> Result<AdaptComparisonResponse, ClientError> {
+        let data = self.call(ExplicitOperation::AdaptCompare, request, options)?;
+        let object = data.as_object().ok_or_else(|| ClientError::protocol("response_malformed", "ADP-076 response is not an object"))?;
+        let decision = object.get("decision").cloned().ok_or_else(|| ClientError::protocol("response_malformed", "ADP-076 response lacks decision"))?;
+        let receipt = object.get("receipt").cloned().ok_or_else(|| ClientError::protocol("response_malformed", "ADP-076 response lacks receipt"))?;
+        Ok(AdaptComparisonResponse { decision, receipt })
     }
     pub(crate) fn memory_call(&self, route: &str, request: &Map<String, Value>, options: &CallOptions) -> Result<Value, ClientError> {
         use ExplicitOperation as Op;

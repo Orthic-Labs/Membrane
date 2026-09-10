@@ -10,7 +10,8 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { runCase, runGroup, cases, BM12 } from './ldg-windows.mjs';
+import { runCase, runGroup, cases, BM12, probeInstalled } from './ldg-windows.mjs';
+import * as registryExports from './ldg-windows.mjs';
 
 const INSTALLED_CASE_IDS = [
   'LDG-001', 'LDG-002', 'LDG-003', 'LDG-004', 'LDG-005', 'LDG-006', 'LDG-007', 'LDG-008',
@@ -26,6 +27,22 @@ test('every installed LDG case id resolves to a case', () => {
     assert.equal(cases[key].id, id);
     assert.equal(typeof cases[key].run, 'function');
   }
+});
+
+test('every LDG registry row has an exact callable export; absent native Ledger semantics fail closed', () => {
+  for (const id of INSTALLED_CASE_IDS) {
+    const fn = registryExports[id.replace(/-/g, '_')];
+    assert.equal(typeof fn, 'function', `missing registry export ${id}`);
+    const outcome = fn({ cliPath: 'membrane-binary-that-does-not-exist-xyz' });
+    assert.equal(outcome.id ?? id, id, `${id} outcome must retain exact raw registry id`);
+    assert.equal(outcome.status, 'failed', `${id} must not source-pass without installed Ledger behavior`);
+  }
+});
+
+test('installed Ledger probe fails closed when stable CLI is unreachable', () => {
+  const result = probeInstalled({ cliPath: 'membrane-binary-that-does-not-exist-xyz' });
+  assert.equal(result.status, 'blocked');
+  assert.equal(result.evidenceKind, 'installed');
 });
 
 test('BM12 case definition is present and declares its two required negative controls', () => {

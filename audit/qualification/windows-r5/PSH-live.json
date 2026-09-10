@@ -1,0 +1,343 @@
+{
+  "schema": "membrane.registry-qualification.v1",
+  "platform": "windows",
+  "profile": "internal-unsigned",
+  "group": "PSH",
+  "caseRegistryPath": "D:\\Claude\\review\\windows-r5\\windows-acceptance.json",
+  "evidencePath": "D:\\Claude\\membrane\\audit\\qualification\\windows-r5\\PSH-live.json",
+  "generatedAt": "2026-09-09T18:52:40.685Z",
+  "requiredIds": [
+    "PSH-001",
+    "PSH-002",
+    "PSH-003",
+    "PSH-004",
+    "PSH-005",
+    "PSH-006",
+    "PSH-007",
+    "PSH-008",
+    "PSH-009",
+    "PSH-010",
+    "PSH-011",
+    "PSH-012",
+    "PSH-013",
+    "PSH-014",
+    "PSH-015",
+    "PSH-016",
+    "PSH-017",
+    "PSH-018",
+    "PSH-019",
+    "PSH-020",
+    "PSH-021",
+    "PSH-022",
+    "PSH-023",
+    "PSH-024",
+    "PSH-025",
+    "PSH-026",
+    "PSH-027",
+    "PSH-028",
+    "PSH-029"
+  ],
+  "executedIds": [
+    "PSH-001",
+    "PSH-002",
+    "PSH-003",
+    "PSH-004",
+    "PSH-005",
+    "PSH-006",
+    "PSH-007",
+    "PSH-008",
+    "PSH-009",
+    "PSH-010",
+    "PSH-011",
+    "PSH-012",
+    "PSH-013",
+    "PSH-014",
+    "PSH-015",
+    "PSH-016",
+    "PSH-017",
+    "PSH-018",
+    "PSH-019",
+    "PSH-020",
+    "PSH-021",
+    "PSH-022",
+    "PSH-023",
+    "PSH-024",
+    "PSH-025",
+    "PSH-026",
+    "PSH-027",
+    "PSH-028",
+    "PSH-029"
+  ],
+  "terminalIds": [
+    "PSH-001",
+    "PSH-002",
+    "PSH-003",
+    "PSH-004",
+    "PSH-005",
+    "PSH-006",
+    "PSH-007",
+    "PSH-008",
+    "PSH-009",
+    "PSH-010",
+    "PSH-011",
+    "PSH-012",
+    "PSH-013",
+    "PSH-014",
+    "PSH-015",
+    "PSH-016",
+    "PSH-017",
+    "PSH-018",
+    "PSH-019",
+    "PSH-020",
+    "PSH-021",
+    "PSH-022",
+    "PSH-023",
+    "PSH-024",
+    "PSH-025",
+    "PSH-026",
+    "PSH-027",
+    "PSH-028",
+    "PSH-029"
+  ],
+  "results": [
+    {
+      "id": "PSH-001",
+      "status": "failed",
+      "functionalStatus": "failed",
+      "evidenceKind": "installed",
+      "detail": null,
+      "reason": "case did not pass"
+    },
+    {
+      "id": "PSH-002",
+      "status": "failed",
+      "functionalStatus": "failed",
+      "evidenceKind": "installed",
+      "detail": null,
+      "reason": "case did not pass"
+    },
+    {
+      "id": "PSH-003",
+      "status": "failed",
+      "functionalStatus": "failed",
+      "evidenceKind": "installed",
+      "detail": null,
+      "reason": "case did not pass"
+    },
+    {
+      "id": "PSH-004",
+      "status": "passed",
+      "functionalStatus": "passed",
+      "evidenceKind": "installed",
+      "detail": "compress bounded large input and passed through tiny input deterministically",
+      "reason": null
+    },
+    {
+      "id": "PSH-005",
+      "status": "failed",
+      "functionalStatus": "failed",
+      "evidenceKind": "installed",
+      "detail": null,
+      "reason": "case did not pass"
+    },
+    {
+      "id": "PSH-006",
+      "status": "failed",
+      "functionalStatus": "failed",
+      "evidenceKind": "installed",
+      "detail": null,
+      "reason": "case did not pass"
+    },
+    {
+      "id": "PSH-007",
+      "status": "failed",
+      "functionalStatus": "failed",
+      "evidenceKind": "installed",
+      "detail": null,
+      "reason": "case did not pass"
+    },
+    {
+      "id": "PSH-008",
+      "status": "failed",
+      "functionalStatus": "failed",
+      "evidenceKind": "installed",
+      "detail": null,
+      "reason": "case did not pass"
+    },
+    {
+      "id": "PSH-009",
+      "status": "failed",
+      "functionalStatus": "failed",
+      "evidenceKind": "installed",
+      "detail": null,
+      "reason": "case did not pass"
+    },
+    {
+      "id": "PSH-010",
+      "status": "failed",
+      "functionalStatus": "failed",
+      "evidenceKind": "installed",
+      "detail": null,
+      "reason": "case did not pass"
+    },
+    {
+      "id": "PSH-011",
+      "status": "failed",
+      "functionalStatus": "failed",
+      "evidenceKind": "installed",
+      "detail": null,
+      "reason": "case did not pass"
+    },
+    {
+      "id": "PSH-012",
+      "status": "passed",
+      "functionalStatus": "passed",
+      "evidenceKind": "installed",
+      "detail": "missing host capacity basis is refused rather than guessed",
+      "reason": null
+    },
+    {
+      "id": "PSH-013",
+      "status": "failed",
+      "functionalStatus": "failed",
+      "evidenceKind": "installed",
+      "detail": null,
+      "reason": "case did not pass"
+    },
+    {
+      "id": "PSH-014",
+      "status": "failed",
+      "functionalStatus": "failed",
+      "evidenceKind": "installed",
+      "detail": null,
+      "reason": "case did not pass"
+    },
+    {
+      "id": "PSH-015",
+      "status": "failed",
+      "functionalStatus": "failed",
+      "evidenceKind": "installed",
+      "detail": null,
+      "reason": "case did not pass"
+    },
+    {
+      "id": "PSH-016",
+      "status": "failed",
+      "functionalStatus": "failed",
+      "evidenceKind": "installed",
+      "detail": null,
+      "reason": "case did not pass"
+    },
+    {
+      "id": "PSH-017",
+      "status": "failed",
+      "functionalStatus": "failed",
+      "evidenceKind": "installed",
+      "detail": null,
+      "reason": "case did not pass"
+    },
+    {
+      "id": "PSH-018",
+      "status": "failed",
+      "functionalStatus": "failed",
+      "evidenceKind": "installed",
+      "detail": null,
+      "reason": "case did not pass"
+    },
+    {
+      "id": "PSH-019",
+      "status": "failed",
+      "functionalStatus": "failed",
+      "evidenceKind": "installed",
+      "detail": null,
+      "reason": "case did not pass"
+    },
+    {
+      "id": "PSH-020",
+      "status": "failed",
+      "functionalStatus": "failed",
+      "evidenceKind": "installed",
+      "detail": null,
+      "reason": "case did not pass"
+    },
+    {
+      "id": "PSH-021",
+      "status": "failed",
+      "functionalStatus": "failed",
+      "evidenceKind": "installed",
+      "detail": null,
+      "reason": "case did not pass"
+    },
+    {
+      "id": "PSH-022",
+      "status": "passed",
+      "functionalStatus": "passed",
+      "evidenceKind": "installed",
+      "detail": "malformed/noncanonical anchor references are rejected before resolution",
+      "reason": null
+    },
+    {
+      "id": "PSH-023",
+      "status": "failed",
+      "functionalStatus": "failed",
+      "evidenceKind": "installed",
+      "detail": null,
+      "reason": "case did not pass"
+    },
+    {
+      "id": "PSH-024",
+      "status": "failed",
+      "functionalStatus": "failed",
+      "evidenceKind": "installed",
+      "detail": null,
+      "reason": "case did not pass"
+    },
+    {
+      "id": "PSH-025",
+      "status": "failed",
+      "functionalStatus": "failed",
+      "evidenceKind": "installed",
+      "detail": null,
+      "reason": "case did not pass"
+    },
+    {
+      "id": "PSH-026",
+      "status": "failed",
+      "functionalStatus": "failed",
+      "evidenceKind": "installed",
+      "detail": null,
+      "reason": "case did not pass"
+    },
+    {
+      "id": "PSH-027",
+      "status": "failed",
+      "functionalStatus": "failed",
+      "evidenceKind": "installed",
+      "detail": null,
+      "reason": "case did not pass"
+    },
+    {
+      "id": "PSH-028",
+      "status": "failed",
+      "functionalStatus": "failed",
+      "evidenceKind": "installed",
+      "detail": null,
+      "reason": "case did not pass"
+    },
+    {
+      "id": "PSH-029",
+      "status": "failed",
+      "functionalStatus": "failed",
+      "evidenceKind": "installed",
+      "detail": null,
+      "reason": "case did not pass"
+    }
+  ],
+  "evidenceKindCounts": {
+    "installed": 29
+  },
+  "status": "failed",
+  "functionalStatus": "failed",
+  "unsignedFunctional": false,
+  "signedReleasePass": false
+}

@@ -18,6 +18,7 @@ use membrane_runtime::background_review_input::{
     input_path as background_review_input_path, durable_reviewed_through_seq,
     BackgroundReviewInputSnapshotV1,
 };
+use membrane_runtime::installed_health;
 use membrane_runtime::background_review::{
     execute_background_semantic_review, AuthenticatedLoopbackSemanticReviewProvider,
     BackgroundSemanticReviewProvider, DeterministicFirstPartySemanticReviewProvider,
@@ -29,7 +30,6 @@ use membrane_runtime::service::{run_hub_runtime, LifecycleControl};
 use std::{
     fs,
     io::{self, BufRead, BufReader, Read, Write},
-    net::{Ipv4Addr, TcpStream},
     path::PathBuf,
     sync::mpsc,
     thread,
@@ -269,7 +269,49 @@ fn main() {
     }
 }
 
+fn log_startup_failure(stage: &str, error: &str, capability: Option<&str>) {
+    let detail = capability
+        .filter(|value| !value.is_empty())
+        .map(|value| error.replace(value, "[redacted]"))
+        .unwrap_or_else(|| error.to_owned());
+    eprintln!(
+        "{}",
+        serde_json::json!({
+            "event": "membrane_daemon_startup",
+            "stage": stage,
+            "error": detail,
+            "observedAtUnixMs": now_unix_ms(),
+        })
+    );
+}
+
+/// Resolve installer-owned semantic assets beside the resident binary. An
+/// operator-supplied path remains authoritative; absent assets preserve the
+/// store's typed degraded-health path.
+fn configure_bundled_embedder() {
+    #[cfg(windows)]
+    {
+        let Some(root) = std::env::current_exe()
+            .ok()
+            .and_then(|path| path.parent().map(PathBuf::from))
+        else {
+            return;
+        };
+        let model = root.join("runtime/resources/semantic-embed-model");
+        let runtime = root.join("runtime/resources/semantic-embed-runtime/onnxruntime.dll");
+        if std::env::var_os("CODERIGHT_EMBED_MODEL_DIR").is_none()
+            && model.join("model_q4.onnx").is_file()
+        {
+            std::env::set_var("CODERIGHT_EMBED_MODEL_DIR", model);
+        }
+        if std::env::var_os("ORT_DYLIB_PATH").is_none() && runtime.is_file() {
+            std::env::set_var("ORT_DYLIB_PATH", runtime);
+        }
+    }
+}
+
 fn run() -> Result<(), &'static str> {
+    configure_bundled_embedder();
     let mut reader = BufReader::new(io::stdin());
     let launch_frame = read_frame(&mut reader)
         .map_err(|_| "daemon_protocol_invalid")?
@@ -280,6 +322,7 @@ fn run() -> Result<(), &'static str> {
         .map_err(|_| "daemon_protocol_invalid")?;
     let runtime_control = control.clone();
     let runtime_failure_control = control.clone();
+    let launch_capability = launch.bearer_token.clone();
     let root = PathBuf::from(&launch.workspace_root);
     let background_review = BackgroundReviewScheduler::from_workspace_root(&root, now_unix_ms());
     let background_observation_sink =
@@ -292,6 +335,7 @@ fn run() -> Result<(), &'static str> {
         .spawn(move || {
             let result = run_hub_runtime(&runtime_root, runtime_control);
             if let Err(error) = &result {
+                log_startup_failure("runtime", error, Some(&launch_capability));
                 runtime_failure_control.fail(stable_runtime_reason(error));
             }
             result
@@ -313,7 +357,7 @@ fn run() -> Result<(), &'static str> {
     let pid = std::process::id();
     let mut event_sequence = 0_u64;
     let ready_port = match control.wait_until_ready() {
-        Ok(port) if port == launch.http_port && health_answers(port) => port,
+        Ok(port) if port == launch.http_port && health_answers(port, &launch.bearer_token, &root.join("tools/.cache/memory/api-token")) => port,
         Ok(_) => {
             background_review.set_hub_active(false, now_unix_ms());
             background_review.observe_idle(now_unix_ms());
@@ -596,28 +640,64 @@ fn now_unix_ms() -> u64 {
         .unwrap_or(u64::MAX)
 }
 
-fn health_answers(port: u16) -> bool {
-    let address = std::net::SocketAddr::from((Ipv4Addr::LOCALHOST, port));
-    let Ok(mut stream) = TcpStream::connect_timeout(&address, HEALTH_TIMEOUT) else {
-        return false;
+fn health_answers(port: u16, api_token: &str, token_path: &std::path::Path) -> bool { health_answers_inner(port, api_token, token_path).unwrap_or(false) }
+
+fn health_answers_inner(port: u16, api_token: &str, token_path: &std::path::Path) -> Option<bool> {
+    return match installed_health::probe_installed(port, api_token, HEALTH_TIMEOUT, token_path) {
+        Ok(response) => {
+            let accepted = response.status == 200 || response.status == 503;
+            eprintln!("{}", serde_json::json!({"event":"daemon_readiness_probe","port":port,"status":response.status,"accepted":accepted}));
+            Some(accepted)
+        }
+        Err(reason) => {
+            eprintln!("{}", serde_json::json!({"event":"daemon_readiness_probe","port":port,"accepted":false,"reason":reason}));
+            None
+        }
     };
+    /*
+    let address = std::net::SocketAddr::from((Ipv4Addr::LOCALHOST, port));
+    let Ok(mut stream) = TcpStream::connect_timeout(&address, HEALTH_TIMEOUT) else { return None; };
     let _ = stream.set_read_timeout(Some(HEALTH_TIMEOUT));
     let _ = stream.set_write_timeout(Some(HEALTH_TIMEOUT));
-    if stream
-        .write_all(b"GET /health HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n")
-        .is_err()
-    {
-        return false;
-    }
-    let mut response = [0_u8; 64];
-    let Ok(read) = stream.read(&mut response) else {
-        return false;
-    };
-    response[..read].starts_with(b"HTTP/1.1 200") || response[..read].starts_with(b"HTTP/1.0 200")
+    let livez = b"GET /livez HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n";
+    if stream.write_all(livez).is_err() { return None; }
+    let mut response = Vec::new();
+    let mut chunk = [0u8; 4096];
+    while let Ok(read) = stream.read(&mut chunk) { if read == 0 { break; } response.extend_from_slice(&chunk[..read]); if response.len() > 64 * 1024 { return None; } }
+    let split = response.windows(4).position(|window| window == b"\r\n\r\n")?;
+    let header = std::str::from_utf8(&response[..split]).ok()?;
+    if header.lines().next()?.split_whitespace().nth(1)? != "200" { return None; }
+    let livez_body = response.get(split + 4..)?.to_vec();
+    let hints: serde_json::Value = serde_json::from_slice(&livez_body).ok()?;
+    let field = |name: &str| hints.get(name).and_then(serde_json::Value::as_str).filter(|value| !value.trim().is_empty()).map(str::to_owned);
+    let identity = LoopbackIdentityFields { installation_id: field("installationId")?, cortex_store_id: field("cortexStoreId")?, release_generation: field("releaseGeneration")?, startup_generation: hints.get("startupGeneration").and_then(serde_json::Value::as_u64)?, stable_install_root: field("stableInstallRoot")? };
+    let signer = LoopbackAuthSigner::from_hex_token(api_token).ok()?;
+    let nonce = LoopbackAuthSigner::generate_nonce().ok()?;
+    let expiry = LoopbackAuthSigner::bounded_expiry(now_unix_ms() / 1000, 10);
+    let headers = build_loopback_request_headers(&signer, &identity, "GET", "/health", "127.0.0.1", "", &[], nonce, expiry).ok()?;
+    let mut request = String::from("GET /health HTTP/1.1\r\n");
+    for (name, value) in headers { request.push_str(&format!("{name}: {value}\r\n")); }
+    request.push_str("\r\n");
+    let mut stream = TcpStream::connect_timeout(&address, HEALTH_TIMEOUT).ok()?;
+    stream.set_read_timeout(Some(HEALTH_TIMEOUT)).ok()?; stream.set_write_timeout(Some(HEALTH_TIMEOUT)).ok()?;
+    stream.write_all(request.as_bytes()).ok()?;
+    let mut response = Vec::new();
+    while let Ok(read) = stream.read(&mut chunk) { if read == 0 { break; } response.extend_from_slice(&chunk[..read]); if response.len() > 64 * 1024 { return None; } }
+    let split = response.windows(4).position(|window| window == b"\r\n\r\n")?;
+    let header = std::str::from_utf8(&response[..split]).ok()?;
+    let status = header.lines().next()?.split_whitespace().nth(1)?.parse::<u16>().ok()?;
+    if status != 200 && status != 503 { return None; }
+    let headers = header.lines().skip(1).map(|line| line.split_once(':').map(|(name,value)|(name.trim().to_ascii_lowercase(), value.trim().to_owned()))).collect::<Option<Vec<_>>>()?;
+    let length = headers.iter().find(|(name,_)| name == "content-length")?.1.parse::<usize>().ok()?;
+    let body = response.get(split+4..split+4+length)?;
+    let fields = LoopbackRequestFields { method: "GET".into(), target: "/health".into(), host: "127.0.0.1".into(), content_type: "".into(), body_sha256: Sha256::digest([]).into(), identity: identity.clone(), nonce, expiry_unix_secs: expiry };
+    Some(verify_loopback_response_headers(&signer, &headers, &fields, status, body, &identity, now_unix_ms() / 1000).is_ok()) */
 }
 
 fn stable_runtime_reason(error: &str) -> &'static str {
-    if error.contains("runtime.json") || error.contains("runtime identity") {
+    if error.contains("resident Blueprint") {
+        "daemon_blueprint_startup_failed"
+    } else if error.contains("runtime.json") || error.contains("runtime identity") {
         "daemon_runtime_config_unavailable"
     } else if error.contains("installation identity") || error.contains("installation manifest") {
         "daemon_identity_unavailable"

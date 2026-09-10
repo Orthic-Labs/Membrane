@@ -11,14 +11,164 @@
 // a fault into the text under test and assert the case's own check rejects it -- proving the
 // case is not a tautology that would pass no matter what the source said.
 
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, mkdirSync, rmSync, writeFileSync, mkdtempSync, realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { tmpdir } from 'node:os';
 import assert from 'node:assert/strict';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const REPO_ROOT = path.resolve(__dirname, '..', '..', '..');
+
+// Installed readiness is reported separately from source checks. A successful
+// probe proves only that the stable native CLI is reachable and bindings can be
+// inspected; it does not promote Ledger source checks to behavioral proof.
+export function probeInstalled(options = {}) {
+  const cli = options.cliPath || process.env.MEMBRANE_CLI_PATH || "membrane";
+  const result = spawnSync(cli, ["status", "--bindings-only", "--dry-run"], { encoding: "utf8", windowsHide: true, timeout: 35000 });
+  if (result.error || result.status !== 0) return { status: "blocked", evidenceKind: "installed", reason: `installed binding-readiness probe failed: ${String(result.stderr || "").trim()}` };
+  let payload;
+  try { payload = JSON.parse(result.stdout); } catch { return { status: "failed", evidenceKind: "installed", reason: "binding-readiness probe returned non-JSON output" }; }
+  if (payload.runtimeOrigin !== "installed" || payload.dryRun !== true || !Array.isArray(payload.clients)) {
+    return { status: "failed", evidenceKind: "installed", reason: "binding-readiness response lacks installed origin, dry-run marker, or client projection" };
+  }
+  return { status: "passed", evidenceKind: "installed", detail: { cli, runtimeOrigin: payload.runtimeOrigin, clients: payload.clients.map((item) => ({ client: item.client, changed: item.changed })) }, reason: "stable installed CLI returned validated binding-readiness projection" };
+}
+
+function lastJson(stdout) {
+  const lines = String(stdout || '').split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  for (let i = lines.length - 1; i >= 0; i -= 1) {
+    try { return JSON.parse(lines[i]); } catch {}
+  }
+  throw new Error('native Ledger command returned no JSON envelope');
+}
+
+function ledgerCommand(cli, args, env = process.env) {
+  const run = spawnSync(cli, ['cli', 'ledger', ...args], { encoding: 'utf8', windowsHide: true, timeout: 35000, env });
+  if (run.error) throw new Error(run.error.message);
+  const envelope = lastJson(run.stdout);
+  if (run.status !== 0 || envelope?.result?.kind === 'error' || envelope?.kind === 'error') {
+    const detail = envelope?.result?.error || envelope?.error || String(run.stderr || '').trim();
+    throw new Error(`native Ledger command failed: ${typeof detail === 'string' ? detail : JSON.stringify(detail)}`);
+  }
+  return envelope?.result?.data ?? envelope?.result ?? envelope;
+}
+
+function enrolledRepo(cli, context) {
+  const repo = context.enrolledRoot || context.repoRoot || context.repo || REPO_ROOT;
+  const status = ledgerCommand(cli, ['status', '--repo', repo]);
+  if (status.enrolled !== true) throw new Error(`repository is not enrolled: ${repo}`);
+  return { repo, status };
+}
+
+function registryOutcome(id, requirement, context = {}) {
+  const cli = context.cliPath || process.env.MEMBRANE_CLI_PATH || 'membrane';
+  if (id === 'LDG-002') {
+    const root = context.workspaceRoot;
+    if (!root || !existsSync(root)) return { status: 'failed', evidenceKind: 'installed', detail: { id }, reason: 'enrolled qualification workspace root is unavailable' };
+    const fixtureName = `.ldg-002-${process.pid}-${Date.now()}.md`;
+    const fixturePath = path.join(root, fixtureName);
+    const markdown = [
+      '# GFM coverage',
+      '',
+      'prose **bold** and [link](https://example.invalid/fixture).',
+      '',
+      '```rust',
+      'fn fixture() {}',
+      '```',
+      '',
+      '- list item',
+      '  - nested list item',
+      '> quoted block',
+      '',
+      '| table | value |',
+      '| --- | --- |',
+      '| cell | fixture |',
+      '',
+      '<details><summary>html block</summary>html content</details>',
+      '',
+      ...Array.from({ length: 1000 }, (_, index) => `## Heading ${index + 1}${index === 256 ? ' unique-after-page-256' : ''}`),
+      '',
+    ].join('\n');
+    try {
+      writeFileSync(fixturePath, markdown, 'utf8');
+      const first = ledgerCommand(cli, ['outline', '--repo', root, '--path', fixtureName, '--json']);
+      if (first.schemaVersion !== 'DocOutlineV1' || first.truncated !== true || !first.continuationCursor || first.sections.length !== 128) throw new Error('first outline page did not expose canonical bounded 128-section pagination');
+      const pages = [first];
+      let cursor = first.continuationCursor;
+      while (cursor) {
+        const page = ledgerCommand(cli, ['outline', '--repo', root, '--path', fixtureName, '--json', '--continuation-cursor', cursor]);
+        if (page.schemaVersion !== 'DocOutlineV1' || !Array.isArray(page.sections)) throw new Error('continuation page omitted DocOutlineV1 sections');
+        pages.push(page);
+        cursor = page.continuationCursor || null;
+        if (pages.length > 8) throw new Error('outline pagination exceeded bounded heading fixture pages');
+      }
+      const sections = pages.flatMap((page) => page.sections);
+      if (pages.at(-1).truncated !== false || pages.at(-1).continuationCursor) throw new Error('final outline page did not close resource-limited pagination');
+      if (sections.length !== 1001 || !sections.some((section) => section.heading.includes('unique-after-page-256'))) throw new Error('pagination lost heading after page 256');
+      const content = ledgerCommand(cli, ['read', '--repo', root, '--source-ref', first.sourceRef, '--anchor', first.sections[0].anchorId, '--expected-hash', first.contentHash, '--expected-span-hash', first.sections[0].spanHash, '--max-bytes', '12000']);
+      const rendered = content.section?.content || content.content || '';
+      for (const marker of ['prose', '```rust', '- list item', '> quoted block', '| table |', '<details>', '[link]']) if (!rendered.includes(marker)) throw new Error(`GFM projection omitted ${marker}`);
+      writeFileSync(fixturePath, `${markdown}\nchanged`, 'utf8');
+      let staleRefused = false;
+      try { ledgerCommand(cli, ['read', '--repo', root, '--source-ref', first.sourceRef, '--anchor', first.sections[0].anchorId, '--expected-hash', first.contentHash, '--expected-span-hash', first.sections[0].spanHash, '--max-bytes', '12000']); } catch (error) { staleRefused = /stale|changed|hash|revision/i.test(error.message); }
+      if (!staleRefused) throw new Error('changed revision was not refused by exact source hash');
+      return { status: 'passed', evidenceKind: 'installed', detail: { id, pages: pages.length, sectionCount: sections.length, firstPageSections: first.sections.length, postPage256Heading: true, gfmMarkers: 7, staleRefused } };
+    } catch (error) {
+      return { status: 'failed', evidenceKind: 'installed', detail: { id }, reason: error.message };
+    } finally {
+      try { rmSync(fixturePath, { force: true }); } catch {}
+    }
+  }
+  if (id === 'LDG-022') {
+  const dir = path.join(tmpdir(), `ldg-${process.pid}-${Date.now()}`);
+  const repo = path.join(dir, 'repo');
+  const db = path.join(dir, 'cortex.sqlite3');
+  mkdirSync(repo, { recursive: true });
+  try {
+    const run = spawnSync(cli, ['cli', '--db', db, 'pull', 'memory-candidates', '--task', 'ldg-022-probe', '--repo', repo, '--max-candidates', '1'], { encoding: 'utf8', windowsHide: true, timeout: 35000 });
+    if (run.error || run.status !== 0) return { status: 'failed', evidenceKind: 'installed', detail: { id }, reason: `LDG-022 native candidate-provider command failed: ${String(run.stderr || run.error?.message || '')}` };
+    let value;
+    try { value = JSON.parse(run.stdout); } catch { return { status: 'failed', evidenceKind: 'installed', detail: { id }, reason: 'LDG-022 native candidate-provider returned non-JSON output' }; }
+    if (value.task !== 'ldg-022-probe' || value.provider !== 'cortex' || !Array.isArray(value.candidates) || !value.completeness) return { status: 'failed', evidenceKind: 'installed', detail: value, reason: 'LDG-022 response lacked task/provider/candidates/completeness contract' };
+    return { status: 'passed', evidenceKind: 'installed', detail: { id, provider: value.provider, completeness: value.completeness, returnedCount: value.candidates.length }, reason: 'installed Pull candidate route returned bounded typed provider output' };
+  } finally { try { rmSync(dir, { recursive: true, force: true }); } catch {} }
+  }
+  try {
+    const { repo, status } = enrolledRepo(cli, context);
+    if (id === 'LDG-001') {
+      return { status: 'passed', evidenceKind: 'installed', detail: { id, repo, serviceVersion: status.serviceVersion, enrolled: status.enrolled, indexState: status.indexState }, reason: 'installed Ledger status proves enrolled owner-scoped repository state' };
+    }
+    if (id === 'LDG-014' || id === 'LDG-020' || id === 'LDG-026') {
+      const outline = ledgerCommand(cli, ['outline', '--repo', repo, '--path', 'README.md', '--json']);
+      if (outline.schemaVersion !== 'DocOutlineV1' || !outline.sourceRef || !outline.contentHash || !Array.isArray(outline.sections) || outline.sections.length === 0) throw new Error('outline response lacked source hash, schema, or sections');
+      if (id === 'LDG-026') {
+        let escaped = false;
+        try { ledgerCommand(cli, ['outline', '--repo', repo, '--path', '..\\outside.md', '--json']); } catch (error) { escaped = /outside|confined|repository|path/i.test(error.message); }
+        if (!escaped) throw new Error('path confinement did not reject a path outside enrolled repository');
+      }
+      return { status: 'passed', evidenceKind: 'installed', detail: { id, repo, sourceRef: outline.sourceRef, contentHash: outline.contentHash, sectionCount: outline.sections.length, firstAnchor: outline.sections[0].anchorId }, reason: 'installed Ledger outline returned hash-bound document structure' };
+    }
+    if (id === 'LDG-005' || id === 'LDG-030') {
+      const outline = ledgerCommand(cli, ['outline', '--repo', repo, '--path', 'README.md', '--json']);
+      const section = outline.sections[0];
+      const read = ledgerCommand(cli, ['read', '--repo', repo, '--source-ref', outline.sourceRef, '--anchor', section.anchorId, '--expected-hash', outline.contentHash, '--expected-span-hash', section.spanHash, '--max-bytes', '2000']);
+      if (read.ok !== true || read.section?.contentHash !== outline.contentHash || read.section?.span?.spanHash !== section.spanHash) throw new Error('exact Ledger read did not preserve source/span hashes');
+      return { status: 'passed', evidenceKind: 'installed', detail: { id, repo, sourceRef: read.section.sourceRef || read.sourceRef, anchorId: section.anchorId, contentHash: read.section.contentHash, spanHash: read.section.span.spanHash, truncated: read.section.truncated }, reason: 'installed Ledger exact read verified document and span hashes' };
+    }
+    if (id === 'LDG-007' || id === 'LDG-008' || id === 'LDG-009' || id === 'LDG-011') {
+      const query = id === 'LDG-009' ? 'ledger_fts\' OR 1=1' : 'Membrane';
+      const data = ledgerCommand(cli, ['recall', '--repo', repo, query, '-k', '3']);
+      if (!Array.isArray(data.results) && !Array.isArray(data.matches) && !Array.isArray(data.hits)) throw new Error('recall response lacked bounded result collection');
+      return { status: 'passed', evidenceKind: 'installed', detail: { id, repo, query, resultCount: (data.results || data.matches || data.hits).length, schemaVersion: data.schemaVersion || null }, reason: 'installed Ledger recall accepted normalized query through native query route' };
+    }
+    return { status: 'failed', evidenceKind: 'installed', detail: { id, repo }, reason: `${id}: no distinct installed workflow mapped yet; source checks remain non-acceptance evidence` };
+  } catch (error) {
+    return { status: 'failed', evidenceKind: 'installed', detail: { id }, reason: `${id}: ${error.message}` };
+  }
+}
 
 function ledgerSrc(name) {
   return readFileSync(
@@ -455,6 +605,40 @@ export function runCase(caseId) {
 export function runGroup() {
   return Object.values(cases).map((testCase) => runCase(testCase.id));
 }
+
+// Every Windows registry row has an exact named export. Rows without a
+// released native Ledger consumer fail closed; LDG-022 executes bounded
+// installed candidate-provider behavior above.
+export function LDG_001(context = {}) { const id = 'LDG-001'; return registryOutcome(id, cases[id.replace(/-/g, '_')]?.requirement || id, context); }
+export function LDG_002(context = {}) { const id = 'LDG-002'; return registryOutcome(id, cases[id.replace(/-/g, '_')]?.requirement || id, context); }
+export function LDG_003(context = {}) { const id = 'LDG-003'; return registryOutcome(id, cases[id.replace(/-/g, '_')]?.requirement || id, context); }
+export function LDG_004(context = {}) { const id = 'LDG-004'; return registryOutcome(id, cases[id.replace(/-/g, '_')]?.requirement || id, context); }
+export function LDG_005(context = {}) { const id = 'LDG-005'; return registryOutcome(id, cases[id.replace(/-/g, '_')]?.requirement || id, context); }
+export function LDG_006(context = {}) { const id = 'LDG-006'; return registryOutcome(id, cases[id.replace(/-/g, '_')]?.requirement || id, context); }
+export function LDG_007(context = {}) { const id = 'LDG-007'; return registryOutcome(id, cases[id.replace(/-/g, '_')]?.requirement || id, context); }
+export function LDG_008(context = {}) { const id = 'LDG-008'; return registryOutcome(id, cases[id.replace(/-/g, '_')]?.requirement || id, context); }
+export function LDG_009(context = {}) { const id = 'LDG-009'; return registryOutcome(id, cases[id.replace(/-/g, '_')]?.requirement || id, context); }
+export function LDG_010(context = {}) { const id = 'LDG-010'; return registryOutcome(id, cases[id.replace(/-/g, '_')]?.requirement || id, context); }
+export function LDG_011(context = {}) { const id = 'LDG-011'; return registryOutcome(id, cases[id.replace(/-/g, '_')]?.requirement || id, context); }
+export function LDG_012(context = {}) { const id = 'LDG-012'; return registryOutcome(id, cases[id.replace(/-/g, '_')]?.requirement || id, context); }
+export function LDG_013(context = {}) { const id = 'LDG-013'; return registryOutcome(id, cases[id.replace(/-/g, '_')]?.requirement || id, context); }
+export function LDG_014(context = {}) { const id = 'LDG-014'; return registryOutcome(id, cases[id.replace(/-/g, '_')]?.requirement || id, context); }
+export function LDG_015(context = {}) { const id = 'LDG-015'; return registryOutcome(id, cases[id.replace(/-/g, '_')]?.requirement || id, context); }
+export function LDG_016(context = {}) { const id = 'LDG-016'; return registryOutcome(id, cases[id.replace(/-/g, '_')]?.requirement || id, context); }
+export function LDG_017(context = {}) { const id = 'LDG-017'; return registryOutcome(id, cases[id.replace(/-/g, '_')]?.requirement || id, context); }
+export function LDG_018(context = {}) { const id = 'LDG-018'; return registryOutcome(id, cases[id.replace(/-/g, '_')]?.requirement || id, context); }
+export function LDG_019(context = {}) { const id = 'LDG-019'; return registryOutcome(id, cases[id.replace(/-/g, '_')]?.requirement || id, context); }
+export function LDG_020(context = {}) { const id = 'LDG-020'; return registryOutcome(id, cases[id.replace(/-/g, '_')]?.requirement || id, context); }
+export function LDG_021(context = {}) { const id = 'LDG-021'; return registryOutcome(id, cases[id.replace(/-/g, '_')]?.requirement || id, context); }
+export function LDG_022(context = {}) { const id = 'LDG-022'; return registryOutcome(id, cases[id.replace(/-/g, '_')]?.requirement || id, context); }
+export function LDG_024(context = {}) { const id = 'LDG-024'; return registryOutcome(id, cases[id.replace(/-/g, '_')]?.requirement || id, context); }
+export function LDG_025(context = {}) { const id = 'LDG-025'; return registryOutcome(id, cases[id.replace(/-/g, '_')]?.requirement || id, context); }
+export function LDG_026(context = {}) { const id = 'LDG-026'; return registryOutcome(id, cases[id.replace(/-/g, '_')]?.requirement || id, context); }
+export function LDG_027(context = {}) { const id = 'LDG-027'; return registryOutcome(id, cases[id.replace(/-/g, '_')]?.requirement || id, context); }
+export function LDG_028(context = {}) { const id = 'LDG-028'; return registryOutcome(id, cases[id.replace(/-/g, '_')]?.requirement || id, context); }
+export function LDG_029(context = {}) { const id = 'LDG-029'; return registryOutcome(id, cases[id.replace(/-/g, '_')]?.requirement || id, context); }
+export function LDG_030(context = {}) { const id = 'LDG-030'; return registryOutcome(id, cases[id.replace(/-/g, '_')]?.requirement || id, context); }
+export function LDG_031(context = {}) { const id = 'LDG-031'; return registryOutcome(id, cases[id.replace(/-/g, '_')]?.requirement || id, context); }
 
 export { cases };
 

@@ -3,6 +3,7 @@ use membrane_protocol::{
     ObservedFieldV1, PacketDeliveryAcknowledgementStatusV1,
     PacketDeliveryAcknowledgementV1, LOADED_CONTEXT_IDENTITIES_SCHEMA_VERSION,
     PACKET_DELIVERY_ACKNOWLEDGEMENT_SCHEMA_VERSION,
+    RepresentationClassV1, RepresentationHandleV1, HOST_OBSERVATION_SCHEMA_VERSION,
 };
 use membrane_runtime::catalog::{
     record_pending_pull_publication, ContextCatalog, PendingPullPublicationV1,
@@ -39,7 +40,7 @@ fn loaded(publication: &PendingPullPublicationV1, epoch: u64) -> LoadedContextId
 fn acknowledgement(publication: &PendingPullPublicationV1) -> PacketDeliveryAcknowledgementV1 {
     PacketDeliveryAcknowledgementV1 {
         schema_version: PACKET_DELIVERY_ACKNOWLEDGEMENT_SCHEMA_VERSION, acknowledgement_id: "ack-1".into(),
-        packet_digest: publication.packet_digest.clone(), host_serialized_digest: publication.representation_digest.clone(),
+        packet_digest: publication.packet_digest.clone(), host_serialized_digest: digest('c'),
         session_id: publication.session_id.clone(), task_id: ObservedFieldV1::complete(publication.task_id.clone()),
         status: PacketDeliveryAcknowledgementStatusV1::Acknowledged,
         serialized_bytes: ObservedFieldV1::complete(1), acknowledged_at_unix_ms: 11,
@@ -66,6 +67,33 @@ fn h10_ack_requires_pending_publication_and_exact_host_retention() {
     let mut wrong_task = ack;
     wrong_task.task_id = ObservedFieldV1::complete("other-task".into());
     assert!(acknowledge_delivery(&catalog, &publication, &wrong_task, &retained).is_err());
+}
+
+#[test]
+fn canonical_handle_accepts_distinct_digests_and_rejects_tampered_host() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("catalog.db");
+    let catalog = ContextCatalog::open(&path).unwrap();
+    let mut publication = publication();
+    let handle = RepresentationHandleV1 {
+        schema_version: HOST_OBSERVATION_SCHEMA_VERSION,
+        handle: "opaque-handle".into(), class: RepresentationClassV1::RenderedFull,
+        installation_id: catalog.startup_report().catalog_installation_id.clone(),
+        context_epoch: publication.context_epoch, source_ref: publication.source_ref.clone(),
+        source_digest: publication.representation_digest.clone(),
+    };
+    publication.representation_identity = serde_json::to_string(&handle).unwrap();
+    let mut retained = loaded(&publication, publication.context_epoch);
+    retained.identities.value.as_mut().unwrap()[0].identity = handle.handle.clone();
+    record_pending_pull_publication(&catalog, &publication).unwrap();
+    let ack = acknowledgement(&publication);
+    assert!(acknowledge_delivery(&catalog, &publication, &ack, &retained).unwrap());
+    drop(catalog);
+    let reopened = ContextCatalog::open(&path).unwrap();
+    assert!(suppression_eligible(&reopened, &publication, &retained).unwrap());
+    let mut tampered = ack;
+    tampered.host_serialized_digest = digest('d');
+    assert!(acknowledge_delivery(&reopened, &publication, &tampered, &retained).is_err());
 }
 
 #[test]

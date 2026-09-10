@@ -190,17 +190,35 @@ fn main() {
         .setup(|app| {
             // The native tray launches this process with one inherited pipe.
             // The parser retains endpoint/token only in native state; setup
-            // never places either value in JS, an env var, or a file.
-            let connection = DashboardConnectionState::from_stdin();
-            app.manage(Arc::new(Mutex::new(connection)));
+            // derives the installed identity from authenticated health, then
+            // acquires this process's Hub lease before exposing the window.
+            let state = Arc::new(Mutex::new(
+                DashboardConnectionState::from_stdin()
+                    .acquire_holder()
+                    .map_err(std::io::Error::other)?,
+            ));
+            app.manage(Arc::clone(&state));
             // Dashboard is intentionally visible on process launch. A tray
             // action owns process creation; this setup owns no startup route.
-            let _ = show_dashboard(app.handle());
+            if let Err(error) = show_dashboard(app.handle()) {
+                if let Ok(mut state) = state.lock() {
+                    state.release_once();
+                }
+                return Err(std::io::Error::other(error).into());
+            }
             Ok(())
         })
         .build(tauri::generate_context!())
         .expect("build Membrane Hub dashboard")
-        .run(|_, _| {});
+        .run(|app, event| {
+            if matches!(event, tauri::RunEvent::Exit) {
+                if let Some(state) = app.try_state::<ConnectionState>() {
+                    if let Ok(mut state) = state.inner().lock() {
+                        state.release_once();
+                    }
+                }
+            }
+        });
 }
 
 #[cfg(test)]
@@ -291,7 +309,9 @@ mod tests {
         assert!(!manifest.contains("membrane-runtime"));
         assert!(!manifest.contains("tray-icon"));
         assert!(production.contains("startup_owned_by_tray"));
-        assert!(production.contains("let _ = show_dashboard(app.handle())"));
+        assert!(production.contains(".acquire_holder()"));
+        assert!(production.contains("if let Err(error) = show_dashboard(app.handle())"));
+        assert!(production.contains("state.release_once()"));
     }
 
     #[test]

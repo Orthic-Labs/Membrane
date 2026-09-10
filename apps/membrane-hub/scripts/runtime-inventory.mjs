@@ -52,6 +52,9 @@ function treeDigest(root) {
 const WINDOWS_TARGET = "x86_64-pc-windows-msvc";
 const MACOS_ARM64_TARGET = "aarch64-apple-darwin";
 const SUPPORTED_TARGETS = new Set([WINDOWS_TARGET, MACOS_ARM64_TARGET]);
+const EMBED_ASSET_ROOT = process.env.MEMBRANE_EMBED_ASSET_ROOT
+  ? resolve(process.env.MEMBRANE_EMBED_ASSET_ROOT)
+  : resolve(hub, "../../../coderight/apps/coderight-tauri/src-tauri");
 const EXTERNAL_BINARIES = new Map([
   ["membrane-command", "membrane"],
   ["cortex-cli", "cortex"],
@@ -82,6 +85,8 @@ export const RUNTIME_SPECS = [
   // On-demand dashboard only projects authenticated daemon state.
   { id: "adapt-contract", component: "adapt", axis: "adapt", delivery: "resource", path: "../../schemas/operations/membrane-feedback.v1.schema.json", invocation: "daemon-native" },
   { id: "runtime-schemas", component: "membrane-schemas", delivery: "resource", path: "../../schemas", tree: true, extensions: [".json", ".yaml", ".yml"] },
+  { id: "semantic-embed-model", component: "semantic-embed-model", delivery: "resource", path: relative(hub, join(EMBED_ASSET_ROOT, "resources/embed-model")), tree: true, targets: [WINDOWS_TARGET] },
+  { id: "semantic-embed-runtime", component: "semantic-embed-runtime", delivery: "resource", path: relative(hub, join(EMBED_ASSET_ROOT, "resources/runtime/onnxruntime.dll")), targets: [WINDOWS_TARGET] },
   { id: "license-membrane", component: "license", delivery: "resource", path: "../../LICENSE" },
   { id: "hub-icons", component: "icons", delivery: "tauriBundle", path: "src-tauri/icons", tree: true },
 ];

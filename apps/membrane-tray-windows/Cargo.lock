@@ -3109,6 +3109,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "h2"
+version = "0.4.19"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ef8e5e5a340588f4452631496976cf8636d4a7ecf600239fdc27615d2530bc16"
+dependencies = [
+ "atomic-waker",
+ "bytes",
+ "fnv",
+ "futures-core",
+ "futures-sink",
+ "http",
+ "indexmap",
+ "slab",
+ "tokio",
+ "tokio-util",
+ "tracing",
+]
+
+[[package]]
 name = "half"
 version = "2.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3284,6 +3303,7 @@ dependencies = [
  "bytes",
  "futures-channel",
  "futures-core",
+ "h2",
  "http",
  "http-body",
  "httparse",
@@ -4538,6 +4558,7 @@ dependencies = [
  "flate2",
  "getrandom 0.4.3",
  "hex",
+ "hyper-util",
  "ignore",
  "membrane-adapt",
  "membrane-blueprint",
@@ -4589,10 +4610,12 @@ dependencies = [
  "getrandom 0.4.3",
  "image",
  "membrane-blueprint",
+ "membrane-client",
  "membrane-protocol",
  "membrane-runtime",
  "raw-window-handle",
  "serde_json",
+ "sha2",
  "slint",
  "slint-build",
  "tray-icon",
@@ -7388,6 +7411,7 @@ dependencies = [
  "bytes",
  "futures-core",
  "futures-sink",
+ "libc",
  "pin-project-lite",
  "tokio",
 ]

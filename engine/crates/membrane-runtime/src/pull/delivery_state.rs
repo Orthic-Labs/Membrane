@@ -233,7 +233,7 @@ mod tests {
             schema_version: PACKET_DELIVERY_ACKNOWLEDGEMENT_SCHEMA_VERSION,
             acknowledgement_id: "ack-1".into(),
             packet_digest: publication.packet_digest.clone(),
-            host_serialized_digest: publication.representation_digest.clone(),
+            host_serialized_digest: digest('c'),
             session_id: publication.session_id.clone(),
             task_id: ObservedFieldV1::complete(publication.task_id.clone()),
             status: PacketDeliveryAcknowledgementStatusV1::Acknowledged,

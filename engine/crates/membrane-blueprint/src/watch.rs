@@ -12,8 +12,10 @@ use std::time::{Duration, Instant};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+use crate::api::CancellationToken;
 use crate::contracts::BarrierResult;
 use crate::freshness::{content_digest, stable_read_with_limit, StableReadError, MAX_SOURCE_FILE_BYTES};
+use crate::graph::{is_canonical_ignored_dir, is_canonical_ignored_file};
 
 pub const DEFAULT_MAX_FILES: usize = 100_000;
 pub const DEFAULT_MAX_SNAPSHOT_BYTES: u64 = 256 * 1024 * 1024;
@@ -48,6 +50,8 @@ impl SnapshotConfig {
 
 #[derive(Debug, Error)]
 pub enum SnapshotError {
+    #[error("snapshot cancelled")]
+    Cancelled,
     #[error("snapshot root is unavailable: {0}")]
     Root(#[from] std::io::Error),
     #[error("snapshot escaped repository root: {0}")]
@@ -69,6 +73,8 @@ pub struct SnapshotEntry {
     pub size: u64,
     pub modified_ns: Option<u128>,
     pub digest: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -98,8 +104,6 @@ fn normalized_relative(path: &Path) -> Option<String> {
 }
 
 fn excluded(relative: &str, config: &SnapshotConfig) -> bool {
-    let parts = relative.split('/').collect::<Vec<_>>();
-    if parts.iter().any(|part| *part == ".git" || *part == ".agent") { return true; }
     config.exclusions.iter().any(|prefix| relative == prefix || relative.starts_with(&format!("{prefix}/")))
 }
 
@@ -116,10 +120,12 @@ fn metadata_modified_ns(metadata: &Metadata) -> Option<u128> {
     metadata.modified().ok()?.duration_since(std::time::SystemTime::UNIX_EPOCH).ok().map(|v| v.as_nanos())
 }
 
-fn walk(root: &Path, current: &Path, config: &SnapshotConfig, output: &mut Vec<SnapshotEntry>, bytes: &mut u64) -> Result<(), SnapshotError> {
+fn walk(root: &Path, current: &Path, config: &SnapshotConfig, output: &mut Vec<SnapshotEntry>, bytes: &mut u64, cancellation: &CancellationToken) -> Result<(), SnapshotError> {
+    if cancellation.is_cancelled() { return Err(SnapshotError::Cancelled); }
     let mut children = fs::read_dir(current)?.collect::<Result<Vec<_>, _>>()?;
     children.sort_by(|left, right| left.file_name().cmp(&right.file_name()));
     for child in children {
+        if cancellation.is_cancelled() { return Err(SnapshotError::Cancelled); }
         let path = child.path();
         let relative = path.strip_prefix(root).ok().and_then(normalized_relative);
         let Some(relative) = relative else { continue; };
@@ -129,32 +135,42 @@ fn walk(root: &Path, current: &Path, config: &SnapshotConfig, output: &mut Vec<S
         if file_type.is_symlink() { continue; }
         let metadata = child.metadata()?;
         if file_type.is_dir() {
+            if relative.split('/').any(is_canonical_ignored_dir) { continue; }
             if output.len() as u64 >= config.max_files as u64 { return Err(SnapshotError::Limit { kind: "entries", actual: output.len() as u64 + 1, limit: config.max_files as u64 }); }
-            output.push(SnapshotEntry { path: relative.clone(), kind: EntryKind::Directory, size: 0, modified_ns: metadata_modified_ns(&metadata), digest: None });
-            walk(root, &path, config, output, bytes)?;
+            output.push(SnapshotEntry { path: relative.clone(), kind: EntryKind::Directory, size: 0, modified_ns: metadata_modified_ns(&metadata), digest: None, reason: None });
+            walk(root, &path, config, output, bytes, cancellation)?;
         } else if file_type.is_file() {
             if output.len() as u64 >= config.max_files as u64 { return Err(SnapshotError::Limit { kind: "entries", actual: output.len() as u64 + 1, limit: config.max_files as u64 }); }
-            if metadata.len() > config.max_file_bytes { return Err(SnapshotError::Limit { kind: "file_bytes", actual: metadata.len(), limit: config.max_file_bytes }); }
+            if is_canonical_ignored_file(&relative, &child.file_name().to_string_lossy()) { continue; }
+            if metadata.len() > config.max_file_bytes {
+                output.push(SnapshotEntry { path: relative, kind: EntryKind::File, size: metadata.len(), modified_ns: metadata_modified_ns(&metadata), digest: None, reason: Some(format!("unsupported:file_bytes:{}>limit:{}", metadata.len(), config.max_file_bytes)) });
+                continue;
+            }
             *bytes = bytes.saturating_add(metadata.len());
             if *bytes > config.max_bytes { return Err(SnapshotError::Limit { kind: "snapshot_bytes", actual: *bytes, limit: config.max_bytes }); }
             let read = stable_read_with_limit(&path, config.max_file_bytes).map_err(|source| SnapshotError::Read { path: relative.clone().into(), source })?;
-            output.push(SnapshotEntry { path: relative, kind: EntryKind::File, size: read.bytes.len() as u64, modified_ns: metadata_modified_ns(&metadata), digest: Some(read.content_digest) });
+            if cancellation.is_cancelled() { return Err(SnapshotError::Cancelled); }
+            output.push(SnapshotEntry { path: relative, kind: EntryKind::File, size: read.bytes.len() as u64, modified_ns: metadata_modified_ns(&metadata), digest: Some(read.content_digest), reason: None });
         }
     }
     Ok(())
 }
 
 pub fn snapshot(config: &SnapshotConfig) -> Result<Snapshot, SnapshotError> {
+    snapshot_with_cancellation(config, &CancellationToken::new())
+}
+
+pub fn snapshot_with_cancellation(config: &SnapshotConfig, cancellation: &CancellationToken) -> Result<Snapshot, SnapshotError> {
     let root = canonical_root(&config.root)?;
     let mut entries = Vec::new();
     let mut bytes = 0;
-    walk(&root, &root, config, &mut entries, &mut bytes)?;
+    walk(&root, &root, config, &mut entries, &mut bytes, cancellation)?;
     entries.sort_by(|left, right| left.path.as_bytes().cmp(right.path.as_bytes()));
     let mut canonical = Vec::new();
     for entry in &entries {
         canonical.extend_from_slice(entry.path.as_bytes());
         canonical.push(0);
-        canonical.extend_from_slice(format!("{:?}:{}:{}:{}\n", entry.kind, entry.size, entry.modified_ns.unwrap_or(0), entry.digest.as_deref().unwrap_or("")).as_bytes());
+        canonical.extend_from_slice(format!("{:?}:{}:{}:{}:{}\n", entry.kind, entry.size, entry.modified_ns.unwrap_or(0), entry.digest.as_deref().unwrap_or(""), entry.reason.as_deref().unwrap_or("")).as_bytes());
     }
     Ok(Snapshot { entries, fingerprint: content_digest(&canonical) })
 }
@@ -260,7 +276,11 @@ pub struct NativeWatcher {
 
 impl NativeWatcher {
     pub fn start(config: SnapshotConfig) -> Result<Self, WatchError> {
-        let initial = snapshot(&config)?;
+        Self::start_with_cancellation(config, &CancellationToken::new())
+    }
+
+    pub fn start_with_cancellation(config: SnapshotConfig, cancellation: &CancellationToken) -> Result<Self, WatchError> {
+        let initial = snapshot_with_cancellation(&config, cancellation)?;
         let mut watcher = Self { config, previous: initial, source_clock: 0, applied_clock: 0, gap: None, closed: false, sequence: 0, clock: Arc::new(SteadyClock::new()), sink: None };
         watcher.emit("started", None);
         Ok(watcher)
@@ -276,10 +296,15 @@ impl NativeWatcher {
 
     /// Polling is the reconciliation truth. A callback is only a rebuild hint;
     /// it cannot approve Phase 2 or mutate semantic policy.
-    pub fn poll<F>(&mut self, mut schedule_rebuild: F) -> Result<Vec<WatchEvent>, WatchError>
+    pub fn poll<F>(&mut self, schedule_rebuild: F) -> Result<Vec<WatchEvent>, WatchError>
+    where F: FnMut(&WatchEvent) -> Result<(), String> {
+        self.poll_with_cancellation(schedule_rebuild, &CancellationToken::new())
+    }
+
+    pub fn poll_with_cancellation<F>(&mut self, mut schedule_rebuild: F, cancellation: &CancellationToken) -> Result<Vec<WatchEvent>, WatchError>
     where F: FnMut(&WatchEvent) -> Result<(), String> {
         if self.closed { return Err(WatchError::Shutdown); }
-        let current = match snapshot(&self.config) {
+        let current = match snapshot_with_cancellation(&self.config, cancellation) {
             Ok(current) => current,
             Err(error) => {
                 self.gap = Some(EventGap { reason: GapReason::SnapshotFailed, source_clock: self.source_clock });
@@ -347,5 +372,36 @@ impl NativeWatcher {
         if let Some(sink) = &self.sink {
             sink.observe(LifecycleObservation { sequence: self.sequence, kind: kind.to_owned(), source_clock: self.source_clock, applied_clock: self.applied_clock, detail });
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn snapshot_ignores_generated_payloads_but_reports_oversized_source() {
+        let root = tempfile::tempdir().unwrap();
+        fs::create_dir_all(root.path().join("target")).unwrap();
+        fs::write(root.path().join("target/payload.bin"), vec![b'x'; 3 * 1024 * 1024]).unwrap();
+        fs::write(root.path().join("src.rs"), "fn first() {}\n").unwrap();
+        fs::write(root.path().join("large.rs"), vec![b'x'; 2 * 1024 * 1024 + 1]).unwrap();
+        let current = snapshot(&SnapshotConfig::new(root.path())).unwrap();
+        assert!(current.entries.iter().all(|entry| !entry.path.starts_with("target/")));
+        let large = current.entries.iter().find(|entry| entry.path == "large.rs").unwrap();
+        assert_eq!(large.digest, None);
+        assert!(large.reason.as_deref().unwrap().starts_with("unsupported:file_bytes:"));
+    }
+
+    #[test]
+    fn snapshot_edit_reconciles_real_source_file() {
+        let root = tempfile::tempdir().unwrap();
+        let source = root.path().join("src.rs");
+        fs::write(&source, "fn first() {}\n").unwrap();
+        let before = snapshot(&SnapshotConfig::new(root.path())).unwrap();
+        fs::write(&source, "fn second() {}\n").unwrap();
+        let after = snapshot(&SnapshotConfig::new(root.path())).unwrap();
+        let events = reconcile_snapshots(&before, &after, 0);
+        assert_eq!(events.iter().filter(|event| event.path == "src.rs" && event.kind == EventKind::Modify).count(), 1);
     }
 }

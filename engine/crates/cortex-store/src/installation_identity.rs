@@ -5,6 +5,7 @@
 //! synchronizer share one N-machine identity contract.
 
 use serde::{Deserialize, Serialize};
+use sha2::Digest;
 use std::collections::BTreeSet;
 use std::fs::{self, File, OpenOptions};
 use std::io::{Seek, SeekFrom, Write};
@@ -471,6 +472,33 @@ pub(crate) fn atomic_replace(path: &Path, data: &[u8]) -> Result<(), Installatio
     result
 }
 
+/// Execute a credential/identity migration while holding the same OS lock used
+/// by startup claims. The lock path is derived from `path`, so every owner
+/// shares one cross-process primitive.
+pub fn with_identity_lock<T>(path: &Path, operation: impl FnOnce() -> Result<T, InstallationIdentityError>) -> Result<T, InstallationIdentityError> {
+    let _lock = IdentityLock::acquire(path)?;
+    operation()
+}
+
+/// Compare the current file bytes by SHA-256, then publish atomically only if
+/// they are unchanged. Caller must hold `with_identity_lock` for the full
+/// read/modify/write sequence.
+pub fn atomic_replace_prepared_if_fingerprint(
+    path: &Path,
+    expected_sha256: &str,
+    candidate: &Path,
+) -> Result<bool, InstallationIdentityError> {
+    let current = fs::read(path).map_err(|error| io_error("read compare-and-replace target", path, error))?;
+    let actual = hex::encode(sha2::Sha256::digest(&current));
+    if actual != expected_sha256 {
+        return Ok(false);
+    }
+    replace_file(candidate, path)?;
+    if let Some(parent) = path.parent() { sync_directory(parent)?; }
+    Ok(true)
+}
+
+
 struct IdentityLock {
     file: File,
 }
@@ -827,6 +855,7 @@ pub fn start_and_publish(
     assert_installation_not_quarantined(mirror_root, &advanced.installation_id)?;
     Ok((advanced, claim))
 }
+
 
 pub fn prepare_service_start(
     workspace_root: &Path,

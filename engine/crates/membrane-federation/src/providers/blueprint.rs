@@ -6,7 +6,7 @@
 use crate::blueprint_client::ContextualBlueprintSource;
 use membrane_protocol::{
     FederationProviderStatusV1, OverlayIdentityV1, ProviderId, ProviderOmissionV1,
-    ProviderWarningV1, ReasonCode, SourceResolutionReceiptV1, SourceResolutionStatusV1,
+    ProviderDiagnosticsV1, ProviderWarningV1, ReasonCode, SourceResolutionReceiptV1, SourceResolutionStatusV1,
     WarningSeverity, PROVIDER_OUTPUT_SCHEMA_VERSION,
 };
 use membrane_provider_sdk::{
@@ -137,10 +137,12 @@ impl BlueprintProvider {
         }
         let generation = response.value.generation.clone();
         let payload = response.value.payload.clone();
+        let native_omissions = payload.as_ref().map(native_omissions).unwrap_or_default();
+        let candidate_count = response.value.candidates.len();
         let mut output = ProviderOutput {
             schema_version: PROVIDER_OUTPUT_SCHEMA_VERSION,
             provider: ProviderId::Blueprint,
-            status: if response.complete {
+            status: if response.complete && native_omissions.is_empty() {
                 FederationProviderStatusV1::Complete
             } else {
                 FederationProviderStatusV1::Partial
@@ -148,8 +150,8 @@ impl BlueprintProvider {
             generation: Some(generation.clone()),
             candidates: response.value.candidates,
             warnings: response.warnings.into_iter().map(warning).collect(),
-            omissions: Vec::new(),
-            diagnostics: None,
+            omissions: native_omissions,
+            diagnostics: Some(native_diagnostics(payload.as_ref(), &generation, response.complete, candidate_count, context)),
             extensions: Default::default(),
         };
         for candidate in &mut output.candidates {
@@ -212,6 +214,49 @@ impl BlueprintProvider {
         }
         Ok(output)
     }
+}
+
+fn native_omissions(payload: &serde_json::Value) -> Vec<ProviderOmissionV1> {
+    payload.get("omissions").and_then(serde_json::Value::as_array).into_iter().flatten()
+        .map(|omission| {
+            let detail = omission.get("reason").and_then(serde_json::Value::as_str).unwrap_or("blueprint_incomplete");
+            ProviderOmissionV1 {
+                provider: ProviderId::Blueprint,
+                reason: reason_for_native_detail(detail),
+                candidate_id: omission.get("candidateId").and_then(serde_json::Value::as_str).map(str::to_owned),
+                detail_id: Some(detail.to_owned()),
+                stage: Some("blueprint_source".to_owned()),
+            }
+        }).collect()
+}
+
+fn reason_for_native_detail(detail: &str) -> ReasonCode {
+    match detail {
+        "stale_generation" | "incomplete_generation" => ReasonCode::GenerationIncoherent,
+        "deadline_exceeded" | "timeout" => ReasonCode::ProviderTimeout,
+        "request_cancelled" | "cancelled" => ReasonCode::ProviderCancelled,
+        "unsupported" => ReasonCode::ProviderUnavailable,
+        _ => ReasonCode::ProviderFailed,
+    }
+}
+
+fn native_diagnostics(
+    payload: Option<&serde_json::Value>, generation: &str, complete: bool, candidate_count: usize,
+    context: &ProviderContext,
+) -> ProviderDiagnosticsV1 {
+    let mut attributes = std::collections::BTreeMap::from([
+        ("status".to_owned(), payload.and_then(|value| value.get("state")).and_then(serde_json::Value::as_str).unwrap_or(if complete { "complete" } else { "partial" }).to_owned()),
+        ("complete".to_owned(), complete.to_string()),
+        ("candidate_count".to_owned(), candidate_count.to_string()),
+        ("freshness".to_owned(), if context.freshness.stale { "stale" } else { "current" }.to_owned()),
+        ("cancellation".to_owned(), context.is_cancelled().to_string()),
+    ]);
+    for key in ["coverage", "errors", "fallback"] {
+        if let Some(value) = payload.and_then(|value| value.get(key)) {
+            attributes.insert(key.to_owned(), value.to_string());
+        }
+    }
+    ProviderDiagnosticsV1 { provider: ProviderId::Blueprint, elapsed_ms: None, generation: Some(generation.to_owned()), attributes }
 }
 
 fn atomic_path_provenance(payload: &serde_json::Value) -> Option<serde_json::Value> {

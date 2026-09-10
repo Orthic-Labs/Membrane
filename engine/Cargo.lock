@@ -2606,6 +2606,7 @@ dependencies = [
  "flate2",
  "getrandom 0.4.3",
  "hex",
+ "hyper-util",
  "ignore",
  "membrane-adapt",
  "membrane-blueprint",

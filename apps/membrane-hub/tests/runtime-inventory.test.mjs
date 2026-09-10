@@ -48,7 +48,7 @@ test("runtime closure records native sidecars, installed Blueprint & six axes", 
   assert.match(production, /connection\.get\("\/hub\/snapshot"/);
   assert.match(production, /connection\.get\("\/health"/);
   assert.match(production, /startup_owned_by_tray/);
-  assert.match(production, /let _ = show_dashboard\(app\.handle\(\)/);
+  assert.match(production, /(?:let _ =|if let Err\(error\) =) show_dashboard\(app\.handle\(\)/);
   assert.match(production, /app\.exit\(0\)/);
   assert.doesNotMatch(production, /bundled_binary\("membrane"\)/);
   assert.doesNotMatch(production, /mod supervisor;|mod blueprint;|mod adapt_launch;/);

@@ -44,12 +44,66 @@
 // negative control additionally proves they stay honest under the same
 // fault.
 
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { spawnSync } from "node:child_process";
 import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = resolve(HERE, "../../../");
+
+function runAdaptJson(options, command, value) {
+  const cli = options?.cliPath || process.env.MEMBRANE_CLI_PATH || "membrane";
+  const dir = mkdtempSync(join(tmpdir(), "adp-windows-") );
+  const input = join(dir, "input.json");
+  try {
+    writeFileSync(input, JSON.stringify(value), "utf8");
+    // Installed canonical Adapt operations own their storage.  The shared
+    // --db parser option is deliberately refused by the installed runtime;
+    // omitting it proves this case traverses the stable storage boundary.
+    const result = spawnSync(cli, ["adapt", command, "--input", input], {
+      encoding: "utf8", windowsHide: true, timeout: 35000,
+    });
+    if (result.error || result.status !== 0) return { error: String(result.stderr || result.error?.message || "command failed") };
+    try { return { value: JSON.parse(result.stdout) }; } catch { return { error: "command returned non-JSON output" }; }
+  } finally { try { rmSync(dir, { recursive: true, force: true }); } catch {} }
+}
+
+const digest = (char) => char.repeat(64);
+
+function comparisonFixture() {
+  const rows = (prefix, chars) => ["successful", "hard_negative", "nonapplicable", "failure"].flatMap((stratum, i) =>
+    ["a", "b"].map((candidate) => ({ candidate_sha256: digest(candidate), case_id: `${prefix}-${i}`, case_sha256: digest(chars[i]), stratum, receipt_id: `${prefix}-${i}-${candidate}`, correct: true, adherent: candidate === "b" || stratum !== "failure", recurred: false, false_block: false, authority_violation: false, latency_ms: 10, cost_microunits: 10 })),
+  );
+  return { schema_version: 1, comparison_id: "windows-adp-076", target: "skill:test", target_version: 3, scope: "repo", allowed_change_sha256: digest("c"), baseline_sha256: digest("a"), candidates: [digest("b")], development_dataset_sha256: digest("d"), test_dataset_sha256: digest("e"), evaluator_sha256: digest("f"), host_configuration_sha256: digest("0"), limits: { candidates: 2, cases: 16, evaluator_calls: 32, proposal_iterations: 2, cost_microunits: 1000, elapsed_ms: 1000, concurrency: 2 }, usage: { evaluator_calls: 16, proposal_iterations: 1, cost_microunits: 160, elapsed_ms: 100, concurrency: 1 }, cancelled: false, development: rows("dev", ["1", "2", "3", "4"]), frozen_test: rows("test", ["5", "6", "7", "8"]) };
+}
+
+// A source marker is never treated as installed proof. This opt-in probe is
+// used by the Windows harness to bind this module to the actual stable CLI.
+export function probeInstalled(options = {}) {
+  const cli = options.cliPath || process.env.MEMBRANE_CLI_PATH || "membrane";
+  const version = spawnSync(cli, ["--version"], { encoding: "utf8", windowsHide: true, timeout: 15000 });
+  if (version.error || version.status !== 0) {
+    return { status: "blocked", evidenceKind: "installed", reason: "installed Membrane CLI --version probe failed" };
+  }
+  const readiness = spawnSync(cli, ["status", "--bindings-only", "--dry-run"], {
+    encoding: "utf8", windowsHide: true, timeout: 35000,
+  });
+  if (readiness.error || readiness.status !== 0) {
+    return { status: "failed", evidenceKind: "installed", reason: `installed status probe failed: ${String(readiness.stderr || "").trim()}` };
+  }
+  let payload;
+  try { payload = JSON.parse(readiness.stdout); } catch { return { status: "failed", evidenceKind: "installed", reason: "installed status probe returned non-JSON output" }; }
+  if (payload.runtimeOrigin !== "installed" || payload.dryRun !== true || !Array.isArray(payload.clients)) {
+    return { status: "failed", evidenceKind: "installed", reason: "installed status response lacks runtimeOrigin=installed, dryRun=true, or clients[]" };
+  }
+  return {
+    status: "passed", evidenceKind: "installed",
+    detail: { cli, version: String(version.stdout || "").trim(), runtimeOrigin: payload.runtimeOrigin, clients: payload.clients.map((item) => ({ client: item.client, changed: item.changed })) },
+    reason: "stable installed CLI answered version and binding-readiness probes",
+  };
+}
 
 function resolveRoot(options) {
   return (options && options.root) || REPO_ROOT;
@@ -79,6 +133,8 @@ function structuralCheck(id, options, relPaths, markers, requirement, note) {
       id,
       kind: "structural",
       pass: false,
+      status: "failed",
+      evidenceKind: "source",
       requirement,
       reason: `none of the canonical implementation files exist at this root: ${files.join(", ")}`,
       evidence: files,
@@ -96,6 +152,8 @@ function structuralCheck(id, options, relPaths, markers, requirement, note) {
     id,
     kind: "structural",
     pass: hits.length > 0,
+    status: hits.length > 0 ? "passed" : "failed",
+    evidenceKind: "source",
     requirement,
     reason: hits.length > 0
       ? `found ${hits.length} contract marker(s) in canonical implementation file(s)`
@@ -119,6 +177,8 @@ function insufficientCase(id, options, requirement, gap, sources) {
     id,
     kind: "insufficient",
     pass: false,
+    status: "insufficient",
+    evidenceKind: "source",
     requirement,
     reason: `capability is PARTIAL per canonicalImplementationRow: ${gap}`,
     evidence: sources || [],
@@ -537,16 +597,80 @@ export function ADP_075(options) {
     ["engine/crates/membrane-runtime/src/adapt_service.rs"]);
 }
 export function ADP_076(options) {
-  return insufficientCase("ADP-076", options,
-    "Issue a bounded, version-bound behavioral candidate-comparison decision from host-run baseline/variant outcomes, allowing no improvement without granting review, admission, or activation authority.",
-    "Trusted external evaluator resolution, experiment execution and full promotion qualification remain open.",
-    ["engine/crates/membrane-adapt/src/comparison.rs"]);
+  const requirement = "Issue a bounded, version-bound behavioral candidate-comparison decision from host-run baseline/variant outcomes, allowing no improvement without granting review, admission, or activation authority.";
+  const improved = comparisonFixture();
+  const noImprovement = structuredClone(improved);
+  noImprovement.comparison_id = "windows-adp-076-no-improvement";
+  for (const row of [...noImprovement.development, ...noImprovement.frozen_test]) row.adherent = row.stratum !== "failure";
+  const regression = structuredClone(improved);
+  regression.comparison_id = "windows-adp-076-regression";
+  regression.frozen_test.find((row) => row.candidate_sha256 === digest("b")).correct = false;
+  const budget = structuredClone(improved);
+  budget.comparison_id = "windows-adp-076-budget";
+  budget.usage.cost_microunits = budget.limits.cost_microunits + 1;
+  const cancelled = structuredClone(improved);
+  cancelled.comparison_id = "windows-adp-076-cancelled";
+  cancelled.cancelled = true;
+  const versioned = structuredClone(improved);
+  versioned.comparison_id = "windows-adp-076-versioned";
+  versioned.target_version = 4;
+  const leaked = structuredClone(improved);
+  leaked.comparison_id = "windows-adp-076-frozen-leak";
+  for (const row of leaked.frozen_test.filter((row) => row.case_id === leaked.frozen_test[0].case_id)) {
+    row.case_sha256 = leaked.development[0].case_sha256;
+  }
+  const runs = [improved, noImprovement, regression, budget, cancelled, versioned].map((value) => runAdaptJson(options || {}, "compare", value));
+  const leakage = runAdaptJson(options || {}, "compare", leaked);
+  if (runs.some((r) => r.error) || !leakage.error?.includes("development/frozen-test leakage")) return insufficientCase("ADP-076", options, requirement, `installed adapt compare unavailable or refused: ${runs.find((r) => r.error)?.error || leakage.error || "frozen-test leakage was accepted"}`, ["engine/crates/membrane-adapt/src/comparison.rs"]);
+  const decisions = runs.map((r) => r.value?.decision);
+  const [selected, retained, regressed, budgeted, cancelledDecision, versionedDecision] = decisions;
+  const valid = (d) => d && d.contract === "adapt.candidate-comparison-decision.v1" && d.activation_authorized === false && d.requires_independent_admission === true && d.requires_target_revalidation === true && typeof d.decision_sha256 === "string" && d.decision_sha256.length === 64;
+  if (!decisions.every(valid) || selected.disposition !== "candidate_selected" || retained.disposition !== "no_improvement" || retained.selected_sha256 !== retained.baseline_sha256 || regressed.disposition !== "regression" || budgeted.reason !== "declared_budget_exhausted" || budgeted.selected_sha256 !== budgeted.baseline_sha256 || cancelledDecision.reason !== "cancelled" || cancelledDecision.selected_sha256 !== cancelledDecision.baseline_sha256 || versionedDecision.target_version !== 4 || versionedDecision.request_sha256 === selected.request_sha256) {
+    return { id: "ADP-076", kind: "installed", evidenceKind: "installed", pass: false, status: "failed", requirement, reason: "installed compare did not produce both bounded selection and no-improvement decisions", evidence: decisions };
+  }
+  return { id: "ADP-076", kind: "installed", evidenceKind: "installed", pass: true, status: "passed", requirement, reason: "installed compare exercised selection, retention, regression, budget, cancellation, version binding and frozen-test isolation with admission/activation withheld", evidence: { selected: selected.decision_sha256, retained: retained.decision_sha256, regression: regressed.decision_sha256, budget: budgeted.decision_sha256, cancelled: cancelledDecision.decision_sha256, versioned: versionedDecision.decision_sha256, frozenLeakRefused: true, dispositions: decisions.map((d) => d.disposition) } };
 }
 export function ADP_077(options) {
-  return insufficientCase("ADP-077", options,
-    "Determine evidence-bound eligibility for each learned-guard rollout-stage transition without granting the host's separate blocking or scope-expansion authority.",
-    "Host permission, real rollout and effect qualification remain open.",
-    ["engine/crates/membrane-adapt/src/guard_rollout.rs"]);
+  const requirement = "Determine evidence-bound eligibility for each learned-guard rollout-stage transition without granting the host's separate blocking or scope-expansion authority.";
+  const h = (c) => c.repeat(64);
+  const subject = h("a");
+  const input = { schema_version: 1, issue_id: "windows-077", mitigation_sha256: subject, target: "skill", target_sha256: h("b"), host_configuration_sha256: h("c"), current_scope: "repo", proposed_scope: "repo", current_stage: "reviewed", proposed_stage: "shadow", now_ms: 100, comparable_exposures: 0, evaluated_exposures: 0, false_blocks: 0, minimum_exposures: 0, maximum_false_block_bps: 100, rollback_ref: "rollback", evidence: ["review", "detector", "attribution", "target", "host_configuration"].map((kind, i) => ({ kind, receipt_id: `r-${i}`, receipt_sha256: h(String(i + 1)), subject_sha256: kind === "target" ? h("b") : kind === "host_configuration" ? h("c") : subject, scope: "repo", valid_until_ms: 1000, passed: true })) };
+  const blockedInput = structuredClone(input);
+  blockedInput.issue_id = "windows-077-insufficient-coverage";
+  blockedInput.proposed_stage = "advisory";
+  blockedInput.minimum_exposures = 2;
+  blockedInput.comparable_exposures = 1;
+  blockedInput.evaluated_exposures = 1;
+  blockedInput.current_stage = "shadow";
+  blockedInput.evidence.push({ kind: "shadow_evaluation", receipt_id: "r-shadow", receipt_sha256: h("9"), subject_sha256: subject, scope: "repo", valid_until_ms: 1000, passed: true });
+  const advisory = structuredClone(input);
+  advisory.issue_id = "windows-077-advisory";
+  advisory.current_stage = "shadow";
+  advisory.proposed_stage = "advisory";
+  advisory.minimum_exposures = advisory.comparable_exposures = advisory.evaluated_exposures = 2;
+  advisory.evidence.push({ kind: "shadow_evaluation", receipt_id: "r-shadow", receipt_sha256: h("9"), subject_sha256: subject, scope: "repo", valid_until_ms: 1000, passed: true });
+  const scoped = structuredClone(advisory);
+  scoped.issue_id = "windows-077-scoped";
+  scoped.current_stage = "advisory";
+  scoped.proposed_stage = "scoped_blocking";
+  scoped.evidence = scoped.evidence.filter((e) => e.kind !== "shadow_evaluation");
+  scoped.evidence.push({ kind: "advisory_evaluation", receipt_id: "r-advisory", receipt_sha256: h("9"), subject_sha256: subject, scope: "repo", valid_until_ms: 1000, passed: true });
+  const falseBlocks = structuredClone(advisory);
+  falseBlocks.issue_id = "windows-077-false-blocks";
+  falseBlocks.false_blocks = 1;
+  const noRollback = structuredClone(advisory);
+  noRollback.issue_id = "windows-077-no-rollback";
+  noRollback.rollback_ref = "";
+  const widened = structuredClone(advisory);
+  widened.issue_id = "windows-077-scope-widening";
+  widened.proposed_scope = "global";
+  const runs = [input, advisory, scoped, falseBlocks, noRollback, widened, blockedInput].map((value) => runAdaptJson(options || {}, "guard-eligibility", value));
+  if (runs.some((r) => r.error)) return insufficientCase("ADP-077", options, requirement, `installed guard-eligibility unavailable or refused: ${runs.find((r) => r.error).error}`, ["engine/crates/membrane-adapt/src/guard_rollout.rs"]);
+  const decisions = runs.map((r) => r.value?.decision);
+  const [shadow, advisoryDecision, scopedDecision, falseBlockDecision, rollbackDecision, widenedDecision, blocked] = decisions;
+  const valid = (d) => d && d.contract === "adapt.guard-eligibility.v1" && d.host_authorization_required === true && d.activation_authorized === false && typeof d.decision_sha256 === "string" && d.decision_sha256.length === 64;
+  if (!decisions.every(valid) || !shadow.eligible || !advisoryDecision.eligible || !scopedDecision.eligible || falseBlockDecision.eligible || !falseBlockDecision.reasons.includes("false_block_limit_exceeded") || rollbackDecision.eligible || !rollbackDecision.reasons.includes("rollback_unavailable") || widenedDecision.eligible || !widenedDecision.reasons.includes("scope_change_requires_separate_review") || blocked.eligible || !blocked.reasons.includes("insufficient_comparable_coverage") || blocked.reasons.includes("stage_transition_not_sequential")) return { id: "ADP-077", kind: "installed", evidenceKind: "installed", pass: false, status: "failed", requirement, reason: "installed guard eligibility did not independently cover sequential stages and bounded refusals", evidence: decisions };
+  return { id: "ADP-077", kind: "installed", evidenceKind: "installed", pass: true, status: "passed", requirement, reason: "installed guard eligibility covered sequential stages, false-block, rollback and scope-widening refusals while withholding host permission", evidence: { shadow: shadow.decision_sha256, advisory: advisoryDecision.decision_sha256, scopedBlocking: scopedDecision.decision_sha256, falseBlocks: falseBlockDecision.decision_sha256, rollback: rollbackDecision.decision_sha256, widened: widenedDecision.decision_sha256, blocked: blocked.decision_sha256, hostAuthorizationRequired: decisions.every((d) => d.host_authorization_required), activationAuthorized: decisions.some((d) => d.activation_authorized) } };
 }
 
 // ---------------------------------------------------------------------------

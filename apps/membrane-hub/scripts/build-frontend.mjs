@@ -82,7 +82,8 @@ if (process.env.MEMBRANE_SIDECARS_READY === "1") {
 
 function buildSidecars(architectureTarget) {
   const command = sidecarBuildCommand();
-  const result = spawnSync(command.command, [...command.prefix, "build", "--manifest-path", engine, "--release", "--target", architectureTarget, "-p", "cortex", "-p", "membrane", "--bin", "cortex", "--bin", "membrane", "--message-format=json-render-diagnostics"], {
+  const semanticFeatures = architectureTarget.includes("windows") ? ["--features", "membrane-runtime/fastembed"] : [];
+  const result = spawnSync(command.command, [...command.prefix, "build", "--manifest-path", engine, "--release", "--target", architectureTarget, "-p", "cortex", "-p", "membrane", "--bin", "cortex", "--bin", "membrane", ...semanticFeatures, "--message-format=json-render-diagnostics"], {
     cwd: repo,
     encoding: "utf8",
     shell: process.platform === "win32",

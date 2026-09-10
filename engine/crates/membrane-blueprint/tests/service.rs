@@ -9,6 +9,7 @@ use membrane_blueprint::service::{
 use serde_json::Value;
 use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::mpsc;
 use tempfile::tempdir;
 
 struct Echo;
@@ -71,6 +72,26 @@ impl BlueprintOperation for RetryBatchRefresh {
 
 struct SlowRefresh;
 
+struct GatedRefresh {
+    entered: mpsc::Sender<()>,
+    release: Mutex<mpsc::Receiver<()>>,
+}
+
+impl BlueprintOperation for GatedRefresh {
+    fn execute(
+        &self,
+        request: &BlueprintRequest,
+        context: &RequestContext,
+    ) -> Result<Value, membrane_blueprint::BlueprintError> {
+        assert_eq!(request.method, Operation::Refresh);
+        self.entered.send(()).unwrap();
+        while self.release.lock().unwrap().recv_timeout(std::time::Duration::from_millis(5)).is_err() {
+            context.check()?;
+        }
+        Ok(serde_json::json!({ "refreshed": true }))
+    }
+}
+
 impl BlueprintOperation for SlowRefresh {
     fn execute(
         &self,
@@ -78,7 +99,8 @@ impl BlueprintOperation for SlowRefresh {
         _: &RequestContext,
     ) -> Result<Value, membrane_blueprint::BlueprintError> {
         assert_eq!(request.method, Operation::Refresh);
-        std::thread::sleep(std::time::Duration::from_millis(2_100));
+        assert_eq!(request.deadline_ms, membrane_blueprint::model::MAX_DEADLINE_MS);
+        std::thread::sleep(std::time::Duration::from_millis(request.deadline_ms + 100));
         Ok(serde_json::json!({ "refreshed": true }))
     }
 }
@@ -204,6 +226,39 @@ fn refresh_returning_after_deadline_degrades_with_typed_error() {
     let readiness = service.readiness();
     assert_eq!(readiness.state, Some(membrane_blueprint::service::LifecycleState::Stale));
     assert!(readiness.detail.unwrap().starts_with("rebuild callback failed: deadline_exceeded:"));
+}
+
+#[test]
+fn readiness_remains_available_during_blocked_refresh_and_drain_cancels_before_shutdown() {
+    let root = tempdir().unwrap();
+    let (entered_tx, entered_rx) = mpsc::channel();
+    let (release_tx, release_rx) = mpsc::channel();
+    let service = Arc::new(NativeService::from_operation(
+        GatedRefresh { entered: entered_tx, release: Mutex::new(release_rx) },
+        ServiceConfig::new(root.path()),
+    ));
+    service.start().unwrap();
+    std::fs::write(root.path().join("changed.txt"), b"changed").unwrap();
+
+    let running = service.clone();
+    let supervise = std::thread::spawn(move || running.supervise());
+    entered_rx.recv_timeout(std::time::Duration::from_secs(1)).unwrap();
+    let (ready_tx, ready_rx) = mpsc::channel();
+    let observing = service.clone();
+    let observer = std::thread::spawn(move || ready_tx.send(observing.readiness()).unwrap());
+    let observed = ready_rx.recv_timeout(std::time::Duration::from_secs(1));
+    if observed.is_err() { let _ = release_tx.send(()); }
+    let readiness = observed.expect("readiness must return while refresh remains blocked");
+    observer.join().unwrap();
+    assert!(!readiness.ready);
+    assert_eq!(readiness.status, ServiceStatus::Degraded);
+    service.drain().unwrap();
+    let _ = release_tx.send(());
+    assert_eq!(supervise.join().unwrap(), ServiceStatus::Draining);
+    assert_eq!(service.status(), ServiceStatus::Stopped);
+    let kinds = service.events().into_iter().map(|event| event.kind).collect::<Vec<_>>();
+    assert!(kinds.iter().position(|kind| *kind == LifecycleEventKind::DrainRequested).unwrap()
+        < kinds.iter().position(|kind| *kind == LifecycleEventKind::Drained).unwrap());
 }
 
 #[test]

@@ -2,7 +2,7 @@
 
 **Status:** Current security architecture
 **Surface:** Native stdio MCP & authenticated Streamable-HTTP MCP
-**Runtime:** Explicit operations use active services or bounded installed execution. One installed Membrane controller owns automatic work while Hub or CodeRight daemon holds its lifetime. `hub_inactive` describes absent resident service, not permission for explicit operations. Local lifecycle holders require OS-bound identity; MCP/model payloads cannot grant residency.
+**Runtime:** Explicit operations use active services or bounded installed execution and remain independently available with Hub off. One installed Membrane controller owns automatic work and auto-refresh only while an active Hub or CodeRight daemon holder keeps its lifetime; final holder loss drains it. `hub_inactive` describes absent resident service, not permission for explicit operations. Local lifecycle holders require OS-bound identity; MCP/model payloads cannot grant residency.
 
 ## Boundary
 

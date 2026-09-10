@@ -401,6 +401,24 @@ pub(crate) fn current_deployed_runtime() -> Option<DeployedRuntime> {
     deployed_runtime_from_exe(&std::env::current_exe().ok()?)
 }
 
+fn run_health(timeout_seconds: u64) -> Result<(), String> {
+    let runtime = std::env::current_exe()
+        .ok()
+        .and_then(|exe| crate::service::runtime_from_exe(&exe).ok())
+        .filter(|runtime| runtime.origin == "installed")
+        .ok_or_else(|| "installed runtime unavailable".to_string())?;
+    let token = std::fs::read_to_string(&runtime.token)
+        .map_err(|error| format!("read installed health token: {error}"))?
+        .trim().to_owned();
+    if token.is_empty() { return Err("installed health token is empty".into()); }
+    let response = crate::installed_health::probe_installed(runtime.port, &token, Duration::from_secs(timeout_seconds), &runtime.token)
+        .map_err(|error| format!("installed health probe failed: {error}"))?;
+    let body = String::from_utf8(response.body)
+        .map_err(|_| "installed health returned non-UTF-8 JSON".to_string())?;
+    println!("{body}");
+    if response.status == 200 { Ok(()) } else { Err(format!("installed health returned HTTP {}", response.status)) }
+}
+
 fn apply_deployed_runtime_defaults(runtime: &DeployedRuntime) {
     if std::env::var_os("ORT_DYLIB_PATH").is_none() {
         std::env::set_var("ORT_DYLIB_PATH", &runtime.ort);
@@ -755,6 +773,11 @@ pub(crate) enum AdaptCmd {
 
 #[derive(Subcommand)]
 enum Cmd {
+    /// Print authenticated installed-resident health JSON without opening Cortex storage.
+    Health {
+        #[arg(long, default_value_t = 5, value_parser = clap::value_parser!(u64).range(1..=30))]
+        timeout_seconds: u64,
+    },
     /// Execute one identity-fenced installed SDK request from stdin, independently of Hub.
     ExplicitCall,
     /// Forward one authenticated resident-holder request to installed controller.
@@ -2607,6 +2630,9 @@ struct ServiceResponse {
     status: u16,
     retry_after: Option<std::time::Duration>,
     body: String,
+    body_bytes: Vec<u8>,
+    headers: Vec<(String, String)>,
+    authenticated: bool,
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -2656,6 +2682,11 @@ fn run_put_retry_policy(
                 return Ok(PutPolicyOutcome::ServiceSuccess(response.body));
             }
             Ok(ServicePostOutcome::Response(response))
+                if response.authenticated && retryable_service_status(response.status) =>
+            {
+                return Err("commit_unknown: authenticated resident mutation status is ambiguous".to_string());
+            }
+            Ok(ServicePostOutcome::Response(response))
                 if retryable_service_status(response.status) && attempt == 0 =>
             {
                 sleep(retry_delay(Some(&response)));
@@ -2679,6 +2710,11 @@ fn run_put_retry_policy(
                     "resident service returned ambiguous HTTP {}: {}; pending key retained",
                     response.status, response.body
                 ));
+            }
+            Err(error)
+                if error.starts_with("commit_unknown:") =>
+            {
+                return Err(error);
             }
             Err(_) if attempt == 0 => sleep(DEFAULT_RETRY_DELAY),
             Err(error) => {
@@ -2854,20 +2890,102 @@ fn try_service_post_at_port_with_token(
         .map_err(|e| format!("set read timeout failed: {e}"))?;
     s.set_write_timeout(Some(std::time::Duration::from_secs(5)))
         .map_err(|e| format!("set write timeout failed: {e}"))?;
-    let authorization = api_token
-        .map(|token| format!("Authorization: Bearer {token}\r\n"))
-        .unwrap_or_default();
-    let idempotency = idempotency_key
-        .map(|key| format!("Idempotency-Key: {key}\r\n"))
-        .unwrap_or_default();
-    let req = format!(
-        "POST {path} HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: application/json\r\n\
-         {authorization}{idempotency}Content-Length: {}\r\nConnection: close\r\n\r\n{body}",
-        body.len(),
-    );
+    let canonical = canonical_loopback_auth_enabled(installed_runtime_authority(), path);
+    let body_bytes = body.as_bytes();
+    let mut canonical_auth = None;
+    let headers = if canonical {
+        let token = api_token.ok_or_else(|| "canonical loopback auth requires token".to_string())?;
+        let identity = discover_loopback_identity(port)?;
+        let signer = membrane_client::LoopbackAuthSigner::from_hex_token(token)
+            .map_err(|error| format!("canonical loopback token invalid: {error}"))?;
+        let nonce = membrane_client::LoopbackAuthSigner::generate_nonce()
+            .map_err(|error| format!("canonical loopback nonce generation failed: {error}"))?;
+        let expiry = membrane_client::LoopbackAuthSigner::bounded_expiry(unix_seconds_now(), 10);
+        use sha2::Digest as _;
+        let request = membrane_client::LoopbackRequestFields {
+            method: "POST".into(), target: path.into(), host: "127.0.0.1".into(),
+            content_type: "application/json".into(), body_sha256: sha2::Sha256::digest(body_bytes).into(),
+            identity: identity.clone(), nonce, expiry_unix_secs: expiry,
+        };
+        let headers = membrane_client::build_loopback_request_headers(
+            &signer, &identity, "POST", path, "127.0.0.1", "application/json", body_bytes,
+            nonce, expiry,
+        ).map_err(|error| format!("canonical loopback request signing failed: {error}"))?;
+        canonical_auth = Some((signer, identity, request));
+        headers
+    } else {
+        let mut headers = vec![
+            ("Host".to_string(), "127.0.0.1".to_string()),
+            ("Content-Type".to_string(), "application/json".to_string()),
+            ("Content-Length".to_string(), body_bytes.len().to_string()),
+            ("Connection".to_string(), "close".to_string()),
+        ];
+        if let Some(token) = api_token { headers.push(("Authorization".to_string(), format!("Bearer {token}"))); }
+        if let Some(key) = idempotency_key { headers.push(("Idempotency-Key".to_string(), key.to_string())); }
+        headers
+    };
+    let mut req = format!("POST {path} HTTP/1.1\r\n");
+    for (name, value) in headers { req.push_str(&format!("{name}: {value}\r\n")); }
+    req.push_str(&format!("\r\n{body}"));
     s.write_all(req.as_bytes())
-        .map_err(|e| format!("write to resident service failed: {e}"))?;
-    parse_http_response(&mut s).map(ServicePostOutcome::Response)
+        .map_err(|e| if canonical {
+            format!("commit_unknown: canonical loopback request write ambiguous after mutation: {e}")
+        } else {
+            format!("write to resident service failed: {e}")
+        })?;
+    let mut response = parse_http_response(&mut s).map_err(|e| if canonical {
+        format!("commit_unknown: resident service response ambiguous after request: {e}")
+    } else { e })?;
+    if let Some((signer, identity, request)) = canonical_auth {
+        membrane_client::verify_loopback_response_headers(
+            &signer, &response.headers, &request, response.status, &response.body_bytes,
+            &identity, unix_seconds_now(),
+        ).map_err(|error| format!("commit_unknown: canonical loopback response verification failed: {error}"))?;
+        response.authenticated = true;
+    }
+    Ok(ServicePostOutcome::Response(response))
+}
+
+fn canonical_loopback_auth_enabled(installed: bool, path: &str) -> bool {
+    installed && membrane_client::loopback_routes::is_authorized("POST", path)
+}
+
+fn installed_runtime_authority() -> bool {
+    std::env::current_exe()
+        .ok()
+        .and_then(|exe| crate::service::runtime_from_exe(&exe).ok())
+        .is_some_and(|runtime| runtime.origin == "installed")
+}
+
+fn unix_seconds_now() -> u64 {
+    std::time::SystemTime::now().duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_secs()).unwrap_or(0)
+}
+
+fn discover_loopback_identity(port: u16) -> Result<membrane_client::LoopbackIdentityFields, String> {
+    let mut stream = std::net::TcpStream::connect_timeout(
+        &std::net::SocketAddr::from(([127, 0, 0, 1], port)), std::time::Duration::from_millis(400),
+    ).map_err(|error| format!("connect for loopback identity discovery failed: {error}"))?;
+    stream.set_read_timeout(Some(std::time::Duration::from_secs(5)))
+        .map_err(|error| format!("set livez read timeout failed: {error}"))?;
+    stream.set_write_timeout(Some(std::time::Duration::from_secs(5)))
+        .map_err(|error| format!("set livez write timeout failed: {error}"))?;
+    stream.write_all(b"GET /livez HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n")
+        .map_err(|error| format!("write livez discovery failed: {error}"))?;
+    let response = parse_http_response(&mut stream)?;
+    if response.status != 200 { return Err(format!("livez identity discovery returned HTTP {}", response.status)); }
+    let value: serde_json::Value = serde_json::from_slice(&response.body_bytes)
+        .map_err(|error| format!("livez identity response invalid: {error}"))?;
+    let text = |name: &str| value.get(name).and_then(serde_json::Value::as_str)
+        .filter(|field| !field.trim().is_empty()).map(str::to_owned)
+        .ok_or_else(|| format!("livez identity missing {name}"));
+    Ok(membrane_client::LoopbackIdentityFields {
+        installation_id: text("installationId")?, cortex_store_id: text("cortexStoreId")?,
+        release_generation: text("releaseGeneration")?,
+        startup_generation: value.get("startupGeneration").and_then(serde_json::Value::as_u64)
+            .ok_or_else(|| "livez identity missing startupGeneration".to_string())?,
+        stable_install_root: text("stableInstallRoot")?,
+    })
 }
 
 fn parse_retry_after(value: &str) -> Option<std::time::Duration> {
@@ -2917,10 +3035,12 @@ fn parse_http_response(reader: &mut impl Read) -> Result<ServiceResponse, String
         .ok_or_else(|| "resident service returned malformed HTTP status".to_string())?;
     let mut content_length = None;
     let mut retry_after = None;
+    let mut headers = Vec::new();
     for line in lines {
         let Some((name, value)) = line.split_once(':') else {
             return Err("resident service returned malformed HTTP header".to_string());
         };
+        headers.push((name.trim().to_ascii_lowercase(), value.trim().to_string()));
         if name.eq_ignore_ascii_case("content-length") {
             let parsed = value
                 .trim()
@@ -2976,6 +3096,9 @@ fn parse_http_response(reader: &mut impl Read) -> Result<ServiceResponse, String
         status,
         retry_after,
         body: String::from_utf8_lossy(&body).trim().to_string(),
+        body_bytes: body,
+        headers,
+        authenticated: false,
     })
 }
 
@@ -3026,6 +3149,7 @@ fn command_requires_db(command: &Cmd) -> bool {
     !matches!(
         command,
         Cmd::BuildInfo
+            | Cmd::Health { .. }
             | Cmd::ExplicitCall
             | Cmd::ResidentHolder { .. }
             | Cmd::Blueprint { .. }
@@ -3629,7 +3753,7 @@ pub(crate) fn execute_adapt_command(
     }
 }
 
-fn run_pull(command: PullCmd) -> Result<(), String> {
+fn run_pull(command: PullCmd, db: Option<&Path>) -> Result<(), String> {
     match command {
         PullCmd::PlanContext {
             candidate_set,
@@ -3683,6 +3807,7 @@ fn run_pull(command: PullCmd) -> Result<(), String> {
             scope,
             max_candidates,
             scope_grant_id,
+            db,
         )
         .map_err(|error| error.to_string()),
     }
@@ -4111,6 +4236,9 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
     if let Cmd::ResidentHolder { input } = &cli.cmd {
         return run_resident_holder(input.as_deref());
     }
+    if let Cmd::Health { timeout_seconds } = &cli.cmd {
+        return run_health(*timeout_seconds);
+    }
     if let Cmd::Blueprint { args } = &cli.cmd {
         return crate::blueprint_one_shot::run_cli(args);
     }
@@ -4142,7 +4270,7 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
     }
     if matches!(cli.cmd, Cmd::Pull { .. } | Cmd::Push { .. }) {
         return match cli.cmd {
-            Cmd::Pull { command } => run_pull(command),
+            Cmd::Pull { command } => run_pull(command, cli.db.as_deref().map(Path::new)),
             Cmd::Push { command } => run_push(command),
             _ => unreachable!(),
         };
@@ -4161,7 +4289,7 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
             .or(dev_fallback_db.as_deref()),
     )?;
     match cli.cmd {
-        Cmd::BuildInfo | Cmd::ExplicitCall | Cmd::ResidentHolder { .. } | Cmd::Blueprint { .. } | Cmd::Installation { .. } | Cmd::Ledger { .. } | Cmd::Adapt { .. } => {
+        Cmd::BuildInfo | Cmd::Health { .. } | Cmd::ExplicitCall | Cmd::ResidentHolder { .. } | Cmd::Blueprint { .. } | Cmd::Installation { .. } | Cmd::Ledger { .. } | Cmd::Adapt { .. } => {
             unreachable!("handled before database resolution")
         }
         Cmd::Checkpoint { command } => {
@@ -6307,6 +6435,9 @@ mod tests {
             status,
             retry_after,
             body: body.to_string(),
+            body_bytes: body.as_bytes().to_vec(),
+            headers: Vec::new(),
+            authenticated: false,
         })
     }
 
@@ -7214,10 +7345,11 @@ mod tests {
             Some(&idempotency_key),
         )
         .unwrap();
-        assert_eq!(
-            outcome,
-            service_response(503, "busy", Some(super::MAX_RETRY_AFTER))
-        );
+        let mut expected = service_response(503, "busy", Some(super::MAX_RETRY_AFTER));
+        if let super::ServicePostOutcome::Response(response) = &mut expected {
+            response.headers = vec![("retry-after".into(), "30".into()), ("connection".into(), "close".into())];
+        }
+        assert_eq!(outcome, expected);
         let request = server.join().unwrap();
         assert!(request.contains(&format!("Idempotency-Key: {idempotency_key}\r\n")));
     }
@@ -7236,6 +7368,43 @@ mod tests {
         assert!(super::parse_http_response(&mut oversized_body)
             .unwrap_err()
             .contains("body exceeded"));
+    }
+
+    #[test]
+    fn authenticated_retryable_response_is_commit_unknown_without_retry() {
+        let attempts = std::cell::Cell::new(0);
+        let result = super::run_put_retry_policy(
+            "signed-key",
+            |_| {
+                attempts.set(attempts.get() + 1);
+                Ok(super::ServicePostOutcome::Response(super::ServiceResponse {
+                    status: 503,
+                    retry_after: None,
+                    body: "busy".into(),
+                    body_bytes: b"busy".to_vec(),
+                    headers: Vec::new(),
+                    authenticated: true,
+                }))
+            },
+            |_| panic!("authenticated ambiguous mutation must not retry"),
+        );
+        assert!(result.unwrap_err().starts_with("commit_unknown:"));
+        assert_eq!(attempts.get(), 1);
+    }
+
+    #[test]
+    fn canonical_route_gate_is_explicit_and_generic_routes_remain_legacy() {
+        assert!(super::canonical_loopback_auth_enabled(true, "/put"));
+        assert!(!super::canonical_loopback_auth_enabled(false, "/put"));
+        assert!(!super::canonical_loopback_auth_enabled(true, "/unknown"));
+    }
+
+    #[test]
+    fn parser_retains_raw_body_and_response_headers_for_proof() {
+        let raw = b"HTTP/1.1 200 OK\r\nX-Membrane-Proof: proof\r\nContent-Length: 9\r\n\r\n {\"x\":1} ";
+        let response = super::parse_http_response(&mut std::io::Cursor::new(raw.as_slice())).unwrap();
+        assert_eq!(response.body_bytes, b" {\"x\":1} ");
+        assert!(response.headers.iter().any(|(name, value)| name == "x-membrane-proof" && value == "proof"));
     }
 
     #[test]

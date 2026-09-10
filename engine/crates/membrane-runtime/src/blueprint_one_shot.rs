@@ -21,7 +21,7 @@ pub(crate) fn dispatch_native(
 
 /// Run a native Blueprint CLI verb from current repository root.
 pub(crate) fn run_cli(args: &[String]) -> Result<(), String> {
-    let (method, root, input) = cli_request(args)?;
+    let (method, root, input, cancel_before_dispatch) = cli_request(args)?;
     let request_id = format!(
         "blueprint-cli-{}-{}",
         std::process::id(),
@@ -29,7 +29,11 @@ pub(crate) fn run_cli(args: &[String]) -> Result<(), String> {
     );
     let mut request = BlueprintRequest::new(request_id, method, root.to_string_lossy());
     request.input = input;
-    let response = dispatch_native(request, CancellationToken::new());
+    let cancellation = CancellationToken::new();
+    if cancel_before_dispatch {
+        cancellation.cancel();
+    }
+    let response = dispatch_native(request, cancellation);
     if response.ok {
         println!(
             "{}",
@@ -45,7 +49,7 @@ pub(crate) fn run_cli(args: &[String]) -> Result<(), String> {
     Err(error)
 }
 
-fn cli_request(args: &[String]) -> Result<(Operation, PathBuf, Value), String> {
+fn cli_request(args: &[String]) -> Result<(Operation, PathBuf, Value, bool), String> {
     let Some(verb) = args.first() else {
         return Err("native Blueprint operation is required".into());
     };
@@ -54,12 +58,17 @@ fn cli_request(args: &[String]) -> Result<(Operation, PathBuf, Value), String> {
     let mut root = std::env::current_dir().map_err(|error| format!("resolve repository root: {error}"))?;
     let mut input = json!({"repoRoot": root.to_string_lossy()});
     let mut positional = Vec::new();
+    let mut cancel_before_dispatch = false;
     let mut index = 1;
     while index < args.len() {
         let key = &args[index];
         if key == "--repo-root" {
             index += 1;
             root = PathBuf::from(args.get(index).ok_or("--repo-root requires a path")?);
+        } else if key == "--cancel-before-dispatch" {
+            cancel_before_dispatch = true;
+        } else if key == "--allow-stale" {
+            input["allowStale"] = Value::Bool(true);
         } else if let Some(field) = key.strip_prefix("--") {
             index += 1;
             let value = args.get(index).ok_or_else(|| format!("{key} requires a value"))?;
@@ -69,6 +78,9 @@ fn cli_request(args: &[String]) -> Result<(Operation, PathBuf, Value), String> {
                     input["task"] = Value::String(value.clone());
                 }
                 "task" => input["task"] = Value::String(value.clone()),
+                "generation" | "baseline-generation" => {
+                    input[if field == "generation" { "generation" } else { "baselineGeneration" }] = Value::String(value.clone());
+                }
                 "node" => input["nodeId"] = Value::String(value.clone()),
                 "seed" | "target" | "from" | "to" | "direction" => {
                     input[field] = Value::String(value.clone());
@@ -107,7 +119,7 @@ fn cli_request(args: &[String]) -> Result<(Operation, PathBuf, Value), String> {
             _ => input["args"] = Value::Array(positional.into_iter().map(Value::String).collect()),
         }
     }
-    Ok((method, root, input))
+    Ok((method, root, input, cancel_before_dispatch))
 }
 
 fn parse_cli_u64(field: &str, value: &str) -> Result<u64, String> {
@@ -123,16 +135,29 @@ mod tests {
     #[test]
     fn cli_query_options_use_native_query_fields() {
         let root = std::env::current_dir().unwrap().to_string_lossy().into_owned();
-        let (_, _, input) = cli_request(&[
+        let (_, _, input, cancel_before_dispatch) = cli_request(&[
             "impact".into(), "--repo-root".into(), root, "--node".into(), "exact".into(),
             "--limit".into(), "7".into(), "--depth".into(), "2".into(),
             "--budget".into(), "4096".into(), "--max-paths".into(), "9".into(),
         ]).unwrap();
+        assert!(!cancel_before_dispatch);
         assert_eq!(input["nodeId"], "exact");
         assert_eq!(input["maxCandidates"], 7);
         assert_eq!(input["maxSeeds"], 7);
         assert_eq!(input["maxDepth"], 2);
         assert_eq!(input["maxBytes"], 4096);
         assert_eq!(input["maxPaths"], 9);
+    }
+
+    #[test]
+    fn cli_cancel_before_dispatch_is_out_of_band_control() {
+        let root = std::env::current_dir().unwrap().to_string_lossy().into_owned();
+        let (_, _, input, cancel_before_dispatch) = cli_request(&[
+            "recall".into(), "--repo-root".into(), root, "--task".into(), "exact".into(),
+            "--cancel-before-dispatch".into(),
+        ]).unwrap();
+        assert!(cancel_before_dispatch);
+        assert_eq!(input["task"], "exact");
+        assert!(input.get("cancel-before-dispatch").is_none());
     }
 }

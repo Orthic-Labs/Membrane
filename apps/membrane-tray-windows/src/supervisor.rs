@@ -7,13 +7,17 @@
 
 use std::{
     collections::VecDeque,
+    fs::{create_dir_all, File, OpenOptions},
+    io::Write,
     path::{Path, PathBuf},
     sync::{
         atomic::AtomicBool,
         mpsc::{self, Receiver},
-        Arc,
+        Arc, Mutex, OnceLock,
     },
 };
+
+use serde_json::{json, Value};
 
 use membrane_protocol::{
     DaemonCommandKind, DaemonCommandV1, DaemonEventKind, DaemonLaunchKind, DaemonLaunchV1,
@@ -38,6 +42,38 @@ pub const DRAIN_TIMEOUT_MS: u64 = 7_000;
 /// the daemon running; a still-holderless daemon is drained as bounded
 /// startup cleanup, never left resident indefinitely.
 pub const PRE_HOLDER_GRACE_MS: u64 = 30_000;
+
+static LIFECYCLE_LOG: OnceLock<Mutex<File>> = OnceLock::new();
+
+/// Install the tray's durable diagnostic sink before instance/UI creation.
+pub fn init_lifecycle_log() -> bool {
+    let root = std::env::var_os("MEMBRANE_LOG_ROOT")
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("LOCALAPPDATA").map(|base| PathBuf::from(base).join("Membrane")));
+    let Some(root) = root else { return false; };
+    if create_dir_all(&root).is_err() { return false; }
+    let Ok(file) = OpenOptions::new().create(true).append(true).open(root.join("membrane-tray.log")) else { return false; };
+    let _ = LIFECYCLE_LOG.set(Mutex::new(file));
+    lifecycle_event("tray_startup", json!({"stage":"log_initialized"}));
+    true
+}
+
+/// Write content-free lifecycle diagnostics. Callers must pass only typed,
+/// non-secret state such as stages, reasons, PIDs, and exit codes.
+pub fn lifecycle_event(event: &str, details: Value) {
+    let Some(log) = LIFECYCLE_LOG.get() else { return; };
+    let mut record = match details {
+        Value::Object(map) => map,
+        _ => serde_json::Map::new(),
+    };
+    record.insert("event".into(), Value::String(event.to_owned()));
+    record.insert("observedAtUnixMs".into(), json!(now_unix_ms()));
+    if let Ok(mut log) = log.lock() {
+        let _ = serde_json::to_writer(&mut *log, &Value::Object(record));
+        let _ = log.write_all(b"\n");
+        let _ = log.flush();
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum State {
@@ -523,6 +559,10 @@ impl Supervisor {
         pid: Option<u32>,
         exit_code: Option<u32>,
     ) -> Transition {
+        lifecycle_event(
+            "membrane_tray_daemon_failure",
+            serde_json::json!({"reason": reason, "pid": pid, "exitCode": exit_code, "observedAtUnixMs": now_ms}),
+        );
         self.process_exited = true;
         self.terminal_event = false;
         self.handshake_deadline = None;
@@ -563,6 +603,12 @@ impl Supervisor {
         self.handshake_deadline = Some(now_ms.saturating_add(HANDSHAKE_TIMEOUT_MS));
         self.terminal_event = false;
         self.process_exited = false;
+        // Activation may signal a long-lived tray after its original
+        // holderless startup allowance expired. Re-arm that bounded allowance
+        // for this explicit restart; otherwise the next timer tick immediately
+        // kills the new daemon against the stale deadline.
+        self.pre_holder_deadline = (!self.holder_established)
+            .then(|| now_ms.saturating_add(PRE_HOLDER_GRACE_MS));
         self.set_generation(self.observation.generation.saturating_add(1));
         let transition = self.transition(
             State::Starting,
@@ -589,6 +635,9 @@ impl Supervisor {
                 self.observation.withheld = update.values.withheld;
                 self.observation.budget = update.values.budget;
                 self.observation.snapshot_observed = update.values.observed;
+                if let Some(remote) = update.resident_holder.as_ref() {
+                    self.note_remote_holder(remote);
+                }
             }
         }
 
@@ -669,6 +718,21 @@ impl Supervisor {
                 None,
             );
             let _ = self.launch_process(now_ms);
+        }
+    }
+
+    /// Observe an already-authoritative daemon lease without mutating this
+    /// tray's local registry. Only a fenced status with any nonzero Hub or
+    /// CodeRight holder can satisfy startup grace; zero, failed, or mismatched
+    /// observations remain non-authoritative.
+    fn note_remote_holder(&mut self, remote: &snapshot::RemoteHolderObservation) {
+        let status = &remote.status;
+        if matches!(self.observation.state, State::Starting | State::Running)
+            && (status.hub_holders > 0 || status.coderight_daemon_holders > 0)
+            && status.controller_active
+        {
+            self.holder_established = true;
+            self.pre_holder_deadline = None;
         }
     }
 
@@ -770,6 +834,12 @@ impl Supervisor {
     fn launch_process(&mut self, now_ms: u64) -> Option<Transition> {
         self.close_process();
         self.process_exited = false;
+        if workspace::installed_tray_path().is_some() {
+            if let Err(error) = membrane_runtime::serve::prepare_installed_credential_for_exe(&self.daemon_path) {
+                eprintln!("[startup] installed credential preparation failed: {error}");
+            return Some(self.fail_process(now_ms, "workspace_api_token_migration_required", None, None));
+            }
+        }
         // The mode selected in `acquire_holder` (before this spawn, from the
         // pre-spawn residency snapshot) governs this launch. It is read, not
         // recomputed, here — there is no retrofit of containment/escape
@@ -1029,5 +1099,145 @@ mod tests {
         );
         assert_eq!(Reason::DaemonReadyFailed.as_str(), "daemon_ready_failed");
         assert_eq!(Reason::DaemonDrainTimeout.as_str(), "daemon_drain_timeout");
+    }
+
+    #[test]
+    fn explicit_restart_rearms_only_holderless_startup_grace() {
+        let mut supervisor = test_supervisor();
+        supervisor.pre_holder_deadline = Some(1);
+        supervisor.manual_restart_process(10_000);
+        assert_eq!(
+            supervisor.pre_holder_deadline,
+            Some(10_000 + PRE_HOLDER_GRACE_MS)
+        );
+
+        supervisor.holder_established = true;
+        supervisor.manual_restart_process(20_000);
+        assert_eq!(supervisor.pre_holder_deadline, None);
+    }
+
+    #[test]
+    fn remote_both_holder_status_clears_grace_without_local_acquire() {
+        let mut supervisor = test_supervisor();
+        supervisor.observation.state = State::Running;
+        supervisor.pre_holder_deadline = Some(30_000);
+        let remote = snapshot::RemoteHolderObservation {
+            controller: membrane_protocol::ResidentControllerIdentityV1 {
+                installation_id: "installation".into(),
+                cortex_store_id: "store".into(),
+                release_generation: "release".into(),
+                startup_generation: 1,
+                stable_current: "C:/Membrane/current".into(),
+            },
+            status: membrane_protocol::ResidentHolderStatusV1 {
+                controller_active: true,
+                services_ready: true,
+                services_unavailable_reason: None,
+                hub_holders: 1,
+                coderight_daemon_holders: 1,
+            },
+        };
+        supervisor.note_remote_holder(&remote);
+        assert!(supervisor.holder_established);
+        assert_eq!(supervisor.pre_holder_deadline, None);
+        assert_eq!(supervisor.residency.snapshot().hub_holders, 0);
+    }
+
+    fn remote_status(
+        hub_holders: u32,
+        coderight_daemon_holders: u32,
+        services_ready: bool,
+        services_unavailable_reason: Option<membrane_protocol::ResidentServicesUnavailableV1>,
+    ) -> snapshot::RemoteHolderObservation {
+        snapshot::RemoteHolderObservation {
+            controller: membrane_protocol::ResidentControllerIdentityV1 {
+                installation_id: "installation".into(),
+                cortex_store_id: "store".into(),
+                release_generation: "release".into(),
+                startup_generation: 1,
+                stable_current: "C:/Membrane/current".into(),
+            },
+            status: membrane_protocol::ResidentHolderStatusV1 {
+                controller_active: true,
+                services_ready,
+                services_unavailable_reason,
+                hub_holders,
+                coderight_daemon_holders,
+            },
+        }
+    }
+
+    #[test]
+    fn remote_single_holder_status_establishes_without_local_acquire() {
+        let cases = [
+            (1, 0),
+            (0, 1),
+        ];
+        for (hub_holders, coderight_daemon_holders) in cases {
+            let mut supervisor = test_supervisor();
+            supervisor.observation.state = State::Running;
+            supervisor.pre_holder_deadline = Some(30_000);
+            supervisor.note_remote_holder(&remote_status(
+                hub_holders,
+                coderight_daemon_holders,
+                true,
+                None,
+            ));
+            assert!(supervisor.holder_established);
+            assert_eq!(supervisor.pre_holder_deadline, None);
+            assert_eq!(supervisor.residency.snapshot().hub_holders, 0);
+        }
+    }
+
+    #[test]
+    fn remote_active_holder_preserves_startup_while_services_catch_up() {
+        for (hub, coderight) in [(1, 0), (0, 1)] {
+            let mut supervisor = test_supervisor();
+            supervisor.observation.state = State::Running;
+            supervisor.pre_holder_deadline = Some(30_000);
+            supervisor.note_remote_holder(&remote_status(
+                hub, coderight, false,
+                Some(membrane_protocol::ResidentServicesUnavailableV1::BlueprintWatcherUnavailable),
+            ));
+            assert!(supervisor.holder_established);
+            assert_eq!(supervisor.pre_holder_deadline, None);
+            assert_eq!(supervisor.residency.snapshot().hub_holders, 0);
+        }
+    }
+
+    #[test]
+    fn remote_zero_or_inactive_never_establishes() {
+        let cases = [
+            (0, 0, true, None),
+            (
+                0,
+                0,
+                false,
+                Some(membrane_protocol::ResidentServicesUnavailableV1::CatalogUnavailable),
+            ),
+        ];
+        for (hub_holders, coderight_daemon_holders, services_ready, reason) in cases {
+            let mut supervisor = test_supervisor();
+            supervisor.observation.state = State::Running;
+            supervisor.pre_holder_deadline = Some(30_000);
+            supervisor.note_remote_holder(&remote_status(
+                hub_holders,
+                coderight_daemon_holders,
+                services_ready,
+                reason,
+            ));
+            assert!(!supervisor.holder_established);
+            assert_eq!(supervisor.pre_holder_deadline, Some(30_000));
+            assert_eq!(supervisor.residency.snapshot().hub_holders, 0);
+        }
+
+        let mut inactive = test_supervisor();
+        inactive.observation.state = State::Running;
+        inactive.pre_holder_deadline = Some(30_000);
+        let mut remote = remote_status(1, 0, true, None);
+        remote.status.controller_active = false;
+        inactive.note_remote_holder(&remote);
+        assert!(!inactive.holder_established);
+        assert_eq!(inactive.pre_holder_deadline, Some(30_000));
     }
 }

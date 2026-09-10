@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import test from 'node:test';
+import { runRegistryQualification } from '../run.mjs';
 import { PKG_01, PKG_02, PKG_03, PKG_04, PKG_05 } from './pkg-windows.mjs';
 
 const workspaceRoot = resolve(new URL('../../../', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1'));
@@ -123,5 +124,76 @@ test('PKG_05: reports each sampled case evidenceKind and never lets PKG-02/PKG-0
   assert.ok(sampled.length >= 3);
   for (const sample of sampled) {
     assert.ok(sample.evidenceKind, `${sample.id} did not record an evidenceKind`);
+  }
+});
+
+test('registry runner keeps source findings visible without treating them as functional closure', async () => {
+  const scratch = mkdtempSync(join(tmpdir(), 'registry-functional-boundary-'));
+  try {
+    const registryPath = join(scratch, 'registry.json');
+    const evidencePath = join(scratch, 'evidence.json');
+    writeFileSync(registryPath, JSON.stringify({ cases: [{ id: 'X-1', group: 'X', caseFile: 'fixture.mjs', caseExport: 'SOURCE_PASS' }] }));
+    const summary = await runRegistryQualification({
+      platform: 'windows', profile: 'internal-unsigned', caseRegistryPath: registryPath,
+      group: 'X', evidencePath, workspaceRoot,
+      importCaseModule: async () => ({ SOURCE_PASS: () => ({ status: 'passed', evidenceKind: 'source', detail: { structural: true } }) }),
+    });
+    assert.equal(summary.results[0].status, 'passed');
+    assert.equal(summary.results[0].functionalStatus, 'structural');
+    assert.equal(summary.status, 'failed');
+    assert.equal(summary.functionalStatus, 'failed');
+    assert.equal(summary.unsignedFunctional, false);
+  } finally {
+    rmSync(scratch, { recursive: true, force: true });
+  }
+});
+
+test('registry runner closes unsigned functional qualification only on runtime evidence', async () => {
+  const scratch = mkdtempSync(join(tmpdir(), 'registry-functional-pass-'));
+  try {
+    const registryPath = join(scratch, 'registry.json');
+    const evidencePath = join(scratch, 'evidence.json');
+    writeFileSync(registryPath, JSON.stringify({ cases: [{ id: 'X-2', group: 'X', caseFile: 'fixture.mjs', caseExport: 'INSTALLED_PASS' }] }));
+    const summary = await runRegistryQualification({
+      platform: 'windows', profile: 'internal-unsigned', caseRegistryPath: registryPath,
+      group: 'X', evidencePath, workspaceRoot,
+      importCaseModule: async () => ({ INSTALLED_PASS: () => ({ status: 'passed', evidenceKind: 'installed' }) }),
+    });
+    assert.equal(summary.results[0].functionalStatus, 'passed');
+    assert.equal(summary.status, 'passed');
+    assert.equal(summary.functionalStatus, 'passed');
+    assert.equal(summary.unsignedFunctional, true);
+  } finally {
+    rmSync(scratch, { recursive: true, force: true });
+  }
+});
+
+test('registry runner imports cases from caseSourceRoot while executing them against workspaceRoot', async () => {
+  const scratch = mkdtempSync(join(tmpdir(), 'registry-split-roots-'));
+  try {
+    const runtimeRoot = join(scratch, 'runtime');
+    const caseSourceRoot = join(scratch, 'source');
+    mkdirSync(runtimeRoot);
+    mkdirSync(caseSourceRoot);
+    const registryPath = join(scratch, 'registry.json');
+    const evidencePath = join(scratch, 'evidence.json');
+    writeFileSync(join(caseSourceRoot, 'fixture.mjs'), [
+      'export function SPLIT_ROOTS(context) {',
+      '  return { status: "passed", evidenceKind: "installed", detail: { workspaceRoot: context.workspaceRoot, caseSourceRoot: context.caseSourceRoot } };',
+      '}',
+    ].join('\n'));
+    writeFileSync(registryPath, JSON.stringify({ cases: [{ id: 'X-3', group: 'X', caseFile: 'fixture.mjs', caseExport: 'SPLIT_ROOTS' }] }));
+
+    const summary = await runRegistryQualification({
+      platform: 'windows', profile: 'internal-unsigned', caseRegistryPath: registryPath,
+      group: 'X', evidencePath, workspaceRoot: runtimeRoot, caseSourceRoot,
+    });
+
+    assert.equal(summary.status, 'passed');
+    assert.equal(summary.workspaceRoot, runtimeRoot);
+    assert.equal(summary.caseSourceRoot, caseSourceRoot);
+    assert.deepEqual(summary.results[0].detail, { workspaceRoot: runtimeRoot, caseSourceRoot });
+  } finally {
+    rmSync(scratch, { recursive: true, force: true });
   }
 });

@@ -64,7 +64,7 @@ Report `produced → verified → completion-validated → committed → pushed 
 ## Authority & conduct
 - Execute Adrian's current explicit, reversible, in-scope request; questions, plans, pauses, stops, revocations, and scope narrowing authorize no effect, while hooks may deny effects but never grant or expand authority.
 - Ask only for missing private input, destruction, or a reserved decision. Arcane requires exact target-bound approval for classified effects; unclassified spend, send, publication, or production stays prohibited.
-- Finish requested work or report one hard blocker with exact missing input.
+- Enforce goal, plan & gotchas; no invented design, overengineering, or unverified closure; refill independent lanes.
 - Use primary checkout & current branch; create no branch or worktree without Adrian.
 - Assign one integration owner per repository; only it changes HEAD, index, receipt, or remote. Keep product repositories as ignored nested checkouts, never gitlinks. Record exact SHAs in evidence. Before archive, require a canonical commit or content-addressed patch; exempt read-only tasks.
 - Preserve unrelated user changes.
@@ -75,7 +75,7 @@ Report `produced → verified → completion-validated → committed → pushed 
 - ETA: agentic critical-path wall clock only; forbid human/engineer days, ranges, & serial lane sums.
 - Create process files only when Adrian or protocol requires them; otherwise keep reasoning in chat & execution output as evidence. Keep plans proportional; reserve line-rate evidence maps for contracted work.
 - On ceiling breach, Arcane emits `BUDGET_STOP`; executor reduces or redoes first, authenticated waits alone pause active time, & Legion may accept recorded variance up to 10% only when scope, semantics, safety, & authority stay unchanged.
-- Never force-close a bounded subagent; report its estimated remaining time instead.
+- Retire Luna at 256k context (each assignment if unmeasurable); preserve patches & hand off to fresh Luna.
 
 ## Bootstrap & toolchains
 - After clone, pull, or a missing command, run `python3 tools/setup-workspace.py` on Mac or `py -3.11 tools\setup-workspace.py` on Windows, then `workspace-doctor`.

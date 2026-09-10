@@ -38,6 +38,26 @@ const _GIT_DEADLINE_STAYS_BELOW_MODULE_DEADLINE_FOR_OUTER_REAP: () =
     assert!(GIT_DEADLINE_MS > HOOK_MODULE_DEADLINE_MS, "GIT_DEADLINE_MS must exceed HOOK_MODULE_DEADLINE_MS so the outer per-module timeout/reap path stays reachable for git-based fences");
 
 pub(crate) fn resident_healthy() -> bool {
+    if let Ok(exe) = env::current_exe() {
+        if let Ok(runtime) = crate::service::runtime_from_exe(&exe) {
+            if runtime.origin == "installed" {
+                let Ok(token) = fs::read_to_string(&runtime.token) else {
+                    return false;
+                };
+                let token = token.trim();
+                if token.is_empty() {
+                    return false;
+                }
+                return crate::installed_health::probe_installed(
+                    runtime.port,
+                    token,
+                    Duration::from_millis(STATUS_DEADLINE_MS),
+                    &runtime.token,
+                )
+                .is_ok_and(|response| response.status == 200);
+            }
+        }
+    }
     diagnostics_request(None, "GET", "/health", None, STATUS_DEADLINE_MS)
         .and_then(|response| response.get("status").and_then(Value::as_u64))
         .is_some_and(|status| (200..300).contains(&status))

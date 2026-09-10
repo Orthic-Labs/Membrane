@@ -12,5 +12,10 @@
   "matchedGeneration": {
     "ok": true,
     "errorIsNull": true
+  },
+  "bm01NativeClient": {
+    "producer": "native_blueprint_operation",
+    "consumer": "BlueprintClient",
+    "requiredCandidateFields": ["id", "sourceRef"]
   }
 }

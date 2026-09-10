@@ -20,8 +20,9 @@
 // substituted pass) so the integration owner's exact installed-case command
 // is the sole source of a PASS verdict.
 
-import { spawnSync } from "node:child_process";
-import { mkdtempSync, writeFileSync, existsSync, rmSync, readFileSync } from "node:fs";
+import { spawn, spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
+import { mkdtempSync, writeFileSync, existsSync, rmSync, readFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -32,13 +33,26 @@ export function resolveCli(ctx = {}) {
   return candidate;
 }
 
+export function probeInstalled(ctx = {}) {
+  const cli = resolveCli(ctx);
+  const version = runCli(ctx, ["--version"]);
+  if (version.error || version.status !== 0) return { status: "blocked", evidenceKind: "installed", reason: "installed Membrane CLI --version probe failed" };
+  const status = runCli(ctx, ["status", "--bindings-only", "--dry-run"]);
+  if (status.error || status.status !== 0) return { status: "failed", evidenceKind: "installed", reason: `installed status probe failed: ${String(status.stderr || "").trim()}` };
+  let payload;
+  try { payload = JSON.parse(status.stdout); } catch { return { status: "failed", evidenceKind: "installed", reason: "installed status probe returned non-JSON output" }; }
+  if (payload.runtimeOrigin !== "installed" || payload.dryRun !== true) return { status: "failed", evidenceKind: "installed", reason: "installed status response is not an installed dry-run projection" };
+  return { status: "passed", evidenceKind: "installed", detail: { cli, version: String(version.stdout || "").trim(), runtimeOrigin: payload.runtimeOrigin, service: payload.service?.state }, reason: "stable installed Membrane CLI answered version and binding-readiness probes" };
+}
+
 function runCli(ctx, args, options = {}) {
   const cli = resolveCli(ctx);
   const result = spawnSync(cli, args, {
-    encoding: "utf8",
+    encoding: options.encoding === undefined ? "utf8" : options.encoding,
     windowsHide: true,
     timeout: options.timeoutMs ?? 15000,
     input: options.input,
+    env: options.env,
   });
   return result;
 }
@@ -49,26 +63,28 @@ function cliReachable(ctx) {
 }
 
 function blocked(id, requirement, reason) {
-  return { id, group: GROUP, status: "blocked", requirement, reason };
+  return { id, group: GROUP, status: "blocked", evidenceKind: "installed", requirement, reason };
 }
 
-function insufficient(id, requirement, gap) {
+function insufficient(id, requirement, gap, detail = undefined) {
   return {
     id,
     group: GROUP,
     status: "insufficient_implementation",
+    evidenceKind: "installed",
     requirement,
     gap,
+    ...(detail === undefined ? {} : { detail }),
     note: "canonicalImplementationRow status is not DELIVERED; positive assertion withheld rather than fabricated.",
   };
 }
 
 function pass(id, requirement, detail) {
-  return { id, group: GROUP, status: "pass", requirement, detail };
+  return { id, group: GROUP, status: "passed", evidenceKind: "installed", requirement, detail };
 }
 
 function fail(id, requirement, detail) {
-  return { id, group: GROUP, status: "fail", requirement, detail };
+  return { id, group: GROUP, status: "failed", evidenceKind: "installed", requirement, detail };
 }
 
 function withTempDir(fn) {
@@ -80,6 +96,52 @@ function withTempDir(fn) {
   }
 }
 
+function runStdioMcp(ctx, requests) {
+  const result = spawnSync(resolveCli(ctx), ["stdio-mcp"], {
+    encoding: "utf8", windowsHide: true, timeout: 30_000, env: { ...process.env, ...(ctx.env || {}) },
+    input: `${requests.map((request) => JSON.stringify(request)).join("\n")}\n`,
+  });
+  const responses = String(result.stdout || "").trim().split(/\r?\n/u).filter(Boolean).map((line) => {
+    try { return JSON.parse(line); } catch { return null; }
+  }).filter(Boolean);
+  return { result, responses };
+}
+
+function mcpResult(responses, id) {
+  const result = responses.find((response) => response.id === id)?.result;
+  return result?.structuredContent || result || null;
+}
+
+async function runStdioMcpHandshake(ctx, { root, caller, taskId }) {
+  const child = spawn(resolveCli(ctx), ["stdio-mcp"], { windowsHide: true, env: { ...process.env, ...(ctx.env || {}) } });
+  const responses = [];
+  let buffer = "";
+  return await new Promise((resolve) => {
+    let preparedSent = false;
+    const finish = () => { try { child.kill(); } catch {} resolve(responses); };
+    const timer = setTimeout(finish, 30_000);
+    child.stdout.on("data", (chunk) => {
+      buffer += String(chunk);
+      const lines = buffer.split(/\r?\n/u); buffer = lines.pop() || "";
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        let response; try { response = JSON.parse(line); } catch { continue; }
+        responses.push(response);
+        if (response.id === 2 && !preparedSent) {
+          const probe = mcpResult(responses, 2);
+          const token = probe?.result?.data?.resolverToken || probe?.data?.resolverToken;
+          if (!token) continue;
+          preparedSent = true;
+          child.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "membrane_push_prepare", arguments: { repository: root, caller, taskId, sessionId: caller.scopeId, request: { text: "psh025 repeated output\n".repeat(120), kind: "log", maxBytes: 1800, optimize: true, resolverToken: token } } } })}\n`);
+        }
+        if (response.id === 3) { clearTimeout(timer); finish(); }
+      }
+    });
+    child.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "psh-025", version: "1" } } })}\n`);
+    child.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "membrane_push_resolve", arguments: { repository: root, operation: "probe", caller } } })}\n`);
+  });
+}
+
 // ---------------------------------------------------------------------------
 // PSH-001 .. PSH-029
 // ---------------------------------------------------------------------------
@@ -88,21 +150,136 @@ export function PSH_001(ctx = {}) {
   const req = "Capture command output once, preserve exit/status information, & publish deterministic head/tail with a recovery handle only when the exact original is durably retained.";
   if (!cliReachable(ctx)) return blocked("PSH-001", req, "no installed `membrane` CLI reachable");
   return withTempDir((dir) => {
-    const negative = runCli(ctx, ["push", "runc", "--head", "2", "--tail", "2", "--spill-dir", dir, "--", "cmd", "/c", "does-not-exist-command-xyz"]);
-    const negativeControl = negative.status !== 0
-      ? { control: "unknown command", howItFails: "non-zero exit status is preserved and surfaced, no fabricated success" }
-      : null;
-    if (!negativeControl) return fail("PSH-001", req, "unknown command did not fail as expected");
-    return insufficient("PSH-001", req, "runc no-spill path and unverified existing-object reuse remain unproven (PSH-I001)");
+    const counterPath = join(dir, "invocations.txt");
+    const script = [
+      `$counter = '${counterPath.replace(/'/gu, "''")}'`,
+      "$count = if (Test-Path -LiteralPath $counter) { [int](Get-Content -Raw -LiteralPath $counter) } else { 0 }",
+      "Set-Content -NoNewline -LiteralPath $counter -Value ($count + 1)",
+      "[Console]::Error.Write('psh001-stderr'); Start-Sleep -Milliseconds 100",
+      "[Console]::Out.Write((1..80 | ForEach-Object { 'psh001-line-' + $_.ToString('00') }) -join \"`n\")",
+      "exit 7",
+    ].join("; ");
+    const shellOptions = { env: { ...process.env, MEMBRANE_PUSH_RUNC_SHELL: "powershell.exe -NoLogo -NoProfile -NonInteractive -OutputFormat Text -Command" } };
+    const result = runCli(ctx, ["push", "runc", "--shell", "--head", "2", "--tail", "2", "--spill-dir", dir, "--", script], shellOptions);
+    if (result.status !== 7) return fail("PSH-001", req, `runc did not preserve exit status 7: ${result.status}; ${result.stderr || ""}`);
+    const spillLine = String(result.stdout || "").split(/\r?\n/u).find((line) => line.startsWith("[spill] "));
+    const recoveryLine = String(result.stdout || "").split(/\r?\n/u).find((line) => line.startsWith("[recovery] "));
+    if (!spillLine || !recoveryLine) return fail("PSH-001", req, "large capture did not publish spill and recovery metadata");
+    const emittedPreview = String(result.stdout || "").slice(0, String(result.stdout || "").indexOf("\n[spill] ")).replace(/\n$/u, "");
+    const expectedPreview = [
+      "psh001-stderrpsh001-line-01",
+      "psh001-line-02",
+      "… 76 lines elided …",
+      "psh001-line-79",
+      "psh001-line-80",
+    ].join("\n");
+    if (emittedPreview !== expectedPreview) return fail("PSH-001", req, `runc preview was not deterministic: expected=${JSON.stringify(expectedPreview)}, actual=${JSON.stringify(emittedPreview)}`);
+    const spillPath = spillLine.slice("[spill] ".length).trim();
+    if (!spillPath.startsWith(dir)) return fail("PSH-001", req, "spill escaped isolated fixture directory");
+    const full = readFileSync(spillPath);
+    const expected = Buffer.from(`psh001-stderr${Array.from({ length: 80 }, (_, index) => `psh001-line-${String(index + 1).padStart(2, "0")}`).join("\n")}`, "utf8");
+    if (Buffer.compare(full, expected) !== 0) {
+      return fail("PSH-001", req, `spill byte mismatch: expected=${expected.length}, actual=${full.length}, expectedPrefix=${expected.subarray(0, 80).toString("hex")}, actualPrefix=${full.subarray(0, 80).toString("hex")}`);
+    }
+    const marker = JSON.parse(recoveryLine.slice("[recovery] ".length));
+    const restored = runCli(ctx, ["push", "restore", marker.recoveryHandle, "--spill-dir", dir]);
+    if (restored.status !== 0 || Buffer.compare(Buffer.from(restored.stdout || "", "utf8"), full) !== 0) {
+      return fail("PSH-001", req, "recovery handle did not return exact captured bytes without re-execution");
+    }
+    // Recovery retains original bytes in its SQLite store; spillPath is only
+    // a legacy export. Remove canonical retention to exercise missing capture.
+    rmSync(join(dir, "push-artifacts.sqlite"));
+    const deletedCapture = runCli(ctx, ["push", "restore", marker.recoveryHandle, "--spill-dir", dir]);
+    if (deletedCapture.status === 0) return fail("PSH-001", req, "recovery handle remained usable after its retained capture was deleted");
+    const tinyScript = "[Console]::Out.Write('tiny')";
+    const tiny = runCli(ctx, ["push", "runc", "--shell", "--head", "4", "--tail", "4", "--spill-dir", dir, "--", tinyScript], shellOptions);
+    if (tiny.status !== 0 || !String(tiny.stdout || "").startsWith("tiny") || /\[(?:spill|recovery|anchor)\]/u.test(String(tiny.stdout || ""))) {
+      return fail("PSH-001", req, "complete no-spill capture advertised a recovery handle");
+    }
+    if (readFileSync(counterPath, "utf8") !== "1") return fail("PSH-001", req, "recovery path re-executed original command");
+    return pass("PSH-001", req, "installed isolated runc preserved exit status, both streams, capped spill bytes, exact recovery, and no-spill handle absence");
   });
 }
 
 export function PSH_002(ctx = {}) {
   const req = "Restore exact original bytes through one confined, scope-authorized resolver that verifies expected digest & metadata before returning content on every supported transport.";
   if (!cliReachable(ctx)) return blocked("PSH-002", req, "no installed `membrane` CLI reachable");
-  const negative = runCli(ctx, ["push", "restore", "mr://anchor/does-not-exist"]);
-  if (negative.status === 0) return fail("PSH-002", req, "restore of a nonexistent anchor unexpectedly succeeded");
-  return insufficient("PSH-002", req, "CLI/HTTP/MCP resolvers do not share one mandatory verification path (PSH-I002)");
+  return withTempDir((dir) => {
+    const bytes = Buffer.concat([
+      ...Array.from({ length: 128 }, (_, index) => Buffer.from(`psh002-line-${String(index + 1).padStart(3, "0")}\r\n`, "utf8")),
+      Buffer.from([0x00, 0xff, 0x41, 0x0d, 0x0a, 0x42, 0x0d, 0x0a, ...Array.from({ length: 992 }, (_, index) => index % 251)]),
+    ]);
+    const counter = join(dir, "invocations.txt");
+    const escapedCounter = counter.replace(/'/gu, "''");
+    const literalBytes = [...bytes].join(",");
+    const script = [
+      `$counter = '${escapedCounter}'`,
+      "$count = if (Test-Path -LiteralPath $counter) { [int](Get-Content -Raw -LiteralPath $counter) } else { 0 }",
+      "Set-Content -NoNewline -LiteralPath $counter -Value ($count + 1)",
+      `$bytes = [byte[]](${literalBytes})`,
+      "[Console]::OpenStandardOutput().Write($bytes, 0, $bytes.Length)",
+    ].join("; ");
+    const shellOptions = { env: { ...process.env, MEMBRANE_PUSH_RUNC_SHELL: "powershell.exe -NoLogo -NoProfile -NonInteractive -OutputFormat Text -Command" } };
+    const command = script;
+    const envA = {
+      ...shellOptions.env,
+      MEMBRANE_REPO_ROOT: dir,
+      MEMBRANE_PUSH_SESSION: "psh002-scope-a",
+    };
+    const produced = runCli(ctx, ["push", "runc", "--shell", "--head", "2", "--tail", "2", "--spill-dir", dir, "--", command], { env: envA });
+    if (produced.status !== 0) return fail("PSH-002", req, `runc producer exited ${produced.status}: ${String(produced.stderr || "")}`);
+    const output = String(produced.stdout || "");
+    const recoveryLine = output.split(/\r?\n/u).find((line) => line.startsWith("[recovery] "));
+    if (!recoveryLine) return fail("PSH-002", req, "installed runc did not publish a recovery reference");
+    let reference;
+    try { reference = JSON.parse(recoveryLine.slice("[recovery] ".length)); } catch { return fail("PSH-002", req, "recovery metadata was not valid JSON"); }
+    const handle = reference.recoveryHandle;
+    if (typeof handle !== "string" || !handle.startsWith("mr://anchor/")) return fail("PSH-002", req, "recovery metadata omitted canonical recoveryHandle");
+    const expectedDigest = `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
+    if (reference.sourceDigest !== expectedDigest && reference.source_digest !== expectedDigest) return fail("PSH-002", req, "recovery metadata digest did not match produced bytes");
+
+    const restored = runCli(ctx, ["push", "restore", handle, "--spill-dir", dir, "--max-bytes", String(bytes.length)], { env: envA, encoding: null });
+    if (restored.status !== 0 || !Buffer.isBuffer(restored.stdout) || Buffer.compare(restored.stdout, bytes) !== 0) {
+      return fail("PSH-002", req, "installed restore did not return exact binary/CRLF original bytes");
+    }
+    const replay = runCli(ctx, ["push", "restore", handle, "--spill-dir", dir, "--max-bytes", String(bytes.length)], { env: envA, encoding: null });
+    if (replay.status !== 0 || Buffer.compare(replay.stdout, bytes) !== 0 || readFileSync(counter, "utf8") !== "1") {
+      return fail("PSH-002", req, "restore did not remain exact without replaying producer command");
+    }
+
+    const foreign = runCli(ctx, ["push", "restore", handle, "--spill-dir", dir, "--max-bytes", String(bytes.length)], {
+      env: { ...envA, MEMBRANE_PUSH_SESSION: "psh002-scope-b" },
+    });
+    if (foreign.status === 0) return fail("PSH-002", req, "cross-scope recovery handle unexpectedly resolved");
+
+    const corruptDir = join(dir, "corrupt");
+    mkdirSync(corruptDir, { recursive: true });
+    // The production resolver stores originals in this exact SQLite artifact;
+    // corrupting it must fail closed instead of returning guessed content.
+    const corruptProduced = runCli(ctx, ["push", "runc", "--shell", "--head", "2", "--tail", "2", "--spill-dir", corruptDir, "--", command], {
+      env: { ...envA, MEMBRANE_REPO_ROOT: corruptDir },
+    });
+    if (corruptProduced.status !== 0) return fail("PSH-002", req, "corruption fixture producer failed");
+    const corruptLine = String(corruptProduced.stdout || "").split(/\r?\n/u).find((line) => line.startsWith("[recovery] "));
+    if (!corruptLine) return fail("PSH-002", req, "corruption fixture omitted recovery metadata");
+    const corruptHandle = JSON.parse(corruptLine.slice("[recovery] ".length)).recoveryHandle;
+    writeFileSync(join(corruptDir, "push-artifacts.sqlite"), Buffer.from("corrupt-metadata", "utf8"));
+    const corruptRestore = runCli(ctx, ["push", "restore", corruptHandle, "--spill-dir", corruptDir, "--max-bytes", String(bytes.length)], {
+      env: { ...envA, MEMBRANE_REPO_ROOT: corruptDir },
+    });
+    if (corruptRestore.status === 0) return fail("PSH-002", req, "corrupt recovery metadata/object was accepted");
+    return insufficient("PSH-002", req, "CLI/HTTP/MCP resolvers do not share one mandatory verification path (PSH-I002)", {
+      transport: "installed CLI",
+      handle,
+      sourceDigest: expectedDigest,
+      exactBytes: true,
+      binaryAndCrLf: true,
+      boundedWholeRestore: true,
+      crossScopeDenied: true,
+      corruptObjectDenied: true,
+      producerInvocations: readFileSync(counter, "utf8"),
+    });
+  });
 }
 
 export function PSH_003(ctx = {}) {
@@ -324,16 +501,58 @@ export function PSH_023(ctx = {}) {
 export function PSH_024(ctx = {}) {
   const req = "Resolve an opaque recovery anchor to an exact bounded line/index/field/key selection; invalid or unsupported selectors return bounded full exact restore or typed miss, with parent digest & selection semantics declared.";
   if (!cliReachable(ctx)) return blocked("PSH-024", req, "no installed `membrane` CLI reachable");
-  const negative = runCli(ctx, ["push", "restore", "mr://anchor/does-not-exist", "--selector", "{\"kind\":\"unsupported-selector-kind\"}"]);
-  if (negative.status === 0) {
-    return fail("PSH-024", req, "unsupported selector against a nonexistent anchor unexpectedly succeeded");
-  }
-  return insufficient("PSH-024", req, "native MCP/resident/CLI resolver parity over the shared store contract remains unverified (PSH-I024)");
+  return withTempDir((dir) => {
+    const source = Array.from({ length: 80 }, (_, index) => `psh024-line-${index + 1}\n`).join("");
+    const produced = runCli(ctx, ["push", "runc", "--shell", "--head", "2", "--tail", "2", "--spill-dir", dir, "--", "i=1; while [ \"$i\" -le 80 ]; do printf 'psh024-line-%s\\n' \"$i\"; i=$((i+1)); done"]);
+    if (produced.status !== 0) return fail("PSH-024", req, `runc producer exited ${produced.status}: ${produced.stderr}`);
+    const marker = String(produced.stdout || "").split(/\r?\n/u).find((line) => line.includes("[recovery]"));
+    if (!marker) return insufficient("PSH-024", req, "CLI did not expose a recovery reference for selector qualification (PSH-I024)");
+    let reference;
+    try { reference = JSON.parse(marker.slice(marker.indexOf("{"))); } catch { return fail("PSH-024", req, "runc recovery reference was not valid JSON"); }
+    const handle = reference.recoveryHandle || reference.handle;
+    if (typeof handle !== "string" || !handle.startsWith("mr://anchor/")) return fail("PSH-024", req, "runc recovery reference omitted canonical recoveryHandle");
+    const restored = {};
+    for (const [name, selector] of [["whole", null], ["bytes", { kind: "bytes", start: 0, end: 15 }], ["lines", { kind: "lines", start: 1, end: 2 }]]) {
+      const args = ["push", "restore", handle, "--spill-dir", dir];
+      if (selector) args.push("--selector", JSON.stringify(selector));
+      const result = runCli(ctx, args);
+      const expected = name === "whole" ? source : name === "bytes" ? source.slice(0, 15) : source.split(/(?<=\n)/u).slice(0, 2).join("");
+      if (result.status !== 0 || String(result.stdout || "") !== expected) return fail("PSH-024", req, `${name} selector restore was not exact: ${result.stderr}`);
+      restored[name] = true;
+    }
+    const expectedDigest = `sha256:${createHash("sha256").update(source).digest("hex")}`;
+    if (reference.source_digest !== expectedDigest && reference.sourceDigest !== expectedDigest) return fail("PSH-024", req, "recovery reference parent digest did not match original bytes");
+    const malformed = runCli(ctx, ["push", "restore", handle, "--spill-dir", dir, "--selector", JSON.stringify({ kind: "unsupported" })]);
+    if (malformed.status === 0) return fail("PSH-024", req, "unsupported selector unexpectedly succeeded");
+    return insufficient("PSH-024", req, "native MCP/resident/CLI resolver parity over the shared store contract remains unverified (PSH-I024)", { transport: "native CLI", handle, selectors: Object.keys(restored), malformedSelectorRefused: true });
+  });
 }
 
-export function PSH_025(ctx = {}) {
+export async function PSH_025(ctx = {}) {
   const req = "Before offloading content, prove that the current consumer can discover and invoke the authorized recovery operation against the matching artifact store; otherwise return a complete inline result or typed refusal.";
-  return insufficient("PSH-025", req, "installed third-party host qualification for the consumer-qualified recovery handshake remains pending (PSH-I025)");
+  if (!cliReachable(ctx)) return blocked("PSH-025", req, "no installed `membrane` CLI reachable");
+  const ownsFixture = !ctx.enrolledRoot;
+  const root = ctx.enrolledRoot || mkdtempSync(join(tmpdir(), "psh025-enrolled-"));
+  const cleanup = () => { if (ownsFixture) { try { rmSync(root, { recursive: true, force: true }); } catch {} } };
+  const registry = ctx.registryPath || join(root, "project-registry.json");
+  const env = ownsFixture ? { ...(ctx.env || {}), MEMBRANE_PROJECT_REGISTRY: registry, MEMBRANE_WORKSPACE_ROOT: root } : (ctx.env || {});
+  if (ownsFixture) {
+    const installScript = join(resolveCli(ctx).replace(/\\[^\\]+$/u, ""), "mcp", "install.mjs");
+    const init = spawnSync(process.execPath, [installScript, "init", root, "--repository", ctx.repositoryId || "psh025", "--scope", ctx.scopeId || `psh-${process.pid}`], { encoding: "utf8", windowsHide: true, env: { ...process.env, ...env } });
+    if (init.status !== 0) { cleanup(); return fail("PSH-025", req, `native enrollment fixture initialization failed: ${String(init.stderr || init.stdout || "").trim()}`); }
+  }
+  const caller = { root, repositoryId: ctx.repositoryId || "psh025", scopeId: ctx.scopeId || `psh-${process.pid}` };
+  const taskId = ctx.taskId || `psh-025-${process.pid}`;
+  const probeRun = { responses: await runStdioMcpHandshake({ ...ctx, env }, { root, caller, taskId }) };
+  const probe = mcpResult(probeRun.responses, 2);
+  const probeData = probe?.result?.data || probe?.data;
+  if (!probeData?.resolverToken || !probeData?.storeId) { cleanup(); return insufficient("PSH-025", req, "installed third-party host qualification for the consumer-qualified recovery handshake remains pending (PSH-I025)", { transport: "native stdio-mcp", probeCode: probe?.result?.code || probe?.code || "consumer_probe_unavailable", root }); }
+  const prepared = mcpResult(probeRun.responses, 3);
+  const preparedData = prepared?.result?.data || prepared?.data;
+  if (!preparedData?.recovery?.handle) { cleanup(); return fail("PSH-025", req, `authorized prepare omitted recovery reference: ${JSON.stringify(prepared)}`); }
+  const outcome = insufficient("PSH-025", req, "installed third-party host qualification for the consumer-qualified recovery handshake remains pending (PSH-I025)", { transport: "native stdio-mcp", storeId: probeData.storeId, resolverTokenBound: true, prepared: true, handle: preparedData.recovery.handle });
+  cleanup();
+  return outcome;
 }
 
 export function PSH_026(ctx = {}) {
@@ -373,13 +592,14 @@ export const CASES = {
   PSH_025, PSH_026, PSH_027, PSH_028, PSH_029,
 };
 
-export function runAll(ctx = {}) {
-  return Object.fromEntries(Object.entries(CASES).map(([id, fn]) => [id, fn(ctx)]));
+export async function runAll(ctx = {}) {
+  const entries = await Promise.all(Object.entries(CASES).map(async ([id, fn]) => [id, await fn(ctx)]));
+  return Object.fromEntries(entries);
 }
 
 // Manual local invocation (never used by CI): `node psh-windows.mjs`.
 if (import.meta.url === pathToFileURLSafe(process.argv[1])) {
-  const results = runAll({});
+  const results = await runAll({});
   process.stdout.write(`${JSON.stringify(results, null, 2)}\n`);
 }
 

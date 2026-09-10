@@ -4,7 +4,7 @@
 //! MBR-102: create one membrane executable with mode subcommands.
 
 use crate::dispatch::{
-    ActivationInvocation, InstallInvocation, MembraneMode, ParsedInvocation, UninstallInvocation,
+    ActivationInvocation, InitInvocation, InstallInvocation, MembraneMode, ParsedInvocation, UninstallInvocation,
 };
 use crate::{EXIT_INTERNAL_ERROR, EXIT_OK, EXIT_USER_ERROR};
 
@@ -27,6 +27,7 @@ pub fn plane_of(mode: &MembraneMode) -> membrane_runtime::Plane {
         MembraneMode::Activate => membrane_runtime::Plane::Application,
         MembraneMode::Deactivate => membrane_runtime::Plane::Application,
         MembraneMode::MigrateLegacy => membrane_runtime::Plane::Application,
+        MembraneMode::Init => membrane_runtime::Plane::Application,
     }
 }
 
@@ -100,6 +101,26 @@ pub fn dispatch(invocation: &ParsedInvocation) -> DispatchOutcome {
             }
             None => DispatchOutcome::InternalError("migration mode invoked without payload".into()),
         },
+        MembraneMode::Init => match invocation.init.as_ref() {
+            Some(init) => dispatch_init(init),
+            None => DispatchOutcome::InternalError("init mode invoked without payload".into()),
+        },
+    }
+}
+
+fn dispatch_init(invocation: &InitInvocation) -> DispatchOutcome {
+    let options = crate::native_init::InitOptions {
+        root: invocation.root.clone(), repository_id: invocation.repository_id.clone(),
+        scope_id: invocation.scope_id.clone(), virtual_id: invocation.virtual_id.clone(),
+        tenant_id: invocation.tenant_id.clone(), parents: invocation.parents.clone(),
+        native: invocation.native.clone(), config: invocation.config.clone(), dry_run: invocation.dry_run,
+    };
+    match crate::native_init::init(&options) {
+        Ok(receipt) => match serde_json::to_string_pretty(&receipt) {
+            Ok(json) => { println!("{json}"); DispatchOutcome::Ok }
+            Err(error) => DispatchOutcome::InternalError(format!("init receipt serialization failed: {error}")),
+        },
+        Err(error) => DispatchOutcome::UserError(format!("init: {error}")),
     }
 }
 

@@ -5,6 +5,7 @@
 //! storage and query/traversal remain owned by their respective modules.
 
 use crate::identity::{compute_generation_id, content_digest};
+use crate::api::CancellationToken;
 use crate::model::{GraphEdge, GraphNode};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
@@ -12,6 +13,7 @@ use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::LazyLock;
 use tree_sitter::{Node, Parser};
 
 pub const GRAPH_SCHEMA_VERSION: u32 = 1;
@@ -28,6 +30,17 @@ const IGNORED_DIRS: &[&str] = &[
     "target", "vendor",
 ];
 const IGNORED_FILES: &[&str] = &[".DS_Store", "Thumbs.db", "architecture.md", "product.md"];
+
+/// Canonical source-universe policy shared by graph discovery & native watch
+/// snapshots. Generated payloads stay outside both semantic indexing paths.
+pub fn is_canonical_ignored_dir(name: &str) -> bool {
+    IGNORED_DIRS.iter().any(|ignored| *ignored == name) || name.starts_with(".agent-")
+}
+
+pub fn is_canonical_ignored_file(relative: &str, name: &str) -> bool {
+    IGNORED_FILES.iter().any(|ignored| *ignored == name)
+        || (relative.starts_with("docs/") && matches!(name, "product.md" | "architecture.md"))
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Ord, PartialOrd)]
 pub enum PrecisionTier { Compiler, Ast, Lexical }
@@ -88,6 +101,16 @@ pub struct ScanDisposition {
     pub reason: String,
 }
 
+const MAX_SCAN_ERROR_DETAIL_CHARS: usize = 256;
+
+fn record_scan_skip(report: &mut ScanReport, path: String, reason: &str, detail: impl std::fmt::Display) {
+    report.traversal_truncated = true;
+    report.truncation_reasons.push(reason.into());
+    let detail = detail.to_string();
+    let detail: String = detail.chars().take(MAX_SCAN_ERROR_DETAIL_CHARS).collect();
+    report.skipped.push(ScanDisposition { path, state: "unavailable".into(), reason: format!("{reason}:{detail}") });
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FileReport {
     pub path: String,
@@ -131,16 +154,37 @@ pub struct GraphGeneration {
 
 #[derive(Debug, thiserror::Error)]
 pub enum GraphError {
+    #[error("graph build cancelled")]
+    Cancelled,
     #[error("repository root is unavailable: {0}")] Root(String),
     #[error("repository path escapes canonical root: {0}")] EscapesRoot(String),
     #[error("source read failed for {path}: {message}")] Read { path: String, message: String },
     #[error("invalid graph fact: {0}")] InvalidFact(String),
 }
 
+macro_rules! capture_re {
+    ($line:expr, $pattern:literal) => {{
+        static REGEX: LazyLock<Regex> = LazyLock::new(|| {
+            Regex::new($pattern).expect("graph capture pattern is a valid literal")
+        });
+        REGEX
+            .captures($line)
+            .and_then(|captures| captures.get(1).map(|match_| match_.as_str().to_owned()))
+    }};
+}
+
+static CALL_NAMES_REGEX: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?:\.|\b)([A-Za-z_$][A-Za-z0-9_$]*)\s*\(").expect("call-name pattern"));
+static SYMBOL_NAMES_REGEX: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\b[A-Za-z_$][A-Za-z0-9_$]*\b").expect("symbol-name pattern"));
+static GENERATED_POINTER_REGEX: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?s)\n?<!-- blueprint:docs:start -->.*?<!-- blueprint:docs:end -->\n?").expect("generated-pointer pattern"));
+
 /// Deterministically discover bounded, root-confined files.  Symlinked files
 /// and directories are skipped unless their canonical target remains inside
 /// the canonical repository root; entries, depth, and bytes are bounded.
 pub fn scan_repository(root: impl AsRef<Path>, options: &ScanOptions) -> Result<ScanReport, GraphError> {
+    scan_repository_with_cancellation(root, options, &CancellationToken::new())
+}
+
+pub fn scan_repository_with_cancellation(root: impl AsRef<Path>, options: &ScanOptions, cancellation: &CancellationToken) -> Result<ScanReport, GraphError> {
     let root = fs::canonicalize(root.as_ref()).map_err(|e| GraphError::Root(e.to_string()))?;
     if !root.is_dir() { return Err(GraphError::Root("root is not a directory".into())); }
     let max_dirs = options.max_dirs.unwrap_or(MAX_DIRS);
@@ -150,27 +194,61 @@ pub fn scan_repository(root: impl AsRef<Path>, options: &ScanOptions) -> Result<
     let mut visited = HashSet::new();
     let mut report = ScanReport::default();
     while let Some(dir) = stack.pop() {
+        if cancellation.is_cancelled() { return Err(GraphError::Cancelled); }
         if visited.len() >= max_dirs { report.traversal_truncated = true; report.truncation_reasons.push("directory_limit".into()); break; }
-        let canonical = fs::canonicalize(&dir).map_err(|e| GraphError::Root(e.to_string()))?;
+        let canonical = match fs::canonicalize(&dir) {
+            Ok(path) => path,
+            Err(error) if dir == root => return Err(GraphError::Root(error.to_string())),
+            Err(error) => {
+                let relative = normalize_path(&dir.strip_prefix(&root).unwrap_or(&dir).to_string_lossy());
+                record_scan_skip(&mut report, relative, "directory_canonicalize_error", error);
+                continue;
+            }
+        };
         if !canonical.starts_with(&root) || !visited.insert(canonical) { continue; }
-        let mut entries = fs::read_dir(&dir).map_err(|e| GraphError::Root(e.to_string()))?
-            .filter_map(Result::ok).collect::<Vec<_>>();
+        let mut entries = Vec::new();
+        let directory_entries = match fs::read_dir(&dir) {
+            Ok(entries) => entries,
+            Err(error) if dir == root => return Err(GraphError::Root(error.to_string())),
+            Err(error) => {
+                let relative = normalize_path(&dir.strip_prefix(&root).unwrap_or(&dir).to_string_lossy());
+                record_scan_skip(&mut report, relative, "directory_read_error", error);
+                continue;
+            }
+        };
+        for entry in directory_entries {
+            match entry {
+                Ok(entry) => entries.push(entry),
+                Err(error) => {
+                    let relative = dir.strip_prefix(&root).map(|path| normalize_path(&path.to_string_lossy())).unwrap_or_default();
+                    record_scan_skip(&mut report, relative, "directory_entry_error", error);
+                }
+            }
+        }
         if entries.len() > max_entries { report.traversal_truncated = true; report.truncation_reasons.push("directory_entry_limit".into()); entries.truncate(max_entries); }
         entries.sort_by(|a, b| a.file_name().to_string_lossy().cmp(&b.file_name().to_string_lossy()));
         let mut child_dirs = Vec::new();
         for entry in entries {
+            if cancellation.is_cancelled() { return Err(GraphError::Cancelled); }
             let name = entry.file_name().to_string_lossy().to_string();
             let path = entry.path();
             let rel = match path.strip_prefix(&root) { Ok(v) => normalize_path(&v.to_string_lossy()), Err(_) => continue };
             if rel.is_empty() || prefixes.iter().any(|p| rel == *p || rel.starts_with(&format!("{p}/"))) { continue; }
-            let ty = match entry.file_type() { Ok(v) => v, Err(_) => continue };
+            let ty = match entry.file_type() {
+                Ok(v) => v,
+                Err(error) => { record_scan_skip(&mut report, rel, "file_type_error", error); continue; }
+            };
             // `file_type` does not follow links.  Resolve every entry before
             // admitting it so internal links are indexed while dangling or
             // escaping links receive an explicit typed disposition.
             let target = match fs::canonicalize(&path) {
                 Ok(v) => v,
                 Err(error) => {
-                    if ty.is_symlink() { report.skipped.push(ScanDisposition { path: rel, state: "skipped".into(), reason: format!("dangling_symlink:{error}") }); }
+                    if ty.is_symlink() {
+                        report.skipped.push(ScanDisposition { path: rel, state: "skipped".into(), reason: format!("dangling_symlink:{error}") });
+                    } else {
+                        record_scan_skip(&mut report, rel, "canonicalize_error", error);
+                    }
                     continue;
                 }
             };
@@ -179,17 +257,28 @@ pub fn scan_repository(root: impl AsRef<Path>, options: &ScanOptions) -> Result<
                 continue;
             }
             let target_meta = match fs::metadata(&path) { Ok(v) => v, Err(error) => {
-                if ty.is_symlink() { report.skipped.push(ScanDisposition { path: rel, state: "skipped".into(), reason: format!("unreadable_symlink:{error}") }); }
+                record_scan_skip(&mut report, rel, "metadata_error", error);
                 continue;
             }};
             if target_meta.is_dir() {
-                if IGNORED_DIRS.iter().any(|ignored| *ignored == name) || name.starts_with(".agent-") { continue; }
+                if is_canonical_ignored_dir(&name) { continue; }
                 child_dirs.push(path);
             } else if target_meta.is_file() {
-                if IGNORED_FILES.iter().any(|ignored| *ignored == name) || (rel.starts_with("docs/") && (name == "product.md" || name == "architecture.md")) { continue; }
-                let meta = match fs::metadata(&path) { Ok(v) => v, Err(_) => continue };
-                if meta.len() > MAX_FILE_BYTES { continue; }
-                let bytes = match fs::read(&path) { Ok(v) => v, Err(_) => continue };
+                if is_canonical_ignored_file(&rel, &name) { continue; }
+                let meta = match fs::metadata(&path) { Ok(v) => v, Err(error) => {
+                    record_scan_skip(&mut report, rel, "metadata_error", error);
+                    continue;
+                }};
+                if meta.len() > MAX_FILE_BYTES {
+                    report.skipped.push(ScanDisposition { path: rel.clone(), state: "unsupported".into(), reason: format!("file_bytes:{}>limit:{}", meta.len(), MAX_FILE_BYTES) });
+                    report.traversal_truncated = true;
+                    report.truncation_reasons.push(format!("unsupported_file_bytes:{rel}"));
+                    continue;
+                }
+                let bytes = match fs::read(&path) { Ok(v) => v, Err(error) => {
+                    record_scan_skip(&mut report, rel, "file_read_error", error);
+                    continue;
+                }};
                 let code = language_for_path(&rel).is_some();
                 if code && bytes.contains(&0) { continue; }
                 let text = String::from_utf8_lossy(&bytes).into_owned();
@@ -211,21 +300,31 @@ pub fn scan_repository(root: impl AsRef<Path>, options: &ScanOptions) -> Result<
 }
 
 pub fn build_generation(root: impl AsRef<Path>, options: &GraphOptions) -> Result<GraphGeneration, GraphError> {
+    build_generation_with_cancellation(root, options, &CancellationToken::new())
+}
+
+pub fn build_generation_with_cancellation(root: impl AsRef<Path>, options: &GraphOptions, cancellation: &CancellationToken) -> Result<GraphGeneration, GraphError> {
     let root = fs::canonicalize(root.as_ref()).map_err(|e| GraphError::Root(e.to_string()))?;
-    let scan = scan_repository(&root, &options.scan)?;
-    build_generation_from_files(&root, scan, options)
+    let scan = scan_repository_with_cancellation(&root, &options.scan, cancellation)?;
+    build_generation_from_files_with_cancellation(&root, scan, options, cancellation)
 }
 
 pub fn build_generation_from_files(root: &Path, scan: ScanReport, options: &GraphOptions) -> Result<GraphGeneration, GraphError> {
+    build_generation_from_files_with_cancellation(root, scan, options, &CancellationToken::new())
+}
+
+pub fn build_generation_from_files_with_cancellation(root: &Path, scan: ScanReport, options: &GraphOptions, cancellation: &CancellationToken) -> Result<GraphGeneration, GraphError> {
     let mut lexical = Vec::new();
     let mut lexical_edges = Vec::new();
     let mut reports = Vec::new();
     let file_map: BTreeMap<String, &FileRecord> = scan.files.iter().map(|f| (f.path.clone(), f)).collect();
     for file in &scan.files {
-        let file_node = file_node(file);
+        if cancellation.is_cancelled() { return Err(GraphError::Cancelled); }
+        let surface = module_surface(file);
+        let file_node = file_node(file, &surface);
         lexical.push(file_node.clone());
         if let Some(text) = &file.text {
-            let (mut nodes, mut edges, report) = lexical_facts(file, text, &file_map);
+            let (mut nodes, mut edges, report) = lexical_facts(file, text, &file_map, &surface);
             lexical.append(&mut nodes); lexical_edges.append(&mut edges); reports.push(report);
         } else {
             reports.push(FileReport { path: file.path.clone(), language: language_for_path(&file.path).map(str::to_owned), provider: "lexical".into(), precision: PrecisionTier::Lexical, parse_status: "unsupported".into(), error_node_count: 0, error: None });
@@ -233,9 +332,10 @@ pub fn build_generation_from_files(root: &Path, scan: ScanReport, options: &Grap
     }
     let mut ast_nodes = Vec::new(); let mut ast_edges = Vec::new();
     for file in &scan.files {
+        if cancellation.is_cancelled() { return Err(GraphError::Cancelled); }
         if let Some(text) = &file.text {
             if let Some(language) = parser_language(file.extension()) {
-                let ast = ast_facts(file, text, language);
+                let ast = ast_facts(file, text, language, cancellation)?;
                 if ast.report.parse_status != "failed" && ast.report.parse_status != "partial" {
                     ast_nodes.extend(ast.nodes); ast_edges.extend(ast.edges);
                 }
@@ -259,10 +359,10 @@ pub fn build_generation_from_files(root: &Path, scan: ScanReport, options: &Grap
         nodes, edges, files: reports, truncation_reasons: scan.truncation_reasons })
 }
 
-fn file_node(file: &FileRecord) -> GraphNode {
+fn file_node(file: &FileRecord, module_surface: &Value) -> GraphNode {
     let evidence = json!({"path":file.path,"startLine":1,"endLine":line_count(file.text.as_deref().unwrap_or("")),"contentHash":file.content_hash,
         "provider":"lexical","precisionTier":"LEXICAL","confidenceTier":"EXACT_RESOLUTION",
-        "moduleSurface": module_surface(file)});
+        "moduleSurface": module_surface});
     GraphNode { id: format!("file:{}", file.path), kind: "file".into(), path: Some(file.path.clone()), name: file.path.rsplit('/').next().map(str::to_owned), generation_id: String::new(), evidence: vec![evidence] }
 }
 
@@ -289,12 +389,16 @@ fn module_surface(file: &FileRecord) -> Value {
         "tsx" => tree_sitter_typescript::LANGUAGE_TSX.into(),
         _ => return surface,
     };
-    if parser.set_language(&language_result).is_err() || parser.parse(text, None).is_none() {
+    if parser.set_language(&language_result).is_err() {
         surface["parseStatus"] = json!("failed");
         surface["open"] = json!([{"reason":"parse_error","line":1}]);
         return surface;
     }
-    let Some(tree) = parser.parse(text, None) else { return surface; };
+    let Some(tree) = parser.parse(text, None) else {
+        surface["parseStatus"] = json!("failed");
+        surface["open"] = json!([{"reason":"parse_error","line":1}]);
+        return surface;
+    };
     if tree.root_node().has_error() {
         surface["parseStatus"] = json!("failed");
         surface["open"] = json!([{"reason":"parse_error","line":1}]);
@@ -311,14 +415,14 @@ fn module_surface(file: &FileRecord) -> Value {
             open.push(json!({"reason":"incomplete_module_syntax","line":line}));
             continue;
         }
-        if let Some(specifier) = capture(code, r#"^import\s+[^;]*?\sfrom\s+["']([^"']+)["']"#).or_else(|| capture(code, r#"^import\s+["']([^"']+)["']"#)) {
-            if let Some(default_name) = capture(code, r#"^import\s+([A-Za-z_$][\w$]*)\s*(?:,|from)"#) {
+        if let Some(specifier) = capture_re!(code, r#"^import\s+[^;]*?\sfrom\s+["']([^"']+)["']"#).or_else(|| capture_re!(code, r#"^import\s+["']([^"']+)["']"#)) {
+            if let Some(default_name) = capture_re!(code, r#"^import\s+([A-Za-z_$][\w$]*)\s*(?:,|from)"#) {
                 requests.push(json!({"kind":"import","name":"default","localName":default_name,"specifier":specifier,"line":line}));
             }
-            if let Some(namespace_name) = capture(code, r#"\*\s+as\s+([A-Za-z_$][\w$]*)"#) {
+            if let Some(namespace_name) = capture_re!(code, r#"\*\s+as\s+([A-Za-z_$][\w$]*)"#) {
                 requests.push(json!({"kind":"namespace","name":"*","localName":namespace_name,"specifier":specifier,"line":line}));
             }
-            if let Some(named) = capture(code, r#"\{([^}]*)\}"#) {
+            if let Some(named) = capture_re!(code, r#"\{([^}]*)\}"#) {
                 for item in named.split(',').map(str::trim).filter(|item| !item.is_empty()) {
                     let mut parts = item.split_whitespace();
                     let name = parts.next().unwrap_or("");
@@ -328,12 +432,12 @@ fn module_surface(file: &FileRecord) -> Value {
                 }
             }
         }
-        if let Some(specifier) = capture(code, r#"^export\s+\*\s+(?:as\s+[A-Za-z_$][\w$]*\s+)?from\s+["']([^"']+)["']"#) {
-            if let Some(name) = capture(code, r#"^export\s+\*\s+as\s+([A-Za-z_$][\w$]*)"#) {
+        if let Some(specifier) = capture_re!(code, r#"^export\s+\*\s+(?:as\s+[A-Za-z_$][\w$]*\s+)?from\s+["']([^"']+)["']"#) {
+            if let Some(name) = capture_re!(code, r#"^export\s+\*\s+as\s+([A-Za-z_$][\w$]*)"#) {
                 exports.push(json!({"name":name,"line":line}));
             } else { stars.push(json!({"specifier":specifier,"line":line})); }
-        } else if let Some(specifier) = capture(code, r#"^export\s+\{[^}]*\}\s+from\s+["']([^"']+)["']"#) {
-            if let Some(named) = capture(code, r#"\{([^}]*)\}"#) {
+        } else if let Some(specifier) = capture_re!(code, r#"^export\s+\{[^}]*\}\s+from\s+["']([^"']+)["']"#) {
+            if let Some(named) = capture_re!(code, r#"\{([^}]*)\}"#) {
                 for item in named.split(',').map(str::trim).filter(|item| !item.is_empty()) {
                     let mut parts = item.split_whitespace();
                     let local = parts.next().unwrap_or("");
@@ -343,7 +447,7 @@ fn module_surface(file: &FileRecord) -> Value {
                     requests.push(json!({"kind":"reexport","name":local,"localName":alias,"specifier":specifier,"line":line}));
                 }
             }
-        } else if let Some(named) = capture(code, r#"^export\s*\{([^}]*)\}"#) {
+        } else if let Some(named) = capture_re!(code, r#"^export\s*\{([^}]*)\}"#) {
             for item in named.split(',').map(str::trim).filter(|item| !item.is_empty()) {
                 let mut parts = item.split_whitespace(); let local = parts.next().unwrap_or("");
                 if local.is_empty() { continue; }
@@ -351,8 +455,8 @@ fn module_surface(file: &FileRecord) -> Value {
                 exports.push(json!({"name":alias,"line":line}));
             }
         } else if code.starts_with("export default") { exports.push(json!({"name":"default","line":line})); }
-        else if let Some(name) = capture(code, r#"^export\s+(?:async\s+)?(?:function|class|interface|type|enum)\s+([A-Za-z_$][\w$]*)"#) { exports.push(json!({"name":name,"line":line})); }
-        else if let Some(names) = capture(code, r#"^export\s+(?:const|let|var)\s+([A-Za-z_$][\w$]*)"#) { exports.push(json!({"name":names,"line":line})); }
+        else if let Some(name) = capture_re!(code, r#"^export\s+(?:async\s+)?(?:function|class|interface|type|enum)\s+([A-Za-z_$][\w$]*)"#) { exports.push(json!({"name":name,"line":line})); }
+        else if let Some(names) = capture_re!(code, r#"^export\s+(?:const|let|var)\s+([A-Za-z_$][\w$]*)"#) { exports.push(json!({"name":names,"line":line})); }
         if code.contains("module.exports") || code.contains("exports.") || code.contains("exports[") { open.push(json!({"reason":"commonjs_exports","line":line})); }
         if code.starts_with("export =") { open.push(json!({"reason":"export_assignment","line":line})); }
         if code.starts_with("declare module") { open.push(json!({"reason":"ambient_module","line":line})); }
@@ -396,7 +500,7 @@ fn module_surface_statements(text: &str) -> Vec<(usize, String)> {
     statements
 }
 
-fn lexical_facts(file: &FileRecord, text: &str, files: &BTreeMap<String, &FileRecord>) -> (Vec<GraphNode>, Vec<GraphEdge>, FileReport) {
+fn lexical_facts(file: &FileRecord, text: &str, files: &BTreeMap<String, &FileRecord>, module_surface: &Value) -> (Vec<GraphNode>, Vec<GraphEdge>, FileReport) {
     let ext = file.extension().to_ascii_lowercase();
     let language = language_for_path(&file.path).unwrap_or("unknown");
     let mut nodes = Vec::new(); let mut edges = Vec::new();
@@ -408,36 +512,36 @@ fn lexical_facts(file: &FileRecord, text: &str, files: &BTreeMap<String, &FileRe
         let line_no = index + 1;
         while class_stack.last().is_some_and(|(_, end, _)| line_no > *end) { class_stack.pop(); }
         while impl_stack.last().is_some_and(|(_, end)| line_no > *end) { impl_stack.pop(); }
-        if let Some(name) = capture(line, r"^\s*(?:export\s+)?(?:default\s+)?(?:abstract\s+)?class\s+([A-Za-z_$][\w$]*)") {
+        if let Some(name) = capture_re!(line, r"^\s*(?:export\s+)?(?:default\s+)?(?:abstract\s+)?class\s+([A-Za-z_$][\w$]*)") {
             let end = block_end(&lines, index); let q = if ext == "py" { name.clone() } else { name.clone() };
             let node = symbol_node(file, "class", &name, &q, line_no, end, &[
                 "Class".into(), language_label(language, line),
             ], "LEXICAL", ConfidenceTier::ExactResolution); class_stack.push((name.clone(), end, line_no)); symbols_by_line.push((name, q, line_no, "Class".into())); nodes.push(node); continue;
         }
-        if let Some(name) = capture(line, r"^\s*class\s+([A-Za-z_]\w*)") {
+        if let Some(name) = capture_re!(line, r"^\s*class\s+([A-Za-z_]\w*)") {
             let end = python_block_end(&lines, index); let q = class_stack.iter().map(|x| x.0.clone()).chain(std::iter::once(name.clone())).collect::<Vec<_>>().join(".");
             let node = symbol_node(file, "class", &name, &q, line_no, end, &["Class".into()], "LEXICAL", ConfidenceTier::ExactResolution);
             class_stack.push((name.clone(), end, leading_indent(line))); symbols_by_line.push((name, q, line_no, "Class".into())); nodes.push(node); continue;
         }
-        if let Some(name) = capture(line, r"^\s*(?:pub(?:\([^)]*\))?\s+)?(?:async\s+)?(?:unsafe\s+)?fn\s+([A-Za-z_]\w*)")
-            .or_else(|| capture(line, r"^\s*(?:async\s+)?def\s+([A-Za-z_]\w*)"))
-            .or_else(|| capture(line, r"^\s*(?:export\s+)?(?:default\s+)?(?:async\s+)?function\s+([A-Za-z_$][\w$]*)")) {
+        if let Some(name) = capture_re!(line, r"^\s*(?:pub(?:\([^)]*\))?\s+)?(?:async\s+)?(?:unsafe\s+)?fn\s+([A-Za-z_]\w*)")
+            .or_else(|| capture_re!(line, r"^\s*(?:async\s+)?def\s+([A-Za-z_]\w*)"))
+            .or_else(|| capture_re!(line, r"^\s*(?:export\s+)?(?:default\s+)?(?:async\s+)?function\s+([A-Za-z_$][\w$]*)")) {
             let end = if ext == "py" { python_block_end(&lines, index) } else { block_end(&lines, index) };
             let (qualified, label) = if let Some((class, _, _)) = class_stack.last() { (format!("{class}.{name}"), "Method") } else if let Some((imp, _)) = impl_stack.last() { (format!("{imp}.{name}"), "Method") } else { (name.clone(), "Function") };
             nodes.push(symbol_node(file, "symbol", &name, &qualified, line_no, end, &[label.into()], "LEXICAL", ConfidenceTier::ExactResolution));
             symbols_by_line.push((name, qualified, line_no, label.into())); continue;
         }
-        if let Some(name) = capture(line, r"^\s*(?:export\s+)?const\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s+)?(?:\([^)]*\)|[A-Za-z_$][\w$]*)\s*=>") {
+        if let Some(name) = capture_re!(line, r"^\s*(?:export\s+)?const\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s+)?(?:\([^)]*\)|[A-Za-z_$][\w$]*)\s*=>") {
             nodes.push(symbol_node(file, "symbol", &name, &name, line_no, block_end(&lines, index), &["Function".into()], "LEXICAL", ConfidenceTier::ExactResolution)); symbols_by_line.push((name.clone(), name, line_no, "Function".into())); continue;
         }
-        if let Some(name) = capture(line, r"^\s*(?:export\s+)?const\s+([A-Za-z_$][\w$]*)\b") {
+        if let Some(name) = capture_re!(line, r"^\s*(?:export\s+)?const\s+([A-Za-z_$][\w$]*)\b") {
             nodes.push(symbol_node(file, "symbol", &name, &name, line_no, line_no, &["Const".into()], "LEXICAL", ConfidenceTier::ExactResolution)); symbols_by_line.push((name.clone(), name, line_no, "Const".into()));
         }
-        if let Some(name) = capture(line, r"^\s*(?:export\s+)?(?:declare\s+)?(?:interface|type|enum)\s+([A-Za-z_$][\w$]*)") {
+        if let Some(name) = capture_re!(line, r"^\s*(?:export\s+)?(?:declare\s+)?(?:interface|type|enum)\s+([A-Za-z_$][\w$]*)") {
             nodes.push(symbol_node(file, "symbol", &name, &name, line_no, line_no, &["Type".into()], "LEXICAL", ConfidenceTier::ExactResolution)); symbols_by_line.push((name.clone(), name, line_no, "Type".into()));
         }
-        if let Some(name) = capture(line, r"^\s*impl(?:\s*<[^>]+>)?\s+(?:[A-Za-z_]\w*(?:::\w+)*\s+for\s+)?([A-Za-z_]\w*(?:::\w+)*)") { impl_stack.push((name.rsplit("::").next().unwrap_or(&name).into(), block_end(&lines, index))); }
-        if let Some(name) = capture(line, r#"^\s*test\s*\(\s*["']([^"']+)"#) {
+        if let Some(name) = capture_re!(line, r"^\s*impl(?:\s*<[^>]+>)?\s+(?:[A-Za-z_]\w*(?:::\w+)*\s+for\s+)?([A-Za-z_]\w*(?:::\w+)*)") { impl_stack.push((name.rsplit("::").next().unwrap_or(&name).into(), block_end(&lines, index))); }
+        if let Some(name) = capture_re!(line, r#"^\s*test\s*\(\s*["']([^"']+)"#) {
             nodes.push(symbol_node(file, "symbol", &name, &name, line_no, block_end(&lines, index), &["Test".into()], "LEXICAL", ConfidenceTier::ExactResolution)); symbols_by_line.push((name.clone(), name, line_no, "Test".into()));
         }
     }
@@ -446,7 +550,7 @@ fn lexical_facts(file: &FileRecord, text: &str, files: &BTreeMap<String, &FileRe
     for import in import_specifiers(&ext, text) {
         let target = resolve_import(&file.path, &import, files);
         let target_id = target.as_ref().map(|path| format!("file:{path}"));
-        edges.push(import_edge(&file_id, target_id.as_deref(), &import, file));
+        edges.push(import_edge(&file_id, target_id.as_deref(), &import, file, module_surface));
     }
     for (name, qualified, start, label) in symbols_by_line.iter().filter(|x| x.3 == "Function" || x.3 == "Method" || x.3 == "Test") {
         let end = nodes.iter().find(|n| n.name.as_deref() == Some(name) && n.path.as_deref() == Some(file.path.as_str()) && evidence_lines(n).0 == *start).map(|n| evidence_lines(n).1).unwrap_or(*start);
@@ -462,23 +566,25 @@ fn lexical_facts(file: &FileRecord, text: &str, files: &BTreeMap<String, &FileRe
     (nodes, edges, report)
 }
 
-fn ast_facts(file: &FileRecord, text: &str, language: &str) -> AstResult {
+fn ast_facts(file: &FileRecord, text: &str, language: &str, cancellation: &CancellationToken) -> Result<AstResult, GraphError> {
+    if cancellation.is_cancelled() { return Err(GraphError::Cancelled); }
     let mut parser = Parser::new();
-    let language_result: tree_sitter::Language = match language { "javascript" => tree_sitter_javascript::LANGUAGE.into(), "typescript" => tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(), "tsx" => tree_sitter_typescript::LANGUAGE_TSX.into(), "python" => tree_sitter_python::LANGUAGE.into(), "rust" => tree_sitter_rust::LANGUAGE.into(), _ => return AstResult::failed(file, "unsupported parser"), };
-    if parser.set_language(&language_result).is_err() { return AstResult::failed(file, "parser language unavailable"); }
-    let Some(tree) = parser.parse(text, None) else { return AstResult::failed(file, "parser returned no tree"); };
+    let language_result: tree_sitter::Language = match language { "javascript" => tree_sitter_javascript::LANGUAGE.into(), "typescript" => tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(), "tsx" => tree_sitter_typescript::LANGUAGE_TSX.into(), "python" => tree_sitter_python::LANGUAGE.into(), "rust" => tree_sitter_rust::LANGUAGE.into(), _ => return Ok(AstResult::failed(file, "unsupported parser")), };
+    if parser.set_language(&language_result).is_err() { return Ok(AstResult::failed(file, "parser language unavailable")); }
+    let Some(tree) = parser.parse(text, None) else { return Ok(AstResult::failed(file, "parser returned no tree")); };
     let root = tree.root_node();
-    let error_count = count_error_nodes(root); let partial = root.has_error();
+    let error_count = count_error_nodes(root, cancellation)?; let partial = root.has_error();
     let mut nodes = Vec::new(); let mut edges = Vec::new();
-    if !partial { walk_ast(root, text, file, &mut nodes, &mut edges, None); }
+    if !partial { walk_ast(root, text, file, &mut nodes, &mut edges, None, cancellation)?; }
     for node in &nodes { edges.push(contains_edge(&format!("file:{}", file.path), &node.id, file, ConfidenceTier::ExactResolution)); }
-    AstResult { nodes, edges, report: FileReport { path: file.path.clone(), language: Some(language.into()), provider: "tree-sitter".into(), precision: PrecisionTier::Ast, parse_status: if partial { "partial" } else { "ok" }.into(), error_node_count: error_count, error: if partial { Some("parse contains errors".into()) } else { None } } }
+    Ok(AstResult { nodes, edges, report: FileReport { path: file.path.clone(), language: Some(language.into()), provider: "tree-sitter".into(), precision: PrecisionTier::Ast, parse_status: if partial { "partial" } else { "ok" }.into(), error_node_count: error_count, error: if partial { Some("parse contains errors".into()) } else { None } } })
 }
 
 struct AstResult { nodes: Vec<GraphNode>, edges: Vec<GraphEdge>, report: FileReport }
 impl AstResult { fn failed(file: &FileRecord, message: &str) -> Self { Self { nodes: Vec::new(), edges: Vec::new(), report: FileReport { path: file.path.clone(), language: language_for_path(&file.path).map(str::to_owned), provider: "tree-sitter".into(), precision: PrecisionTier::Ast, parse_status: "failed".into(), error_node_count: 0, error: Some(message.into()) } } } }
 
-fn walk_ast(node: Node<'_>, source: &str, file: &FileRecord, nodes: &mut Vec<GraphNode>, edges: &mut Vec<GraphEdge>, scope: Option<String>) {
+fn walk_ast(node: Node<'_>, source: &str, file: &FileRecord, nodes: &mut Vec<GraphNode>, edges: &mut Vec<GraphEdge>, scope: Option<String>, cancellation: &CancellationToken) -> Result<(), GraphError> {
+    if cancellation.is_cancelled() { return Err(GraphError::Cancelled); }
     let kind = node.kind();
     let declaration = matches!(kind, "function_declaration"|"function_definition"|"function_item"|"method_definition"|"class_declaration"|"class_definition"|"class"|"struct_item"|"enum_item"|"trait_item"|"interface_declaration"|"type_alias_declaration");
     let name = node.child_by_field_name("name").and_then(|n| n.utf8_text(source.as_bytes()).ok()).map(str::to_owned);
@@ -491,7 +597,8 @@ fn walk_ast(node: Node<'_>, source: &str, file: &FileRecord, nodes: &mut Vec<Gra
         next_scope = Some(qualified); nodes.push(n);
     }}
     let mut cursor = node.walk();
-    for child in node.named_children(&mut cursor) { walk_ast(child, source, file, nodes, edges, next_scope.clone()); }
+    for child in node.named_children(&mut cursor) { walk_ast(child, source, file, nodes, edges, next_scope.clone(), cancellation)?; }
+    Ok(())
 }
 
 fn merge_facts(lex_nodes: Vec<GraphNode>, lex_edges: Vec<GraphEdge>, ast_nodes: Vec<GraphNode>, ast_edges: Vec<GraphEdge>, compiler: Option<CompilerFacts>) -> (Vec<GraphNode>, Vec<GraphEdge>) {
@@ -528,10 +635,10 @@ fn symbol_node(file: &FileRecord, kind: &str, name: &str, qualified: &str, start
 fn ast_symbol(file: &FileRecord, kind: &str, name: &str, qualified: &str, node: Node<'_>, label: &str) -> GraphNode { symbol_node(file, kind, name, qualified, node.start_position().row + 1, node.end_position().row + 1, &[label.into()], "tree-sitter", ConfidenceTier::ExactResolution) }
 fn contains_edge(source: &str, target: &str, file: &FileRecord, tier: ConfidenceTier) -> GraphEdge { edge_record("CONTAINS", source, Some(target), tier, file, true, None) }
 fn edge_record(kind: &str, source: &str, target: Option<&str>, tier: ConfidenceTier, file: &FileRecord, resolved: bool, call_name: Option<&str>) -> GraphEdge { let target_label = target.unwrap_or_else(|| call_name.unwrap_or("unresolved")); let id = format!("edge:{kind}:{source}->{}", target_label); GraphEdge { id, kind: kind.into(), source: source.into(), target: target.map(str::to_owned), generation_id: String::new(), evidence: vec![json!({"path":file.path,"startLine":1,"endLine":1,"contentHash":file.content_hash,"provider":"native-rust","confidenceTier":tier.as_str(),"confidence":tier.score(),"resolved":resolved,"callName":call_name})] } }
-fn import_edge(source: &str, target: Option<&str>, specifier: &str, file: &FileRecord) -> GraphEdge {
+fn import_edge(source: &str, target: Option<&str>, specifier: &str, file: &FileRecord, module_surface: &Value) -> GraphEdge {
     let mut edge = edge_record("IMPORTS", source, target, if target.is_some() { ConfidenceTier::ExactResolution } else { ConfidenceTier::Unresolved }, file, target.is_some(), Some(specifier));
     if let Some(evidence) = edge.evidence.first_mut().and_then(Value::as_object_mut) {
-        evidence.insert("moduleSurface".into(), module_surface(file));
+        evidence.insert("moduleSurface".into(), module_surface.clone());
     }
     edge
 }
@@ -542,8 +649,7 @@ fn is_file_only(name: &str) -> bool { matches!(name.rsplit_once('.').map(|(_,e)|
 fn normalize_path(path: &str) -> String { path.replace('\\', "/").trim_start_matches("./").to_owned() }
 fn compare_paths(a: &str, b: &str) -> std::cmp::Ordering { a.as_bytes().cmp(b.as_bytes()) }
 fn line_count(text: &str) -> usize { text.lines().count().max(1) }
-fn strip_generated_pointer(text: &str) -> String { let re = Regex::new(r"(?s)\n?<!-- blueprint:docs:start -->.*?<!-- blueprint:docs:end -->\n?").unwrap(); re.replace(text, "").into_owned() }
-fn capture(line: &str, pattern: &str) -> Option<String> { Regex::new(pattern).ok()?.captures(line).and_then(|c| c.get(1).map(|m| m.as_str().to_owned())) }
+fn strip_generated_pointer(text: &str) -> String { GENERATED_POINTER_REGEX.replace(text, "").into_owned() }
 fn leading_indent(line: &str) -> usize { line.chars().take_while(|c| c.is_whitespace()).count() }
 fn block_end(lines: &[&str], start: usize) -> usize { let mut depth = 0usize; let mut found = false; for (i,line) in lines.iter().enumerate().skip(start) { for c in line.chars() { if c == '{' { depth += 1; found = true; } else if c == '}' { depth = depth.saturating_sub(1); } } if found && depth == 0 { return i + 1; } } lines.len().max(start + 1) }
 fn python_block_end(lines: &[&str], start: usize) -> usize { let indent = leading_indent(lines[start]); lines.iter().enumerate().skip(start + 1).find(|(_, line)| !line.trim().is_empty() && leading_indent(line) <= indent).map(|(i,_)| i).unwrap_or(lines.len()) }
@@ -632,11 +738,17 @@ fn json_string(value: &str) -> String { serde_json::to_string(value).unwrap() }
 fn json_value<T: serde::Serialize>(value: &T) -> String { serde_json::to_string(value).unwrap() }
 fn json_array(values: &[Value]) -> String { format!("[{}]", values.iter().map(|value| serde_json::to_string(value).unwrap()).collect::<Vec<_>>().join(",")) }
 
-fn symbol_names(text: &str) -> Vec<String> { Regex::new(r"\b[A-Za-z_$][A-Za-z0-9_$]*\b").unwrap().find_iter(text).map(|m| m.as_str().to_owned()).collect() }
-fn call_names(ext: &str, body: &str) -> Vec<String> { let mut out = BTreeSet::new(); let re = Regex::new(r"(?:\.|\b)([A-Za-z_$][A-Za-z0-9_$]*)\s*\(").unwrap(); for c in re.captures_iter(body) { if let Some(v)=c.get(1) { out.insert(v.as_str().to_owned()); } } if matches!(ext, "py"|"rs") { out.extend(symbol_names(body).into_iter().filter(|v| body.contains(&format!("{v}(")))); } out.into_iter().collect() }
+fn symbol_names(text: &str) -> Vec<String> { SYMBOL_NAMES_REGEX.find_iter(text).map(|m| m.as_str().to_owned()).collect() }
+fn call_names(ext: &str, body: &str) -> Vec<String> { let mut out = BTreeSet::new(); for c in CALL_NAMES_REGEX.captures_iter(body) { if let Some(v)=c.get(1) { out.insert(v.as_str().to_owned()); } } if matches!(ext, "py"|"rs") { out.extend(symbol_names(body).into_iter().filter(|v| body.contains(&format!("{v}(")))); } out.into_iter().collect() }
 fn import_specifiers(ext: &str, text: &str) -> Vec<String> { let patterns = if ext == "py" { vec![r"^\s*from\s+([.A-Za-z_]\w*(?:\.\w+)*)\s+import", r"^\s*import\s+([A-Za-z_]\w*(?:\.\w+)*)"] } else if ext == "rs" { vec![r"^\s*(?:pub\s+)?use\s+([^;]+)", r"^\s*(?:pub\s+)?mod\s+([A-Za-z_]\w*)\s*;"] } else { vec![r#"(?:import|export)(?:\s+type)?[\s\S]*?\sfrom\s+["']([^"']+)["']"#, r#"import\s*["']([^"']+)["']"#, r#"require\s*\(\s*["']([^"']+)["']\s*\)"#] }; let mut out=BTreeSet::new(); for pattern in patterns { if let Ok(re)=Regex::new(pattern) { for line in text.lines() { if let Some(c)=re.captures(line) { if let Some(m)=c.get(1) { out.insert(m.as_str().to_owned()); } } } } } out.into_iter().collect() }
 fn resolve_import(source: &str, specifier: &str, files: &BTreeMap<String, &FileRecord>) -> Option<String> { if !specifier.starts_with('.') && !source.ends_with(".rs") && !source.ends_with(".py") { return None; } let base = Path::new(source).parent().unwrap_or(Path::new("")).join(specifier); let base = normalize_path(&base.to_string_lossy()); let mut candidates=vec![base.clone()]; if source.ends_with(".py") { candidates.extend([format!("{base}.py"),format!("{base}/__init__.py")]); } else if source.ends_with(".rs") { candidates.extend([format!("{base}.rs"),format!("{base}/mod.rs")]); } else { for ext in ["ts","tsx","mts","cts","js","jsx","mjs","cjs"] { candidates.push(format!("{base}.{ext}")); candidates.push(format!("{base}/index.{ext}")); } } candidates.into_iter().find(|p| files.contains_key(p)) }
-fn count_error_nodes(root: Node<'_>) -> usize { let mut count=usize::from(root.is_error()); let mut cursor=root.walk(); for child in root.named_children(&mut cursor) { count += count_error_nodes(child); } count }
+fn count_error_nodes(root: Node<'_>, cancellation: &CancellationToken) -> Result<usize, GraphError> {
+    if cancellation.is_cancelled() { return Err(GraphError::Cancelled); }
+    let mut count = usize::from(root.is_error());
+    let mut cursor = root.walk();
+    for child in root.named_children(&mut cursor) { count += count_error_nodes(child, cancellation)?; }
+    Ok(count)
+}
 
 pub fn registered_relationship_kinds() -> &'static [&'static str] { &["COVERS","GENERATES","IMPORTS","CALLS","CONTAINS","REFERENCES","DEFINES","CONFIGURES","READS","WRITES","PRODUCES","CONSUMES","DEPLOYS","HANDLES","ROUTES_TO","AUTHORED_BY","READ_DURING","CHANGED_BY","DOCS_LINK","TESTS"] }
 pub fn is_registered_relationship_kind(kind: &str) -> bool { registered_relationship_kinds().contains(&kind) }

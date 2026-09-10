@@ -12,7 +12,7 @@ use crate::api::{
 use crate::model::Operation;
 use crate::watch::{NativeWatcher, SnapshotConfig, WatchError, WatchEvent};
 use serde::{Deserialize, Serialize};
-use serde_json::json;
+use serde_json::{json, Value};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use thiserror::Error;
@@ -199,6 +199,9 @@ struct ServiceInner {
     events: Vec<LifecycleEvent>,
     watcher: Option<NativeWatcher>,
     pending_refreshes: Vec<WatchEvent>,
+    generation_id: Option<String>,
+    generation_complete: Option<bool>,
+    active_cancellation: Option<CancellationToken>,
 }
 
 /// Resident native owner. The injected operation is the sole graph authority.
@@ -207,6 +210,7 @@ pub struct NativeService {
     config: ServiceConfig,
     sink: Option<Arc<dyn LifecycleEventSink>>,
     inner: Mutex<ServiceInner>,
+    watcher_operation: Mutex<()>,
 }
 
 pub type BlueprintService = NativeService;
@@ -226,7 +230,11 @@ impl NativeService {
                 events: Vec::new(),
                 watcher: None,
                 pending_refreshes: Vec::new(),
+                generation_id: None,
+                generation_complete: None,
+                active_cancellation: None,
             }),
+            watcher_operation: Mutex::new(()),
         }
     }
 
@@ -290,8 +298,14 @@ impl NativeService {
             .unwrap_or_default()
     }
 
+    pub fn generation_metadata(&self) -> Option<(String, bool)> {
+        self.inner.lock().ok().and_then(|inner| inner.generation_id.clone().zip(inner.generation_complete))
+    }
+
     pub fn start(&self) -> Result<ServiceStatus, ServiceError> {
-        let mut inner = self.inner.lock().map_err(|_| ServiceError::Watcher("service_state_unavailable".into()))?;
+        let _operation = self.watcher_operation.lock().map_err(|_| ServiceError::Watcher("service_state_unavailable".into()))?;
+        let (pending, operation, workspace_root, cancellation) = {
+            let mut inner = self.inner.lock().map_err(|_| ServiceError::Watcher("service_state_unavailable".into()))?;
         if inner.status == ServiceStatus::Running {
             self.emit_locked(&mut inner, LifecycleEventKind::StartIdempotent, None);
             return Ok(ServiceStatus::Running);
@@ -302,19 +316,30 @@ impl NativeService {
         inner.status = ServiceStatus::Starting;
         inner.state = None;
         inner.detail = None;
+        let cancellation = CancellationToken::new();
+        inner.active_cancellation = Some(cancellation.clone());
         self.emit_locked(&mut inner, LifecycleEventKind::StartRequested, None);
+            (std::mem::take(&mut inner.pending_refreshes), self.operation.clone(), self.config.workspace_root.to_string_lossy().into_owned(), cancellation)
+        };
 
         // A callback failure leaves the watcher snapshot behind the current
         // filesystem state. Preserve those refreshes across a degraded
         // restart and replay them before taking a new snapshot; otherwise a
         // fresh watcher would incorrectly acknowledge the failed work.
-        if !inner.pending_refreshes.is_empty() {
-            let pending = std::mem::take(&mut inner.pending_refreshes);
-            let operation = self.operation.clone();
-            let workspace_root = self.config.workspace_root.to_string_lossy().into_owned();
+        if !pending.is_empty() {
             for (index, event) in pending.iter().enumerate() {
-                if let Err(error) = execute_refresh_event(&operation, &workspace_root, event) {
+                if let Err(error) = execute_refresh_event(
+                    &operation,
+                    &workspace_root,
+                    event,
+                    cancellation.clone(),
+                ) {
+                    let mut inner = self.inner.lock().map_err(|_| ServiceError::Watcher("service_state_unavailable".into()))?;
                     inner.pending_refreshes.extend(pending[index..].iter().cloned());
+                    inner.active_cancellation = None;
+                    if inner.status == ServiceStatus::Draining {
+                        return Err(ServiceError::Draining);
+                    }
                     inner.status = ServiceStatus::Degraded;
                     inner.state = Some(LifecycleState::Stale);
                     inner.detail = Some(error.to_string());
@@ -325,10 +350,15 @@ impl NativeService {
         }
 
         let watcher = match self.config.watcher.clone() {
-            Some(config) => match NativeWatcher::start(config) {
+            Some(config) => match NativeWatcher::start_with_cancellation(config, &cancellation) {
                 Ok(watcher) => Some(watcher),
                 Err(error) => {
                     let detail = error.to_string();
+                    let mut inner = self.inner.lock().map_err(|_| ServiceError::Watcher("service_state_unavailable".into()))?;
+                    inner.active_cancellation = None;
+                    if inner.status == ServiceStatus::Draining {
+                        return Err(ServiceError::Draining);
+                    }
                     inner.status = ServiceStatus::Degraded;
                     inner.state = Some(LifecycleState::WatcherUnavailable);
                     inner.detail = Some(detail.clone());
@@ -338,6 +368,13 @@ impl NativeService {
             },
             None => None,
         };
+        let mut inner = self.inner.lock().map_err(|_| ServiceError::Watcher("service_state_unavailable".into()))?;
+        if inner.status == ServiceStatus::Draining {
+            inner.active_cancellation = None;
+            inner.watcher = watcher;
+            return Err(ServiceError::Draining);
+        }
+        inner.active_cancellation = None;
         inner.watcher = watcher;
         inner.status = ServiceStatus::Running;
         inner.state = Some(LifecycleState::Running);
@@ -349,18 +386,26 @@ impl NativeService {
     /// Reconcile watcher state and return typed resident status. Watcher
     /// callbacks are only rebuild hints; graph semantics stay in operation.
     pub fn supervise(&self) -> ServiceStatus {
-        let Ok(mut inner) = self.inner.lock() else {
+        self.supervise_with_cancellation(CancellationToken::new())
+    }
+
+    pub fn supervise_with_cancellation(&self, cancellation: CancellationToken) -> ServiceStatus {
+        let Ok(_operation) = self.watcher_operation.lock() else {
             return ServiceStatus::Unavailable;
         };
-        if inner.status != ServiceStatus::Running {
-            return inner.status;
-        }
-        let operation = self.operation.clone();
-        let workspace_root = self.config.workspace_root.to_string_lossy().into_owned();
-        let mut pending_refreshes = std::mem::take(&mut inner.pending_refreshes);
+        let (mut watcher, operation, workspace_root, mut pending_refreshes) = {
+            let Ok(mut inner) = self.inner.lock() else { return ServiceStatus::Unavailable; };
+            if inner.status != ServiceStatus::Running { return inner.status; }
+            inner.status = ServiceStatus::Degraded;
+            inner.state = Some(LifecycleState::Stale);
+            inner.detail = Some("watcher_refresh_in_progress".into());
+            inner.active_cancellation = Some(cancellation.clone());
+            (inner.watcher.take(), self.operation.clone(), self.config.workspace_root.to_string_lossy().into_owned(), std::mem::take(&mut inner.pending_refreshes))
+        };
         let mut callback_failure = None;
-        let poll_result = inner.watcher.as_mut().map(|watcher| {
-            watcher.poll(|event: &WatchEvent| {
+        let mut latest_generation = None;
+        let poll_result = watcher.as_mut().map(|watcher| {
+            watcher.poll_with_cancellation(|event: &WatchEvent| {
                 // NativeWatcher stops on a callback error. Keep polling after
                 // the first failed event so every later event in this batch
                 // is retained for ordered replay on degraded restart.
@@ -368,17 +413,34 @@ impl NativeService {
                     pending_refreshes.push(event.clone());
                     return Ok(());
                 }
-                match execute_refresh_event(&operation, &workspace_root, event) {
-                    Ok(()) => Ok(()),
+                match execute_refresh_event(&operation, &workspace_root, event, cancellation.clone()) {
+                    Ok(value) => {
+                        if let (Some(id), Some(complete)) = (value.get("generationId").and_then(Value::as_str), value.get("complete").and_then(Value::as_bool)) {
+                            latest_generation = Some((id.to_owned(), complete));
+                        }
+                        Ok(())
+                    }
                     Err(error) => {
                         pending_refreshes.push(event.clone());
                         callback_failure = Some(error);
                         Ok(())
                     }
                 }
-            })
+            }, &cancellation)
         });
+        let Ok(mut inner) = self.inner.lock() else { return ServiceStatus::Unavailable; };
+        inner.active_cancellation = None;
+        if inner.status == ServiceStatus::Draining {
+            inner.pending_refreshes = pending_refreshes;
+            inner.watcher = watcher;
+            return inner.status;
+        }
         inner.pending_refreshes = pending_refreshes;
+        inner.watcher = watcher;
+        if let Some((id, complete)) = latest_generation {
+            inner.generation_id = Some(id);
+            inner.generation_complete = Some(complete);
+        }
         if let Some(result) = poll_result {
             match result {
                 Ok(events) => {
@@ -412,22 +474,28 @@ impl NativeService {
                 }
             }
         }
+        inner.status = ServiceStatus::Running;
+        inner.state = Some(LifecycleState::Running);
+        inner.detail = None;
         self.emit_locked(&mut inner, LifecycleEventKind::Supervised, None);
         inner.status
     }
 
     pub fn drain(&self) -> Result<(), ServiceError> {
+        {
+            let mut inner = self.inner.lock().map_err(|_| ServiceError::Watcher("service_state_unavailable".into()))?;
+            if inner.status == ServiceStatus::Stopped {
+                self.emit_locked(&mut inner, LifecycleEventKind::DrainIdempotent, None);
+                return Ok(());
+            }
+            if inner.status == ServiceStatus::Draining { return Ok(()); }
+            inner.status = ServiceStatus::Draining;
+            inner.state = Some(LifecycleState::Draining);
+            if let Some(cancellation) = &inner.active_cancellation { cancellation.cancel(); }
+            self.emit_locked(&mut inner, LifecycleEventKind::DrainRequested, None);
+        }
+        let _operation = self.watcher_operation.lock().map_err(|_| ServiceError::Watcher("service_state_unavailable".into()))?;
         let mut inner = self.inner.lock().map_err(|_| ServiceError::Watcher("service_state_unavailable".into()))?;
-        if inner.status == ServiceStatus::Stopped {
-            self.emit_locked(&mut inner, LifecycleEventKind::DrainIdempotent, None);
-            return Ok(());
-        }
-        if inner.status == ServiceStatus::Draining {
-            return Ok(());
-        }
-        inner.status = ServiceStatus::Draining;
-        inner.state = Some(LifecycleState::Draining);
-        self.emit_locked(&mut inner, LifecycleEventKind::DrainRequested, None);
         if let Some(watcher) = inner.watcher.as_mut() {
             watcher.shutdown().map_err(|error| ServiceError::Watcher(error.to_string()))?;
         }
@@ -487,7 +555,8 @@ fn execute_refresh_event(
     operation: &Arc<dyn BlueprintOperation>,
     workspace_root: &str,
     event: &WatchEvent,
-) -> Result<(), BlueprintError> {
+    cancellation: CancellationToken,
+) -> Result<Value, BlueprintError> {
     let mut input = json!({
         "repoRoot": workspace_root,
         "paths": [event.path],
@@ -502,13 +571,18 @@ fn execute_refresh_event(
         Operation::Refresh,
         workspace_root,
     );
+    // A watcher refresh performs graph work; use the existing Refresh cap
+    // rather than the short interactive-query default. Build alone may use
+    // the extended build deadline.
+    request.deadline_ms = crate::model::MAX_DEADLINE_MS;
     request.input = input;
     let mut context = request.validate(Bounds::daemon())?;
-    context.cancellation = CancellationToken::new();
+    context.cancellation = cancellation.bind_deadline(context.deadline);
     context.check()?;
-    operation.execute(&request, &context)?;
+    let result = operation.execute(&request, &context)?;
     // A callback that returns after its deadline is not a successful refresh.
-    context.check()
+    context.check()?;
+    Ok(result)
 }
 
 impl BlueprintApi for NativeService {
@@ -547,7 +621,7 @@ impl OneShotExecutor {
         let request_id = request.request_id.clone();
         let response = match request.validate(self.bounds) {
             Ok(mut context) => {
-                context.cancellation = cancellation;
+                context.cancellation = cancellation.bind_deadline(context.deadline);
                 match context
                     .check()
                     .and_then(|_| self.operation.execute(&request, &context))

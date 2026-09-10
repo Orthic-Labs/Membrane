@@ -7,9 +7,9 @@ fn generation() -> GraphGeneration {
     GraphGeneration {
         schema_version: 1, provider: "test".into(), provider_version: "1".into(), generation_id: id.clone(), source_hash: "hash".into(), repo_root: "/repo".into(), complete: true,
         nodes: vec![
-            GraphNode { id: "file:src/a.rs".into(), kind: "file".into(), path: Some("src/a.rs".into()), name: Some("a.rs".into()), generation_id: id.clone(), evidence: vec![json!({"path":"src/a.rs"})] },
-            GraphNode { id: "symbol:src/a.rs::run".into(), kind: "function".into(), path: Some("src/a.rs".into()), name: Some("run".into()), generation_id: id.clone(), evidence: vec![json!({"qualifiedName":"run","path":"src/a.rs","startLine":1,"endLine":2})] },
-            GraphNode { id: "symbol:src/b.rs::caller".into(), kind: "function".into(), path: Some("src/b.rs".into()), name: Some("caller".into()), generation_id: id.clone(), evidence: vec![json!({"qualifiedName":"caller","path":"src/b.rs"})] },
+            GraphNode { id: "file:src/a.rs".into(), kind: "file".into(), path: Some("src/a.rs".into()), name: Some("a.rs".into()), generation_id: id.clone(), evidence: vec![json!({"path":"src/a.rs","contentHash":"sha256:a"})] },
+            GraphNode { id: "symbol:src/a.rs::run".into(), kind: "function".into(), path: Some("src/a.rs".into()), name: Some("run".into()), generation_id: id.clone(), evidence: vec![json!({"qualifiedName":"run","path":"src/a.rs","startLine":1,"endLine":2,"contentHash":"sha256:a"})] },
+            GraphNode { id: "symbol:src/b.rs::caller".into(), kind: "function".into(), path: Some("src/b.rs".into()), name: Some("caller".into()), generation_id: id.clone(), evidence: vec![json!({"qualifiedName":"caller","path":"src/b.rs","contentHash":"sha256:b"})] },
         ],
         edges: vec![GraphEdge { id: "edge:CALLS:caller->run".into(), kind: "CALLS".into(), source: "symbol:src/b.rs::caller".into(), target: Some("symbol:src/a.rs::run".into()), generation_id: id, evidence: vec![json!({"confidenceTier":"EXACT_RESOLUTION"})] }],
         files: vec![], truncation_reasons: vec![],
@@ -29,6 +29,27 @@ fn exact_resolution_preserves_requested_target() {
     assert_eq!(result["state"], "resolved");
     assert_eq!(result["requestedTarget"], "symbol:src/a.rs::run");
     assert_eq!(result["resolution"]["resolutionTier"], "exact");
+    assert_eq!(result["candidateSet"]["state"], "resolved");
+    assert_eq!(result["candidateSet"]["candidates"][0]["sourceRef"], "src/a.rs");
+    assert_eq!(result["candidateSet"]["candidates"][0]["sourceHash"], "sha256:a");
+}
+
+#[test]
+fn resolve_accepts_client_symbol_and_recall_emits_source_bound_candidate_set() {
+    let mut resolve = BlueprintRequest::new("q", Operation::Resolve, "/repo");
+    resolve.generation = Some("generation-query".into());
+    resolve.input["symbol"] = json!("symbol:src/a.rs::run");
+    let resolved = execute_query(&generation(), &resolve, &context(&resolve)).unwrap();
+    assert_eq!(resolved["state"], "resolved");
+    assert_eq!(resolved["requestedTarget"], "symbol:src/a.rs::run");
+
+    let mut recall = BlueprintRequest::new("q", Operation::Recall, "/repo");
+    recall.generation = Some("generation-query".into());
+    recall.input["seed"] = json!("symbol:src/a.rs::run");
+    let result = execute_query(&generation(), &recall, &context(&recall)).unwrap();
+    assert_eq!(result["candidateSet"]["schemaVersion"], 1);
+    assert_eq!(result["candidateSet"]["coverage"], "complete");
+    assert!(result["candidateSet"]["candidates"].as_array().unwrap().iter().all(|candidate| candidate["sourceRef"].is_string() && candidate["sourceHash"].is_string()));
 }
 
 #[test]
@@ -63,6 +84,8 @@ fn caps_and_ambiguity_are_receipted() {
     let mut ambiguous = BlueprintRequest::new("q", Operation::Resolve, "/repo"); ambiguous.generation = Some("generation-query".into()); ambiguous.input["target"] = json!("function");
     let result = execute_query(&generation(), &ambiguous, &context(&ambiguous)).unwrap();
     assert!(matches!(result["state"].as_str(), Some("ambiguous") | Some("low_confidence") | Some("unresolved")));
+    assert_eq!(result["candidateSet"]["coverage"], "partial");
+    assert!(result["candidateSet"]["truncated"].as_bool().unwrap());
 }
 
 #[test]
@@ -71,6 +94,26 @@ fn incomplete_generation_is_suppressed_with_raw_seed() {
     let mut generation = generation(); generation.complete = false;
     let result = execute_query(&generation, &request, &context(&request)).unwrap();
     assert_eq!(result["state"], "suppressed"); assert_eq!(result["requestedSeed"], "requested-seed"); assert_eq!(result["omissions"][0]["reason"], "incomplete_generation");
+    assert_eq!(result["candidateSet"]["state"], "suppressed");
+    assert!(result["candidateSet"]["candidates"].as_array().unwrap().is_empty());
+}
+
+#[test]
+fn unresolved_and_cancelled_recall_remain_typed() {
+    let mut unresolved = BlueprintRequest::new("q", Operation::Recall, "/repo");
+    unresolved.generation = Some("generation-query".into());
+    unresolved.input["seed"] = json!("does-not-exist");
+    let result = execute_query(&generation(), &unresolved, &context(&unresolved)).unwrap();
+    assert_eq!(result["state"], "unresolved");
+    assert!(result["candidateSet"]["candidates"].as_array().unwrap().is_empty());
+
+    let mut cancelled = BlueprintRequest::new("q", Operation::Recall, "/repo");
+    cancelled.generation = Some("generation-query".into());
+    cancelled.input["seed"] = json!("symbol:src/a.rs::run");
+    let context = context(&cancelled);
+    context.cancellation.cancel();
+    let error = execute_query(&generation(), &cancelled, &context).expect_err("cancelled request must not become an unknown result");
+    assert_eq!(error.code, "request_cancelled");
 }
 
 fn generation_with_ranking_variants() -> GraphGeneration {

@@ -6,7 +6,8 @@ import { join } from "node:path";
 import * as cases from "./adp-windows.mjs";
 
 const { ALL_CASE_IDS, STRUCTURAL_CASE_IDS } = cases;
-const INSUFFICIENT_CASE_IDS = ALL_CASE_IDS.filter((id) => !STRUCTURAL_CASE_IDS.includes(id));
+const BEHAVIOR_CASE_IDS = ["ADP-076", "ADP-077"];
+const INSUFFICIENT_CASE_IDS = ALL_CASE_IDS.filter((id) => !STRUCTURAL_CASE_IDS.includes(id) && !BEHAVIOR_CASE_IDS.includes(id));
 
 function exportNameFor(id) {
   return id.replace("-", "_");
@@ -24,11 +25,17 @@ test("every ADP-* case in the sub-lane packet is exported and callable", () => {
     assert.ok(typeof cases[exportName] === "function", `missing export ${exportName}`);
     const result = cases[exportName]();
     assert.equal(result.id, id);
-    assert.ok(result.kind === "structural" || result.kind === "insufficient", `${id} has unexpected kind ${result.kind}`);
+    assert.ok(result.kind === "structural" || result.kind === "insufficient" || (BEHAVIOR_CASE_IDS.includes(id) && result.kind === "installed"), `${id} has unexpected kind ${result.kind}`);
     assert.ok(typeof result.pass === "boolean", `${id} must return a boolean pass field`);
     assert.ok(typeof result.reason === "string" && result.reason.length > 0, `${id} must return a reason`);
     assert.ok(typeof result.requirement === "string" && result.requirement.length > 0, `${id} must carry its requirement text`);
   }
+});
+
+test("installed probe is an actual CLI check and fails closed when CLI is absent", () => {
+  const result = cases.probeInstalled({ cliPath: "membrane-binary-that-does-not-exist-xyz" });
+  assert.equal(result.status, "blocked");
+  assert.equal(result.evidenceKind, "installed");
 });
 
 test("every structural ADP case passes against the live repository (canonical file + real marker present)", () => {

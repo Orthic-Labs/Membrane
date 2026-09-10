@@ -272,7 +272,7 @@ test("file digests are invariant across Git line endings", (t) => {
   assert.equal(fileSha256(root, "f/source.rs"), lf);
 });
 
-test("sealed mode permits only an exact packaged external-component interpreter row", () => {
+test("sealed mode rejects even an exact packaged external-component interpreter row", () => {
   const rules = basePolicy().classificationRules.map(rule => rule.id === "legacy-py" ? {
     ...rule,
     runtime: "node",
@@ -286,7 +286,7 @@ test("sealed mode permits only an exact packaged external-component interpreter 
     classificationRules: rules,
   });
   const discovered = fx.manifest.rows.flatMap(row => row.files).sort();
-  const accepted = validateManifest({
+  const bounded = validateManifest({
     policy: fx.policy,
     policyDigestActual: fx.manifest.policyDigest,
     manifest: fx.manifest,
@@ -297,7 +297,7 @@ test("sealed mode permits only an exact packaged external-component interpreter 
   });
   assert.equal(fx.manifest.totals.productionInterpreterRows, 0);
   assert.equal(fx.manifest.totals.boundedExternalInterpreterRows, 1);
-  assert.deepEqual(accepted.errors, []);
+  assert.ok(bounded.errors.some(error => error.code === "BOUNDED_EXTERNAL_INTERPRETER_ROWS"));
 
   const rejected = validateManifest({
     policy: { ...fx.policy, sealedExternalInterpreterRows: ["some-other-row"] },

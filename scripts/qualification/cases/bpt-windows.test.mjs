@@ -37,7 +37,7 @@ test("every required BPT-xxx case export exists, is callable, and returns a well
   }
 });
 
-test("every required BM0x native-source case export exists and is callable", () => {
+test("every required BM0x installed-native case export exists and is callable", () => {
   for (const id of REQUIRED_BM_IDS) {
     assert.ok(typeof cases[id] === "function", `missing export ${id}`);
     const outcome = cases[id]();
@@ -54,23 +54,23 @@ test("OPT-01 exists, is callable, and never fabricates a pass ahead of its NCL-0
   assert.notEqual(outcome.status, "passed", "OPT-01 must never report passed until NCL-02/NCL-05 pass");
 });
 
-test("BPT-001 (typical legacyEvidenceVoid row): real legacy artifact present, but status is never a fabricated pass", async () => {
-  const outcome = await cases.BPT_001();
+test("BPT-002 (legacyEvidenceVoid row): legacy artifacts alone never fabricate a pass", async () => {
+  const outcome = await cases.BPT_002();
   assert.equal(outcome.evidenceKind, "source");
   assert.notEqual(outcome.status, "passed", "legacyEvidenceVoid rows must never report passed until REC-02 native requalification");
 });
 
 // ---------------------------------------------------------------------------
-// BM03/BM04/BM05 honesty check: these read the REAL native
-// engine/crates/membrane-blueprint source (owned by sibling sub-lanes, never
-// edited here). This asserts the case module itself does not fabricate a
-// pass when the cited native file is absent.
+// BM03/BM04/BM05 honesty check: these execute the REAL installed membrane.exe
+// through isolated fixtures. This asserts the case module does not fall back
+// to source markers or fabricate a pass when installed runtime is unavailable.
 // ---------------------------------------------------------------------------
 
-test("BM03/BM04/BM05 report insufficient (never a fabricated pass) if the cited native source file is missing", () => {
+test("BM03/BM04/BM05 report insufficient (never a fabricated pass) if installed membrane.exe is unavailable", () => {
   const outcome = cases.BM03({ root: "/definitely/does/not/exist/on/this/machine" });
   assert.notEqual(outcome.status, "passed");
-  assert.match(outcome.reason, /not found/);
+  assert.equal(outcome.evidenceKind, "installed");
+  assert.match(outcome.reason, /installed native probe|MEMBRANE_QUALIFICATION_INSTALLED_ROOT|membrane\.exe/i);
 });
 
 // ---------------------------------------------------------------------------

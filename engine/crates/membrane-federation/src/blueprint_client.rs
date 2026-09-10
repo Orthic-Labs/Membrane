@@ -10,7 +10,7 @@ use membrane_blueprint::{
 };
 use membrane_protocol::CandidateV1;
 use membrane_provider_sdk::source::{
-    BlueprintResult, BlueprintSource, SourceQuery, SourceResponse, SourceResult,
+    BlueprintResult, BlueprintSource, SourceQuery, SourceResponse, SourceResult, SourceWarning,
 };
 use serde_json::{json, Value};
 use std::collections::VecDeque;
@@ -275,7 +275,7 @@ impl ContextualBlueprintSource for BlueprintClient {
         Box::pin(async move {
             let query = BlueprintQuery::from_source(source, source.generation.clone(), BlueprintBounds::default(), deadline.saturating_duration_since(Instant::now()));
             let result = self.query_with_cancellation(&query, cancellation).map_err(client_error)?;
-            Ok(SourceResponse { generation: Some(result.generation.clone()), complete: true, warnings: Vec::new(), value: result })
+            Ok(source_response(result))
         })
     }
 
@@ -285,7 +285,7 @@ impl ContextualBlueprintSource for BlueprintClient {
         Box::pin(async move {
             let query = BlueprintQuery::from_source(source, source.generation.clone(), BlueprintBounds::default(), deadline.saturating_duration_since(Instant::now()));
             let result = self.resolve_symbol_with_cancellation(&query, &symbol, cancellation).map_err(client_error)?;
-            Ok(SourceResponse { generation: Some(result.generation.clone()), complete: true, warnings: Vec::new(), value: result })
+            Ok(source_response(result))
         })
     }
 }
@@ -298,7 +298,12 @@ fn bounded_query(query: &BlueprintQuery, cancellation: CancellationToken) -> Res
 
 fn native_request(query: &BlueprintQuery, method: Operation) -> BlueprintRequest {
     let mut input = json!({ "repoRoot": query.repository_root, "worktree": query.worktree, "task": query.task, "limit": query.bounds.max_candidates, "anchors": query.anchors, "allowStale": true });
-    if let Some(symbol) = &query.symbol { input["symbol"] = Value::String(symbol.clone()); }
+    if let Some(symbol) = &query.symbol {
+        // Blueprint owns Resolve semantics.  `target` is its stable request
+        // field; retain `symbol` as a compatible alias for older producers.
+        input["target"] = Value::String(symbol.clone());
+        input["symbol"] = Value::String(symbol.clone());
+    }
     let request_id = if query.request_id.trim().is_empty() {
         "blueprint-request".to_owned()
     } else {
@@ -314,6 +319,43 @@ fn native_request(query: &BlueprintQuery, method: Operation) -> BlueprintRequest
     }
     request.input = input;
     request
+}
+
+/// Preserve Blueprint's own terminal disposition at the source boundary.
+/// Federation may translate this metadata, but must not promote a bounded,
+/// ambiguous, stale, or otherwise incomplete native result to complete.
+fn source_response(result: BlueprintResult) -> SourceResponse<BlueprintResult> {
+    let payload = result.payload.as_ref();
+    let state = payload.and_then(|value| value.get("state")).and_then(Value::as_str);
+    let omissions = payload
+        .and_then(|value| value.get("omissions"))
+        .and_then(Value::as_array);
+    let complete = payload
+        .and_then(|value| value.get("complete"))
+        .and_then(Value::as_bool)
+        .unwrap_or_else(|| state == Some("complete") && omissions.is_none_or(Vec::is_empty));
+    let mut warnings = payload
+        .and_then(|value| value.get("warnings"))
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|warning| {
+            let code = warning.get("code").or_else(|| warning.get("reason"))?.as_str()?;
+            Some(SourceWarning {
+                code: code.to_owned(),
+                detail_id: warning.get("detailId").and_then(Value::as_str).map(str::to_owned),
+            })
+        })
+        .collect::<Vec<_>>();
+    if !complete && warnings.is_empty() {
+        warnings.push(SourceWarning {
+            code: state.unwrap_or("blueprint_incomplete").to_owned(),
+            detail_id: omissions.and_then(|values| values.first())
+                .and_then(|value| value.get("reason"))
+                .and_then(Value::as_str).map(str::to_owned),
+        });
+    }
+    SourceResponse { generation: Some(result.generation.clone()), complete, warnings, value: result }
 }
 
 fn client_error(error: BlueprintClientError) -> membrane_provider_sdk::ProviderError {

@@ -50,6 +50,39 @@ function readFileSafe(root, relPath) {
   }
 }
 
+// Installed lifecycle observations are supplied by membrane_lifecycle/install-release.ps1.
+// This module validates their provenance and shape; it never turns source markers into
+// an installed pass. The receipt is intentionally shared so runner and lifecycle lanes
+// consume one unambiguous observation contract.
+export function readLifecycleObservation(options = {}) {
+  const path = options.lifecycleObservationPath || process.env.MEMBRANE_LIFECYCLE_OBSERVATION;
+  if (!path || !existsSync(path)) return { ok: false, reason: "missing membrane.windows-lifecycle-observation.v1 receipt" };
+  try {
+    const value = JSON.parse(readFileSync(path, "utf8"));
+    const scenarios = Array.isArray(value.scenarios) ? value.scenarios : [];
+    const identity = value.buildIdentity;
+    const valid = value.schema === "membrane.windows-lifecycle-observation.v1" && value.platform === "windows" &&
+      value.installed === true && value.generatedAt && Array.isArray(value.processTree) && scenarios.length > 0 &&
+      identity?.root && identity?.generation && /^[0-9a-f]{64}$/i.test(String(identity.membraneSha256 || "")) &&
+      scenarios.every((s) => typeof s.id === "string" && s.status === "passed" && Array.isArray(s.actions) && s.actions.length > 0 &&
+        s.actions.every((a) => typeof a.command === "string" && a.exitCode === 0 && typeof a.stdout === "string" && a.stdout.length > 0) &&
+        Array.isArray(s.processTreeBefore) && Array.isArray(s.processTreeDuring) && Array.isArray(s.processTreeAfter));
+    return valid ? { ok: true, value } : { ok: false, reason: "invalid lifecycle observation shape or provenance" };
+  } catch (error) { return { ok: false, reason: `cannot read lifecycle observation: ${error.message}` }; }
+}
+
+function lifecycleRuntimeCheck(id, options, structural) {
+  if (!options?.row) return structural;
+  const observation = readLifecycleObservation(options);
+  if (!observation.ok) return { id, kind: "installed", evidenceKind: "installed", status: "insufficient", pass: false, reason: `${id}: ${observation.reason}`, evidence: [] };
+  const expected = { "LC-01": ["hub-only", "coderight-only", "both", "holder-crash", "holder-exit", "final-holder-shutdown", "concurrent-acquire-renew-release", "drain-acquire-race", "restart-during-acquire", "stale-fencing", "survivor-continuity"], "LC-02": ["idle-refresh", "mid-build-refresh", "watcher-disabled-refresh", "hub-off-refresh"], "LC-03": ["fair-service", "deadline-cancellation", "scope-isolation", "deduplicated-work"], "LC-04": ["hub-off-explicit", "hub-background", "coderight-adopt", "provision-missing", "reject-corrupt", "reject-denied", "reject-unverifiable", "reject-development-checkout"], "LC-05": ["credential-race", "lease-incarnation", "tombstone", "reordered-response", "lost-response", "clock-rewind", "replay-bound"], "LC-06": ["canonical-roots", "health-probe", "startup-lock", "atomic-promotion", "hook-containment"] }[id] || [];
+  const observed = new Set(observation.value.scenarios.map((s) => s.id));
+  const missing = expected.filter((name) => !observed.has(name));
+  const forbidden = observation.value.processTree.concat(observation.value.scenarios.flatMap((s) => s.processTreeDuring || [])).filter((p) => /^(node|python|python3|sh|bash)(\.exe)?$/i.test(String(p.name || "")));
+  const pass = missing.length === 0 && forbidden.length === 0;
+  return { id, kind: "installed", evidenceKind: "installed", status: pass ? "passed" : "insufficient", pass, reason: pass ? `${id}: installed lifecycle scenarios passed with no interpreter children` : `${id}: missing scenarios ${missing.join(", ") || "none"}${forbidden.length ? "; interpreter child observed" : ""}`, evidence: [{ path: options.lifecycleObservationPath || process.env.MEMBRANE_LIFECYCLE_OBSERVATION, scenarioCount: observation.value.scenarios.length }] };
+}
+
 // Structural attestation: at least one of the given files exists and
 // carries at least one of the given markers. Never claims functional
 // correctness — only that the named implementation artifact is present and
@@ -235,9 +268,9 @@ export function MEM_066(options) {
 // ---------------------------------------------------------------------------
 
 export function LC_01(options) {
-  return structuralCheck("LC-01", options,
+  return lifecycleRuntimeCheck("LC-01", options, structuralCheck("LC-01", options,
     ["engine/crates/membrane-runtime/src/residency.rs", "engine/crates/membrane-client/src/residency.rs", "engine/crates/membrane-runtime/tests/residency_holders.rs"],
-    [/holder/i, /final.?holder|drain/i], "residency matrix: Hub-only/CodeRight-only/both/crash/exit/final-holder drain/concurrent acquire-renew-release/stale fencing");
+    [/holder/i, /final.?holder|drain/i], "residency matrix: Hub-only/CodeRight-only/both/crash/exit/final-holder drain/concurrent acquire-renew-release/stale fencing"));
 }
 export function LC_01_NC_peer_drain(options) {
   return exclusionCheck("LC-01-NC-peer-drain", options,
@@ -253,9 +286,9 @@ export function LC_01_NC_stale_mutate(options) {
 }
 
 export function LC_02(options) {
-  return structuralCheck("LC-02", options,
+  return lifecycleRuntimeCheck("LC-02", options, structuralCheck("LC-02", options,
     ["engine/crates/membrane/src/cli.rs", "engine/crates/membrane-runtime/src/cli.rs"],
-    [/refresh/i, /blueprint|Blueprint/], "manual Blueprint refresh at any time from cli.rs entry point, publishing queryable generation freshness");
+    [/refresh/i, /blueprint|Blueprint/], "manual Blueprint refresh at any time from cli.rs entry point, publishing queryable generation freshness"));
 }
 export function LC_02_NC_enqueue_freshness(options) {
   return exclusionCheck("LC-02-NC-enqueue-freshness", options,
@@ -271,9 +304,9 @@ export function LC_02_NC_hub_blocked(options) {
 }
 
 export function LC_03(options) {
-  return structuralCheck("LC-03", options,
+  return lifecycleRuntimeCheck("LC-03", options, structuralCheck("LC-03", options,
     ["engine/crates/membrane-runtime/tests/residency_holders.rs", "engine/crates/membrane-federation/src/request.rs"],
-    [/scope/i, /deadline/i], "multi-client fairness/isolation: bounded fair service, own-deadline cancellation, scope isolation, dedup");
+    [/scope/i, /deadline/i], "multi-client fairness/isolation: bounded fair service, own-deadline cancellation, scope isolation, dedup"));
 }
 export function LC_03_NC_cross_scope(options) {
   return exclusionCheck("LC-03-NC-cross-scope", options,
@@ -289,9 +322,9 @@ export function LC_03_NC_starvation(options) {
 }
 
 export function LC_04(options) {
-  return structuralCheck("LC-04", options,
+  return lifecycleRuntimeCheck("LC-04", options, structuralCheck("LC-04", options,
     ["engine/crates/membrane/src/activation.rs", "engine/crates/membrane-runtime/src/installation_manifest.rs"],
-    [/canonical|installed/i, /provision|install/i], "installed provisioning and independence: Hub-off explicit operations, Hub background residency, CodeRight installer-owned adoption");
+    [/canonical|installed/i, /provision|install/i], "installed provisioning and independence: Hub-off explicit operations, Hub background residency, CodeRight installer-owned adoption"));
 }
 export function LC_04_NC_dev_checkout(options) {
   return exclusionCheck("LC-04-NC-dev-checkout", options,
@@ -307,9 +340,9 @@ export function LC_04_NC_incompatible_execute(options) {
 }
 
 export function LC_05(options) {
-  return structuralCheck("LC-05", options,
+  return lifecycleRuntimeCheck("LC-05", options, structuralCheck("LC-05", options,
     ["engine/crates/membrane-protocol/src/operations.rs", "engine/crates/membrane-client/src/residency.rs"],
-    [/incarnation/i, /LeaseHandleV2|lease/i], "credential and lease v2 correctness: incarnation/sequence/idempotency, tombstones, reordered/lost-response recovery, replay admission bounds");
+    [/incarnation/i, /LeaseHandleV2|lease/i], "credential and lease v2 correctness: incarnation/sequence/idempotency, tombstones, reordered/lost-response recovery, replay admission bounds"));
 }
 export function LC_05_NC_replay_after_tombstone(options) {
   return exclusionCheck("LC-05-NC-replay-after-tombstone", options,
@@ -325,9 +358,9 @@ export function LC_05_NC_clock_rewind(options) {
 }
 
 export function LC_06(options) {
-  return structuralCheck("LC-06", options,
+  return lifecycleRuntimeCheck("LC-06", options, structuralCheck("LC-06", options,
     ["engine/crates/membrane/src/activation.rs", "engine/crates/membrane/tests/hook_containment.rs"],
-    [/health|startup.?lock|atomic.?promot/i, /hook|enroll/i], "installer activation: canonical roots, health probe, startup lock, atomic promotion, host hook enrollment");
+    [/health|startup.?lock|atomic.?promot/i, /hook|enroll/i], "installer activation: canonical roots, health probe, startup lock, atomic promotion, host hook enrollment"));
 }
 export function LC_06_NC_enroll_outside_roots(options) {
   return exclusionCheck("LC-06-NC-enroll-outside-roots", options,

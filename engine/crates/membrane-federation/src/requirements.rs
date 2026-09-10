@@ -111,6 +111,23 @@ pub struct CandidateJourneyV1 {
     pub retained: bool,
     #[serde(default)]
     pub dropped: bool,
+    /// Earliest known journey outcome.  This remains evidence accounting,
+    /// never an inference that a host included, read, or used a candidate.
+    #[serde(default)]
+    pub state: CandidateJourneyStateV1,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum CandidateJourneyStateV1 {
+    #[default]
+    NotDiscovered,
+    DiscoveredAccepted,
+    DiscoveredRejected,
+    DiscoveredBudgetDropped,
+    Stale,
+    AdapterDropped,
+    ExecutionFailure,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]

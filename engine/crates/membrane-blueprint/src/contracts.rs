@@ -10,6 +10,94 @@ use std::collections::BTreeMap;
 
 pub type OpenMap = BTreeMap<String, Value>;
 
+/// Source-bound candidate emitted by Blueprint Recall/Resolve.
+///
+/// This is Blueprint's native wire representation of the supported
+/// `CandidateV1` JSON shape.  Keeping it here makes Blueprint the owner of
+/// graph-to-candidate semantics while federation remains a lossless consumer.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BlueprintCandidateV1 {
+    pub id: String,
+    pub layer: u8,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider: Option<String>,
+    pub source_kind: String,
+    pub source_ref: String,
+    pub source_hash: String,
+    pub trust_class: String,
+    pub instruction_policy: String,
+    pub provider_score: f64,
+    #[serde(default)]
+    pub score_components: BTreeMap<String, f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base_commit: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub overlay_digest: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub freshness_class: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub snapshot_id: Option<String>,
+    pub estimated_tokens: u32,
+    pub protected: bool,
+    pub exact: bool,
+    pub recoverable: bool,
+    pub resolver: String,
+    pub text: String,
+}
+
+impl BlueprintCandidateV1 {
+    pub fn validate(&self) -> Result<(), ContractError> {
+        if self.id.is_empty()
+            || self.source_kind.is_empty()
+            || self.source_ref.is_empty()
+            || self.source_hash.is_empty()
+            || self.trust_class.is_empty()
+            || self.instruction_policy.is_empty()
+            || self.resolver.is_empty()
+        {
+            return Err(ContractError::MissingRequiredField);
+        }
+        if !(0.0..=1.0).contains(&self.provider_score) {
+            return Err(ContractError::InvalidValue);
+        }
+        Ok(())
+    }
+}
+
+/// Recall/Resolve candidate container. `state`, coverage and omissions are
+/// producer facts: federation must preserve them, never infer a complete
+/// result from a non-empty candidate array.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BlueprintCandidateSetV1 {
+    pub schema_version: u32,
+    pub state: String,
+    pub candidates: Vec<BlueprintCandidateV1>,
+    pub candidate_count: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub total_known_count: Option<u64>,
+    pub truncated: bool,
+    pub coverage: String,
+    pub freshness: String,
+    #[serde(default)]
+    pub omissions: Vec<Value>,
+}
+
+impl BlueprintCandidateSetV1 {
+    pub fn validate(&self) -> Result<(), ContractError> {
+        if self.schema_version != 1 {
+            return Err(ContractError::UnsupportedSchema);
+        }
+        if self.state.is_empty() || self.coverage.is_empty() || self.freshness.is_empty()
+            || self.candidate_count != self.candidates.len() as u64
+        {
+            return Err(ContractError::InvalidValue);
+        }
+        self.candidates.iter().try_for_each(BlueprintCandidateV1::validate)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ScopeGrantV1 {

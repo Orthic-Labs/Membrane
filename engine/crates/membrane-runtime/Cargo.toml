@@ -28,6 +28,7 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 clap = { version = "4", features = ["derive"] }
 axum = "0.8"
+hyper-util = { version = "0.1.20", features = ["server-auto", "tokio", "service"] }
 tokio = { version = "1", features = ["rt-multi-thread", "net", "io-util", "time", "macros"] }
 tokio-util = { workspace = true }
 tower = { version = "0.5", features = ["limit", "util"] }

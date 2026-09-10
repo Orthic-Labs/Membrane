@@ -11,6 +11,7 @@ pub mod cli_parity;
 pub mod dispatch;
 pub mod install_tx;
 pub mod migration;
+pub mod native_init;
 pub mod modes;
 pub mod serve;
 pub mod uninstall;
