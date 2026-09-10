@@ -40,16 +40,20 @@
 //     ingest path). A later pass (this one) made that path CLI-reachable
 //     (`cortex relation-record` / `cortex relation-list`, cli.rs
 //     Cmd::RelationRecord/RelationList) so it is an explicit operation, not
-//     only a library method. Still missing at the source level: a
-//     restart/replay fixture proving the edge survives a process restart,
-//     and an episode-proposal producer (cortex-core::review has no
-//     rejected_alternatives/final_reason-bearing proposal type or emission
-//     path yet). What is not proven here is functional/installed
-//     behavior against a running store, which needs a build this pass never
-//     runs. Every listed negativeControl is implemented as a real,
-//     executable check (a structural presence check or a
-//     forbidden-anti-pattern scan) that fails today on its own injected
-//     fault, proven in ctx-windows.test.mjs.
+//     only a library method. This pass closed the two remaining
+//     source-level gaps: a restart/replay unit test proving a recorded
+//     relation survives a process restart against the same on-disk path
+//     (`evidence_relation_survives_process_restart`, store.rs), and an
+//     episode-proposal producer carrying rejected_alternatives/final_reason
+//     with source provenance (`cortex_core::review::EpisodeProposalV1`/
+//     `propose_episode`), dispatched via a new explicit `cortex
+//     episode-propose <id>` operation (cli.rs Cmd::EpisodePropose) built
+//     from the id's recorded evidence relations. What is not proven here is
+//     functional/installed behavior against a running store, which needs a
+//     build this pass never runs. Every listed negativeControl is
+//     implemented as a real, executable check (a structural presence check
+//     or a forbidden-anti-pattern scan) that fails today on its own
+//     injected fault, proven in ctx-windows.test.mjs.
 //   - OPT_02: optional post-parity ablation. Not executed by an edit-only
 //     pass (it requires running lexical/vector/hybrid retrieval against a
 //     live corpus). Returns a typed `insufficient` result for the ablation
@@ -539,14 +543,20 @@ export function BM07(options) {
   const struct_ = structuralCheck("BM07", options,
     ["engine/crates/membrane-runtime/src/store.rs", "engine/crates/membrane-runtime/src/cli.rs"],
     [/pub fn record_evidence_relation/, /pub fn evidence_relations_from/, /"supports" \| "contradicts" \| "derived_from"/, /RelationRecord/, /RelationList/]);
+  const episodeProducer = structuralCheck("BM07-episode-producer", options,
+    ["engine/crates/cortex-core/src/review.rs", "engine/crates/membrane-runtime/src/cli.rs"],
+    [/pub struct EpisodeProposalV1/, /pub fn propose_episode/, /rejected_alternatives/, /final_reason/, /EpisodePropose/]);
+  const restartReplayFixture = structuralCheck("BM07-restart-replay", options,
+    ["engine/crates/membrane-runtime/src/store.rs"],
+    [/fn evidence_relation_survives_process_restart/]);
   const installed = isolatedCortexWorkflow(options);
   if (!struct_.pass) {
     return insufficientWithInstalledProbe("BM07", struct_.reason,
       `Durable supports/contradicts/derived_from ingest and full traversal distinguishing replacement/enrichment/derivation is not yet closed. ${installed.reason || ""}`.trim(), installed);
   }
   return insufficientWithInstalledProbe("BM07",
-    `Native isolated Cortex write/list/recall workflow: ${installed.available && !installed.failed ? "passed" : installed.reason}. Source now exposes CLI-reachable relation dispatch (\`cortex relation-record <source> <target> <relation>\` / \`cortex relation-list <id>\`, engine/crates/membrane-runtime/src/cli.rs Cmd::RelationRecord/RelationList) over the existing durable record_evidence_relation/evidence_relations_from store path, but the installed 0.1.24 binary predates this dispatch, has no restart/replay fixture proving the edge survives a process restart against the installed binary, and has no episode-proposal producer command (cortex-core::review has no rejected_alternatives/final_reason-bearing proposal type or emission path). No functional BM07 pass is claimed. Enrichment, derivation, episode-gate, utility-decay, and Pull-sufficiency behavior remain unproven at installed boundary.`,
-    "IMPLEMENT_THEN_RUN per packet; relation CLI dispatch closes on next install; episode-proposal producer and restart/replay fixture remain unimplemented.", installed);
+    `Native isolated Cortex write/list/recall workflow: ${installed.available && !installed.failed ? "passed" : installed.reason}. Source now exposes CLI-reachable relation dispatch (\`cortex relation-record <source> <target> <relation>\` / \`cortex relation-list <id>\`, engine/crates/membrane-runtime/src/cli.rs Cmd::RelationRecord/RelationList) over the existing durable record_evidence_relation/evidence_relations_from store path. Source also now carries an episode-proposal producer (\`cortex_core::review::EpisodeProposalV1\`/\`propose_episode\`, engine/crates/cortex-core/src/review.rs) with rejected_alternatives + final_reason + source_relations fields, dispatched via a new explicit \`cortex episode-propose <id>\` operation (engine/crates/membrane-runtime/src/cli.rs Cmd::EpisodePropose) that builds the proposal from the id's recorded evidence relations, plus a same-process restart/replay unit test (\`evidence_relation_survives_process_restart\`, store.rs) proving a recorded relation is read back after the store is dropped and the same on-disk path reopened. Episode-proposal producer present: ${episodeProducer.pass}. Restart/replay fixture present: ${restartReplayFixture.pass}. The installed 0.1.24 binary predates all of this dispatch, so no functional/installed BM07 pass is claimed — enrichment, derivation, episode-gate, utility-decay, and Pull-sufficiency behavior remain unproven at the installed boundary until the next canonical install picks up this source.`,
+    "IMPLEMENT_THEN_RUN per packet; relation CLI dispatch, episode-proposal producer, and restart/replay proof are now real at the source level and close on next install; only the installed/functional boundary proof remains outstanding.", installed);
 }
 
 // BM07 negativeControls, each a real executable anti-pattern scan.

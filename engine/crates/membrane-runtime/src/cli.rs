@@ -849,6 +849,22 @@ enum Cmd {
     /// replacement/enrichment/derivation/observation (`MemoryStore::evidence_relations_from`).
     /// Reads through the store directly, so this reflects state across process restart.
     RelationList { id: String },
+    /// BM07: build and print a proposal-only episode summary from ID's recorded evidence
+    /// relations (`MemoryStore::evidence_relations_from`, `cortex_core::review::propose_episode`),
+    /// carrying rejected alternatives and a final reason with source provenance. This never
+    /// admits or writes durable truth — Adapt proposes, Cortex admission stays a separate path.
+    EpisodePropose {
+        id: String,
+        #[arg(long, default_value = "global")]
+        scope: String,
+        #[arg(long, default_value = "episode summary")]
+        summary: String,
+        #[arg(long = "final-reason", default_value = "no rejected alternative outranked this summary")]
+        final_reason: String,
+        /// One or more CANDIDATE_ID=REASON pairs for alternatives Adapt considered and rejected.
+        #[arg(long = "rejected", value_name = "CANDIDATE_ID=REASON")]
+        rejected: Vec<String>,
+    },
     /// Ingest every ~/.claude/projects/*/memory dir (+ global) under its scope.
     Migrate,
     /// Ingest every <WORKSPACE_ROOT>/*/.agent/okf bundle, scoped per repo.
@@ -4502,6 +4518,45 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
             println!(
                 "{}",
                 serde_json::json!({ "id": id, "relations": rows })
+            );
+        }
+        Cmd::EpisodePropose {
+            id,
+            scope,
+            summary,
+            final_reason,
+            rejected,
+        } => {
+            let store = open(&db)?;
+            let relations = store.evidence_relations_from(&id)?;
+            let source_relations: Vec<String> = relations
+                .into_iter()
+                .map(|(_, stored)| stored.relation_id)
+                .collect();
+            let rejected_alternatives: Vec<cortex_core::review::RejectedAlternativeV1> = rejected
+                .iter()
+                .map(|pair| {
+                    let mut parts = pair.splitn(2, '=');
+                    let candidate_id = parts.next().unwrap_or_default().trim().to_string();
+                    let reason = parts.next().unwrap_or_default().trim().to_string();
+                    cortex_core::review::RejectedAlternativeV1 {
+                        candidate_id,
+                        reason,
+                    }
+                })
+                .collect();
+            let proposal = cortex_core::review::propose_episode(
+                format!("episode-{id}"),
+                scope,
+                summary,
+                rejected_alternatives,
+                final_reason,
+                source_relations,
+            )
+            .map_err(|error| error.to_string())?;
+            println!(
+                "{}",
+                serde_json::to_string(&proposal).map_err(|error| error.to_string())?
             );
         }
         Cmd::BackoutSchemaV11 => {

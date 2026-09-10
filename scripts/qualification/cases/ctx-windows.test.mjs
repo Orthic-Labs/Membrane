@@ -175,6 +175,16 @@ test("BM07 never returns pass:true from this edit-only pass (no fabricated pass 
   assert.equal(result.id, "BM07");
 });
 
+test("BM07 source-level closure now reports the episode-proposal producer and the restart/replay fixture as present", () => {
+  const result = cases.BM07();
+  assert.match(result.reason, /EpisodeProposalV1/);
+  assert.match(result.reason, /propose_episode/);
+  assert.match(result.reason, /episode-propose/);
+  assert.match(result.reason, /Episode-proposal producer present: true/);
+  assert.match(result.reason, /Restart\/replay fixture present: true/);
+  assert.match(result.reason, /evidence_relation_survives_process_restart/);
+});
+
 const BM07_ANTI_PATTERN_CONTROLS = [
   {
     fn: cases.BM07_enrichment_retires_valid_fact,

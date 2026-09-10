@@ -1200,6 +1200,111 @@ pub fn extract_bounded_memory_candidate(
     })
 }
 
+/// BM07: schema version for [`EpisodeProposalV1`].
+pub const EPISODE_PROPOSAL_SCHEMA_VERSION: u32 = 1;
+
+/// BM07: one alternative Adapt considered and did not carry forward, with the
+/// reason it lost. Proposal-only — recording a rejected alternative here
+/// never mutates durable memory or admits anything.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RejectedAlternativeV1 {
+    pub candidate_id: String,
+    pub reason: String,
+}
+
+/// BM07: a bounded coherent episode proposal with source provenance. This is
+/// Adapt's proposal-only output — Cortex admission (`record_evidence_relation`
+/// and separate durable-write paths) is the only route to durable truth. A
+/// proposal that has not survived [`EpisodeProposalV1::validate`] must never
+/// be treated as admitted or final.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct EpisodeProposalV1 {
+    pub schema_version: u32,
+    pub proposal_id: String,
+    pub scope_id: String,
+    pub summary: String,
+    /// Every alternative considered and rejected, each with its own reason.
+    /// Required non-empty: an episode proposal with no recorded alternative
+    /// is not distinguishable from an unreviewed guess (Z08).
+    pub rejected_alternatives: Vec<RejectedAlternativeV1>,
+    /// Why the retained summary won over every rejected alternative.
+    /// Required non-empty for the same reason as `rejected_alternatives`.
+    pub final_reason: String,
+    /// Durable evidence-relation ids (`record_evidence_relation` /
+    /// `evidence_relations_from`) this proposal was built from. Required
+    /// non-empty: a proposal detached from recorded evidence has no source
+    /// provenance to admit against.
+    pub source_relations: Vec<String>,
+}
+
+impl EpisodeProposalV1 {
+    /// Validate proposal shape without admitting, mutating, or interpreting
+    /// semantic content. Mirrors [`SemanticCurationProposalV1::validate`].
+    pub fn validate(&self) -> Result<(), ReviewContractError> {
+        if self.schema_version != EPISODE_PROPOSAL_SCHEMA_VERSION {
+            return Err(ReviewContractError::SchemaVersion(self.schema_version));
+        }
+        if self.proposal_id.trim().is_empty() {
+            return Err(ReviewContractError::EmptyField("proposal_id"));
+        }
+        if self.scope_id.trim().is_empty() {
+            return Err(ReviewContractError::EmptyField("scope_id"));
+        }
+        if self.summary.trim().is_empty() {
+            return Err(ReviewContractError::EmptyField("summary"));
+        }
+        if self.rejected_alternatives.is_empty() {
+            return Err(ReviewContractError::EmptyField("rejected_alternatives"));
+        }
+        for alternative in &self.rejected_alternatives {
+            if alternative.candidate_id.trim().is_empty() || alternative.reason.trim().is_empty()
+            {
+                return Err(ReviewContractError::EmptyField("rejected_alternatives"));
+            }
+        }
+        if self.final_reason.trim().is_empty() {
+            return Err(ReviewContractError::EmptyField("final_reason"));
+        }
+        if self.source_relations.is_empty() {
+            return Err(ReviewContractError::EmptyEvidence);
+        }
+        for relation_id in &self.source_relations {
+            if relation_id.trim().is_empty() {
+                return Err(ReviewContractError::EmptyField("source_relations"));
+            }
+        }
+        Ok(())
+    }
+}
+
+/// BM07: build and validate one [`EpisodeProposalV1`] from its recorded
+/// evidence relations and the alternatives Adapt considered and rejected.
+/// This is the sole producer for the type: it never writes durable memory,
+/// never calls a store, and returns `Err` rather than a proposal that would
+/// fail `validate()` — a caller can only ever hold a valid proposal.
+pub fn propose_episode(
+    proposal_id: String,
+    scope_id: String,
+    summary: String,
+    rejected_alternatives: Vec<RejectedAlternativeV1>,
+    final_reason: String,
+    source_relations: Vec<String>,
+) -> Result<EpisodeProposalV1, ReviewContractError> {
+    let proposal = EpisodeProposalV1 {
+        schema_version: EPISODE_PROPOSAL_SCHEMA_VERSION,
+        proposal_id,
+        scope_id,
+        summary,
+        rejected_alternatives,
+        final_reason,
+        source_relations,
+    };
+    proposal.validate()?;
+    Ok(proposal)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1604,5 +1709,74 @@ mod tests {
             candidate.validate_against(&window),
             Err(ReviewContractError::CandidateProvenanceMismatch)
         );
+    }
+
+    #[test]
+    fn propose_episode_builds_a_valid_proposal_with_provenance() {
+        let proposal = propose_episode(
+            "episode-1".to_string(),
+            "scope".to_string(),
+            "candidate A supersedes candidate B given newer evidence".to_string(),
+            vec![RejectedAlternativeV1 {
+                candidate_id: "candidate-b".to_string(),
+                reason: "contradicted by relation-1".to_string(),
+            }],
+            "candidate-a is the only alternative not contradicted by recorded evidence"
+                .to_string(),
+            vec!["relation-1".to_string(), "relation-2".to_string()],
+        )
+        .expect("well-formed episode proposal validates");
+        assert_eq!(proposal.schema_version, EPISODE_PROPOSAL_SCHEMA_VERSION);
+        assert_eq!(proposal.rejected_alternatives.len(), 1);
+        assert_eq!(proposal.source_relations.len(), 2);
+        proposal.validate().expect("producer output re-validates");
+    }
+
+    #[test]
+    fn propose_episode_without_rejected_alternatives_fails() {
+        let result = propose_episode(
+            "episode-2".to_string(),
+            "scope".to_string(),
+            "unreviewed guess".to_string(),
+            Vec::new(),
+            "no alternative was ever considered".to_string(),
+            vec!["relation-1".to_string()],
+        );
+        assert_eq!(
+            result,
+            Err(ReviewContractError::EmptyField("rejected_alternatives"))
+        );
+    }
+
+    #[test]
+    fn propose_episode_without_final_reason_fails() {
+        let result = propose_episode(
+            "episode-3".to_string(),
+            "scope".to_string(),
+            "summary".to_string(),
+            vec![RejectedAlternativeV1 {
+                candidate_id: "candidate-b".to_string(),
+                reason: "contradicted".to_string(),
+            }],
+            String::new(),
+            vec!["relation-1".to_string()],
+        );
+        assert_eq!(result, Err(ReviewContractError::EmptyField("final_reason")));
+    }
+
+    #[test]
+    fn propose_episode_without_source_relations_fails() {
+        let result = propose_episode(
+            "episode-4".to_string(),
+            "scope".to_string(),
+            "summary".to_string(),
+            vec![RejectedAlternativeV1 {
+                candidate_id: "candidate-b".to_string(),
+                reason: "contradicted".to_string(),
+            }],
+            "final reason".to_string(),
+            Vec::new(),
+        );
+        assert_eq!(result, Err(ReviewContractError::EmptyEvidence));
     }
 }

@@ -16642,6 +16642,40 @@ mod tests {
         let _ = std::fs::remove_file(&path);
     }
 
+    /// BM07 restart/replay proof: a `record_evidence_relation` edge recorded
+    /// before the store is dropped must still be returned by
+    /// `evidence_relations_from` after the same on-disk path is reopened in a
+    /// fresh `MemoryStore`/`MemDb` — i.e. the edge is durable, not merely
+    /// present in the still-open process's cache.
+    #[test]
+    fn evidence_relation_survives_process_restart() {
+        let path = std::env::temp_dir().join(format!("cr-mem-relation-restart-{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let source_id: String;
+        let target_id: String;
+        {
+            let m = MemoryStore::open(MemDb::open(&path).unwrap());
+            source_id = m.put("relation-source", "source content", "global", MemoryTier::Semantic);
+            target_id = m.put("relation-target", "target content", "global", MemoryTier::Semantic);
+            m.record_evidence_relation(&source_id, &target_id, "supports", "test-producer")
+                .expect("relation records against two persisted memories in one scope");
+        }
+        // Drop and reopen against the same path: this is the process-restart
+        // boundary the BM07 acceptance row requires proof across.
+        let reloaded = MemoryStore::open(MemDb::open(&path).unwrap());
+        let relations = reloaded
+            .evidence_relations_from(&source_id)
+            .expect("evidence_relations_from reads through the reopened store");
+        assert_eq!(relations.len(), 1, "the recorded edge must survive restart");
+        let (category, stored) = &relations[0];
+        assert_eq!(*category, cortex_core::RelationCategory::Observation);
+        assert_eq!(stored.edge.source_id, source_id);
+        assert_eq!(stored.edge.target_id, target_id);
+        assert_eq!(stored.edge.relation, "supports");
+        assert!(stored.traversable(), "a freshly recorded edge has no diagnostic");
+        let _ = std::fs::remove_file(&path);
+    }
+
     #[test]
     fn lifecycle_actor_rejects_body_style_identity_and_a0() {
         assert!(
