@@ -1,11 +1,11 @@
 {
  "schemaVersion": 1,
  "artifact": "membrane.runtime-language-manifest",
- "generatedAt": "2026-09-10T14:40:31.218Z",
+ "generatedAt": "2026-09-10T14:42:34.690Z",
  "enforcementMode": "sealed",
  "policyDigest": "9d70956ed53ce0f1e6a71be5d4649f5ea86153f295402e5a81347e8f2817eeca",
  "totals": {
-  "files": 1148,
+  "files": 1150,
   "rows": 44,
   "byRuntime": {
    "python": 7,
@@ -1801,6 +1801,8 @@
     "scripts/qualification/cases/psh-windows.test.mjs",
     "scripts/qualification/cases/pul-windows.mjs",
     "scripts/qualification/cases/pul-windows.test.mjs",
+    "scripts/qualification/cases/rec-windows.mjs",
+    "scripts/qualification/cases/rec-windows.test.mjs",
     "scripts/qualification/cases/semantic-producer-windows.mjs",
     "scripts/qualification/cases/semantic-producer-windows.test.mjs",
     "scripts/qualification/install-release.test.mjs",
@@ -1850,7 +1852,7 @@
     "scripts/tools/productization/generate-support-matrix.test.mjs",
     "scripts/tools/productization/render-docs.mjs"
    ],
-   "content_digest": "5ee21286337c3c113c6b56478a18e93e8582b7c5bdd8fd42ad1c70984ad81b0e"
+   "content_digest": "037132d00e0f76ba77b35e4019e0269fee68ca2abcd42e720e0f7a0c18d3e60f"
   },
   {
    "id": "surface-extraction-tool-surface-extraction-tool",
