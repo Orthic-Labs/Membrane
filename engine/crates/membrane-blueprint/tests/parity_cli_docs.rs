@@ -25,6 +25,9 @@ fn docs_succeeds_against_a_real_built_repository_and_honors_limit() {
     let root = dir.path().to_string_lossy().to_string();
     let refreshed = cli::manual_refresh(root.clone(), None);
     assert!(refreshed.is_ok(), "manual_refresh failed: {:?}", refreshed.err());
+    assert_eq!(refreshed.as_ref().unwrap()["docsResult"]["mode"], "wrote");
+    assert!(dir.path().join("docs/product.md").exists());
+    assert!(dir.path().join("docs/architecture.md").exists());
 
     let payload = cli::docs(root.clone(), None, None).unwrap();
     assert_eq!(payload["schemaVersion"], 1);

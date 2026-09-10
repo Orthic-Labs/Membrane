@@ -10,6 +10,7 @@ use crate::model::Operation;
 use crate::query;
 use crate::security::{canonical_root, is_confined_path};
 use crate::store::{self, Generation, StoreError};
+use crate::delta_store::{self, ApplyOptions, EventKind, FactBatch, FileDelta};
 use serde_json::{json, Value};
 use std::collections::HashSet;
 use std::fs;
@@ -42,7 +43,14 @@ impl BlueprintOperation for NativeBlueprintOperation {
                     let current = load_current(&db_path)?;
                     ensure_generation(request, &current)?;
                 }
-                build_and_publish(request, context, &root, &db_path)
+                if request.method == Operation::Refresh {
+                    match incremental_refresh(request, context, &root, &db_path)? {
+                        Some(value) => Ok(value),
+                        None => build_and_publish(request, context, &root, &db_path),
+                    }
+                } else {
+                    build_and_publish(request, context, &root, &db_path)
+                }
             }
             Operation::Status | Operation::DbStatus => status(request, context, &root, &db_path)
                 .and_then(|value| bounded_generation_response(request, value)),
@@ -173,6 +181,117 @@ fn check_paths(request: &BlueprintRequest, root: &Path) -> Result<(), BlueprintE
 
 fn store_path(root: &Path) -> PathBuf { root.join(".agent").join("graph").join("graph.db") }
 
+/// Apply one watcher-shaped code-file refresh in place. Returning `None`
+/// means the event is outside the narrow structural lane and must use the
+/// complete graph rebuild, preserving provider/document semantics.
+fn incremental_refresh(
+    request: &BlueprintRequest,
+    context: &RequestContext,
+    root: &Path,
+    db_path: &Path,
+) -> Result<Option<Value>, BlueprintError> {
+    let Some(paths) = request.input.get("paths").and_then(Value::as_array) else { return Ok(None); };
+    if paths.len() != 1 { return Ok(None); }
+    let Some(path) = paths[0].as_str().map(|value| value.replace('\\', "/")) else { return Ok(None); };
+    if path.is_empty() || path.starts_with('/') || path.contains("..") || path.starts_with(".agent/") { return Ok(None); }
+    let event_kind = match request.input.get("eventKind").and_then(Value::as_str).unwrap_or("modify").to_ascii_lowercase().as_str() {
+        "create" => EventKind::Create,
+        "modify" | "changed" => EventKind::Modify,
+        "delete" => EventKind::Delete,
+        // Rename needs a second file's facts and is intentionally handled by
+        // the complete builder until both sides can be admitted atomically.
+        _ => return Ok(None),
+    };
+    if !graph::is_code_path(&path) { return Ok(None); }
+    if !db_path.exists() { return Ok(None); }
+    let current = load_current_with_observation(db_path)?;
+    if !current.0.complete { return Ok(None); }
+    context.check()?;
+
+    // A bounded scan verifies this event did not hide additional changes or a
+    // traversal gap. It performs no parsing/provider work; only the eligible
+    // file is then converted into facts.
+    let scan = graph::scan_repository_with_cancellation(root, &graph::ScanOptions::default(), &context.cancellation)
+        .map_err(|error| match error {
+            graph::GraphError::Cancelled if context.cancellation.deadline_expired() => BlueprintError::deadline(),
+            graph::GraphError::Cancelled => BlueprintError::cancelled(),
+            error => BlueprintError::new("blueprint_refresh_scan_failed", error.to_string()),
+        })?;
+    if scan.traversal_truncated || scan.file_limit_reached { return Ok(None); }
+    if !only_path_changed(&current.0, &scan.files, &path, event_kind) { return Ok(None); }
+    let facts = match event_kind {
+        EventKind::Delete => None,
+        _ => match graph::build_file_facts(root, &path, &context.cancellation) {
+            Ok(value) => value,
+            Err(graph::GraphError::Cancelled) if context.cancellation.deadline_expired() => return Err(BlueprintError::deadline()),
+            Err(graph::GraphError::Cancelled) => return Err(BlueprintError::cancelled()),
+            Err(_) => None,
+        },
+    };
+    if !matches!(event_kind, EventKind::Delete) && facts.is_none() { return Ok(None); }
+
+    let observation = crate::git_source_observation::git_source_observation(&root.to_string_lossy());
+    let source_clock = request.input.get("sourceClock").and_then(Value::as_u64).and_then(|clock| i64::try_from(clock).ok());
+    let Some(source_clock) = source_clock else { return Ok(None); };
+    let mut delta = FileDelta {
+        path: path.clone(), event_kind, source_clock: Some(source_clock),
+        source_hash: Some(graph::source_hash_for_files(&scan.files)),
+        source_observation: Some(json!({
+            "sourceClock": request.input.get("sourceClock").cloned().unwrap_or(Value::Null),
+            "eventKind": request.input.get("eventKind").cloned().unwrap_or(Value::Null),
+            "paths": request.input.get("paths").cloned().unwrap_or_else(|| json!([])),
+            "head": observation.as_ref().map(|value| value.head.clone()),
+            "dirty": observation.as_ref().map(|value| value.dirty),
+            "statusDigest": observation.as_ref().map(|value| value.status_digest.clone()),
+        })),
+        ..FileDelta::default()
+    };
+    if let Some(facts) = facts {
+        let provider = graph::PROVIDER_VERSION;
+        let mut nodes = Vec::with_capacity(facts.nodes.len() + 1);
+        nodes.push(serde_json::to_value(facts.file).map_err(|error| BlueprintError::new("blueprint_delta_failed", error.to_string()))?);
+        nodes.extend(facts.nodes.into_iter().filter_map(|node| serde_json::to_value(node).ok()));
+        delta.content_digest = Some(facts.content_digest);
+        delta.size = Some(facts.size);
+        delta.file_report = Some(serde_json::to_value(&facts.report).map_err(|error| BlueprintError::new("blueprint_delta_failed", error.to_string()))?);
+        delta.fact_batches.push(FactBatch {
+            provider_id: "native-rust".into(), provider_version: provider.into(), nodes,
+            edges: facts.edges.into_iter().filter_map(|edge| serde_json::to_value(edge).ok()).collect(),
+            dependencies: Vec::new(),
+        });
+    }
+    context.check()?;
+    let mut connection = open_store(db_path)?;
+    delta_store::apply_file_delta(&mut connection, &delta, ApplyOptions::default())
+        .map_err(|error| BlueprintError::new("blueprint_delta_failed", error.to_string()))?;
+    context.check()?;
+    let (generation, source_observation) = load_current_with_observation(db_path)?;
+    bounded_generation_response(request, json!({
+        "schemaVersion": 1, "operation": request.method.as_str(), "state": "fresh",
+        "refreshMode": "incremental", "generationId": generation.generation_id,
+        "repoRoot": root.to_string_lossy(), "storePath": db_path.to_string_lossy(),
+        "sourceHash": generation.source_hash, "complete": generation.complete,
+        "truncationReasons": generation.truncation_reasons,
+        "counts": {"nodes": generation.nodes.len(), "edges": generation.edges.len(), "files": generation.files.len()},
+        "sourceClock": request.input.get("sourceClock").cloned().unwrap_or(Value::Null),
+        "eventKind": request.input.get("eventKind").cloned().unwrap_or(Value::Null),
+        "sourceObservation": source_observation.unwrap_or(Value::Null),
+    })).map(Some)
+}
+
+fn only_path_changed(current: &GraphGeneration, files: &[graph::FileRecord], path: &str, event_kind: EventKind) -> bool {
+    let mut before = current.nodes.iter().filter(|node| node.kind == "file").filter_map(|node| {
+        let path = node.path.clone()?;
+        let hash = node.evidence.first().and_then(|value| value.get("contentHash")).and_then(Value::as_str)?;
+        let digest = hash.strip_prefix("xxh128:").unwrap_or(hash).to_owned();
+        Some((path, digest))
+    }).collect::<std::collections::BTreeMap<_, _>>();
+    let after = files.iter().map(|file| (file.path.clone(), file.content_hash.strip_prefix("xxh128:").unwrap_or(&file.content_hash).to_owned())).collect::<std::collections::BTreeMap<_, _>>();
+    let all = before.keys().chain(after.keys()).cloned().collect::<std::collections::BTreeSet<_>>();
+    let changed = all.into_iter().filter(|candidate| before.remove(candidate) != after.get(candidate).cloned()).collect::<Vec<_>>();
+    changed.len() == 1 && changed[0] == path && ((event_kind == EventKind::Delete && !after.contains_key(path)) || (event_kind != EventKind::Delete && after.contains_key(path)))
+}
+
 fn build_and_publish(request: &BlueprintRequest, context: &RequestContext, root: &Path, db_path: &Path) -> Result<Value, BlueprintError> {
     context.check()?;
     // Keep graph construction synchronous so no detached worker can outlive
@@ -232,6 +351,36 @@ fn build_and_publish(request: &BlueprintRequest, context: &RequestContext, root:
         crate::merkle_ledger::compute_full_ledger(&connection, &leaf_files)
             .map_err(|error| BlueprintError::new("blueprint_build_failed", error.to_string()))?;
     }
+    // The legacy build publishes generated human docs after its graph/store
+    // commit. Native builds have the same side effect through the Rust port;
+    // `lib_generated_docs` reads the just-published generation directly when
+    // retired JSON projection files are absent. A docs conflict is a typed
+    // successful result with fallback output, matching the legacy contract.
+    drop(connection);
+    context.check()?;
+    let docs_options = crate::lib_generated_docs::GenerateDocsOptions {
+        no_readme_link: request
+            .input
+            .get("noReadmeLink")
+            .or_else(|| request.input.get("no-readme-link"))
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
+    };
+    let docs_result = crate::lib_generated_docs::generate_docs(root, docs_options)
+        .map_err(|error| BlueprintError::new("blueprint_docs_failed", error.to_string()))?;
+    let docs_value = json!({
+        "mode": docs_result.mode,
+        "conflicts": docs_result.conflicts,
+        "wrote": docs_result.wrote,
+        "fallback": docs_result.fallback,
+        "readme": docs_result.readme.map(|mode| json!({"mode": match mode {
+            crate::lib_generated_docs::ReadmePointerMode::Absent => "absent",
+            crate::lib_generated_docs::ReadmePointerMode::Created => "created",
+            crate::lib_generated_docs::ReadmePointerMode::Updated => "updated",
+        }})),
+        "retired": docs_result.retired,
+    });
+    context.check()?;
     bounded_generation_response(request, json!({
         "schemaVersion": 1,
         "operation": request.method.as_str(),
@@ -246,6 +395,7 @@ fn build_and_publish(request: &BlueprintRequest, context: &RequestContext, root:
         "sourceClock": request.input.get("sourceClock").cloned().unwrap_or(Value::Null),
         "eventKind": request.input.get("eventKind").cloned().unwrap_or(Value::Null),
         "sourceObservation": observation,
+        "docsResult": docs_value,
     }))
 }
 

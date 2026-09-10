@@ -6,6 +6,7 @@ use membrane_blueprint::lib_generated_docs::{
     maintain_readme_pointer, DocsStats, GenerateDocsOptions, ReadmePointerMode, DOC_PATH_ARCHITECTURE,
     DOC_PATH_PRODUCT, VERSION,
 };
+use membrane_blueprint::cli;
 use std::fs;
 
 fn tempdir(name: &str) -> std::path::PathBuf {
@@ -154,6 +155,22 @@ fn generate_docs_writes_fresh_docs_and_readme_pointer() {
     assert_eq!(result2.mode, "wrote");
     let product_text2 = fs::read_to_string(dir.join(DOC_PATH_PRODUCT)).unwrap();
     assert_eq!(product_text, product_text2);
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn generate_docs_reads_native_store_when_legacy_json_projection_is_absent() {
+    let dir = tempdir("gen-native-store");
+    fs::write(dir.join("main.rs"), "fn entry() {}\n").unwrap();
+    cli::manual_refresh(dir.to_string_lossy().to_string(), None).expect("native refresh should publish a generation");
+
+    assert!(!dir.join(".agent/map.json").exists());
+    let result = generate_docs(&dir, GenerateDocsOptions { no_readme_link: true }).unwrap();
+    assert_eq!(result.mode, "wrote");
+    assert!(dir.join(DOC_PATH_PRODUCT).exists());
+    assert!(dir.join(DOC_PATH_ARCHITECTURE).exists());
+    assert!(fs::read_to_string(dir.join(DOC_PATH_PRODUCT)).unwrap().contains("Product Overview"));
 
     let _ = fs::remove_dir_all(&dir);
 }

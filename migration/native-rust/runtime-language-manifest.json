@@ -1,7 +1,7 @@
 {
  "schemaVersion": 1,
  "artifact": "membrane.runtime-language-manifest",
- "generatedAt": "2026-09-10T13:30:32.697Z",
+ "generatedAt": "2026-09-10T13:51:46.290Z",
  "enforcementMode": "sealed",
  "policyDigest": "9d70956ed53ce0f1e6a71be5d4649f5ea86153f295402e5a81347e8f2817eeca",
  "totals": {
@@ -608,7 +608,7 @@
     "engine/crates/membrane-blueprint/tests/service.rs",
     "engine/crates/membrane-blueprint/tests/watch.rs"
    ],
-   "content_digest": "51549e86b021f7c653dc72fa9b90d37cfd5fa10f5caa637feee7092bb571a89d"
+   "content_digest": "fcb14ced65eb861a072f4bcaa791b36069273bcb66632e9fdc14f0137895e6cb"
   },
   {
    "id": "engine-membrane-client-engine/crates/membrane-client",

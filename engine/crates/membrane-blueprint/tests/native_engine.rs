@@ -87,6 +87,42 @@ fn refresh_observation_survives_persistence_and_query() {
 }
 
 #[test]
+fn refresh_uses_incremental_delta_for_one_changed_code_file() {
+    let root = tempdir().unwrap();
+    fs::write(root.path().join("main.rs"), "fn entry() {}\n").unwrap();
+    let operation = NativeBlueprintOperation;
+    execute(&operation, &request("build", Operation::Build, root.path())).unwrap();
+    fs::write(root.path().join("main.rs"), "fn changed() {}\n").unwrap();
+    let mut refresh = request("delta-refresh", Operation::Refresh, root.path());
+    refresh.input["sourceClock"] = Value::from(1u64);
+    refresh.input["eventKind"] = Value::String("modify".into());
+    refresh.input["paths"] = Value::Array(vec![Value::String("main.rs".into())]);
+    let result = execute(&operation, &refresh).unwrap();
+    assert_eq!(result["refreshMode"], "incremental");
+    let generation = result["generationId"].as_str().unwrap().to_owned();
+    let mut query = request("delta-query", Operation::Search, root.path());
+    query.generation = Some(generation);
+    query.input["query"] = Value::String("changed".into());
+    assert!(execute(&operation, &query).is_ok());
+}
+
+#[test]
+fn refresh_falls_back_to_full_build_for_document_changes() {
+    let root = tempdir().unwrap();
+    fs::write(root.path().join("main.rs"), "fn entry() {}\n").unwrap();
+    fs::write(root.path().join("README.md"), "initial\n").unwrap();
+    let operation = NativeBlueprintOperation;
+    execute(&operation, &request("build", Operation::Build, root.path())).unwrap();
+    fs::write(root.path().join("README.md"), "updated\n").unwrap();
+    let mut refresh = request("document-refresh", Operation::Refresh, root.path());
+    refresh.input["sourceClock"] = Value::from(1u64);
+    refresh.input["eventKind"] = Value::String("modify".into());
+    refresh.input["paths"] = Value::Array(vec![Value::String("README.md".into())]);
+    let result = execute(&operation, &refresh).unwrap();
+    assert_ne!(result["refreshMode"], "incremental");
+}
+
+#[test]
 fn cancelled_build_does_not_publish_a_database() {
     let root = tempdir().unwrap();
     fs::write(root.path().join("main.rs"), "fn entry() {}\n").unwrap();

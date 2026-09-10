@@ -631,6 +631,82 @@ fn read_json(path: &Path) -> Option<Value> {
     serde_json::from_str(&text).ok()
 }
 
+/// Build the small input projection needed by the generated-doc emitter from
+/// the native store when legacy `.agent/{map,index,claims,stale}.json` files
+/// are absent. Native builds persist one SQLite generation, so requiring the
+/// retired JSON artifacts would leave this otherwise production operation
+/// permanently in `missing_map` mode.
+fn read_native_inputs(root: &Path) -> Option<(Value, Value, Value, Option<Value>, Value)> {
+    let db_path = root.join(".agent").join("graph").join("graph.db");
+    if !db_path.exists() {
+        return None;
+    }
+    let conn = crate::store::open_store_read_only(&db_path).ok()?;
+    let manifest_text: String = conn
+        .query_row("SELECT value FROM generation WHERE key = 'manifest'", [], |row| row.get(0))
+        .ok()?;
+    let manifest: Value = serde_json::from_str(&manifest_text).ok()?;
+    let source_signature = manifest.get("sourceHash").and_then(Value::as_str).unwrap_or("");
+    let repo_root: String = conn
+        .query_row("SELECT value FROM generation WHERE key = 'repoRoot'", [], |row| row.get(0))
+        .ok()
+        .and_then(|value: String| serde_json::from_str::<Value>(&value).ok())
+        .and_then(|value| value.as_str().map(str::to_owned))
+        .unwrap_or_else(|| root.to_string_lossy().into_owned());
+    let repo = Path::new(&repo_root)
+        .file_name()
+        .and_then(|value| value.to_str())
+        .filter(|value| !value.is_empty())
+        .unwrap_or("repository");
+
+    let mut file_statement = conn.prepare("SELECT path FROM files ORDER BY path").ok()?;
+    let files: Vec<String> = file_statement
+        .query_map([], |row| row.get(0))
+        .ok()?
+        .collect::<Result<_, _>>()
+        .ok()?;
+    let docs_count: i64 = conn
+        .query_row("SELECT COUNT(*) FROM documents", [], |row| row.get(0))
+        .ok()?;
+    let claims_count: i64 = conn
+        .query_row("SELECT COUNT(*) FROM claims", [], |row| row.get(0))
+        .ok()?;
+    let code_refs: i64 = conn
+        .query_row("SELECT COUNT(*) FROM edges", [], |row| row.get(0))
+        .ok()?;
+    let mut doc_statement = conn.prepare("SELECT path FROM documents ORDER BY path").ok()?;
+    let doc_nodes: Vec<Value> = doc_statement
+        .query_map([], |row| row.get::<_, String>(0))
+        .ok()?
+        .collect::<Result<Vec<_>, _>>()
+        .ok()?
+        .into_iter()
+        .map(|path| json!({"kind": "doc", "path": path}))
+        .collect();
+    let mut claim_statement = conn.prepare("SELECT status, text, source, line FROM claims ORDER BY rowid").ok()?;
+    let claims: Vec<Value> = claim_statement
+        .query_map([], |row| {
+            Ok(json!({
+                "status": row.get::<_, Option<String>>(0)?.unwrap_or_default(),
+                "text": row.get::<_, String>(1)?,
+                "source": row.get::<_, Option<String>>(2)?.unwrap_or_default(),
+                "line": row.get::<_, Option<i64>>(3)?,
+            }))
+        })
+        .ok()?
+        .collect::<Result<Vec<_>, _>>()
+        .ok()?;
+    let map = json!({
+        "schemaVersion": 1,
+        "repo": repo,
+        "stats": {"files": files.len(), "docs": docs_count, "claims": claims_count, "codeRefs": code_refs},
+        "nodes": doc_nodes,
+    });
+    let index = json!({"schemaVersion": 1, "sourceSignature": source_signature, "files": files});
+    let stale = json!({"missingReferences": [], "staleClaims": []});
+    Some((map, Value::Array(claims), stale, None, index))
+}
+
 /// Orchestrate a docs build. Mirrors `generateDocs`. Unlike the legacy
 /// module (which throws on malformed `.agent/claims.json` etc. via
 /// `JSON.parse`), this treats any unparsable required JSON file the same
@@ -640,21 +716,28 @@ fn read_json(path: &Path) -> Option<Value> {
 /// which is a strictly safer fail-closed behavior for the same
 /// "no map, can't proceed" outcome).
 pub fn generate_docs(root: &Path, opts: GenerateDocsOptions) -> std::io::Result<GenerateDocsResult> {
-    let map = match read_json(&root.join(".agent").join("map.json")) {
-        Some(m) => m,
-        None => {
-            return Ok(GenerateDocsResult {
-                mode: "missing_map",
-                ..Default::default()
-            })
+    let map_path = root.join(".agent").join("map.json");
+    let (map, claims_raw, stale, understanding_candidate, index) = if map_path.exists() {
+        // An explicitly present but malformed legacy map remains fail-closed;
+        // do not silently substitute a native projection for corrupt input.
+        let Some(map) = read_json(&map_path) else {
+            return Ok(GenerateDocsResult { mode: "missing_map", ..Default::default() });
+        };
+        (
+            map,
+            read_json(&root.join(".agent").join("claims.json")).unwrap_or_else(|| json!([])),
+            read_json(&root.join(".agent").join("stale.json"))
+                .unwrap_or_else(|| json!({"missingReferences": [], "staleClaims": []})),
+            read_json(&root.join(".agent").join("understanding.json")),
+            read_json(&root.join(".agent").join("index.json"))
+                .unwrap_or_else(|| json!({"files": [], "sourceSignature": "no-index"})),
+        )
+    } else {
+        match read_native_inputs(root) {
+            Some(inputs) => inputs,
+            None => return Ok(GenerateDocsResult { mode: "missing_map", ..Default::default() }),
         }
     };
-    let claims_raw = read_json(&root.join(".agent").join("claims.json")).unwrap_or_else(|| json!([]));
-    let stale = read_json(&root.join(".agent").join("stale.json"))
-        .unwrap_or_else(|| json!({"missingReferences": [], "staleClaims": []}));
-    let understanding_candidate = read_json(&root.join(".agent").join("understanding.json"));
-    let index = read_json(&root.join(".agent").join("index.json"))
-        .unwrap_or_else(|| json!({"files": [], "sourceSignature": "no-index"}));
 
     let graph_manifest = read_stored_manifest(root);
     let graph_generation_id = graph_manifest.as_ref().and_then(|m| m.get("generationId")).and_then(Value::as_str);

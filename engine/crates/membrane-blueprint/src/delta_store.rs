@@ -477,8 +477,8 @@ use crate::store_delta::{
     FactOwnerRow,
 };
 use crate::merkle_ledger::update_leaf_chain;
-use rusqlite::Connection;
-use serde_json::Value;
+use rusqlite::{params, Connection, Transaction};
+use serde_json::{Map, Value};
 
 /// Mirrors `delta.eventKind`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -523,6 +523,12 @@ pub struct FileDelta {
     /// Mirrors `isDocumentDelta`; see module docs — a `true` value makes
     /// [`apply_file_delta`] return [`ApplyFileDeltaError::UnsupportedDocumentDelta`].
     pub is_document_delta: bool,
+    /// Optional publication metadata supplied by the refresh coordinator.
+    /// Keeping it on the delta makes graph identity and source observation
+    /// part of the same transaction as row mutation.
+    pub source_hash: Option<String>,
+    pub source_observation: Option<Value>,
+    pub file_report: Option<Value>,
 }
 
 impl Default for FileDelta {
@@ -539,6 +545,9 @@ impl Default for FileDelta {
             mtime_ms: None,
             file_identity: None,
             is_document_delta: false,
+            source_hash: None,
+            source_observation: None,
+            file_report: None,
         }
     }
 }
@@ -670,7 +679,7 @@ pub fn apply_file_delta(
         let mut manifest = read_manifest(&tx)?.ok_or_else(|| {
             ApplyFileDeltaError::Store("generation envelope is missing manifest".into())
         })?;
-        let source_observation = read_source_observation(&tx)?;
+        let source_observation = delta.source_observation.clone().or(read_source_observation(&tx)?);
         let root_before = update_leaf_chain(&tx, &new_path, content_digest_value.as_deref())?;
         reseal_generation_identity_delta(&mut manifest, source_observation.as_ref(), Some(root_before.as_str()), applied_clock)
             .map_err(ApplyFileDeltaError::Store)?;
@@ -730,6 +739,9 @@ pub fn apply_file_delta(
             delta.journal_seq,
         )?;
         refresh_manifest_counts(&tx, &mut manifest)?;
+        if let Some(source_hash) = &delta.source_hash {
+            manifest.as_object_mut().unwrap().insert("sourceHash".into(), Value::String(source_hash.clone()));
+        }
         let digest = crate::identity::compute_manifest_digest_value(&manifest, source_observation.as_ref());
         manifest.as_object_mut().unwrap().insert("manifestDigest".into(), Value::String(digest));
         crate::store_delta::write_manifest(&tx, &manifest)?;
@@ -739,11 +751,14 @@ pub fn apply_file_delta(
         // touching node/edge rows, mirroring the legacy `else if
         // (!isDocumentDelta)` branch.
         if let Some(mut manifest) = read_manifest(&tx)? {
-            let source_observation = read_source_observation(&tx)?;
+            let source_observation = delta.source_observation.clone().or(read_source_observation(&tx)?);
             let leaf_root = update_leaf_chain(&tx, &path, content_digest_value.as_deref())?;
             reseal_generation_identity_delta(&mut manifest, source_observation.as_ref(), Some(leaf_root.as_str()), applied_clock)
                 .map_err(ApplyFileDeltaError::Store)?;
             refresh_manifest_counts(&tx, &mut manifest)?;
+            if let Some(source_hash) = &delta.source_hash {
+                manifest.as_object_mut().unwrap().insert("sourceHash".into(), Value::String(source_hash.clone()));
+            }
             let digest = crate::identity::compute_manifest_digest_value(&manifest, source_observation.as_ref());
             manifest.as_object_mut().unwrap().insert("manifestDigest".into(), Value::String(digest));
             crate::store_delta::write_manifest(&tx, &manifest)?;
@@ -757,6 +772,24 @@ pub fn apply_file_delta(
             acknowledge_journal(&tx, seq, applied_clock)?;
         }
     }
+
+    if let Some(observation) = &delta.source_observation {
+        write_source_observation(&tx, observation)?;
+    }
+    if let Some(report) = &delta.file_report {
+        update_file_report(&tx, &path, report)?;
+    }
+    // A delta publishes a new generation for the complete graph body. Keep
+    // every generation-bound row aligned with the resealed manifest, not only
+    // rows touched by this file, so pinned reads cannot observe mixed ids.
+    if let Some(manifest) = read_manifest(&tx)? {
+        if let Some(generation_id) = manifest.get("generationId").and_then(Value::as_str) {
+            for table in ["files", "symbols", "annotation_nodes", "edges", "vectors", "symbol_search", "symbol_terms", "fact_owner", "documents", "claims", "claim_code_edges", "document_supersession"] {
+                tx.execute(&format!("UPDATE {table} SET generation_id=?1"), params![generation_id])?;
+            }
+            crate::store_delta::write_manifest(&tx, &manifest)?;
+        }
+    }
     tx.commit()?;
 
     Ok(ApplyResult {
@@ -767,6 +800,32 @@ pub fn apply_file_delta(
         order_writes,
         root_digest,
     })
+}
+
+fn write_source_observation(tx: &Transaction<'_>, observation: &Value) -> rusqlite::Result<()> {
+    tx.execute(
+        "INSERT INTO generation(key,value) VALUES('sourceObservation',?1) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+        params![serde_json::to_string(observation).unwrap()],
+    )?;
+    Ok(())
+}
+
+fn update_file_report(tx: &Transaction<'_>, path: &str, report: &Value) -> rusqlite::Result<()> {
+    let Some(object) = report.as_object() else { return Ok(()); };
+    let mut extra = Map::new();
+    extra.insert("__fileReport".into(), report.clone());
+    tx.execute(
+        "UPDATE files SET language=?1, provider=?2, parse_status=?3, error_node_count=?4, extra=?5 WHERE path=?6",
+        params![
+            object.get("language").and_then(Value::as_str),
+            object.get("provider").and_then(Value::as_str),
+            object.get("parseStatus").and_then(Value::as_str),
+            object.get("errorNodeCount").and_then(Value::as_i64),
+            serde_json::to_string(&Value::Object(extra)).unwrap(),
+            path,
+        ],
+    )?;
+    Ok(())
 }
 
 #[cfg(test)]

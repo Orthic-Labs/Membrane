@@ -152,6 +152,18 @@ pub struct GraphGeneration {
     pub truncation_reasons: Vec<String>,
 }
 
+/// Facts needed by the native incremental store path for one source file.
+/// Provider-wide augmentations intentionally stay on the full-build path.
+#[derive(Debug, Clone)]
+pub struct FileFacts {
+    pub file: GraphNode,
+    pub nodes: Vec<GraphNode>,
+    pub edges: Vec<GraphEdge>,
+    pub report: FileReport,
+    pub content_digest: String,
+    pub size: i64,
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum GraphError {
     #[error("graph build cancelled")]
@@ -383,6 +395,64 @@ pub fn build_generation_from_files_with_cancellation(root: &Path, scan: ScanRepo
     for edge in &mut generation.edges { edge.generation_id = generation_id.clone(); }
     Ok(generation)
 }
+
+/// Build only lexical/AST facts for one code file. This is deliberately
+/// narrower than `build_generation`: provider registry, framework
+/// augmentation, and cross-file resolution require a complete scan and cause
+/// callers to fall back to a full refresh.
+pub fn build_file_facts(root: &Path, relative_path: &str, cancellation: &CancellationToken) -> Result<Option<FileFacts>, GraphError> {
+    let relative_path = normalize_path(relative_path);
+    if language_for_path(&relative_path).is_none() { return Ok(None); }
+    let root = fs::canonicalize(root).map_err(|e| GraphError::Root(e.to_string()))?;
+    let absolute_path = root.join(&relative_path);
+    crate::security::is_confined_path(&root, &absolute_path, true).map_err(|_| GraphError::EscapesRoot(relative_path.clone()))?;
+    let metadata = match fs::metadata(&absolute_path) {
+        Ok(metadata) if metadata.is_file() => metadata,
+        Ok(_) => return Ok(None),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(GraphError::Read { path: relative_path, message: error.to_string() }),
+    };
+    if metadata.len() > MAX_FILE_BYTES { return Ok(None); }
+    let bytes = fs::read(&absolute_path).map_err(|error| GraphError::Read { path: relative_path.clone(), message: error.to_string() })?;
+    if bytes.contains(&0) { return Ok(None); }
+    let text = String::from_utf8_lossy(&bytes).into_owned();
+    let file = FileRecord {
+        path: relative_path.clone(), absolute_path, size: bytes.len() as u64, bytes: bytes.clone(),
+        content_hash: content_digest(&bytes),
+        semantic_content_hash: content_digest(text.as_bytes()), text: Some(text.clone()),
+    };
+    let surface = module_surface(&file);
+    let mut file_map = BTreeMap::new();
+    file_map.insert(file.path.clone(), &file);
+    let (lexical_nodes, lexical_edges, lexical_report) = lexical_facts(&file, &text, &file_map, &surface);
+    let mut ast_nodes = Vec::new();
+    let mut ast_edges = Vec::new();
+    let mut report = lexical_report;
+    if let Some(language) = parser_language(file.extension()) {
+        let ast = ast_facts(&file, &text, language, cancellation)?;
+        if ast.report.parse_status != "failed" && ast.report.parse_status != "partial" {
+            ast_nodes = ast.nodes;
+            ast_edges = ast.edges;
+        }
+        if ast.report.parse_status == "ok" || ast.report.parse_status == "partial" { report = ast.report; }
+    }
+    let (mut nodes, mut edges) = merge_facts(lexical_nodes, lexical_edges, ast_nodes, ast_edges, None);
+    edges = resolve_edges(edges, &nodes, &file_map);
+    nodes.sort_by(|a, b| a.id.cmp(&b.id));
+    edges.sort_by(|a, b| a.id.cmp(&b.id));
+    Ok(Some(FileFacts {
+        file: file_node(&file, &surface), nodes, edges, report,
+        content_digest: file.content_hash, size: file.size as i64,
+    }))
+}
+
+/// Compute source identity from an already collected scan without running any
+/// parser or provider. Used to seal an incremental refresh atomically.
+pub fn source_hash_for_files(files: &[FileRecord]) -> String { source_hash(files) }
+
+/// Return whether a path has a native parser and is safe for the structural
+/// incremental lane.
+pub fn is_code_path(path: &str) -> bool { language_for_path(path).is_some() }
 
 fn merge_supplemental(
     nodes: &mut Vec<GraphNode>,
