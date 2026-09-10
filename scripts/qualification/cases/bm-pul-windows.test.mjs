@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { BM01, validateBM01Observations, validateBM02Scenario, validateBM08Admission, validateBM10Journey, validateCandidate, validateSourceDigest } from "./bm-pul-windows.mjs";
+import { BM01, validateBM01Observations, validateBM02Scenario, validateBM08Admission, validateBM10Journey, validateCandidate, validateSourceDigest, extractTypedCancellationCode } from "./bm-pul-windows.mjs";
 
 const HASH = `sha256:${"0".repeat(64)}`;
 const clone = (value) => structuredClone(value);
@@ -89,6 +89,24 @@ test("source digest validator rejects unsupported algorithms & lengths", () => {
   for (const value of ["md5:" + "0".repeat(32), "xxh64:" + "0".repeat(16), "xxh128:" + "0".repeat(31), "xxh128:" + "0".repeat(33), "sha256:" + "0".repeat(63), "sha256:" + "0".repeat(65)]) assert.throws(() => validateSourceDigest(value));
   const badSource = candidate("bad-source"); badSource.sourceHash = "xxh128:" + "0".repeat(31); assert.throws(() => validateCandidate(badSource));
 });
+test("extractTypedCancellationCode accepts the installed CLI's 'membrane: <code>: <message>' form", () => {
+  assert.equal(extractTypedCancellationCode("membrane: request_cancelled: request cancelled", undefined), "request_cancelled");
+  assert.equal(extractTypedCancellationCode("membrane: deadline_exceeded: deadline exceeded", undefined), "deadline_exceeded");
+});
+test("extractTypedCancellationCode accepts structured JSON error/code/reason fields", () => {
+  assert.equal(extractTypedCancellationCode("", { code: "request_cancelled", message: "request cancelled" }), "request_cancelled");
+  assert.equal(extractTypedCancellationCode("", { error: { code: "cancelled" } }), "cancelled");
+  assert.equal(extractTypedCancellationCode("", { reason: "deadline_exceeded" }), "deadline_exceeded");
+});
+test("extractTypedCancellationCode still accepts the legacy prefixed form", () => {
+  assert.equal(extractTypedCancellationCode("error: request_cancelled", undefined), "request_cancelled");
+});
+test("extractTypedCancellationCode refuses an untyped message (negative control)", () => {
+  assert.equal(extractTypedCancellationCode("membrane: request cancelled", undefined), undefined);
+  assert.equal(extractTypedCancellationCode("something went wrong, operation aborted", undefined), undefined);
+  assert.equal(extractTypedCancellationCode("", { message: "the request was aborted" }), undefined);
+});
+
 test("representation & content digests remain strict sha256", () => {
   const badJourney = bm10Fixture(); badJourney.requirementEvidenceMap.journeys[0].representationDigest = `xxh128:${"a".repeat(32)}`; assert.throws(() => validateBM10Journey(badJourney));
   const badReceipt = bm08Fixture(); badReceipt.receipts[0].contentSha256 = `xxh128:${"a".repeat(32)}`; assert.throws(() => validateBM08Admission(badReceipt));

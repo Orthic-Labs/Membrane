@@ -99,13 +99,32 @@ function explicitFederate(path, control) {
   const data = response.data ?? response.output ?? response.body;
   return { invocation: { operation: "federate", request }, response, output: asObject(data, `BM02 ${control.id}.output`) };
 }
+const CANCEL_CODE_PATTERN = "(?:request_cancelled|deadline_exceeded|cancelled|[a-z_]*cancel[a-z_]*)";
+export function extractTypedCancellationCode(text, structured) {
+  const serialized = structured ? JSON.stringify(structured) : text;
+  // 1) structured JSON: an explicit error/code/reason field carrying the typed code.
+  if (structured) {
+    for (const value of [structured.code, structured.error, structured.reason, structured?.error?.code, structured?.error?.reason]) {
+      if (typeof value === "string") {
+        const match = value.match(new RegExp(`^${CANCEL_CODE_PATTERN}$`, "i"));
+        if (match) return match[0].toLowerCase();
+      }
+    }
+  }
+  // 2) CLI's typed-outcome form: "membrane: <code>: <message>".
+  const cliMatch = serialized.match(new RegExp(`membrane:\\s*(${CANCEL_CODE_PATTERN})\\s*:`, "i"));
+  if (cliMatch) return cliMatch[1].toLowerCase();
+  // 3) generic "error/code/reason: <code>" prefixed form.
+  const prefixed = serialized.match(new RegExp(`(?:error|code|reason)[^a-z]*(${CANCEL_CODE_PATTERN})`, "i"));
+  if (prefixed) return prefixed[1].toLowerCase();
+  return undefined;
+}
 function cancellation(path) {
   const result = invokeAttempt(path.exe, ["cli", "blueprint", "recall", "--repo-root", path.repo, "--task", "exact_probe", "--cancel-before-dispatch"], path.repo);
   const text = `${result.stdout}\n${result.stderr}`;
   let structured;
   try { structured = result.stdout ? JSON.parse(result.stdout) : undefined; } catch {}
-  const serialized = structured ? JSON.stringify(structured) : text;
-  const code = serialized.match(/(?:error|code|reason)[^a-z]*(request_cancelled|deadline_exceeded|cancelled|[a-z_]*cancel[a-z_]*)/i)?.[1]?.toLowerCase();
+  const code = extractTypedCancellationCode(text, structured);
   if (result.ok) throw new Error("BM01 cancellation unexpectedly produced successful Blueprint output");
   if (!code) throw new Error(`BM01 cancellation omitted typed native outcome: ${text.trim()}`);
   return code;
