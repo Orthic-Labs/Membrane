@@ -65,8 +65,8 @@ function invokeAttempt(exe, args, cwd, input) {
   catch (error) { return { ok: false, error, stdout: String(error.stdout ?? ""), stderr: String(error.stderr ?? ""), args }; }
 }
 function invoke(exe, args, cwd, input) { const result = invokeAttempt(exe, args, cwd, input); if (!result.ok) throw new Error(`${args.join(" ")} failed: ${result.stderr || result.error.message}`); return result.value; }
-function installed() {
-  const root = process.env.MEMBRANE_QUALIFICATION_INSTALLED_ROOT; if (!nonEmpty(root)) throw new Error("MEMBRANE_QUALIFICATION_INSTALLED_ROOT is required; checkout execution is forbidden");
+function installed(options = {}) {
+  const root = options.installedRoot ?? process.env.MEMBRANE_QUALIFICATION_INSTALLED_ROOT; if (!nonEmpty(root)) throw new Error("MEMBRANE_QUALIFICATION_INSTALLED_ROOT is required; checkout execution is forbidden");
   const exe = join(root, "membrane.exe"); if (!existsSync(exe)) throw new Error(`installed membrane.exe missing: ${exe}`); return { root: resolve(root), exe };
 }
 function makeFixture() {
@@ -75,8 +75,8 @@ function makeFixture() {
   execFileSync("git", ["init", "--quiet"], { cwd: root, windowsHide: true }); execFileSync("git", ["add", "lib.rs"], { cwd: root, windowsHide: true });
   execFileSync("git", ["-c", "user.name=Membrane BM", "-c", "user.email=bm@membrane.invalid", "commit", "--quiet", "-m", "fixture"], { cwd: root, windowsHide: true }); return root;
 }
-function basePath() {
-  const { root, exe } = installed(); const identity = invoke(exe, ["cli", "build-info"], root); const generation = identity.releaseGeneration ?? identity.release_generation ?? identity.generation;
+function basePath(options = {}) {
+  const { root, exe } = installed(options); const identity = invoke(exe, ["cli", "build-info"], root); const generation = identity.releaseGeneration ?? identity.release_generation ?? identity.generation;
   if (!nonEmpty(generation) || [identity.runtimeOrigin, identity.runtime_origin].some((value) => value && value !== "installed")) throw new Error("installed identity is absent or not installed");
   const repo = makeFixture();
   try {
@@ -86,7 +86,7 @@ function basePath() {
     return { root, exe, repo, generation, blueprintGeneration, recall, candidates, packet };
   } catch (error) { rmSync(repo, { recursive: true, force: true }); throw error; }
 }
-function actual(id, body) { let path; try { path = basePath(); return { status: "passed", evidenceKind: "installed", detail: { id, ...body(path) } }; } catch (error) { return { status: error.insufficient ? "insufficient" : "failed", evidenceKind: "installed", detail: { id }, reason: error.message }; } finally { if (path?.repo) rmSync(path.repo, { recursive: true, force: true }); } }
+function actual(id, body, options = {}) { let path; try { path = basePath(options); return { status: "passed", evidenceKind: "installed", detail: { id, ...body(path) } }; } catch (error) { return { status: error.insufficient ? "insufficient" : "failed", evidenceKind: "installed", detail: { id }, reason: error.message }; } finally { if (path?.repo) rmSync(path.repo, { recursive: true, force: true }); } }
 function insufficient(message) { const error = new Error(message); error.insufficient = true; throw error; }
 function explicitRequest(path, control) {
   const taskId = `bm02-${control.id}`;
@@ -230,8 +230,8 @@ export function validateBM10ControlOutput(output, control) {
   return [...states].sort();
 }
 
-export function BM01() { return actual("BM01", (path) => { const exactId = path.candidates[0]?.id; if (!nonEmpty(exactId)) throw new Error("BM01 Recall omitted stable candidate ID"); const exact = invoke(path.exe, ["cli", "blueprint", "resolve", "--repo-root", path.repo, "--node", exactId], path.repo); const ambiguous = invoke(path.exe, ["cli", "blueprint", "resolve", "--repo-root", path.repo, "--node", "same_name"], path.repo); const unknown = invoke(path.exe, ["cli", "blueprint", "resolve", "--repo-root", path.repo, "--node", "does_not_exist"], path.repo); const cancellationCode = cancellation(path); return { releaseGeneration: path.generation, blueprintGeneration: path.blueprintGeneration, ...validateBM01Observations({ exact, ambiguous, unknown, cancellationCode }) }; }); }
-export function BM02() { return actual("BM02", (path) => {
+export function BM01(options = {}) { return actual("BM01", (path) => { const exactId = path.candidates[0]?.id; if (!nonEmpty(exactId)) throw new Error("BM01 Recall omitted stable candidate ID"); const exact = invoke(path.exe, ["cli", "blueprint", "resolve", "--repo-root", path.repo, "--node", exactId], path.repo); const ambiguous = invoke(path.exe, ["cli", "blueprint", "resolve", "--repo-root", path.repo, "--node", "same_name"], path.repo); const unknown = invoke(path.exe, ["cli", "blueprint", "resolve", "--repo-root", path.repo, "--node", "does_not_exist"], path.repo); const cancellationCode = cancellation(path); return { releaseGeneration: path.generation, blueprintGeneration: path.blueprintGeneration, ...validateBM01Observations({ exact, ambiguous, unknown, cancellationCode }) }; }, options); }
+export function BM02(options = {}) { return actual("BM02", (path) => {
   const controls = [
     { id: "partial", task: "exact_probe", request: { packetCharBudget: 1 } },
     { id: "stale", task: "exact_probe", request: { generation: "bm02-stale-generation" } },
@@ -248,9 +248,9 @@ export function BM02() { return actual("BM02", (path) => {
     results[control.id] = validateBM02Scenario(record, control.id, control);
   }
   return { releaseGeneration: path.generation, scenarios: results };
-}); }
-export function BM08() { return actual("BM08", (path) => { const output = invoke(path.exe, ["cli", "pull", "federate", "--repo", path.repo, "--task", "same_name", "--max-tokens", "1"], path.repo); return { releaseGeneration: path.generation, ...validateBM08Admission(output) }; }); }
-export function BM10() { return actual("BM10", (path) => {
+}, options); }
+export function BM08(options = {}) { return actual("BM08", (path) => { const output = invoke(path.exe, ["cli", "pull", "federate", "--repo", path.repo, "--task", "same_name", "--max-tokens", "1"], path.repo); return { releaseGeneration: path.generation, ...validateBM08Admission(output) }; }, options); }
+export function BM10(options = {}) { return actual("BM10", (path) => {
   const controls = [
     { id: "partial", expectedState: "DISCOVERED_BUDGET_DROPPED", task: "exact_probe", request: { packetCharBudget: 1 } },
     { id: "stale", expectedState: "STALE", task: "exact_probe", request: { generation: "bm10-stale-generation" } },
@@ -278,6 +278,6 @@ export function BM10() { return actual("BM10", (path) => {
   if (!native) insufficient("BM10 installed Pull omitted native expected evidence, conversion/omission receipts or delivery attribution");
   const accounting = { requirementEvidenceMap: native.requirementEvidenceMap, expectedEvidence: native.expectedEvidence, conversionReceipts: native.conversionReceipts, omissionReceipts: native.omissionReceipts, deliveryAttribution: native.deliveryAttribution };
   return { releaseGeneration: path.generation, ...accounting, ...validateBM10Journey(accounting), states };
-}); }
+}, options); }
 export const BM_CASES = { BM01, BM02, BM08, BM10 };
 export default BM_CASES;

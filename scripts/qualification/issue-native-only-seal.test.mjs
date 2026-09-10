@@ -18,6 +18,10 @@ test("native-only seal issuer is receipt-bound & fail-closed", () => {
     "productionInterpreterRows",
     "boundedExternalInterpreterRows",
     "nativeOnlyProcessTree",
+    "installedCurrent",
+    "artifactSha256",
+    "lifecycleObservations",
+    "qualification evidence is stale",
     "platform_trust",
     "authenticode",
     "Object.fromEntries(inputs",
@@ -66,15 +70,24 @@ function validQualification() {
   const lifecycle = Object.fromEntries(REQUIRED_LIFECYCLE.map((field) => [field, "pass"]));
   return {
     schema: "membrane.windows-installed-qualification.v1",
+    generatedAt: new Date().toISOString(),
     platform: "windows-x86_64",
     profile: "installed-local",
     artifact: {
+      path: "candidate.exe",
       sha256: ARTIFACT_SHA256,
       version: "2.0.0",
       authenticode: "valid",
       signerSubject: "s", signerThumbprint: "t", timestampSubject: "s", timestampThumbprint: "t",
     },
     lifecycle,
+    installedCurrent: {
+      root: "c:\\installed\\current",
+      artifactSha256: ARTIFACT_SHA256,
+      files: [
+        { path: "membrane.exe", size: 1, sha256: "c".repeat(64) },
+      ],
+    },
     downgradeContract: "signed-version-liveness-durable-state-v1",
     previousArtifact: {
       sha256: "b".repeat(64),
@@ -103,7 +116,7 @@ function validQualification() {
       registryRemoved: true, durableStatePreserved: true,
     },
     environment: { developmentCheckoutRequired: false, networkInterpreterFetch: false },
-    runtime: { blueprint: { nativeOnly: true } },
+    runtime: { blueprint: { nativeOnly: true }, lifecycleObservations: [{ id: "install", observed: true }] },
     processTree: [],
   };
 }
@@ -170,6 +183,130 @@ test("issuer refuses to seal while bundled-blueprint (or any) bounded external i
       releaseManifest, qualification, runtimeLanguageManifest: runtimeLanguageManifestBundledBlueprint,
       invocationGraph, nativeContractManifest, out: join(dir, "seal-bundled.json"),
     }), /FAIL CLOSED: runtime-language manifest has bounded external interpreter rows/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("issuer rejects stale qualification or a current-root artifact mismatch", () => {
+  const dir = mkdtempSync(join(tmpdir(), "native-only-seal-freshness-"));
+  try {
+    const write = (name, value) => {
+      const path = join(dir, name);
+      writeFileSync(path, JSON.stringify(value));
+      return path;
+    };
+    const releaseManifest = write("release.json", validReleaseManifest());
+    const invocationGraph = write("invocation-graph.json", validInvocationGraph());
+    const nativeContractManifest = write("native-contract-fixtures.json", validNativeContractManifest());
+    const runtimeLanguageManifest = write("runtime-language-manifest.json", {
+      schemaVersion: 1, artifact: "membrane.runtime-language-manifest", enforcementMode: "sealed",
+      totals: { productionInterpreterRows: 0, boundedExternalInterpreterRows: 0 }, rows: [],
+    });
+    const stale = validQualification();
+    stale.generatedAt = new Date(Date.now() - (25 * 60 * 60 * 1000)).toISOString();
+    assert.throws(() => issueNativeOnlySeal({
+      releaseManifest, qualification: write("qualification-stale.json", stale), runtimeLanguageManifest,
+      invocationGraph, nativeContractManifest, out: join(dir, "seal-stale.json"),
+    }), /FAIL CLOSED: qualification evidence is stale/);
+
+    const mismatched = validQualification();
+    mismatched.installedCurrent.artifactSha256 = "d".repeat(64);
+    assert.throws(() => issueNativeOnlySeal({
+      releaseManifest, qualification: write("qualification-mismatch.json", mismatched), runtimeLanguageManifest,
+      invocationGraph, nativeContractManifest, out: join(dir, "seal-mismatch.json"),
+    }), /FAIL CLOSED: qualification installedCurrent\.artifactSha256 does not match installer artifact/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("issuer accepts internal-unsigned candidate/install evidence without Authenticode", () => {
+  const dir = mkdtempSync(join(tmpdir(), "native-only-seal-unsigned-"));
+  try {
+    const write = (name, value) => {
+      const path = join(dir, name);
+      writeFileSync(path, JSON.stringify(value));
+      return path;
+    };
+    const qualificationValue = validQualification();
+    qualificationValue.profile = "internal-unsigned";
+    qualificationValue.certification = "unsigned-functional";
+    qualificationValue.artifact.authenticode = "NotSigned";
+    delete qualificationValue.artifact.signerSubject;
+    delete qualificationValue.artifact.signerThumbprint;
+    delete qualificationValue.artifact.timestampSubject;
+    delete qualificationValue.artifact.timestampThumbprint;
+    qualificationValue.previousArtifact.authenticode = "NotSigned";
+    delete qualificationValue.previousArtifact.signerSubject;
+    delete qualificationValue.previousArtifact.signerThumbprint;
+    delete qualificationValue.previousArtifact.timestampSubject;
+    delete qualificationValue.previousArtifact.timestampThumbprint;
+    const releaseValue = validReleaseManifest();
+    delete releaseValue.event_history;
+    delete releaseValue.platform_trust;
+    delete releaseValue.signatures;
+    releaseValue.signing = { status: "unsigned" };
+    releaseValue.release.generation = "b".repeat(64);
+    releaseValue.artifact.path = qualificationValue.artifact.path;
+    const releaseManifest = write("candidate.json", releaseValue);
+    const qualification = write("qualification.json", qualificationValue);
+    const invocationGraph = write("invocation-graph.json", validInvocationGraph());
+    const nativeContractManifest = write("native-contract-fixtures.json", validNativeContractManifest());
+    const runtimeLanguageManifest = write("runtime-language-manifest.json", {
+      schemaVersion: 1, artifact: "membrane.runtime-language-manifest", enforcementMode: "sealed",
+      totals: { productionInterpreterRows: 0, boundedExternalInterpreterRows: 0 }, rows: [],
+    });
+    const seal = issueNativeOnlySeal({
+      releaseManifest, qualification, runtimeLanguageManifest, invocationGraph,
+      nativeContractManifest, out: join(dir, "seal.json"),
+    });
+    assert.equal(seal.status, "sealed");
+    assert.equal(seal.qualificationProfile, "internal-unsigned");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("internal-unsigned first stable repair may omit previous installer", () => {
+  const dir = mkdtempSync(join(tmpdir(), "native-only-seal-unsigned-repair-"));
+  try {
+    const write = (name, value) => {
+      const path = join(dir, name);
+      writeFileSync(path, JSON.stringify(value));
+      return path;
+    };
+    const qualificationValue = validQualification();
+    qualificationValue.profile = "internal-unsigned";
+    qualificationValue.certification = "unsigned-functional";
+    qualificationValue.artifact.authenticode = "NotSigned";
+    delete qualificationValue.artifact.signerSubject;
+    delete qualificationValue.artifact.signerThumbprint;
+    delete qualificationValue.artifact.timestampSubject;
+    delete qualificationValue.artifact.timestampThumbprint;
+    qualificationValue.previousArtifact = null;
+    qualificationValue.downgradeContract = "first-stable-layout-repair-v1";
+    qualificationValue.downgrade = { status: "not_applicable", durableState: "preserved" };
+    qualificationValue.lifecycle.downgrade = "not_applicable";
+    const releaseValue = validReleaseManifest();
+    delete releaseValue.event_history;
+    delete releaseValue.platform_trust;
+    delete releaseValue.signatures;
+    releaseValue.signing = { status: "unsigned" };
+    releaseValue.release.generation = "e".repeat(64);
+    releaseValue.artifact.path = qualificationValue.artifact.path;
+    const seal = issueNativeOnlySeal({
+      releaseManifest: write("candidate.json", releaseValue),
+      qualification: write("qualification.json", qualificationValue),
+      runtimeLanguageManifest: write("runtime-language-manifest.json", {
+        schemaVersion: 1, artifact: "membrane.runtime-language-manifest", enforcementMode: "sealed",
+        totals: { productionInterpreterRows: 0, boundedExternalInterpreterRows: 0 }, rows: [],
+      }),
+      invocationGraph: write("invocation-graph.json", validInvocationGraph()),
+      nativeContractManifest: write("native-contract-fixtures.json", validNativeContractManifest()),
+      out: join(dir, "seal.json"),
+    });
+    assert.equal(seal.qualificationProfile, "internal-unsigned");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

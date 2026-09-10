@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { BM01, validateBM01Observations, validateBM02Scenario, validateBM08Admission, validateBM10Journey, validateBM10ControlOutput, collectBM10JourneyStates, validateCandidate, validateSourceDigest, extractTypedCancellationCode } from "./bm-pul-windows.mjs";
+import { BM01, BM10, validateBM01Observations, validateBM02Scenario, validateBM08Admission, validateBM10Journey, validateBM10ControlOutput, collectBM10JourneyStates, validateCandidate, validateSourceDigest, extractTypedCancellationCode } from "./bm-pul-windows.mjs";
 
 const HASH = `sha256:${"0".repeat(64)}`;
 const clone = (value) => structuredClone(value);
@@ -12,6 +12,21 @@ test("BM01 refuses absent installed current instead of falling back to source", 
   const prior = process.env.MEMBRANE_QUALIFICATION_INSTALLED_ROOT; delete process.env.MEMBRANE_QUALIFICATION_INSTALLED_ROOT;
   try { const result = BM01(); assert.equal(result.status, "failed"); assert.equal(result.evidenceKind, "installed"); assert.match(result.reason, /installed|checkout/i); }
   finally { if (prior === undefined) delete process.env.MEMBRANE_QUALIFICATION_INSTALLED_ROOT; else process.env.MEMBRANE_QUALIFICATION_INSTALLED_ROOT = prior; }
+});
+
+test("BM10 uses runner-supplied installedRoot when qualification env is unset", () => {
+  const prior = process.env.MEMBRANE_QUALIFICATION_INSTALLED_ROOT;
+  delete process.env.MEMBRANE_QUALIFICATION_INSTALLED_ROOT;
+  try {
+    const root = "C:/definitely-missing-membrane-bm10-root";
+    const result = BM10({ installedRoot: root });
+    assert.equal(result.status, "failed");
+    assert.equal(result.evidenceKind, "installed");
+    assert.match(result.reason, /installed membrane\.exe missing/);
+  } finally {
+    if (prior === undefined) delete process.env.MEMBRANE_QUALIFICATION_INSTALLED_ROOT;
+    else process.env.MEMBRANE_QUALIFICATION_INSTALLED_ROOT = prior;
+  }
 });
 
 test("BM01 accepts typed exact, ambiguity, unknown & cancellation fixture", () => {

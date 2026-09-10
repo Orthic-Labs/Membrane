@@ -2,8 +2,8 @@
  "schemaVersion": 2,
  "artifact": "membrane.invocation-graph",
  "repository": "Orthic-Labs/Membrane",
- "baselineCommit": "6cd70754a059733ff7c32a4faf7388c8b410d00d",
- "generatedAt": "2026-09-10T20:54:31.918Z",
+ "baselineCommit": "1ae0daacfbf11ad3e6a417d1643b26588bf6bedd",
+ "generatedAt": "2026-09-10T21:44:40.013Z",
  "method": {
   "staticScan": {
    "nodeImportScan": true,
@@ -24326,6 +24326,18 @@
   {
    "from": "scripts/qualification/cases/ncl-windows.mjs",
    "reference": "git",
+   "kind": "spawn",
+   "reason": "bare executable name (PATH-resolved)"
+  },
+  {
+   "from": "scripts/qualification/cases/ncl-windows.mjs",
+   "reference": "git",
+   "kind": "spawn",
+   "reason": "bare executable name (PATH-resolved)"
+  },
+  {
+   "from": "scripts/qualification/cases/ncl-windows.mjs",
+   "reference": "powershell.exe",
    "kind": "spawn",
    "reason": "bare executable name (PATH-resolved)"
   },

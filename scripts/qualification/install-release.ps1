@@ -1731,6 +1731,7 @@ try {
     # internal-unsigned route's own hash-bound identity claim.
     installedCurrent = [ordered]@{
       root = $InstallRoot
+      artifactSha256 = Hash-File $installerPath
       files = $installedContentEvidence
     }
     previousArtifact = $previousArtifactEvidence

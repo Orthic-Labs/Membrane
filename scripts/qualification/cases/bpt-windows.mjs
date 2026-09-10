@@ -24,12 +24,20 @@ function resolveRoot(context) {
   return (context && context.workspaceRoot) || (context && context.root) || REPO_ROOT;
 }
 
-function installedExecutable() {
-  const root = process.env.MEMBRANE_QUALIFICATION_INSTALLED_ROOT;
+function installedExecutable(context = {}) {
+  const requestedExecutable = context?.installedExecutable;
+  const root = context?.installedRoot || process.env.MEMBRANE_QUALIFICATION_INSTALLED_ROOT;
   if (!root) throw new Error("MEMBRANE_QUALIFICATION_INSTALLED_ROOT is required");
   const stableRoot = resolve(root);
   if (stableRoot.split(/[\\\\/]/).pop()?.toLowerCase() !== "current") {
     throw new Error(`installed Blueprint probe requires installer-owned current root, got ${stableRoot}`);
+  }
+  const localAppData = process.env.LOCALAPPDATA;
+  if (localAppData) {
+    const canonicalRoot = resolve(localAppData, "Orthic Labs", "Membrane", "current");
+    if (stableRoot.toLowerCase() !== canonicalRoot.toLowerCase()) {
+      throw new Error(`installed Blueprint probe requires canonical installer root, got ${stableRoot}`);
+    }
   }
   const releasePath = join(stableRoot, "release.json");
   if (!existsSync(releasePath)) throw new Error(`installed current release.json missing: ${releasePath}`);
@@ -43,7 +51,10 @@ function installedExecutable() {
     throw new Error("installed current release.json has no canonical releaseGeneration");
   }
   if (!release.files || typeof release.files !== "object") throw new Error("installed current release.json has no canonical file manifest");
-  const exe = join(stableRoot, "membrane.exe");
+  const exe = requestedExecutable ? resolve(requestedExecutable) : join(stableRoot, "membrane.exe");
+  if (dirname(exe).toLowerCase() !== stableRoot.toLowerCase() || exe.split(/[\\\\/]/).pop()?.toLowerCase() !== "membrane.exe") {
+    throw new Error("installed Blueprint probe executable must be membrane.exe in installer-owned current root");
+  }
   if (!existsSync(exe)) throw new Error(`installed membrane.exe missing: ${exe}`);
   const manifestHash = String(release.files["membrane.exe"] || "").replace(/^sha256:/i, "").toLowerCase();
   const actualHash = createHash("sha256").update(readFileSync(exe)).digest("hex");
@@ -987,7 +998,7 @@ export function OPT_01(context) {
       reason: "OPT-01: NCL-02 and NCL-05 must each carry an explicit passed prerequisite before indexed parity may execute" };
   }
   try {
-    const exe = context?.installedExecutable || installedExecutable();
+    const exe = installedExecutable(context);
     if (!existsSync(exe)) throw new Error(`installed membrane.exe missing: ${exe}`);
     const scenarios = ["initial", "dirty-untracked", "renamed", "deleted", "branch-reset"];
     const observations = [];
@@ -1027,8 +1038,8 @@ export function OPT_01(context) {
         const expected = Object.entries(currentFiles).filter(([, text]) => text.includes("needle")).map(([p]) => p.replaceAll("\\", "/")).sort();
         const actual = [...new Set((result.candidates || []).flatMap((c) => [c.path, c.filePath, c.sourcePath].filter(Boolean)).map((p) => String(p).replaceAll("\\", "/").replace(`${fixture.replaceAll("\\", "/")}/`, "")).filter((p) => expected.includes(p)))].sort();
         const missing = expected.filter((p) => !actual.includes(p));
-        observations.push({ scenario: scenario.name, generationId: refresh.generationId, expectedCount: expected.length, actualCount: actual.length, missing });
-        if (missing.length) throw new Error(`${scenario.name}: indexed search false negative(s): ${missing.join(", ")}`);
+        observations.push({ scenario, generationId: refresh.generationId, expectedCount: expected.length, actualCount: actual.length, missing });
+        if (missing.length) throw new Error(`${scenario}: indexed search false negative(s): ${missing.join(", ")}`);
       } finally { rmSync(fixture, { recursive: true, force: true }); }
     }
     const release = join(dirname(exe), "release.json");

@@ -38,7 +38,8 @@
 // pass/fail (NCL-01) or a typed cross-lane "insufficient" (NCL-02) for real.
 
 import { execFileSync, spawn } from "node:child_process";
-import { existsSync, readFileSync, statSync, readdirSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { existsSync, lstatSync, readFileSync, statSync, readdirSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -46,6 +47,18 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = resolve(HERE, "../../../");
 
 const INTERPRETED_EXTENSIONS = [".py", ".mjs", ".cjs", ".js", ".ts", ".sh", ".ps1", ".cmd", ".bat"];
+const NCL05_SURFACES = Object.freeze(["cli", "mcp", "sdk", "federation"]);
+const FORBIDDEN_PROCESS = /^(node|node_repl|python|python3|sh|bash)(\.exe)?$/iu;
+const NATIVE_ONLY_SEAL_SCHEMA = "membrane.native-only-seal.v1";
+const QUALIFICATION_SCHEMA = "membrane.windows-installed-qualification.v1";
+const MAX_EVIDENCE_AGE_MS = 24 * 60 * 60 * 1000;
+const REQUIRED_LIFECYCLE = [
+  "install", "startup", "hubHealth", "tray", "popup", "renderer", "mcp17",
+  "nativeHostCutover", "blueprintHubHosted", "blueprintHubOffOneShot", "downgrade",
+  "upgrade", "stateContinuity", "uninstall", "residue", "nativeOnlyProcessTree",
+  "runtimeInventory", "currentRootActivation", "doctor", "hubOffManualBlueprint",
+  "residentFileChangeRefresh", "zeroInterpreterProcessTree",
+];
 
 function installedRoot(context) {
   const configured = (context && context.installedRoot) || process.env.MEMBRANE_INSTALLED_ROOT ||
@@ -55,6 +68,51 @@ function installedRoot(context) {
   // executable probes. NCL-03 payload proof covers product-root residue too, so
   // normalize that input to its parent before scanning.
   return configured.replace(/[\\/]current$/i, "");
+}
+
+function installedCurrentRoot(context) {
+  return resolve(join(installedRoot(context), "current"));
+}
+
+function comparablePath(value) {
+  if (typeof value !== "string" || value.trim().length === 0) return "";
+  return value.replace(/^\\\\\?\\/u, "").replace(/[\\/]+$/u, "").replace(/\\/gu, "/").toLowerCase();
+}
+
+function sha256File(path) {
+  try { return createHash("sha256").update(readFileSync(path)).digest("hex"); } catch { return null; }
+}
+
+function installedIdentity(context) {
+  if (process.platform !== "win32") return { ok: false, reason: "native Windows installed identity requires win32" };
+  const root = installedCurrentRoot(context);
+  const executable = join(root, "membrane.exe");
+  const releasePath = join(root, "release.json");
+  if (!existsSync(executable) || !existsSync(releasePath)) return { ok: false, reason: "installed current membrane.exe or release.json is missing" };
+  let release;
+  try { release = JSON.parse(readFileSync(releasePath, "utf8")); } catch (error) { return { ok: false, reason: `installed release.json is invalid: ${error.message}` }; }
+  const releaseGeneration = String(release.releaseGeneration || "");
+  if (release.product !== "membrane" || release.os !== "windows" || release.arch !== "x64" || !/^sha256:[0-9a-f]{64}$/iu.test(releaseGeneration)) {
+    return { ok: false, reason: "installed release.json lacks canonical Windows identity" };
+  }
+  const expectedHash = String(release.files?.["membrane.exe"] || "").replace(/^sha256:/iu, "");
+  const executableSha256 = sha256File(executable);
+  if (!/^[0-9a-f]{64}$/iu.test(expectedHash) || executableSha256?.toLowerCase() !== expectedHash.toLowerCase()) {
+    return { ok: false, reason: "installed membrane.exe hash does not match release.json" };
+  }
+  let build;
+  try {
+    const raw = execFileSync(executable, ["cli", "build-info"], { cwd: root, encoding: "utf8", timeout: 15000, windowsHide: true, env: { ...process.env, PATH: "C:\\Windows\\System32;C:\\Windows" } });
+    build = JSON.parse(raw);
+  } catch (error) { return { ok: false, reason: `installed build-info failed: ${error.message}` }; }
+  const buildGeneration = String(build.release_generation || build.releaseGeneration || "");
+  if (build.target !== "x86_64-pc-windows-msvc" || buildGeneration !== releaseGeneration) return { ok: false, reason: "installed build-info does not match release identity" };
+  return {
+    ok: true, value: {
+      root, executable, releaseGeneration, executableSha256: executableSha256.toLowerCase(),
+      manifestSha256: sha256File(releasePath), mtimeMs: statSync(executable).mtimeMs,
+    },
+  };
 }
 
 function installedExecutables(root) {
@@ -132,6 +190,90 @@ function receiptProbe(context, schema) {
 
 function resolveRoot(context) {
   return (context && context.workspaceRoot) || (context && context.root) || REPO_ROOT;
+}
+
+function digestFile(path) {
+  return createHash("sha256").update(readFileSync(path)).digest("hex");
+}
+
+function samePath(left, right) {
+  return resolve(left).replace(/[\\/]$/u, "").toLowerCase() === resolve(right).replace(/[\\/]$/u, "").toLowerCase();
+}
+
+// Validate the seal's complete qualification pointer, then compare every
+// recorded current-root file (especially native binaries) with the live
+// installed bytes. A seal over a valid but older receipt is not current proof.
+export function validateNativeOnlySeal(seal, qualificationPath, installedRoot) {
+  const fail = (reason, detail = {}) => ({ ok: false, reason, detail });
+  if (!seal || seal.schema !== NATIVE_ONLY_SEAL_SCHEMA || seal.status !== "sealed" || seal.target !== "windows-x86_64") {
+    return fail("native-only seal schema/status/target is invalid");
+  }
+  if (!/^[a-f0-9]{64}$/u.test(String(seal.artifact_sha256 || ""))) return fail("native-only seal artifact digest is invalid");
+  const sealTime = Date.parse(String(seal.generatedAt || ""));
+  if (!Number.isFinite(sealTime) || Date.now() - sealTime > MAX_EVIDENCE_AGE_MS || sealTime > Date.now() + 5 * 60 * 1000) {
+    return fail("native-only seal evidence is stale or has invalid generatedAt");
+  }
+  const qualificationInput = seal.inputs?.installedQualification;
+  if (!qualificationInput || typeof qualificationInput.path !== "string" || typeof qualificationPath !== "string" ||
+    !samePath(qualificationInput.path, qualificationPath) || !/^[a-f0-9]{64}$/u.test(String(qualificationInput.sha256 || ""))) {
+    return fail("native-only seal does not point to its installed qualification input");
+  }
+  if (!existsSync(qualificationInput.path) || digestFile(qualificationInput.path) !== qualificationInput.sha256) {
+    return fail("native-only seal installed qualification input hash is stale");
+  }
+  let qualification;
+  try { qualification = JSON.parse(readFileSync(qualificationInput.path, "utf8")); }
+  catch (error) { return fail(`installed qualification cannot be read: ${error.message}`); }
+  if (qualification.schema !== QUALIFICATION_SCHEMA || qualification.platform !== "windows-x86_64" ||
+    !["installed-local", "internal-unsigned"].includes(qualification.profile) ||
+    (qualification.profile === "internal-unsigned" && qualification.certification !== "unsigned-functional") ||
+    (qualification.profile === "installed-local" && qualification.certification === "unsigned-functional")) {
+    return fail("installed qualification identity is invalid");
+  }
+  const qualificationTime = Date.parse(String(qualification.generatedAt || ""));
+  if (!Number.isFinite(qualificationTime) || Date.now() - qualificationTime > MAX_EVIDENCE_AGE_MS || qualificationTime > Date.now() + 5 * 60 * 1000) {
+    return fail("installed qualification evidence is stale or has invalid generatedAt");
+  }
+  const artifactHash = qualification.artifact?.sha256;
+  if (artifactHash !== seal.artifact_sha256 || qualification.installedCurrent?.artifactSha256 !== artifactHash) {
+    return fail("installed qualification artifact is not bound to native-only seal");
+  }
+  const currentRoot = join(installedRoot, "current");
+  const recordedRoot = qualification.installedCurrent?.root;
+  if (!recordedRoot || !samePath(recordedRoot, currentRoot)) return fail("installed qualification current root differs from live current root");
+  const files = qualification.installedCurrent?.files;
+  if (!Array.isArray(files) || files.length === 0) return fail("installed qualification has no current-root file manifest");
+  const seen = new Set();
+  let binaryCount = 0;
+  for (const [index, entry] of files.entries()) {
+    const relative = String(entry?.path || "").replaceAll("\\", "/");
+    if (!relative || relative.startsWith("/") || relative === ".." || relative.includes("../") || seen.has(relative)) {
+      return fail(`installed qualification file manifest path is invalid at index ${index}`);
+    }
+    seen.add(relative);
+    const expected = String(entry?.sha256 || "");
+    if (!/^[a-f0-9]{64}$/u.test(expected)) return fail(`installed qualification file digest is invalid at index ${index}`);
+    const actualPath = join(currentRoot, relative);
+    if (!existsSync(actualPath) || !lstatSync(actualPath).isFile() || lstatSync(actualPath).isSymbolicLink()) return fail(`installed qualification file is absent or not regular: ${relative}`);
+    if (digestFile(actualPath) !== expected) return fail(`installed qualification file digest mismatch: ${relative}`);
+    if (/\.exe$/iu.test(relative)) binaryCount += 1;
+  }
+  if (binaryCount === 0 || seal.installedCurrent?.binaryCount !== binaryCount || !samePath(seal.installedCurrent.root, currentRoot) ||
+    seal.qualificationProfile !== qualification.profile) {
+    return fail("native-only seal does not bind exact installed executable manifest");
+  }
+  for (const field of REQUIRED_LIFECYCLE) {
+    const lifecycleValue = String(qualification.lifecycle?.[field]).toLowerCase();
+    const repairOnly = qualification.downgradeContract === "first-stable-layout-repair-v1";
+    if (lifecycleValue !== "pass" && !(qualification.profile === "internal-unsigned" && field === "downgrade" && repairOnly && lifecycleValue === "not_applicable")) {
+      return fail(`installed qualification lifecycle.${field} is not pass`);
+    }
+  }
+  const observations = qualification.runtime?.lifecycleObservations;
+  if (!Array.isArray(observations) || observations.length === 0 || observations.some((entry) => entry?.observed !== true)) {
+    return fail("installed qualification lifecycle observations are missing or not observed");
+  }
+  return { ok: true, qualification, binaryCount, currentRoot };
 }
 
 function readJson(root, relPath) {
@@ -275,7 +417,7 @@ export function NCL_01(context) {
 // the integration owner's sweep), so a cluster with no recorded native test evidence
 // hash is reported "insufficient", never "passed".
 // -----------------------------------------------------------------------------------
-export function NCL_02(context) {
+export function NCL_02(context = {}) {
   const root = resolveRoot(context);
   const absOverride = (context && context.interpreterDispositionsPath) ||
     "D:/Claude/review/windows-r5/interpreter-dispositions.json";
@@ -293,35 +435,72 @@ export function NCL_02(context) {
   } catch (error) {
     return { status: "failed", evidenceKind: "source", detail: { error: error.message }, reason: `NCL-02: parse error: ${error.message}` };
   }
-  const clusters = rows.filter((r) => r.action === "delete-after-parity");
-  const withDestinationOwner = clusters.filter((r) => r.nativeDestinationOwner);
-  const withoutDestinationOwner = clusters.filter((r) => !r.nativeDestinationOwner);
-
-  // Once every delete-after-parity row has been removed or converted to its
-  // terminal disposition, there are no parity clusters left to qualify.
-  if (clusters.length === 0) {
-    return {
-      status: "passed",
-      evidenceKind: "source",
-      detail: { clusterCount: 0, withDestinationOwner: 0, withoutDestinationOwner: [] },
-      reason: "NCL-02: interpreter-dispositions.json contains no delete-after-parity rows; parity-before-delete has no remaining clusters",
-    };
-  }
-
-  // Vacuous-test detection is out of scope for a source-only check (it requires reading
-  // and semantically evaluating another lane's Rust test bodies for assertion-free
-  // scaffolding, e.g. the packet's own cited empty_dimension_dependencies_cannot_be_sealed
-  // example) -- this module records that as an explicit unproven gap rather than a pass.
-  return {
-    status: "insufficient",
-    evidenceKind: "source",
-    detail: {
-      clusterCount: clusters.length,
-      withDestinationOwner: withDestinationOwner.length,
-      withoutDestinationOwner: withoutDestinationOwner.map((r) => r.path),
-    },
-    reason: `NCL-02: ${clusters.length} delete-after-parity row(s) identified from interpreter-dispositions.json; ${withoutDestinationOwner.length} lack a nativeDestinationOwner and cannot even be candidates. Per-cluster ported-assertion test names, native test evidence hash freshness, and vacuous-assertion detection require reading each collaborator lane's actual test bodies and the I1 sweep evidence, which this worker\'s allowlist and no-build/no-test constraint do not permit it to execute or fabricate; reported insufficient pending that per-cluster evidence.`,
+  const pending = rows.filter((r) => r.action === "delete-after-parity");
+  const committed = rows.filter((r) => r.action === "commit-deletion");
+  // commit-deletion is a post-parity terminal disposition. NCL-02's acceptance
+  // quantifies only rows still marked delete-after-parity; never re-open or
+  // reinterpret committed rows as pending clusters.
+  const candidates = pending;
+  const ledgerPath = context.clusterLedgerPath || process.env.MEMBRANE_NCL02_CLUSTER_LEDGER || join(root, "audit", "qualification", "windows-r5", "ncl-02", "clusters.json");
+  let ledger = null;
+  if (existsSync(ledgerPath)) { try { const value = JSON.parse(readFileSync(ledgerPath, "utf8")); ledger = Array.isArray(value) ? value : value.clusters; } catch {} }
+  const i1Path = context.i1EvidencePath || process.env.MEMBRANE_NCL02_I1_EVIDENCE ||
+    join(root, "audit", "qualification", "windows-r5", "ncl-02", "i1-evidence.json");
+  let i1 = null;
+  if (i1Path && existsSync(i1Path)) { try { i1 = JSON.parse(readFileSync(i1Path, "utf8")); } catch {} }
+  const currentRevision = context.sourceRevision || process.env.MEMBRANE_QUALIFICATION_SOURCE_REVISION || (() => { try { return execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim(); } catch { return null; } })();
+  const hashPattern = /^(?:sha256:)?[0-9a-f]{64}$/iu;
+  const filesOf = (cluster) => (cluster?.legacyFiles ?? cluster?.files ?? cluster?.filePaths ?? cluster?.paths ?? [])
+    .map((entry) => typeof entry === "string" ? entry : entry?.path ?? entry?.legacyPath ?? entry?.legacyFile).filter(Boolean)
+    .map((entry) => entry.replace(/\\/gu, "/"));
+  const namesOf = (cluster) => {
+    const values = [];
+    const collect = (value) => { if (typeof value === "string") values.push(value.trim()); else if (Array.isArray(value)) value.forEach(collect); else if (value && typeof value === "object") Object.values(value).forEach(collect); };
+    collect(cluster?.portedTestNames);
+    return [...new Set(values.filter(Boolean))];
   };
+  const clusterFor = new Map();
+  for (const cluster of Array.isArray(ledger) ? ledger : []) for (const file of filesOf(cluster)) clusterFor.set(file, clusterFor.has(file) ? null : cluster);
+  const failures = [];
+  if (!Array.isArray(ledger)) failures.push("cluster ledger missing or malformed");
+  // An empty pending set is an explicit, non-vacuous terminal result: inventory
+  // has no clusters awaiting the parity-before-delete gate. Ledger/I1 inputs are
+  // intentionally required only when at least one pending row exists.
+  if (candidates.length === 0) {
+    const detail = { inventoryPath: absOverride, ledgerPath, i1EvidencePath: i1Path || null, candidateCount: 0, pendingCount: 0, committedCount: committed.length, checked: [], failures: [] };
+    return { status: "passed", evidenceKind: "source", detail, reason: "NCL-02: interpreter-dispositions.json contains no delete-after-parity rows; no pending parity cluster remains (commit-deletion rows are terminal dispositions)" };
+  }
+  if (!i1) failures.push("fresh I1 evidence receipt missing");
+  const checked = [];
+  for (const row of candidates) {
+    const key = String(row.path || "").replace(/\\/gu, "/");
+    const cluster = clusterFor.get(key);
+    if (!cluster) { failures.push(`${key || "<missing path>"} has no unique cluster-ledger mapping`); continue; }
+    const names = namesOf(cluster);
+    if (names.length === 0) failures.push(`${key}: no named non-vacuous ported assertion`);
+    const destination = cluster.nativeDestinationPaths ?? cluster.nativeDestinationPath ?? cluster.nativeDestination;
+    const destinations = Array.isArray(destination) ? destination : [destination];
+    const destinationExists = destinations.some((value) => typeof value === "string" && /[/\\]/u.test(value) && !/[,:]/u.test(value) && existsSync(resolve(root, value)));
+    if (!destinationExists) failures.push(`${key}: native destination is missing`);
+    const cutover = cluster.callerCutover === true || cluster.callerCutover?.cutover === true || cluster.callerCutover?.status === "passed" || cluster.callerCutover?.verdict === "cutover";
+    if (!cutover) failures.push(`${key}: caller cutover is not explicitly proven`);
+    const evidence = cluster.i1Evidence ?? cluster.i1 ?? cluster.integrationEvidence ?? {};
+    const declaredHash = cluster.i1EvidenceHash ?? cluster.i1TestEvidenceHash ?? cluster.nativeTestEvidenceHash ?? evidence.sha256 ?? evidence.hash;
+    const evidencePath = cluster.i1EvidencePath ?? cluster.i1TestEvidencePath ?? evidence.path ?? evidence.evidencePath;
+    const revision = cluster.sourceRevision ?? evidence.sourceRevision ?? i1?.sourceRevision ?? i1?.sourceRevisionAtStart;
+    const absoluteEvidencePath = evidencePath ? resolve(dirname(i1Path || root), evidencePath) : null;
+    if (!hashPattern.test(String(declaredHash || "")) || !absoluteEvidencePath || !existsSync(absoluteEvidencePath)) failures.push(`${key}: missing I1 evidence hash/path`);
+    else {
+      const actual = createHash("sha256").update(readFileSync(absoluteEvidencePath)).digest("hex");
+      if (actual !== String(declaredHash).replace(/^sha256:/iu, "").toLowerCase()) failures.push(`${key}: I1 evidence hash does not match bytes`);
+      if (!/^[0-9a-f]{40}$/iu.test(String(revision || "")) || (currentRevision && String(revision).toLowerCase() !== String(currentRevision).toLowerCase())) failures.push(`${key}: I1 evidence source revision is stale or missing`);
+    }
+    checked.push({ path: key, cluster: cluster.cluster ?? cluster.id ?? cluster.name ?? null, action: row.action, testNames: names });
+  }
+  const detail = { inventoryPath: absOverride, ledgerPath, i1EvidencePath: i1Path || null, candidateCount: candidates.length, pendingCount: pending.length, committedCount: committed.length, checked, failures };
+  return failures.length === 0
+    ? { status: "passed", evidenceKind: "source", detail, reason: "NCL-02: every deletion row has unique cluster mapping, named non-vacuous assertion, native destination, caller cutover, fresh I1 evidence, and deletion-state proof" }
+    : { status: "insufficient", evidenceKind: "source", detail, reason: `NCL-02: ${failures.join("; ")}` };
 }
 
 // -----------------------------------------------------------------------------------
@@ -361,14 +540,14 @@ export function NCL_03(context) {
   } else {
     sealError = `missing native-only seal: ${sealPath}`;
   }
-  const sealOk = seal?.schema === "membrane.native-only-seal.v1" &&
-    seal?.status === "sealed" && seal?.target === "windows-x86_64" &&
-    typeof seal?.artifact_sha256 === "string" && /^[a-f0-9]{64}$/u.test(seal.artifact_sha256);
+  const sealValidation = seal ? validateNativeOnlySeal(seal, seal?.inputs?.installedQualification?.path, rootPath) : { ok: false, reason: sealError };
+  const sealOk = sealValidation.ok;
+  if (!sealOk && !sealError) sealError = sealValidation.reason;
   const passed = probe.ok && payloadOk && sealOk;
   return {
     status: passed ? "passed" : "insufficient",
     evidenceKind: "installed",
-    detail: { root, installedRoot: rootPath, executables, payloadInterpreters, probe, sealPath, sealOk, sealError, seal },
+    detail: { root, installedRoot: rootPath, executables, payloadInterpreters, probe, sealPath, sealOk, sealError, sealValidation, seal },
     reason: passed
       ? "NCL-03: installed native executables ran with restricted PATH, live process snapshots contained no interpreter children, payload contained no interpreter executable, and native-only seal is present"
       : `NCL-03: installed native probe incomplete: ${probe.reason || (probe.forbidden?.length ? "interpreter child observed" : "process probe failed")}${payloadOk ? "" : `; bundled interpreter executable(s): ${payloadInterpreters.join(", ")}`}${sealOk ? "" : `; ${sealError || "native-only seal is invalid"}`}`,
@@ -406,14 +585,32 @@ export function NCL_04(context) {
   const receiptExists = existsSync(receiptPath);
   let receipt = null;
   if (receiptExists) { try { receipt = JSON.parse(readFileSync(receiptPath, "utf8")); } catch {} }
-  const measured = receipt?.platform === "windows" && receipt?.buildIdentity && receipt?.generatedAt &&
-    receipt?.accounting && receipt?.storage?.compatibility && receipt.storage.compatibility !== "unmeasured" &&
-    receipt?.vectorScale?.status === "measured" && receipt?.packageSize?.status === "measured";
-  const passed = Boolean(measured && receipt.accounting.interpreterDispositions === rows.length);
+  const generatedAtMs = receipt?.generatedAt ? Date.parse(receipt.generatedAt) : Number.NaN;
+  const receiptFresh = Number.isFinite(generatedAtMs) && generatedAtMs <= Date.now() + 5 * 60 * 1000 &&
+    Date.now() - generatedAtMs <= 48 * 60 * 60 * 1000;
+  const expectedActions = Object.fromEntries(Object.keys(actions).map((key) => [key, actions[key]]));
+  const accountingExact = receipt?.accounting?.interpreterDispositions === rows.length &&
+    receipt.accounting.interpretedFiles === rows.length &&
+    JSON.stringify(receipt.accounting.actionCounts) === JSON.stringify(expectedActions);
+  const configuredRoot = context?.installedRoot || process.env.MEMBRANE_QUALIFICATION_INSTALLED_ROOT;
+  const installedExe = configuredRoot ? join(installedCurrentRoot(context), "membrane.exe") : null;
+  let identityBound = true;
+  if (installedExe && existsSync(installedExe)) {
+    try {
+      const currentSha = execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", `(Get-FileHash -LiteralPath '${installedExe.replace(/'/g, "''")}' -Algorithm SHA256).Hash.ToLowerInvariant()`], { encoding: "utf8", timeout: 15000 }).trim();
+      identityBound = String(receipt?.buildIdentity?.membraneSha256 || "").toLowerCase() === currentSha;
+    } catch { identityBound = false; }
+  }
+  const measured = receipt?.schema === "membrane.windows-lifecycle-observation.v1" && receipt?.platform === "windows" &&
+    receipt?.buildIdentity?.root && receipt?.buildIdentity?.membraneSha256 && receipt?.generatedAt && receiptFresh &&
+    receipt?.accounting && accountingExact && receipt?.storage?.status === "measured" && receipt.storage.compatible === true &&
+    receipt.storage.compatibility === "measured-windows-ntfs" && receipt?.vectorScale?.status === "measured" &&
+    receipt?.vectorScale?.performance?.status === "measured" && receipt?.packageSize?.status === "measured" && identityBound;
+  const passed = Boolean(measured);
   return {
     status: passed ? "passed" : "insufficient",
     evidenceKind: "installed",
-    detail: { actionCounts: actions, receiptPath, receiptExists, measured, receipt },
+    detail: { actionCounts: actions, receiptPath, receiptExists, measured, receiptFresh, accountingExact, identityBound, receipt },
     reason: passed
       ? "NCL-04: current Windows measurement receipt records build identity, timestamp, exact accounting, storage compatibility, vector scale, and package size"
       : "NCL-04: requires a current Windows measurement receipt with exact interpreter accounting plus storage, vector-scale, and package-size measurements",
@@ -425,6 +622,115 @@ export function NCL_04(context) {
 // installed membrane.exe mode (CLI, stdio MCP, explicit SDK, and native federation),
 // including executable hash, terminal result, and live descendant process tree.
 // -----------------------------------------------------------------------------------
+function parseJsonText(text) {
+  try { return { ok: true, value: JSON.parse(String(text || "")) }; }
+  catch (error) { return { ok: false, reason: `invalid JSON output: ${error.message}` }; }
+}
+
+function actionList(surface) {
+  if (Array.isArray(surface?.actions)) return surface.actions;
+  if (surface?.action && typeof surface.action === "object") return [surface.action];
+  // Older receipts flattened one action into the surface row. Treat that form as
+  // evidence only when it carries all terminal/native fields; never infer success
+  // from status/processTree alone.
+  return surface?.exitCode !== undefined || surface?.stdout !== undefined ? [surface] : [];
+}
+
+function validateSurfaceResponse(name, actions) {
+  const fail = (reason) => ({ ok: false, reason });
+  if (actions.length === 0) return fail(`${name} has no real installed call action`);
+  const final = actions[actions.length - 1];
+  if (name === "mcp") {
+    const lines = String(final.stdout).trim().split(/\r?\n/u).filter(Boolean);
+    let rows;
+    try { rows = lines.map((line) => JSON.parse(line)); } catch { return fail("MCP response contains malformed JSON-RPC output"); }
+    if (rows.length !== 2 || rows.some((row) => row?.jsonrpc !== "2.0" || row?.error) ||
+      rows.map((row) => row.id).join(",") !== "1,2" || rows[0]?.result?.protocolVersion !== "2025-03-26" ||
+      !Array.isArray(rows[1]?.result?.tools) || rows[1].result.tools.length === 0) {
+      return fail("MCP initialize/tools-list schema, IDs, or typed result is invalid");
+    }
+    return { ok: true };
+  }
+  const parsed = parseJsonText(final.stdout);
+  if (!parsed.ok) return fail(`${name} ${parsed.reason}`);
+  const value = parsed.value;
+  if (name === "cli") {
+    if (value?.schemaVersion !== "LiveDiagnosticsServiceV1" || value?.surface !== "membrane-live-diagnostics" ||
+      value?.audit?.schemaVersion !== "live-diagnostics-audit.v1" || !Array.isArray(value?.endpoints) || value.endpoints.length === 0) {
+      return fail("CLI diagnostics response schema/identity is invalid");
+    }
+    return { ok: true };
+  }
+  // Native Pull federation is also exposed by the installed `cli pull federate`
+  // command.  It has no ExplicitResponseV1 binding wrapper, so validate its
+  // unchanged packet/receipt envelope directly while still requiring a real
+  // terminal action (checked by validateNcl05Observation).
+  if (name === "federation" && actions.length === 1) {
+    if (value?.packet && Array.isArray(value.receipts) && value?.transport === "native") return { ok: true };
+    return fail("federation response does not contain native packet and receipts");
+  }
+  const binding = actions[0];
+  const bindingJson = parseJsonText(binding.stdout);
+  if (!bindingJson.ok || bindingJson.value?.schemaVersion !== 1 || bindingJson.value?.status !== 200 ||
+    bindingJson.value?.binding?.schemaVersion !== 1 || bindingJson.value.binding.mode !== "bounded_explicit" ||
+    bindingJson.value.binding.nativeOnly !== true || typeof bindingJson.value.binding.installationId !== "string" ||
+    typeof bindingJson.value.binding.cortexStoreId !== "string" || typeof bindingJson.value.binding.releaseGeneration !== "string" ||
+    typeof bindingJson.value.binding.stableInstallRoot !== "string" || bindingJson.value.binding.protocolVersion !== 1) {
+    return fail(`${name} binding response schema/identity is invalid`);
+  }
+  if (actions.length < 2) return fail(`${name} has no bound operation call after binding`);
+  if (value?.schemaVersion !== 1 || typeof value?.status !== "number" || value.status < 200 || value.status >= 300 ||
+    value?.binding?.installationId !== bindingJson.value.binding.installationId || value?.binding?.releaseGeneration !== bindingJson.value.binding.releaseGeneration ||
+    value?.data === undefined || value?.data?.error !== undefined || value?.data?.kind === "error") {
+    return fail(`${name} bound operation returned a non-success or typed error response`);
+  }
+  if (name === "sdk" && !Array.isArray(value.data)) return fail("SDK list response data is not an array");
+  if (name === "federation" && (!value.data || typeof value.data !== "object" || !value.data.packet || !Array.isArray(value.data.receipts))) {
+    return fail("federation response does not contain packet and receipts");
+  }
+  return { ok: true };
+}
+
+export function validateNcl05Observation(observation, expectedIdentity, options = {}) {
+  const fail = (reason, detail = {}) => ({ ok: false, reason, detail });
+  if (!observation || observation.schema !== "membrane.windows-native-observation.v1" || observation.platform !== "windows") {
+    return fail("native observation schema/platform is invalid");
+  }
+  const generatedMs = Date.parse(String(observation.generatedAt || ""));
+  const now = Date.now();
+  const maxAge = Number.isFinite(options.maxAgeMs) ? options.maxAgeMs : MAX_EVIDENCE_AGE_MS;
+  if (!Number.isFinite(generatedMs) || generatedMs > now + 5 * 60 * 1000 || now - generatedMs > maxAge) return fail("native observation is stale or has invalid generatedAt");
+  const identity = expectedIdentity?.root ? expectedIdentity : null;
+  const recorded = observation.buildIdentity;
+  if (!identity || !recorded || !samePath(observation.installedRoot, identity.root) || !samePath(recorded.root, identity.root) ||
+    comparablePath(observation.installedRoot) !== comparablePath(recorded.root) ||
+    String(recorded.generation || recorded.releaseGeneration || "") !== identity.releaseGeneration ||
+    String(recorded.membraneSha256 || "").toLowerCase() !== identity.executableSha256) {
+    return fail("native observation installed identity is not an exact current-root match", { expected: identity, recorded });
+  }
+  if (Array.isArray(observation.payloadInterpreters) && observation.payloadInterpreters.length > 0) return fail("native observation payload contains interpreter executable(s)");
+  if (Date.parse(String(observation.generatedAt)) + 5 * 60 * 1000 < Number(identity.mtimeMs || 0)) return fail("native observation predates installed executable identity");
+  const surfaces = observation.surfaces;
+  if (!Array.isArray(surfaces) || surfaces.length !== NCL05_SURFACES.length || new Set(surfaces.map((surface) => surface?.name)).size !== NCL05_SURFACES.length ||
+    surfaces.some((surface) => !NCL05_SURFACES.includes(surface?.name) || surface.status !== "passed")) return fail("native observation surface IDs/status are incomplete");
+  const surfaceResults = {};
+  for (const name of NCL05_SURFACES) {
+    const surface = surfaces.find((item) => item.name === name);
+    const actions = actionList(surface);
+    if (actions.some((action) => action.status === "failed" || action.terminal !== true || action.nativeEvidence !== true || action.timedOut === true || action.exitCode !== 0 ||
+      typeof action.stdout !== "string" || action.stdout.trim().length === 0 || comparablePath(action.executable) !== comparablePath(identity.executable) ||
+      String(action.sha256 || "").toLowerCase() !== identity.executableSha256 || !Array.isArray(action.processTree) || action.processTree.length === 0 ||
+      !Array.isArray(action.forbiddenChildren) || action.forbiddenChildren.length > 0 || action.processTree.some((process) => FORBIDDEN_PROCESS.test(String(process?.name || "")) || FORBIDDEN_PROCESS.test(String(process?.executable || "").split(/[\\/]/u).pop() || "")))) {
+      return fail(`${name} did not produce a successful real installed native call with interpreter-free process tree`);
+    }
+    if (!actions.some((action) => action.processTree.some((process) => comparablePath(process?.executable) === comparablePath(identity.executable)))) return fail(`${name} process tree does not contain its installed owner`);
+    const response = validateSurfaceResponse(name, actions);
+    if (!response.ok) return fail(response.reason);
+    surfaceResults[name] = { actions: actions.length };
+  }
+  return { ok: true, detail: { generatedAt: observation.generatedAt, identity, surfaces: surfaceResults } };
+}
+
 export function NCL_05(context) {
   const root = resolveRoot(context);
   const nativeCrates = [
@@ -434,18 +740,18 @@ export function NCL_05(context) {
   ];
   const presence = nativeCrates.map((p) => ({ path: p, exists: existsSync(join(root, p)) }));
   const allPresent = presence.every((p) => p.exists);
+  const identity = installedIdentity(context);
   const probe = nativeProcessProbe(installedExecutables(installedRoot(context)));
   const observation = receiptProbe(context, "membrane.windows-native-observation.v1");
-  const surfaces = observation.value?.surfaces;
-  const surfaceOk = Array.isArray(surfaces) && ["cli", "mcp", "sdk", "federation"].every((name) => surfaces.some((s) => s.name === name && s.status === "passed" && Array.isArray(s.processTree) && s.processTree.every((p) => !/^(node|python|python3|sh|bash)(\.exe)?$/i.test(String(p.name || "")))));
-  const passed = allPresent && probe.ok && observation.ok && surfaceOk;
+  const validation = observation.ok && identity.ok ? validateNcl05Observation(observation.value, identity.value) : { ok: false, reason: observation.reason || identity.reason };
+  const passed = allPresent && probe.ok && observation.ok && identity.ok && validation.ok;
   return {
     status: passed ? "passed" : "insufficient",
     evidenceKind: "installed",
-    detail: { presence, probe, observation: observation.value || null, surfaceOk },
+    detail: { presence, identity, probe, observation: observation.value || null, validation },
     reason: passed
       ? "NCL-05: CLI, MCP, SDK, and federation observations ran from installed native executables with no interpreter child process"
-      : `NCL-05: native surface proof incomplete: ${observation.reason || (probe.reason || "required surface observation missing")}`,
+      : `NCL-05: native surface proof incomplete: ${validation.reason || identity.reason || observation.reason || (probe.reason || "required surface observation missing")}`,
   };
 }
 

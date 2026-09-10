@@ -4,6 +4,8 @@ param(
   [string]$NativeOutput = $(Join-Path $env:TEMP "membrane-windows-native-$([guid]::NewGuid().ToString('N')).json"),
   [string]$InterpreterDispositions = 'D:\Claude\review\windows-r5\interpreter-dispositions.json',
   [string]$QualificationEvidence = '',
+  [string]$CandidateInstallerPath = $(if ($env:MEMBRANE_QUALIFICATION_INSTALLER_PATH) { $env:MEMBRANE_QUALIFICATION_INSTALLER_PATH } else { '' }),
+  [string]$VectorScaleEvidence = $(if ($env:MEMBRANE_QUALIFICATION_VECTOR_SCALE_EVIDENCE) { $env:MEMBRANE_QUALIFICATION_VECTOR_SCALE_EVIDENCE } else { '' }),
   [int]$TimeoutMs = 5000
 )
 
@@ -241,6 +243,23 @@ function ConvertTo-JsonSafe([object]$Value, [System.Text.StringBuilder]$Sb) {
   [void]$Sb.Append((ConvertTo-JsonSafeString ([string]$Value)))
 }
 
+function Normalize-JsonValue([object]$Value) {
+  if ($null -eq $Value -or $Value -is [string] -or $Value -is [bool] -or $Value -is [ValueType]) { return $Value }
+  if ($Value -is [System.Collections.IDictionary]) {
+    $out = [ordered]@{}
+    foreach ($key in $Value.Keys) { $out[[string]$key] = Normalize-JsonValue $Value[$key] }
+    return $out
+  }
+  if ($Value -is [System.Collections.IEnumerable]) { return @($Value | ForEach-Object { Normalize-JsonValue $_ }) }
+  $properties = @($Value.PSObject.Properties)
+  if ($properties.Count -gt 0) {
+    $out = [ordered]@{}
+    foreach ($property in $properties) { $out[$property.Name] = Normalize-JsonValue $property.Value }
+    return $out
+  }
+  return [string]$Value
+}
+
 function Write-JsonBounded([object]$Value, [string]$Path, [int]$Depth = 12, [int]$TimeoutMs = 20000) {
   # $Depth/$TimeoutMs are accepted for call-site compatibility. The manual
   # serializer above is a single linear walk over known-finite shapes (plain
@@ -302,6 +321,103 @@ $refreshResult = {
   } catch { return $false }
 }
 
+function Resolve-ProductRoot([string]$Path) {
+  # The observer accepts either the stable `current` directory (the normal
+  # invocation) or its product root.  Resolve state relative to the product
+  # root, never relative to a versioned payload or the development checkout.
+  $leaf = Split-Path -Leaf ($Path.TrimEnd('\', '/'))
+  if ($leaf -ieq 'current') { return (Split-Path -Parent ($Path.TrimEnd('\', '/'))) }
+  return $Path.TrimEnd('\', '/')
+}
+
+function Read-SqliteHeader([string]$Path) {
+  if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return $false }
+  $stream = $null
+  try {
+    $stream = [System.IO.File]::OpenRead($Path)
+    $bytes = New-Object byte[] 16
+    $read = $stream.Read($bytes, 0, 16)
+    if ($read -ne 16) { return $false }
+    return ([Text.Encoding]::ASCII.GetString($bytes) -eq 'SQLite format 3' + [char]0)
+  } catch { return $false }
+  finally { if ($null -ne $stream) { $stream.Dispose() } }
+}
+
+function Measure-InstalledStorage([string]$RuntimeRoot, [string]$ProductRoot, [string]$CortexExecutable) {
+  $storageRoot = Join-Path $ProductRoot 'state\tools\.cache\memory'
+  $names = @('cortex-engine.db', 'cortex-engine.membrane-events.sqlite3', 'catalog.db')
+  $dbs = foreach ($name in $names) {
+    $path = Join-Path $storageRoot $name
+    $item = if (Test-Path -LiteralPath $path -PathType Leaf) { Get-Item -LiteralPath $path } else { $null }
+    [ordered]@{
+      name = $name; path = $path; exists = ($null -ne $item); bytes = if ($null -ne $item) { [int64]$item.Length } else { $null }
+      sqliteHeader = if ($null -ne $item) { Read-SqliteHeader $path } else { $false }
+      walBytes = if (Test-Path -LiteralPath "$path-wal" -PathType Leaf) { [int64](Get-Item -LiteralPath "$path-wal").Length } else { 0 }
+      shmBytes = if (Test-Path -LiteralPath "$path-shm" -PathType Leaf) { [int64](Get-Item -LiteralPath "$path-shm").Length } else { 0 }
+    }
+  }
+  $hygiene = foreach ($db in @($dbs)) {
+    $action = Invoke-Membrane -ExePath $CortexExecutable -Arguments @('hygiene', 'storage', '--db', [string]$db.path) -Timeout 15000
+    $parsed = $null
+    try { if (-not [string]::IsNullOrWhiteSpace($action.stdout)) { $parsed = $action.stdout | ConvertFrom-Json } } catch { }
+    [ordered]@{
+      path = $db.path; exitCode = $action.exitCode; terminal = (-not $action.timedOut); readOnly = ($parsed.read_only -eq $true)
+      schema = $parsed.schema; integrityCheck = $parsed.sqlite.integrity_check; sqliteStatus = $parsed.sqlite.status
+      schemaVersion = $parsed.sqlite.schema_version; userVersion = $parsed.sqlite.user_version; stdout = [string]$action.stdout
+      stderr = [string]$action.stderr
+    }
+  }
+  $allFilesValid = @($dbs).Count -eq $names.Count -and @($dbs | Where-Object { -not $_.exists -or -not $_.sqliteHeader }).Count -eq 0
+  $allHygieneValid = @($hygiene).Count -eq $names.Count -and @($hygiene | Where-Object { $_.exitCode -ne 0 -or -not $_.terminal -or -not $_.readOnly -or $_.integrityCheck -ne 'ok' -or $_.sqliteStatus -ne 'ok' }).Count -eq 0
+  $totalBytes = [int64](@($dbs | ForEach-Object { $_.bytes + $_.walBytes + $_.shmBytes } | Measure-Object -Sum).Sum)
+  [ordered]@{
+    status = 'measured'; compatibility = if ($allFilesValid -and $allHygieneValid) { 'measured-windows-ntfs' } else { 'incompatible-windows-ntfs' }
+    compatible = ($allFilesValid -and $allHygieneValid); method = 'installed cortex.exe hygiene storage (read-only) plus SQLite header and sidecar inspection'
+    root = $storageRoot; bytes = $totalBytes; databases = @($dbs); hygiene = @($hygiene)
+  }
+}
+
+function Measure-InstalledVectorScale([string]$RuntimeRoot, [string]$EvidencePath, [object]$Storage) {
+  $modelRoot = Join-Path $RuntimeRoot 'runtime\resources\semantic-embed-model'
+  $modelFiles = @()
+  if (Test-Path -LiteralPath $modelRoot -PathType Container) {
+    $modelFiles = @(Get-ChildItem -LiteralPath $modelRoot -Recurse -File -ErrorAction SilentlyContinue | ForEach-Object {
+      [ordered]@{ path = $_.FullName; bytes = [int64]$_.Length }
+    })
+  }
+  $modelBytes = [int64](@($modelFiles | ForEach-Object { $_.bytes } | Measure-Object -Sum).Sum)
+  $benchmark = $null; $benchmarkError = $null
+  if (-not [string]::IsNullOrWhiteSpace($EvidencePath) -and (Test-Path -LiteralPath $EvidencePath -PathType Leaf)) {
+    try { $benchmark = Get-Content -LiteralPath $EvidencePath -Raw | ConvertFrom-Json } catch { $benchmarkError = $_.Exception.Message }
+  } elseif (-not [string]::IsNullOrWhiteSpace($EvidencePath)) { $benchmarkError = "missing vector-scale evidence: $EvidencePath" }
+  $benchmarkRows = @($benchmark.results)
+  if ($benchmarkRows.Count -eq 0) { $benchmarkRows = @($benchmark.measuredResults.cases) }
+  $benchmarkPlatform = if ($benchmark.platform) { [string]$benchmark.platform } else { [string]$benchmark.measuredResults.platform }
+  $benchmarkTime = $null
+  try {
+    if ($benchmark.generatedAt) { $benchmarkTime = [DateTime]::Parse([string]$benchmark.generatedAt).ToUniversalTime() }
+    elseif ($benchmark.measuredResults.generatedAt) { $benchmarkTime = [DateTime]::Parse([string]$benchmark.measuredResults.generatedAt).ToUniversalTime() }
+    elseif (-not [string]::IsNullOrWhiteSpace($EvidencePath) -and (Test-Path -LiteralPath $EvidencePath -PathType Leaf)) { $benchmarkTime = (Get-Item -LiteralPath $EvidencePath).LastWriteTimeUtc }
+  } catch { $benchmarkError = "invalid vector-scale generatedAt: $($_.Exception.Message)" }
+  $benchmarkFresh = $null -ne $benchmarkTime -and $benchmarkTime -le [DateTime]::UtcNow.AddMinutes(5) -and $benchmarkTime -ge [DateTime]::UtcNow.AddHours(-48)
+  $benchmarkOk = $null -ne $benchmark -and $benchmark.schemaVersion -eq 1 -and $benchmark.benchmarkId -eq 'vector-scale-v1' -and
+    $benchmarkPlatform -eq 'windows' -and $benchmarkFresh -and $benchmarkRows.Count -gt 0 -and @($benchmarkRows | Where-Object { $_.recallAtK -lt 1 -or $_.records -le 0 -or $_.warmQueryP95Ns -le 0 }).Count -eq 0
+  $benchmarkReceipt = if ($null -ne $benchmark) { Normalize-JsonValue $benchmark } else { $null }
+  [ordered]@{
+    status = if ($benchmarkOk) { 'measured' } else { 'unmeasured' }; method = 'installed-runtime semantic model/storage footprint; optional checked-in vector-scale-v1 performance receipt'
+    runtimeRoot = $RuntimeRoot; semanticEmbedModelDir = $modelRoot; semanticEmbedModelOnnxBytesPresent = (@($modelFiles | Where-Object { $_.path -match '\.(onnx|onnx_data)$' }).Count -gt 0)
+    semanticEmbedModelBytes = $modelBytes; cortexDbTotalBytes = $Storage.bytes
+    performance = [ordered]@{ status = if ($benchmarkOk) { 'measured' } else { 'unmeasured' }; evidencePath = $EvidencePath; benchmark = $benchmarkReceipt; error = $benchmarkError }
+  }
+}
+
+function Measure-CandidatePackage([string]$Path) {
+  if ([string]::IsNullOrWhiteSpace($Path)) { return [ordered]@{ status = 'unmeasured'; reason = 'candidate installer path was not supplied; installed payload bytes are not a package-size measurement' } }
+  if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return [ordered]@{ status = 'unmeasured'; path = $Path; reason = 'candidate installer path does not exist' } }
+  $item = Get-Item -LiteralPath $Path
+  [ordered]@{ status = 'measured'; method = 'Get-Item on exact candidate installer'; path = $Path; bytes = [int64]$item.Length; sha256 = File-Sha256 $Path }
+}
+
 # NCL-05 probes each installed native owner directly. Stdio MCP and explicit
 # SDK are stdin-framed modes; federation is native Pull through CLI.
 $mcpInput = @(
@@ -313,20 +429,30 @@ $mcpResult = {
   if ($a.exitCode -ne 0 -or $a.timedOut -or [string]::IsNullOrWhiteSpace($a.stdout)) { return $false }
   try {
     $rows = @($a.stdout.Trim().Split("`n") | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | ForEach-Object { $_ | ConvertFrom-Json })
-    return $rows.Count -ge 2 -and $rows[0].result.protocolVersion -eq '2025-03-26' -and
+    return $rows.Count -eq 2 -and $rows[0].jsonrpc -eq '2.0' -and $rows[1].jsonrpc -eq '2.0' -and
+      $rows[0].id -eq 1 -and $rows[1].id -eq 2 -and $null -eq $rows[0].error -and $null -eq $rows[1].error -and
+      $rows[0].result.protocolVersion -eq '2025-03-26' -and
       $null -ne $rows[1].result.tools -and @($rows[1].result.tools).Count -gt 0
   } catch { return $false }
 }
-$sdkInput = '{"schemaVersion":1,"operation":"binding","expectedBinding":null,"request":{}}'
-$sdkResult = {
-  param($a)
-  if ($a.exitCode -ne 0 -or $a.timedOut -or [string]::IsNullOrWhiteSpace($a.stdout)) { return $false }
+$sdkSurface = {
+  param($id, $operation, $request)
+  $bindingInput = '{"schemaVersion":1,"operation":"binding","expectedBinding":null,"request":{}}'
+  $bindingAction = Invoke-Membrane -ExePath $membrane -Arguments @('cli', 'explicit-call') -Timeout 15000 -StdinText $bindingInput -CaptureTree $true
+  $binding = $null
+  try { if ($bindingAction.exitCode -eq 0) { $binding = ($bindingAction.stdout | ConvertFrom-Json).binding } } catch { $binding = $null }
+  $operationInput = [ordered]@{ schemaVersion = 1; operation = $operation; expectedBinding = $binding; request = $request } | ConvertTo-Json -Compress -Depth 20
+  $operationAction = Invoke-Membrane -ExePath $membrane -Arguments @('cli', 'explicit-call') -Timeout 30000 -StdinText $operationInput -CaptureTree $true
+  $ok = $false; $reason = $null
   try {
-    $v = $a.stdout | ConvertFrom-Json
-    return $v.schemaVersion -eq 1 -and $v.status -eq 200 -and $v.binding.nativeOnly -eq $true -and
-      -not [string]::IsNullOrWhiteSpace([string]$v.binding.stableInstallRoot) -and
-      -not [string]::IsNullOrWhiteSpace([string]$v.binding.releaseGeneration)
-  } catch { return $false }
+    $v = $operationAction.stdout | ConvertFrom-Json
+    $ok = $bindingAction.exitCode -eq 0 -and $operationAction.exitCode -eq 0 -and -not $bindingAction.timedOut -and -not $operationAction.timedOut -and
+      $v.schemaVersion -eq 1 -and $v.status -ge 200 -and $v.status -lt 300 -and $null -ne $v.binding -and
+      $v.binding.installationId -eq $binding.installationId -and $v.binding.releaseGeneration -eq $binding.releaseGeneration -and
+      $null -ne $v.data -and (($id -eq 'sdk' -and $v.data -is [Array]) -or ($id -eq 'federation' -and $null -ne $v.data.packet -and @($v.data.receipts).Count -gt 0))
+  } catch { $ok = $false }
+  if (-not $ok) { $reason = "$($id): bound explicit operation did not return a successful installed response; typed errors and nonzero exits remain failures" }
+  [ordered]@{ id = $id; lane = 'NCL-05'; status = if ($ok) { 'passed' } else { 'failed' }; reason = if ($ok) { "$($id): real binding plus bound '$operation' call succeeded against installed runtime" } else { $reason }; actions = @($bindingAction, $operationAction); processTreeBefore = @(); processTreeDuring = @(); processTreeAfter = @() }
 }
 $federationArgs = @('cli', 'pull', 'federate', '--task', 'ncl-05-surface', '--repo', $refreshProbeRoot, '--max-tokens', '64', '--client', 'qualification')
 $federationResult = {
@@ -334,7 +460,7 @@ $federationResult = {
   if ($a.exitCode -ne 0 -or $a.timedOut -or [string]::IsNullOrWhiteSpace($a.stdout)) { return $false }
   try {
     $v = $a.stdout | ConvertFrom-Json
-    return $null -ne $v.packet -and $null -ne $v.receipts
+    return $v.transport -eq 'native' -and $null -ne $v.packet -and $null -ne $v.receipts -and @($v.receipts).Count -gt 0 -and $null -eq $v.error
   } catch { return $false }
 }
 # Federation consumes Blueprint freshness metadata. Seed that metadata through
@@ -384,9 +510,17 @@ function Run-QualificationObservation([object]$Qualification, [string]$Lane, [st
 # executed here because other qualification lanes concurrently depend on that
 # same installed daemon; each such scenario names the exact command withheld.
 $scenarioSpecs = @(
-  @{ lane = 'NCL-05'; id = 'cli'; exe = $membrane; args = @('diagnostics', 'capabilities'); captureProcessTree = $true; validate = { param($a) $a.exitCode -eq 0 -and $a.stdout.TrimStart().StartsWith('{') } }
+  @{ lane = 'NCL-05'; id = 'cli'; exe = $membrane; args = @('diagnostics', 'capabilities'); captureProcessTree = $true; validate = {
+      param($a)
+      if ($a.exitCode -ne 0 -or $a.timedOut -or [string]::IsNullOrWhiteSpace($a.stdout)) { return $false }
+      try {
+        $v = $a.stdout | ConvertFrom-Json
+        return $v.schemaVersion -eq 'LiveDiagnosticsServiceV1' -and $v.surface -eq 'membrane-live-diagnostics' -and
+          $v.audit.schemaVersion -eq 'live-diagnostics-audit.v1' -and @($v.endpoints).Count -gt 0
+      } catch { return $false }
+    } }
   @{ lane = 'NCL-05'; id = 'mcp'; exe = $membrane; args = @('stdio-mcp'); input = $mcpInput; captureProcessTree = $true; validate = $mcpResult }
-  @{ lane = 'NCL-05'; id = 'sdk'; exe = $membrane; args = @('cli', 'explicit-call'); input = $sdkInput; captureProcessTree = $true; validate = $sdkResult }
+  @{ lane = 'NCL-05'; id = 'sdk'; explicitSurface = $true; operation = 'list'; request = [ordered]@{ limit = 1 } }
   @{ lane = 'NCL-05'; id = 'federation'; exe = $membrane; args = $federationArgs; captureProcessTree = $true; validate = $federationResult }
 
   @{ lane = 'LC-01'; id = 'hub-only'; control = $true }
@@ -476,6 +610,8 @@ $scenarios = foreach ($spec in $scenarioSpecs) {
     Run-QualificationScenario $spec.lane $spec.id $membrane
   } elseif ($spec.ContainsKey('reason')) {
     Run-InsufficientScenario $spec.lane $spec.id $spec.reason
+  } elseif ($spec.ContainsKey('explicitSurface')) {
+    & $sdkSurface $spec.id $spec.operation $spec.request
   } elseif ($spec.ContainsKey('input')) {
     Run-ExecScenario $spec.lane $spec.id $spec.exe $spec.args $spec.validate $spec.input ([bool]$spec.captureProcessTree)
   } else {
@@ -483,11 +619,14 @@ $scenarios = foreach ($spec in $scenarioSpecs) {
   }
 }
 $dispositionRows = @(); if (Test-Path -LiteralPath $InterpreterDispositions) { $dispositionRows = @(Get-Content -LiteralPath $InterpreterDispositions -Raw | ConvertFrom-Json) }
-$accounting = [ordered]@{ interpretedFiles = $dispositionRows.Count; installedPayloadFiles = $files.Count; interpreterDispositions = $dispositionRows.Count }
+$actionCounts = [ordered]@{ 'delete-after-parity' = 0; 'retain-with-reachability-proof' = 0; 'commit-deletion' = 0 }
+foreach ($row in $dispositionRows) { $key = [string]$row.action; if ($actionCounts.Contains($key)) { $actionCounts[$key] = [int]$actionCounts[$key] + 1 } }
+$accounting = [ordered]@{ interpretedFiles = $dispositionRows.Count; installedPayloadFiles = $files.Count; interpreterDispositions = $dispositionRows.Count; actionCounts = $actionCounts; effectiveOwnership = [ordered]@{ dispositionRows = $dispositionRows.Count; rowsWithOwner = @($dispositionRows | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_.owner) }).Count } }
 $surfaceRows = @($scenarios | Where-Object { $_.lane -eq 'NCL-05' })
 $surfaces = foreach ($name in @('cli', 'mcp', 'sdk', 'federation')) {
   $row = @($surfaceRows | Where-Object { $_.id -eq $name }) | Select-Object -Last 1
-  $action = if ($null -ne $row) { @($row.actions) | Select-Object -First 1 } else { $null }
+  [object[]]$surfaceActions = if ($null -ne $row) { @($row.actions) } else { @() }
+  $action = if ($surfaceActions.Count -gt 0) { $surfaceActions[-1] } else { $null }
   [object[]]$surfaceTree = if ($null -ne $action) { @($action.processTree) } else { @() }
   [object[]]$surfaceForbidden = if ($null -ne $action) { @($action.forbiddenChildren) } else { @() }
   [ordered]@{
@@ -498,20 +637,25 @@ $surfaces = foreach ($name in @('cli', 'mcp', 'sdk', 'federation')) {
     pid = if ($null -ne $action) { $action.pid } else { $null }
     exitCode = if ($null -ne $action) { $action.exitCode } else { $null }
     terminal = if ($null -ne $action) { $action.terminal } else { $false }
+    actions = $surfaceActions
     processTree = $surfaceTree
     forbiddenChildren = $surfaceForbidden
     reason = if ($null -ne $row) { $row.reason } else { 'surface probe did not execute' }
   }
 }
+$productRoot = Resolve-ProductRoot $InstalledRoot
+$storageMeasurement = Measure-InstalledStorage -RuntimeRoot $InstalledRoot -ProductRoot $productRoot -CortexExecutable (Join-Path $InstalledRoot 'cortex.exe')
+$vectorScaleMeasurement = Measure-InstalledVectorScale -RuntimeRoot $InstalledRoot -EvidencePath $VectorScaleEvidence -Storage $storageMeasurement
+$packageMeasurement = Measure-CandidatePackage $CandidateInstallerPath
 $receipt = [ordered]@{
   schema = 'membrane.windows-lifecycle-observation.v1'; platform = 'windows'; installed = (Test-Path -LiteralPath $membrane -PathType Leaf)
   generatedAt = [DateTime]::UtcNow.ToString('o'); host = $env:COMPUTERNAME; os = $platform; installedRoot = $InstalledRoot
-  buildIdentity = [ordered]@{ root = $InstalledRoot; generation = if (Test-Path -LiteralPath (Join-Path $InstalledRoot 'release.json')) { (Get-Content (Join-Path $InstalledRoot 'release.json') -Raw | ConvertFrom-Json).version } else { $null }; membraneSha256 = if (Test-Path -LiteralPath $membrane) { (Get-FileHash -LiteralPath $membrane -Algorithm SHA256).Hash } else { $null }; files = $files }
+  buildIdentity = [ordered]@{ root = $InstalledRoot; productRoot = $productRoot; generation = if (Test-Path -LiteralPath (Join-Path $InstalledRoot 'release.json')) { (Get-Content (Join-Path $InstalledRoot 'release.json') -Raw | ConvertFrom-Json).releaseGeneration } else { $null }; membraneSha256 = if (Test-Path -LiteralPath $membrane) { (Get-FileHash -LiteralPath $membrane -Algorithm SHA256).Hash.ToLowerInvariant() } else { $null }; files = $files }
   processTree = @(Snapshot); nativeSurfaces = @($surfaces); surfaces = $surfaces; scenarios = @($scenarios)
   accounting = $accounting
-  storage = [ordered]@{ compatibility = 'unmeasured'; database = $null }; vectorScale = [ordered]@{ status = 'unmeasured' }; packageSize = [ordered]@{ bytes = (($files | ForEach-Object { $_.bytes }) | Measure-Object -Sum).Sum; status = 'measured' }
+  storage = $storageMeasurement; vectorScale = $vectorScaleMeasurement; packageSize = $packageMeasurement
   qualificationEvidence = if ($qualification) { [ordered]@{ path = $QualificationEvidence; schema = $qualification.schema; generatedAt = $qualification.generatedAt; artifactSha256 = $qualification.artifact.sha256; installedRoot = $qualification.installedCurrent.root } } else { $null }
-  payloadInterpreters = $payloadInterpreters; producer = 'observe-windows-lifecycle.ps1'; startedAt = $started.ToString('o')
+  payloadInterpreters = $payloadInterpreters; producer = 'observe-windows-lifecycle.ps1'; startedAt = $started.ToString('o'); measurementHost = $env:COMPUTERNAME
 }
 Remove-Item -LiteralPath $refreshProbeRoot -Recurse -Force -ErrorAction SilentlyContinue
 Write-JsonBounded -Value $receipt -Path $Output -Depth 12 -TimeoutMs 20000 | Out-Null
