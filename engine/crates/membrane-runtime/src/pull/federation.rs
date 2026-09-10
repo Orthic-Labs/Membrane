@@ -206,6 +206,23 @@ pub fn run_federate(
             serde_json::json!(native_metrics),
         );
         merge_native_receipts(fields, native_receipts);
+        let packet_omissions = fields
+            .get("packet")
+            .and_then(|packet| packet.get("omissions"))
+            .cloned()
+            .unwrap_or_else(|| Value::Array(Vec::new()));
+        fields.insert(
+            "budgetReduction".to_owned(),
+            serde_json::json!({
+                "misleadingFragmentRetained": false,
+                "omissionReasons": packet_omissions,
+                "droppedCandidateCount": fields
+                    .get("packet")
+                    .and_then(|packet| packet.get("omissions"))
+                    .and_then(Value::as_array)
+                    .map_or(0, Vec::len),
+            }),
+        );
         let final_map = fields.get("requirementEvidenceMap").cloned();
         let final_packet = fields.get("packet").cloned();
         merge_bm10_accounting(fields, provisional_requirement_map.as_ref(), final_map.as_ref(), final_packet.as_ref());
@@ -574,8 +591,13 @@ pub(crate) fn native_route_response_with_deadline(
             fields.insert("finalAdmission".to_owned(), serde_json::json!({
                 "status": "insufficient",
                 "candidateCount": 0,
-                "omissions": packet_omissions,
+                "omissions": packet_omissions.clone(),
                 "budget": packet_budget,
+            }));
+            fields.insert("budgetReduction".to_owned(), serde_json::json!({
+                "misleadingFragmentRetained": false,
+                "omissionReasons": packet_omissions,
+                "droppedCandidateCount": 0,
             }));
             merge_native_receipts(fields, native_receipts);
             let final_map = fields.get("requirementEvidenceMap").cloned();
@@ -1238,6 +1260,13 @@ pub fn native_response_to_ccs(
         .iter()
         .enumerate()
         .map(|(index, omission)| {
+            let reason = if omission.provider == membrane_protocol::ProviderId::Blueprint
+                && omission.reason == membrane_protocol::ReasonCode::GenerationIncoherent
+            {
+                "blueprint_stale"
+            } else {
+                omission.reason.as_str()
+            };
             let mut value = serde_json::json!({
                 // A provider-level omission carries no candidate id, so this
                 // read `omission:0`, `omission:1` and so on — which says a
@@ -1247,7 +1276,7 @@ pub fn native_response_to_ccs(
                     format!("{}:{index}", omission.provider.as_str())
                 }),
                 "layer": Value::Null,
-                "reason": omission.reason.as_str(),
+                "reason": reason,
             });
             if let Some(detail_id) = omission.detail_id.as_ref() {
                 value["detailId"] = Value::String(detail_id.clone());
@@ -1287,7 +1316,17 @@ pub fn native_response_to_ccs(
             .get("warnings")
             .and_then(Value::as_array)
             .cloned()
-            .unwrap_or_default();
+            .unwrap_or_default()
+            .into_iter()
+            .map(|mut warning| {
+                if warning.get("provider").and_then(Value::as_str) == Some("blueprint")
+                    && warning.get("reason").and_then(Value::as_str) == Some("generation_incoherent")
+                {
+                    warning["reason"] = Value::String("blueprint_stale".to_owned());
+                }
+                warning
+            })
+            .collect::<Vec<_>>();
         let status_complete = output
             .get("status")
             .and_then(Value::as_str)
@@ -1361,6 +1400,23 @@ pub fn native_response_to_ccs(
         && response.omissions.is_empty();
     let mut source_response = source_response;
     source_response["complete"] = Value::Bool(source_complete);
+    let requested_generation = request
+        .extensions
+        .get("hostGeneration")
+        .and_then(Value::as_str);
+    let observed_generation = freshness.generation.as_deref();
+    let host_generation_stale = requested_generation
+        .zip(observed_generation)
+        .is_some_and(|(requested, observed)| requested != observed);
+    if host_generation_stale {
+        source_response["complete"] = Value::Bool(false);
+        if let Some(warnings) = source_response.get_mut("warnings").and_then(Value::as_array_mut) {
+            warnings.push(serde_json::json!({
+                "code": "blueprint_stale",
+                "detailId": "host_generation_mismatch",
+            }));
+        }
+    }
     if unsupported_capability {
         source_response["complete"] = Value::Bool(false);
         if let Some(warnings) = source_response.get_mut("warnings").and_then(Value::as_array_mut) {
@@ -1558,6 +1614,7 @@ pub fn envelope_from_ccs(stdout: &str, input: EnvelopeInput) -> Result<Value, St
     let ambiguity_disposition_projection = raw_value.get("ambiguityDisposition").cloned();
     let provider_diagnostics_projection = raw_value.get("providerDiagnostics").cloned();
     let provider_outputs_projection = raw_value.get("providerOutputs").cloned();
+    let budget_reduction_projection = raw_value.get("budgetReduction").cloned();
     let journey_projection = raw_value.get("requirementEvidenceMap").cloned();
     let atomic_evidence_paths = raw_value
         .as_object_mut()
@@ -1642,6 +1699,9 @@ pub fn envelope_from_ccs(stdout: &str, input: EnvelopeInput) -> Result<Value, St
     }
     if let Some(value) = provider_outputs_projection {
         payload["providerOutputs"] = value;
+    }
+    if let Some(value) = budget_reduction_projection {
+        payload["budgetReduction"] = value;
     }
     if let Some(value) = journey_projection {
         payload["requirementEvidenceMap"] = value;

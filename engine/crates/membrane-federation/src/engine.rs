@@ -571,6 +571,15 @@ impl FederationEngine {
             let covered = journeys.iter().any(|journey| {
                 journey.dimension == fact.dimension
                     && journey.requirement_binding_digest == fact.binding_digest
+                    && fact.exact_target.as_ref().map_or(true, |target| {
+                        journey.target_ref.as_ref() == Some(target)
+                    })
+                    && fact.source_hash.as_ref().map_or(true, |hash| {
+                        journey.source_hash == *hash
+                    })
+                    && fact.representation_digest.as_ref().map_or(true, |digest| {
+                        journey.representation_digest == *digest
+                    })
             });
             if covered { continue; }
             let provider = acquisition_plan.providers.iter().copied().find(|provider| {
@@ -586,12 +595,16 @@ impl FederationEngine {
                 fact.binding_digest
             );
             if journey_keys.insert((evidence_id.clone(), fact.dimension.clone(), fact.binding_digest.clone())) {
-                let state = merged
-                    .omissions
-                    .iter()
-                    .find(|omission| omission.provider == provider)
-                    .map(journey_state_for_omission)
-                    .unwrap_or(crate::requirements::CandidateJourneyStateV1::NotDiscovered);
+                let state = if fact.exact_target.is_some() {
+                    crate::requirements::CandidateJourneyStateV1::NotDiscovered
+                } else {
+                    merged
+                        .omissions
+                        .iter()
+                        .find(|omission| omission.provider == provider)
+                        .map(journey_state_for_omission)
+                        .unwrap_or(crate::requirements::CandidateJourneyStateV1::NotDiscovered)
+                };
                 journeys.push(CandidateJourneyV1 {
                     evidence_id,
                     requirement_binding_digest: fact.binding_digest.clone(),
