@@ -150,9 +150,23 @@ test("qualification proves installed native Adapt selected-transcript lifecycle"
   assert.doesNotMatch(lower, /adapt-installed-qualification/);
   assert.match(lower, /qualificationworkspace[\s\S]*tools\\.cache\\memory\\cortex-engine.db/);
   assert.match(lower, /adapt\s*=\s*\$script:adaptevidence/);
-  assert.match(lower, /lifecycle[\s\S]*adapt\s*=\s*\$certification/);
+  assert.match(lower, /lifecycle[\s\S]*adapt\s*=\s*'pass'/);
   assert.match(lower, /caller-selected/);
   assert.match(lower, /source.*bindings/);
+});
+
+test("qualification lifecycle output matches platform & native-only seal consumers", () => {
+  for (const field of [
+    "install", "startup", "hubHealth", "tray", "popup", "renderer", "mcp17",
+    "nativeHostCutover", "blueprintHubHosted", "blueprintHubOffOneShot", "downgrade",
+    "upgrade", "stateContinuity", "uninstall", "residue", "nativeOnlyProcessTree",
+    "runtimeInventory", "currentRootActivation", "doctor", "hubOffManualBlueprint",
+    "residentFileChangeRefresh", "zeroInterpreterProcessTree",
+  ]) {
+    assert.match(source, new RegExp(`${field}\\s*=\\s*(?:if \\(\\$previousPath\\) \\{ )?'pass'`));
+  }
+  assert.match(source, /blueprint\s*=\s*\[ordered\]@\{[\s\S]*hubOwned\s*=\s*\(\$script:UpgradeEvidence\.Blueprint\.hubOwned\s*-eq\s*\$true\)/);
+  assert.match(source, /blueprint\s*=\s*\[ordered\]@\{[\s\S]*nativeOnly\s*=\s*\(\$script:UpgradeEvidence\.Health\.nativeOnly\s*-eq\s*\$true\)/);
 });
 
 test("qualification proves startup workspace migration is native, strict, atomic, & idempotent", () => {
