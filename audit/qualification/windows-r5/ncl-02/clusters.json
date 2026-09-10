@@ -1,0 +1,452 @@
+[
+  {
+    "owner": "adapt-completion",
+    "cluster": "cli-entrypoint",
+    "verdict": "parity-proven",
+    "fileCount": 4,
+    "nativeDestination": "engine/crates/membrane-runtime/src/cli.rs (adapt CLI tail), engine/crates/membrane-adapt/src/cli_api.rs",
+    "nativeTests": null,
+    "gap": "Native CLI surface has passing tests asserting explicit-store requirement, canonical-pool-change refusal, and CLI-tail registration -- genuine behavioral assertions, not vacuous constructs."
+  },
+  {
+    "owner": "adapt-completion",
+    "cluster": "admission-authority",
+    "verdict": "parity-proven",
+    "fileCount": 3,
+    "nativeDestination": "engine/crates/membrane-adapt/src/admission.rs, engine/crates/membrane-adapt/src/authority.rs (tests/gates_and_boundaries.rs)",
+    "nativeTests": null,
+    "gap": "gates_and_boundaries.rs asserts admission does not fabricate durable state and authority fields are excluded from proposals -- reads as a real assertion (checks struct fields absent / state absent), not vacuous."
+  },
+  {
+    "owner": "adapt-completion",
+    "cluster": "proposal-lifecycle-and-conflict",
+    "verdict": "parity-proven",
+    "fileCount": 7,
+    "nativeDestination": "engine/crates/membrane-adapt/src/proposal.rs, proposal_state.rs (tests/proposal_state_machine.rs, tests/proposal_target_exclusion.rs)",
+    "nativeTests": null,
+    "gap": "Native tests assert replay convergence, typed-conflict surfacing for competing variants, and tamper rejection on reopen -- these are the same self-merge / conflict-review guarantees the legacy consolidate/adjudicate manifest tests targeted, and each assertion inspects a concrete returned value/error, not just construction."
+  },
+  {
+    "owner": "adapt-completion",
+    "cluster": "multiwriter-precedence",
+    "verdict": "parity-proven",
+    "fileCount": 4,
+    "nativeDestination": "engine/crates/membrane-adapt/src/multiwriter.rs (inline #[cfg(test)] mod tests, tests/cli_surface_and_convergence.rs)",
+    "nativeTests": null,
+    "gap": "multiwriter.rs inline tests assert order-independent precedence resolution and conflict preservation on equal tiers with divergent payloads; convergence permutation-invariance is separately asserted in cli_surface_and_convergence.rs. Read source: both compare concrete winner()/conflict values, not vacuous."
+  },
+  {
+    "owner": "adapt-completion",
+    "cluster": "outcomes-effectiveness",
+    "verdict": "parity-proven",
+    "fileCount": 3,
+    "nativeDestination": "engine/crates/membrane-adapt/src/outcomes.rs, procedural_effectiveness.rs (tests/remediation_outcomes_cost.rs, tests/procedural_effectiveness.rs)",
+    "nativeTests": null,
+    "gap": "Native outcome ledger tests assert same-signature-only reopen, exposure-based adjustment, and refusal to invent counts on insufficient evidence -- matches legacy learning_outcomes semantics with concrete equality assertions."
+  },
+  {
+    "owner": "adapt-completion",
+    "cluster": "taste-record-and-v2-pipeline",
+    "verdict": "parity-proven",
+    "fileCount": 11,
+    "nativeDestination": "engine/crates/membrane-adapt/src/taste.rs, record.rs, scope.rs, seal.rs (tests/taste_contracts.rs, tests/taste_quality_benchmark.rs)",
+    "nativeTests": null,
+    "gap": "taste_contracts.rs asserts fail-closed behavior on unknown scope, seal tamper detection, and rejection of episodic facts misclassified as taste -- these are the precise correctness properties the legacy taste_v2/preference_record/rule_key tests targeted, each with a concrete assert on the returned Result/enum variant."
+  },
+  {
+    "owner": "adapt-completion",
+    "cluster": "insights-detectors-and-recurrence",
+    "verdict": "parity-proven",
+    "fileCount": 6,
+    "nativeDestination": "engine/crates/membrane-adapt/src/insights/{detectors,guards,recurrence,sealed_issue}.rs (tests/insights_detector_benchmark.rs, tests/insights_pipeline.rs, tests/portable_insights_benchmark.rs, tests/real_heldout_corpus.rs)",
+    "nativeTests": null,
+    "gap": "This is the strongest cluster: native tests assert hard-negative suppression (quoted/hypothetical/negated spans) and exact ground-truth reproduction against a held-out corpus, directly matching the lane's detector-positive/hard-negative obligation."
+  },
+  {
+    "owner": "adapt-completion",
+    "cluster": "clarification-resume-cancel",
+    "verdict": "parity-proven",
+    "fileCount": 4,
+    "nativeDestination": "engine/crates/membrane-adapt/src/clarification.rs (tests/clarification_state.rs)",
+    "nativeTests": null,
+    "gap": "clarification_state.rs directly asserts the resume/cancel/stale-target obligations named in this lane's charter: stale evidence cannot rebind, cancellation is terminal, and restart-persisted state rejects question rewrite -- concrete Result/state assertions, not vacuous constructs."
+  },
+  {
+    "owner": "adapt-completion",
+    "cluster": "manifest-family",
+    "verdict": "insufficient",
+    "fileCount": 9,
+    "nativeDestination": "engine/crates/membrane-adapt/src/manifest.rs (no #[cfg(test)] module found in this file at inspection time)",
+    "nativeTests": null,
+    "gap": "Native manifest.rs exists but carries no discoverable unit tests, and no tests/*.rs file in membrane-adapt targets manifest v13 contract semantics, snapshot mining, or semantic validation by name. The legacy test_manifest_v13_contract.py is exactly the kind of versioned-contract test the NCL-02 bar requires a named equivalent for -- none found. Would need: a native test asserting the v13 manifest contract (field set / version gate) and one asserting mine_snapshot_manifest / semantic_validate_manifest fail-closed behavior, with I1 evidence hash proving they ran."
+  },
+  {
+    "owner": "adapt-completion",
+    "cluster": "session-transport-and-persistence",
+    "verdict": "insufficient",
+    "fileCount": 9,
+    "nativeDestination": "unclear -- candidates in membrane-client (residency.rs, memory_backend.rs) or membrane-adapt, not confirmed",
+    "nativeTests": null,
+    "gap": "Could not identify a specific native module or test asserting session-selection, eval-isolation, or LLM-transport equivalence for adapt specifically (the membrane-client tests found relate to generic memory/residency, not adapt's own session/persistence/LLM-transport behavior). Would need a named native test file (or module) plus at least one passing assertion tying it to these five legacy behaviors before this cluster can move to parity-proven."
+  },
+  {
+    "owner": "adapt-completion",
+    "cluster": "workspace-cross-machine-and-doctor",
+    "verdict": "insufficient",
+    "fileCount": 14,
+    "nativeDestination": "engine/crates/membrane-adapt/src/benchmark.rs / cli_api.rs (doctor_flags_corrupt_state, benchmark_digest_is_stable_and_scores_families exist, but token spend / transcript snapshot / cross-machine sync semantics not confirmed native-side)",
+    "nativeTests": null,
+    "gap": "Only the doctor/benchmark half of this cluster has a matching native assertion. token_spend.py, transcript_snapshots.py, transcript_sources.py, cross_machine.py, and run_journal.py have no identified native counterpart or test in the I1 passing list -- grepping for cross_machine, transcript_snapshot, token_spend, run_journal by name in the native crate and in i1-passing-tests.txt returned nothing. These legacy files should stay until a native destination and test are named for them specifically; do not let the doctor/benchmark match justify deleting the whole cluster."
+  },
+  {
+    "owner": "adapt-completion",
+    "cluster": "test-harness-and-smoke",
+    "verdict": "insufficient",
+    "fileCount": 7,
+    "nativeDestination": "engine/crates/membrane-adapt (tests/closed_loop_qualification.rs, tests/governed_decisions.rs) and engine/crates/membrane-adapt/src/delivery.rs",
+    "nativeTests": null,
+    "gap": "The governed_decisions.rs tests cover the freeze/phase-pilot/corroboration *evaluation* semantics (comparison selection, hard-negative protection, terminal baseline) reasonably well, but 'delivery parity' and 'production delivery smoke' are end-to-end smoke assertions -- no native smoke-test equivalent was found asserting an actual delivered packet under production-like conditions (delivery.rs has no accompanying test file in the list gathered). Mark insufficient for test_production_delivery_smoke.py and test_delivery_parity.py specifically until a native smoke/parity test is named; the pilot/corroboration files are closer to proven via governed_decisions.rs."
+  },
+  {
+    "owner": "blueprint-repair",
+    "cluster": "blueprint/release/launchers",
+    "verdict": "insufficient",
+    "fileCount": 4,
+    "nativeDestination": "engine/crates/membrane-blueprint (partial/uncertain — no file-level mapping confirmed for this cluster; native crate has 20 src files vs 234 legacy files across 32 clusters, so most legacy surface, including all 37 language-tables/*.mjs grammars, the 15 release scripts, and the 3 scripts/ci helpers, has no identified native counterpart at all)",
+    "nativeTests": null,
+    "gap": "Caller cutover is not observed for this cluster (or for the blueprint/ tree generally): scripts/run-m0-baseline-current.mjs still executes \"pnpm --dir blueprint test:all\" via blueprint/scripts/release/npm-cli.mjs, scripts/qualification/cases/bpt-windows.mjs explicitly states DELIVERED status is void for the native path per REC-02 until engine/crates/membrane-blueprint lands equivalent behavior and still loads files from this legacy tree directly, mcp/capability-inventory.mjs lists blueprint/src/lib/findings/detect.mjs, blueprint/src/graph/module-surface.mjs, and blueprint/src/graph/resolution/index.mjs as the live artifacts backing shipped capabilities, and released-build SBOM/runtime-language-manifest evidence under docs/evidence/releases/ still enumerates blueprint/ as shipped runtime. Per NCL-02, a cluster with no caller cutover is rejected regardless of native module existence or test evidence, so no parity-proven verdict is claimed for any file in this cluster. No passing I1 test name is cited as proving replacement because doing so would not establish parity while a live caller still reaches the legacy path — the negative control in NCL-02 (vacuous/incomplete assertion does not count) is read here to mean incomplete caller-cutover evidence does not count either."
+  },
+  {
+    "owner": "blueprint-repair",
+    "cluster": "blueprint/scripts (top-level)",
+    "verdict": "insufficient",
+    "fileCount": 17,
+    "nativeDestination": "engine/crates/membrane-blueprint (partial/uncertain — no file-level mapping confirmed for this cluster; native crate has 20 src files vs 234 legacy files across 32 clusters, so most legacy surface, including all 37 language-tables/*.mjs grammars, the 15 release scripts, and the 3 scripts/ci helpers, has no identified native counterpart at all)",
+    "nativeTests": null,
+    "gap": "Caller cutover is not observed for this cluster (or for the blueprint/ tree generally): scripts/run-m0-baseline-current.mjs still executes \"pnpm --dir blueprint test:all\" via blueprint/scripts/release/npm-cli.mjs, scripts/qualification/cases/bpt-windows.mjs explicitly states DELIVERED status is void for the native path per REC-02 until engine/crates/membrane-blueprint lands equivalent behavior and still loads files from this legacy tree directly, mcp/capability-inventory.mjs lists blueprint/src/lib/findings/detect.mjs, blueprint/src/graph/module-surface.mjs, and blueprint/src/graph/resolution/index.mjs as the live artifacts backing shipped capabilities, and released-build SBOM/runtime-language-manifest evidence under docs/evidence/releases/ still enumerates blueprint/ as shipped runtime. Per NCL-02, a cluster with no caller cutover is rejected regardless of native module existence or test evidence, so no parity-proven verdict is claimed for any file in this cluster. No passing I1 test name is cited as proving replacement because doing so would not establish parity while a live caller still reaches the legacy path — the negative control in NCL-02 (vacuous/incomplete assertion does not count) is read here to mean incomplete caller-cutover evidence does not count either."
+  },
+  {
+    "owner": "blueprint-repair",
+    "cluster": "blueprint/scripts/ci",
+    "verdict": "insufficient",
+    "fileCount": 3,
+    "nativeDestination": "engine/crates/membrane-blueprint (partial/uncertain — no file-level mapping confirmed for this cluster; native crate has 20 src files vs 234 legacy files across 32 clusters, so most legacy surface, including all 37 language-tables/*.mjs grammars, the 15 release scripts, and the 3 scripts/ci helpers, has no identified native counterpart at all)",
+    "nativeTests": null,
+    "gap": "Caller cutover is not observed for this cluster (or for the blueprint/ tree generally): scripts/run-m0-baseline-current.mjs still executes \"pnpm --dir blueprint test:all\" via blueprint/scripts/release/npm-cli.mjs, scripts/qualification/cases/bpt-windows.mjs explicitly states DELIVERED status is void for the native path per REC-02 until engine/crates/membrane-blueprint lands equivalent behavior and still loads files from this legacy tree directly, mcp/capability-inventory.mjs lists blueprint/src/lib/findings/detect.mjs, blueprint/src/graph/module-surface.mjs, and blueprint/src/graph/resolution/index.mjs as the live artifacts backing shipped capabilities, and released-build SBOM/runtime-language-manifest evidence under docs/evidence/releases/ still enumerates blueprint/ as shipped runtime. Per NCL-02, a cluster with no caller cutover is rejected regardless of native module existence or test evidence, so no parity-proven verdict is claimed for any file in this cluster. No passing I1 test name is cited as proving replacement because doing so would not establish parity while a live caller still reaches the legacy path — the negative control in NCL-02 (vacuous/incomplete assertion does not count) is read here to mean incomplete caller-cutover evidence does not count either."
+  },
+  {
+    "owner": "blueprint-repair",
+    "cluster": "blueprint/scripts/cli",
+    "verdict": "insufficient",
+    "fileCount": 3,
+    "nativeDestination": "engine/crates/membrane-blueprint (partial/uncertain — no file-level mapping confirmed for this cluster; native crate has 20 src files vs 234 legacy files across 32 clusters, so most legacy surface, including all 37 language-tables/*.mjs grammars, the 15 release scripts, and the 3 scripts/ci helpers, has no identified native counterpart at all)",
+    "nativeTests": null,
+    "gap": "Caller cutover is not observed for this cluster (or for the blueprint/ tree generally): scripts/run-m0-baseline-current.mjs still executes \"pnpm --dir blueprint test:all\" via blueprint/scripts/release/npm-cli.mjs, scripts/qualification/cases/bpt-windows.mjs explicitly states DELIVERED status is void for the native path per REC-02 until engine/crates/membrane-blueprint lands equivalent behavior and still loads files from this legacy tree directly, mcp/capability-inventory.mjs lists blueprint/src/lib/findings/detect.mjs, blueprint/src/graph/module-surface.mjs, and blueprint/src/graph/resolution/index.mjs as the live artifacts backing shipped capabilities, and released-build SBOM/runtime-language-manifest evidence under docs/evidence/releases/ still enumerates blueprint/ as shipped runtime. Per NCL-02, a cluster with no caller cutover is rejected regardless of native module existence or test evidence, so no parity-proven verdict is claimed for any file in this cluster. No passing I1 test name is cited as proving replacement because doing so would not establish parity while a live caller still reaches the legacy path — the negative control in NCL-02 (vacuous/incomplete assertion does not count) is read here to mean incomplete caller-cutover evidence does not count either."
+  },
+  {
+    "owner": "blueprint-repair",
+    "cluster": "blueprint/scripts/grammars",
+    "verdict": "insufficient",
+    "fileCount": 2,
+    "nativeDestination": "engine/crates/membrane-blueprint (partial/uncertain — no file-level mapping confirmed for this cluster; native crate has 20 src files vs 234 legacy files across 32 clusters, so most legacy surface, including all 37 language-tables/*.mjs grammars, the 15 release scripts, and the 3 scripts/ci helpers, has no identified native counterpart at all)",
+    "nativeTests": null,
+    "gap": "Caller cutover is not observed for this cluster (or for the blueprint/ tree generally): scripts/run-m0-baseline-current.mjs still executes \"pnpm --dir blueprint test:all\" via blueprint/scripts/release/npm-cli.mjs, scripts/qualification/cases/bpt-windows.mjs explicitly states DELIVERED status is void for the native path per REC-02 until engine/crates/membrane-blueprint lands equivalent behavior and still loads files from this legacy tree directly, mcp/capability-inventory.mjs lists blueprint/src/lib/findings/detect.mjs, blueprint/src/graph/module-surface.mjs, and blueprint/src/graph/resolution/index.mjs as the live artifacts backing shipped capabilities, and released-build SBOM/runtime-language-manifest evidence under docs/evidence/releases/ still enumerates blueprint/ as shipped runtime. Per NCL-02, a cluster with no caller cutover is rejected regardless of native module existence or test evidence, so no parity-proven verdict is claimed for any file in this cluster. No passing I1 test name is cited as proving replacement because doing so would not establish parity while a live caller still reaches the legacy path — the negative control in NCL-02 (vacuous/incomplete assertion does not count) is read here to mean incomplete caller-cutover evidence does not count either."
+  },
+  {
+    "owner": "blueprint-repair",
+    "cluster": "blueprint/scripts/release",
+    "verdict": "insufficient",
+    "fileCount": 15,
+    "nativeDestination": "engine/crates/membrane-blueprint (partial/uncertain — no file-level mapping confirmed for this cluster; native crate has 20 src files vs 234 legacy files across 32 clusters, so most legacy surface, including all 37 language-tables/*.mjs grammars, the 15 release scripts, and the 3 scripts/ci helpers, has no identified native counterpart at all)",
+    "nativeTests": null,
+    "gap": "Caller cutover is not observed for this cluster (or for the blueprint/ tree generally): scripts/run-m0-baseline-current.mjs still executes \"pnpm --dir blueprint test:all\" via blueprint/scripts/release/npm-cli.mjs, scripts/qualification/cases/bpt-windows.mjs explicitly states DELIVERED status is void for the native path per REC-02 until engine/crates/membrane-blueprint lands equivalent behavior and still loads files from this legacy tree directly, mcp/capability-inventory.mjs lists blueprint/src/lib/findings/detect.mjs, blueprint/src/graph/module-surface.mjs, and blueprint/src/graph/resolution/index.mjs as the live artifacts backing shipped capabilities, and released-build SBOM/runtime-language-manifest evidence under docs/evidence/releases/ still enumerates blueprint/ as shipped runtime. Per NCL-02, a cluster with no caller cutover is rejected regardless of native module existence or test evidence, so no parity-proven verdict is claimed for any file in this cluster. No passing I1 test name is cited as proving replacement because doing so would not establish parity while a live caller still reaches the legacy path — the negative control in NCL-02 (vacuous/incomplete assertion does not count) is read here to mean incomplete caller-cutover evidence does not count either."
+  },
+  {
+    "owner": "blueprint-repair",
+    "cluster": "blueprint/src/graph (core)",
+    "verdict": "insufficient",
+    "fileCount": 61,
+    "nativeDestination": "engine/crates/membrane-blueprint (partial/uncertain — no file-level mapping confirmed for this cluster; native crate has 20 src files vs 234 legacy files across 32 clusters, so most legacy surface, including all 37 language-tables/*.mjs grammars, the 15 release scripts, and the 3 scripts/ci helpers, has no identified native counterpart at all)",
+    "nativeTests": null,
+    "gap": "Caller cutover is not observed for this cluster (or for the blueprint/ tree generally): scripts/run-m0-baseline-current.mjs still executes \"pnpm --dir blueprint test:all\" via blueprint/scripts/release/npm-cli.mjs, scripts/qualification/cases/bpt-windows.mjs explicitly states DELIVERED status is void for the native path per REC-02 until engine/crates/membrane-blueprint lands equivalent behavior and still loads files from this legacy tree directly, mcp/capability-inventory.mjs lists blueprint/src/lib/findings/detect.mjs, blueprint/src/graph/module-surface.mjs, and blueprint/src/graph/resolution/index.mjs as the live artifacts backing shipped capabilities, and released-build SBOM/runtime-language-manifest evidence under docs/evidence/releases/ still enumerates blueprint/ as shipped runtime. Per NCL-02, a cluster with no caller cutover is rejected regardless of native module existence or test evidence, so no parity-proven verdict is claimed for any file in this cluster. No passing I1 test name is cited as proving replacement because doing so would not establish parity while a live caller still reaches the legacy path — the negative control in NCL-02 (vacuous/incomplete assertion does not count) is read here to mean incomplete caller-cutover evidence does not count either."
+  },
+  {
+    "owner": "blueprint-repair",
+    "cluster": "blueprint/src/graph/language-tables",
+    "verdict": "insufficient",
+    "fileCount": 37,
+    "nativeDestination": "engine/crates/membrane-blueprint (partial/uncertain — no file-level mapping confirmed for this cluster; native crate has 20 src files vs 234 legacy files across 32 clusters, so most legacy surface, including all 37 language-tables/*.mjs grammars, the 15 release scripts, and the 3 scripts/ci helpers, has no identified native counterpart at all)",
+    "nativeTests": null,
+    "gap": "Caller cutover is not observed for this cluster (or for the blueprint/ tree generally): scripts/run-m0-baseline-current.mjs still executes \"pnpm --dir blueprint test:all\" via blueprint/scripts/release/npm-cli.mjs, scripts/qualification/cases/bpt-windows.mjs explicitly states DELIVERED status is void for the native path per REC-02 until engine/crates/membrane-blueprint lands equivalent behavior and still loads files from this legacy tree directly, mcp/capability-inventory.mjs lists blueprint/src/lib/findings/detect.mjs, blueprint/src/graph/module-surface.mjs, and blueprint/src/graph/resolution/index.mjs as the live artifacts backing shipped capabilities, and released-build SBOM/runtime-language-manifest evidence under docs/evidence/releases/ still enumerates blueprint/ as shipped runtime. Per NCL-02, a cluster with no caller cutover is rejected regardless of native module existence or test evidence, so no parity-proven verdict is claimed for any file in this cluster. No passing I1 test name is cited as proving replacement because doing so would not establish parity while a live caller still reaches the legacy path — the negative control in NCL-02 (vacuous/incomplete assertion does not count) is read here to mean incomplete caller-cutover evidence does not count either."
+  },
+  {
+    "owner": "blueprint-repair",
+    "cluster": "blueprint/src/graph/resolution",
+    "verdict": "insufficient",
+    "fileCount": 1,
+    "nativeDestination": "engine/crates/membrane-blueprint (partial/uncertain — no file-level mapping confirmed for this cluster; native crate has 20 src files vs 234 legacy files across 32 clusters, so most legacy surface, including all 37 language-tables/*.mjs grammars, the 15 release scripts, and the 3 scripts/ci helpers, has no identified native counterpart at all)",
+    "nativeTests": null,
+    "gap": "Caller cutover is not observed for this cluster (or for the blueprint/ tree generally): scripts/run-m0-baseline-current.mjs still executes \"pnpm --dir blueprint test:all\" via blueprint/scripts/release/npm-cli.mjs, scripts/qualification/cases/bpt-windows.mjs explicitly states DELIVERED status is void for the native path per REC-02 until engine/crates/membrane-blueprint lands equivalent behavior and still loads files from this legacy tree directly, mcp/capability-inventory.mjs lists blueprint/src/lib/findings/detect.mjs, blueprint/src/graph/module-surface.mjs, and blueprint/src/graph/resolution/index.mjs as the live artifacts backing shipped capabilities, and released-build SBOM/runtime-language-manifest evidence under docs/evidence/releases/ still enumerates blueprint/ as shipped runtime. Per NCL-02, a cluster with no caller cutover is rejected regardless of native module existence or test evidence, so no parity-proven verdict is claimed for any file in this cluster. No passing I1 test name is cited as proving replacement because doing so would not establish parity while a live caller still reaches the legacy path — the negative control in NCL-02 (vacuous/incomplete assertion does not count) is read here to mean incomplete caller-cutover evidence does not count either."
+  },
+  {
+    "owner": "blueprint-repair",
+    "cluster": "blueprint/src/lib (misc)",
+    "verdict": "insufficient",
+    "fileCount": 20,
+    "nativeDestination": "engine/crates/membrane-blueprint (partial/uncertain — no file-level mapping confirmed for this cluster; native crate has 20 src files vs 234 legacy files across 32 clusters, so most legacy surface, including all 37 language-tables/*.mjs grammars, the 15 release scripts, and the 3 scripts/ci helpers, has no identified native counterpart at all)",
+    "nativeTests": null,
+    "gap": "Caller cutover is not observed for this cluster (or for the blueprint/ tree generally): scripts/run-m0-baseline-current.mjs still executes \"pnpm --dir blueprint test:all\" via blueprint/scripts/release/npm-cli.mjs, scripts/qualification/cases/bpt-windows.mjs explicitly states DELIVERED status is void for the native path per REC-02 until engine/crates/membrane-blueprint lands equivalent behavior and still loads files from this legacy tree directly, mcp/capability-inventory.mjs lists blueprint/src/lib/findings/detect.mjs, blueprint/src/graph/module-surface.mjs, and blueprint/src/graph/resolution/index.mjs as the live artifacts backing shipped capabilities, and released-build SBOM/runtime-language-manifest evidence under docs/evidence/releases/ still enumerates blueprint/ as shipped runtime. Per NCL-02, a cluster with no caller cutover is rejected regardless of native module existence or test evidence, so no parity-proven verdict is claimed for any file in this cluster. No passing I1 test name is cited as proving replacement because doing so would not establish parity while a live caller still reaches the legacy path — the negative control in NCL-02 (vacuous/incomplete assertion does not count) is read here to mean incomplete caller-cutover evidence does not count either."
+  },
+  {
+    "owner": "blueprint-repair",
+    "cluster": "blueprint/src/lib/application",
+    "verdict": "insufficient",
+    "fileCount": 4,
+    "nativeDestination": "engine/crates/membrane-blueprint (partial/uncertain — no file-level mapping confirmed for this cluster; native crate has 20 src files vs 234 legacy files across 32 clusters, so most legacy surface, including all 37 language-tables/*.mjs grammars, the 15 release scripts, and the 3 scripts/ci helpers, has no identified native counterpart at all)",
+    "nativeTests": null,
+    "gap": "Caller cutover is not observed for this cluster (or for the blueprint/ tree generally): scripts/run-m0-baseline-current.mjs still executes \"pnpm --dir blueprint test:all\" via blueprint/scripts/release/npm-cli.mjs, scripts/qualification/cases/bpt-windows.mjs explicitly states DELIVERED status is void for the native path per REC-02 until engine/crates/membrane-blueprint lands equivalent behavior and still loads files from this legacy tree directly, mcp/capability-inventory.mjs lists blueprint/src/lib/findings/detect.mjs, blueprint/src/graph/module-surface.mjs, and blueprint/src/graph/resolution/index.mjs as the live artifacts backing shipped capabilities, and released-build SBOM/runtime-language-manifest evidence under docs/evidence/releases/ still enumerates blueprint/ as shipped runtime. Per NCL-02, a cluster with no caller cutover is rejected regardless of native module existence or test evidence, so no parity-proven verdict is claimed for any file in this cluster. No passing I1 test name is cited as proving replacement because doing so would not establish parity while a live caller still reaches the legacy path — the negative control in NCL-02 (vacuous/incomplete assertion does not count) is read here to mean incomplete caller-cutover evidence does not count either."
+  },
+  {
+    "owner": "blueprint-repair",
+    "cluster": "blueprint/src/lib/explorer",
+    "verdict": "insufficient",
+    "fileCount": 3,
+    "nativeDestination": "engine/crates/membrane-blueprint (partial/uncertain — no file-level mapping confirmed for this cluster; native crate has 20 src files vs 234 legacy files across 32 clusters, so most legacy surface, including all 37 language-tables/*.mjs grammars, the 15 release scripts, and the 3 scripts/ci helpers, has no identified native counterpart at all)",
+    "nativeTests": null,
+    "gap": "Caller cutover is not observed for this cluster (or for the blueprint/ tree generally): scripts/run-m0-baseline-current.mjs still executes \"pnpm --dir blueprint test:all\" via blueprint/scripts/release/npm-cli.mjs, scripts/qualification/cases/bpt-windows.mjs explicitly states DELIVERED status is void for the native path per REC-02 until engine/crates/membrane-blueprint lands equivalent behavior and still loads files from this legacy tree directly, mcp/capability-inventory.mjs lists blueprint/src/lib/findings/detect.mjs, blueprint/src/graph/module-surface.mjs, and blueprint/src/graph/resolution/index.mjs as the live artifacts backing shipped capabilities, and released-build SBOM/runtime-language-manifest evidence under docs/evidence/releases/ still enumerates blueprint/ as shipped runtime. Per NCL-02, a cluster with no caller cutover is rejected regardless of native module existence or test evidence, so no parity-proven verdict is claimed for any file in this cluster. No passing I1 test name is cited as proving replacement because doing so would not establish parity while a live caller still reaches the legacy path — the negative control in NCL-02 (vacuous/incomplete assertion does not count) is read here to mean incomplete caller-cutover evidence does not count either."
+  },
+  {
+    "owner": "blueprint-repair",
+    "cluster": "blueprint/src/lib/federation",
+    "verdict": "insufficient",
+    "fileCount": 1,
+    "nativeDestination": "engine/crates/membrane-blueprint (partial/uncertain — no file-level mapping confirmed for this cluster; native crate has 20 src files vs 234 legacy files across 32 clusters, so most legacy surface, including all 37 language-tables/*.mjs grammars, the 15 release scripts, and the 3 scripts/ci helpers, has no identified native counterpart at all)",
+    "nativeTests": null,
+    "gap": "Caller cutover is not observed for this cluster (or for the blueprint/ tree generally): scripts/run-m0-baseline-current.mjs still executes \"pnpm --dir blueprint test:all\" via blueprint/scripts/release/npm-cli.mjs, scripts/qualification/cases/bpt-windows.mjs explicitly states DELIVERED status is void for the native path per REC-02 until engine/crates/membrane-blueprint lands equivalent behavior and still loads files from this legacy tree directly, mcp/capability-inventory.mjs lists blueprint/src/lib/findings/detect.mjs, blueprint/src/graph/module-surface.mjs, and blueprint/src/graph/resolution/index.mjs as the live artifacts backing shipped capabilities, and released-build SBOM/runtime-language-manifest evidence under docs/evidence/releases/ still enumerates blueprint/ as shipped runtime. Per NCL-02, a cluster with no caller cutover is rejected regardless of native module existence or test evidence, so no parity-proven verdict is claimed for any file in this cluster. No passing I1 test name is cited as proving replacement because doing so would not establish parity while a live caller still reaches the legacy path — the negative control in NCL-02 (vacuous/incomplete assertion does not count) is read here to mean incomplete caller-cutover evidence does not count either."
+  },
+  {
+    "owner": "blueprint-repair",
+    "cluster": "blueprint/src/lib/findings",
+    "verdict": "insufficient",
+    "fileCount": 4,
+    "nativeDestination": "engine/crates/membrane-blueprint (partial/uncertain — no file-level mapping confirmed for this cluster; native crate has 20 src files vs 234 legacy files across 32 clusters, so most legacy surface, including all 37 language-tables/*.mjs grammars, the 15 release scripts, and the 3 scripts/ci helpers, has no identified native counterpart at all)",
+    "nativeTests": null,
+    "gap": "Caller cutover is not observed for this cluster (or for the blueprint/ tree generally): scripts/run-m0-baseline-current.mjs still executes \"pnpm --dir blueprint test:all\" via blueprint/scripts/release/npm-cli.mjs, scripts/qualification/cases/bpt-windows.mjs explicitly states DELIVERED status is void for the native path per REC-02 until engine/crates/membrane-blueprint lands equivalent behavior and still loads files from this legacy tree directly, mcp/capability-inventory.mjs lists blueprint/src/lib/findings/detect.mjs, blueprint/src/graph/module-surface.mjs, and blueprint/src/graph/resolution/index.mjs as the live artifacts backing shipped capabilities, and released-build SBOM/runtime-language-manifest evidence under docs/evidence/releases/ still enumerates blueprint/ as shipped runtime. Per NCL-02, a cluster with no caller cutover is rejected regardless of native module existence or test evidence, so no parity-proven verdict is claimed for any file in this cluster. No passing I1 test name is cited as proving replacement because doing so would not establish parity while a live caller still reaches the legacy path — the negative control in NCL-02 (vacuous/incomplete assertion does not count) is read here to mean incomplete caller-cutover evidence does not count either."
+  },
+  {
+    "owner": "blueprint-repair",
+    "cluster": "blueprint/src/lib/hooks",
+    "verdict": "insufficient",
+    "fileCount": 1,
+    "nativeDestination": "engine/crates/membrane-blueprint (partial/uncertain — no file-level mapping confirmed for this cluster; native crate has 20 src files vs 234 legacy files across 32 clusters, so most legacy surface, including all 37 language-tables/*.mjs grammars, the 15 release scripts, and the 3 scripts/ci helpers, has no identified native counterpart at all)",
+    "nativeTests": null,
+    "gap": "Caller cutover is not observed for this cluster (or for the blueprint/ tree generally): scripts/run-m0-baseline-current.mjs still executes \"pnpm --dir blueprint test:all\" via blueprint/scripts/release/npm-cli.mjs, scripts/qualification/cases/bpt-windows.mjs explicitly states DELIVERED status is void for the native path per REC-02 until engine/crates/membrane-blueprint lands equivalent behavior and still loads files from this legacy tree directly, mcp/capability-inventory.mjs lists blueprint/src/lib/findings/detect.mjs, blueprint/src/graph/module-surface.mjs, and blueprint/src/graph/resolution/index.mjs as the live artifacts backing shipped capabilities, and released-build SBOM/runtime-language-manifest evidence under docs/evidence/releases/ still enumerates blueprint/ as shipped runtime. Per NCL-02, a cluster with no caller cutover is rejected regardless of native module existence or test evidence, so no parity-proven verdict is claimed for any file in this cluster. No passing I1 test name is cited as proving replacement because doing so would not establish parity while a live caller still reaches the legacy path — the negative control in NCL-02 (vacuous/incomplete assertion does not count) is read here to mean incomplete caller-cutover evidence does not count either."
+  },
+  {
+    "owner": "blueprint-repair",
+    "cluster": "blueprint/src/lib/init",
+    "verdict": "insufficient",
+    "fileCount": 5,
+    "nativeDestination": "engine/crates/membrane-blueprint (partial/uncertain — no file-level mapping confirmed for this cluster; native crate has 20 src files vs 234 legacy files across 32 clusters, so most legacy surface, including all 37 language-tables/*.mjs grammars, the 15 release scripts, and the 3 scripts/ci helpers, has no identified native counterpart at all)",
+    "nativeTests": null,
+    "gap": "Caller cutover is not observed for this cluster (or for the blueprint/ tree generally): scripts/run-m0-baseline-current.mjs still executes \"pnpm --dir blueprint test:all\" via blueprint/scripts/release/npm-cli.mjs, scripts/qualification/cases/bpt-windows.mjs explicitly states DELIVERED status is void for the native path per REC-02 until engine/crates/membrane-blueprint lands equivalent behavior and still loads files from this legacy tree directly, mcp/capability-inventory.mjs lists blueprint/src/lib/findings/detect.mjs, blueprint/src/graph/module-surface.mjs, and blueprint/src/graph/resolution/index.mjs as the live artifacts backing shipped capabilities, and released-build SBOM/runtime-language-manifest evidence under docs/evidence/releases/ still enumerates blueprint/ as shipped runtime. Per NCL-02, a cluster with no caller cutover is rejected regardless of native module existence or test evidence, so no parity-proven verdict is claimed for any file in this cluster. No passing I1 test name is cited as proving replacement because doing so would not establish parity while a live caller still reaches the legacy path — the negative control in NCL-02 (vacuous/incomplete assertion does not count) is read here to mean incomplete caller-cutover evidence does not count either."
+  },
+  {
+    "owner": "blueprint-repair",
+    "cluster": "blueprint/src/lib/languages",
+    "verdict": "insufficient",
+    "fileCount": 1,
+    "nativeDestination": "engine/crates/membrane-blueprint (partial/uncertain — no file-level mapping confirmed for this cluster; native crate has 20 src files vs 234 legacy files across 32 clusters, so most legacy surface, including all 37 language-tables/*.mjs grammars, the 15 release scripts, and the 3 scripts/ci helpers, has no identified native counterpart at all)",
+    "nativeTests": null,
+    "gap": "Caller cutover is not observed for this cluster (or for the blueprint/ tree generally): scripts/run-m0-baseline-current.mjs still executes \"pnpm --dir blueprint test:all\" via blueprint/scripts/release/npm-cli.mjs, scripts/qualification/cases/bpt-windows.mjs explicitly states DELIVERED status is void for the native path per REC-02 until engine/crates/membrane-blueprint lands equivalent behavior and still loads files from this legacy tree directly, mcp/capability-inventory.mjs lists blueprint/src/lib/findings/detect.mjs, blueprint/src/graph/module-surface.mjs, and blueprint/src/graph/resolution/index.mjs as the live artifacts backing shipped capabilities, and released-build SBOM/runtime-language-manifest evidence under docs/evidence/releases/ still enumerates blueprint/ as shipped runtime. Per NCL-02, a cluster with no caller cutover is rejected regardless of native module existence or test evidence, so no parity-proven verdict is claimed for any file in this cluster. No passing I1 test name is cited as proving replacement because doing so would not establish parity while a live caller still reaches the legacy path — the negative control in NCL-02 (vacuous/incomplete assertion does not count) is read here to mean incomplete caller-cutover evidence does not count either."
+  },
+  {
+    "owner": "blueprint-repair",
+    "cluster": "blueprint/src/lib/operations",
+    "verdict": "insufficient",
+    "fileCount": 3,
+    "nativeDestination": "engine/crates/membrane-blueprint (partial/uncertain — no file-level mapping confirmed for this cluster; native crate has 20 src files vs 234 legacy files across 32 clusters, so most legacy surface, including all 37 language-tables/*.mjs grammars, the 15 release scripts, and the 3 scripts/ci helpers, has no identified native counterpart at all)",
+    "nativeTests": null,
+    "gap": "Caller cutover is not observed for this cluster (or for the blueprint/ tree generally): scripts/run-m0-baseline-current.mjs still executes \"pnpm --dir blueprint test:all\" via blueprint/scripts/release/npm-cli.mjs, scripts/qualification/cases/bpt-windows.mjs explicitly states DELIVERED status is void for the native path per REC-02 until engine/crates/membrane-blueprint lands equivalent behavior and still loads files from this legacy tree directly, mcp/capability-inventory.mjs lists blueprint/src/lib/findings/detect.mjs, blueprint/src/graph/module-surface.mjs, and blueprint/src/graph/resolution/index.mjs as the live artifacts backing shipped capabilities, and released-build SBOM/runtime-language-manifest evidence under docs/evidence/releases/ still enumerates blueprint/ as shipped runtime. Per NCL-02, a cluster with no caller cutover is rejected regardless of native module existence or test evidence, so no parity-proven verdict is claimed for any file in this cluster. No passing I1 test name is cited as proving replacement because doing so would not establish parity while a live caller still reaches the legacy path — the negative control in NCL-02 (vacuous/incomplete assertion does not count) is read here to mean incomplete caller-cutover evidence does not count either."
+  },
+  {
+    "owner": "blueprint-repair",
+    "cluster": "blueprint/src/lib/rules",
+    "verdict": "insufficient",
+    "fileCount": 4,
+    "nativeDestination": "engine/crates/membrane-blueprint (partial/uncertain — no file-level mapping confirmed for this cluster; native crate has 20 src files vs 234 legacy files across 32 clusters, so most legacy surface, including all 37 language-tables/*.mjs grammars, the 15 release scripts, and the 3 scripts/ci helpers, has no identified native counterpart at all)",
+    "nativeTests": null,
+    "gap": "Caller cutover is not observed for this cluster (or for the blueprint/ tree generally): scripts/run-m0-baseline-current.mjs still executes \"pnpm --dir blueprint test:all\" via blueprint/scripts/release/npm-cli.mjs, scripts/qualification/cases/bpt-windows.mjs explicitly states DELIVERED status is void for the native path per REC-02 until engine/crates/membrane-blueprint lands equivalent behavior and still loads files from this legacy tree directly, mcp/capability-inventory.mjs lists blueprint/src/lib/findings/detect.mjs, blueprint/src/graph/module-surface.mjs, and blueprint/src/graph/resolution/index.mjs as the live artifacts backing shipped capabilities, and released-build SBOM/runtime-language-manifest evidence under docs/evidence/releases/ still enumerates blueprint/ as shipped runtime. Per NCL-02, a cluster with no caller cutover is rejected regardless of native module existence or test evidence, so no parity-proven verdict is claimed for any file in this cluster. No passing I1 test name is cited as proving replacement because doing so would not establish parity while a live caller still reaches the legacy path — the negative control in NCL-02 (vacuous/incomplete assertion does not count) is read here to mean incomplete caller-cutover evidence does not count either."
+  },
+  {
+    "owner": "blueprint-repair",
+    "cluster": "blueprint/src/lib/update",
+    "verdict": "insufficient",
+    "fileCount": 4,
+    "nativeDestination": "engine/crates/membrane-blueprint (partial/uncertain — no file-level mapping confirmed for this cluster; native crate has 20 src files vs 234 legacy files across 32 clusters, so most legacy surface, including all 37 language-tables/*.mjs grammars, the 15 release scripts, and the 3 scripts/ci helpers, has no identified native counterpart at all)",
+    "nativeTests": null,
+    "gap": "Caller cutover is not observed for this cluster (or for the blueprint/ tree generally): scripts/run-m0-baseline-current.mjs still executes \"pnpm --dir blueprint test:all\" via blueprint/scripts/release/npm-cli.mjs, scripts/qualification/cases/bpt-windows.mjs explicitly states DELIVERED status is void for the native path per REC-02 until engine/crates/membrane-blueprint lands equivalent behavior and still loads files from this legacy tree directly, mcp/capability-inventory.mjs lists blueprint/src/lib/findings/detect.mjs, blueprint/src/graph/module-surface.mjs, and blueprint/src/graph/resolution/index.mjs as the live artifacts backing shipped capabilities, and released-build SBOM/runtime-language-manifest evidence under docs/evidence/releases/ still enumerates blueprint/ as shipped runtime. Per NCL-02, a cluster with no caller cutover is rejected regardless of native module existence or test evidence, so no parity-proven verdict is claimed for any file in this cluster. No passing I1 test name is cited as proving replacement because doing so would not establish parity while a live caller still reaches the legacy path — the negative control in NCL-02 (vacuous/incomplete assertion does not count) is read here to mean incomplete caller-cutover evidence does not count either."
+  },
+  {
+    "owner": "blueprint-repair",
+    "cluster": "blueprint/src/mcp",
+    "verdict": "insufficient",
+    "fileCount": 4,
+    "nativeDestination": "engine/crates/membrane-blueprint (partial/uncertain — no file-level mapping confirmed for this cluster; native crate has 20 src files vs 234 legacy files across 32 clusters, so most legacy surface, including all 37 language-tables/*.mjs grammars, the 15 release scripts, and the 3 scripts/ci helpers, has no identified native counterpart at all)",
+    "nativeTests": null,
+    "gap": "Caller cutover is not observed for this cluster (or for the blueprint/ tree generally): scripts/run-m0-baseline-current.mjs still executes \"pnpm --dir blueprint test:all\" via blueprint/scripts/release/npm-cli.mjs, scripts/qualification/cases/bpt-windows.mjs explicitly states DELIVERED status is void for the native path per REC-02 until engine/crates/membrane-blueprint lands equivalent behavior and still loads files from this legacy tree directly, mcp/capability-inventory.mjs lists blueprint/src/lib/findings/detect.mjs, blueprint/src/graph/module-surface.mjs, and blueprint/src/graph/resolution/index.mjs as the live artifacts backing shipped capabilities, and released-build SBOM/runtime-language-manifest evidence under docs/evidence/releases/ still enumerates blueprint/ as shipped runtime. Per NCL-02, a cluster with no caller cutover is rejected regardless of native module existence or test evidence, so no parity-proven verdict is claimed for any file in this cluster. No passing I1 test name is cited as proving replacement because doing so would not establish parity while a live caller still reaches the legacy path — the negative control in NCL-02 (vacuous/incomplete assertion does not count) is read here to mean incomplete caller-cutover evidence does not count either."
+  },
+  {
+    "owner": "blueprint-repair",
+    "cluster": "blueprint/src/providers (misc)",
+    "verdict": "insufficient",
+    "fileCount": 5,
+    "nativeDestination": "engine/crates/membrane-blueprint (partial/uncertain — no file-level mapping confirmed for this cluster; native crate has 20 src files vs 234 legacy files across 32 clusters, so most legacy surface, including all 37 language-tables/*.mjs grammars, the 15 release scripts, and the 3 scripts/ci helpers, has no identified native counterpart at all)",
+    "nativeTests": null,
+    "gap": "Caller cutover is not observed for this cluster (or for the blueprint/ tree generally): scripts/run-m0-baseline-current.mjs still executes \"pnpm --dir blueprint test:all\" via blueprint/scripts/release/npm-cli.mjs, scripts/qualification/cases/bpt-windows.mjs explicitly states DELIVERED status is void for the native path per REC-02 until engine/crates/membrane-blueprint lands equivalent behavior and still loads files from this legacy tree directly, mcp/capability-inventory.mjs lists blueprint/src/lib/findings/detect.mjs, blueprint/src/graph/module-surface.mjs, and blueprint/src/graph/resolution/index.mjs as the live artifacts backing shipped capabilities, and released-build SBOM/runtime-language-manifest evidence under docs/evidence/releases/ still enumerates blueprint/ as shipped runtime. Per NCL-02, a cluster with no caller cutover is rejected regardless of native module existence or test evidence, so no parity-proven verdict is claimed for any file in this cluster. No passing I1 test name is cited as proving replacement because doing so would not establish parity while a live caller still reaches the legacy path — the negative control in NCL-02 (vacuous/incomplete assertion does not count) is read here to mean incomplete caller-cutover evidence does not count either."
+  },
+  {
+    "owner": "blueprint-repair",
+    "cluster": "blueprint/src/providers/bridges",
+    "verdict": "insufficient",
+    "fileCount": 1,
+    "nativeDestination": "engine/crates/membrane-blueprint (partial/uncertain — no file-level mapping confirmed for this cluster; native crate has 20 src files vs 234 legacy files across 32 clusters, so most legacy surface, including all 37 language-tables/*.mjs grammars, the 15 release scripts, and the 3 scripts/ci helpers, has no identified native counterpart at all)",
+    "nativeTests": null,
+    "gap": "Caller cutover is not observed for this cluster (or for the blueprint/ tree generally): scripts/run-m0-baseline-current.mjs still executes \"pnpm --dir blueprint test:all\" via blueprint/scripts/release/npm-cli.mjs, scripts/qualification/cases/bpt-windows.mjs explicitly states DELIVERED status is void for the native path per REC-02 until engine/crates/membrane-blueprint lands equivalent behavior and still loads files from this legacy tree directly, mcp/capability-inventory.mjs lists blueprint/src/lib/findings/detect.mjs, blueprint/src/graph/module-surface.mjs, and blueprint/src/graph/resolution/index.mjs as the live artifacts backing shipped capabilities, and released-build SBOM/runtime-language-manifest evidence under docs/evidence/releases/ still enumerates blueprint/ as shipped runtime. Per NCL-02, a cluster with no caller cutover is rejected regardless of native module existence or test evidence, so no parity-proven verdict is claimed for any file in this cluster. No passing I1 test name is cited as proving replacement because doing so would not establish parity while a live caller still reaches the legacy path — the negative control in NCL-02 (vacuous/incomplete assertion does not count) is read here to mean incomplete caller-cutover evidence does not count either."
+  },
+  {
+    "owner": "blueprint-repair",
+    "cluster": "blueprint/src/providers/compilers",
+    "verdict": "insufficient",
+    "fileCount": 2,
+    "nativeDestination": "engine/crates/membrane-blueprint (partial/uncertain — no file-level mapping confirmed for this cluster; native crate has 20 src files vs 234 legacy files across 32 clusters, so most legacy surface, including all 37 language-tables/*.mjs grammars, the 15 release scripts, and the 3 scripts/ci helpers, has no identified native counterpart at all)",
+    "nativeTests": null,
+    "gap": "Caller cutover is not observed for this cluster (or for the blueprint/ tree generally): scripts/run-m0-baseline-current.mjs still executes \"pnpm --dir blueprint test:all\" via blueprint/scripts/release/npm-cli.mjs, scripts/qualification/cases/bpt-windows.mjs explicitly states DELIVERED status is void for the native path per REC-02 until engine/crates/membrane-blueprint lands equivalent behavior and still loads files from this legacy tree directly, mcp/capability-inventory.mjs lists blueprint/src/lib/findings/detect.mjs, blueprint/src/graph/module-surface.mjs, and blueprint/src/graph/resolution/index.mjs as the live artifacts backing shipped capabilities, and released-build SBOM/runtime-language-manifest evidence under docs/evidence/releases/ still enumerates blueprint/ as shipped runtime. Per NCL-02, a cluster with no caller cutover is rejected regardless of native module existence or test evidence, so no parity-proven verdict is claimed for any file in this cluster. No passing I1 test name is cited as proving replacement because doing so would not establish parity while a live caller still reaches the legacy path — the negative control in NCL-02 (vacuous/incomplete assertion does not count) is read here to mean incomplete caller-cutover evidence does not count either."
+  },
+  {
+    "owner": "blueprint-repair",
+    "cluster": "blueprint/src/providers/frameworks",
+    "verdict": "insufficient",
+    "fileCount": 2,
+    "nativeDestination": "engine/crates/membrane-blueprint (partial/uncertain — no file-level mapping confirmed for this cluster; native crate has 20 src files vs 234 legacy files across 32 clusters, so most legacy surface, including all 37 language-tables/*.mjs grammars, the 15 release scripts, and the 3 scripts/ci helpers, has no identified native counterpart at all)",
+    "nativeTests": null,
+    "gap": "Caller cutover is not observed for this cluster (or for the blueprint/ tree generally): scripts/run-m0-baseline-current.mjs still executes \"pnpm --dir blueprint test:all\" via blueprint/scripts/release/npm-cli.mjs, scripts/qualification/cases/bpt-windows.mjs explicitly states DELIVERED status is void for the native path per REC-02 until engine/crates/membrane-blueprint lands equivalent behavior and still loads files from this legacy tree directly, mcp/capability-inventory.mjs lists blueprint/src/lib/findings/detect.mjs, blueprint/src/graph/module-surface.mjs, and blueprint/src/graph/resolution/index.mjs as the live artifacts backing shipped capabilities, and released-build SBOM/runtime-language-manifest evidence under docs/evidence/releases/ still enumerates blueprint/ as shipped runtime. Per NCL-02, a cluster with no caller cutover is rejected regardless of native module existence or test evidence, so no parity-proven verdict is claimed for any file in this cluster. No passing I1 test name is cited as proving replacement because doing so would not establish parity while a live caller still reaches the legacy path — the negative control in NCL-02 (vacuous/incomplete assertion does not count) is read here to mean incomplete caller-cutover evidence does not count either."
+  },
+  {
+    "owner": "blueprint-repair",
+    "cluster": "blueprint/src/providers/iac",
+    "verdict": "insufficient",
+    "fileCount": 1,
+    "nativeDestination": "engine/crates/membrane-blueprint (partial/uncertain — no file-level mapping confirmed for this cluster; native crate has 20 src files vs 234 legacy files across 32 clusters, so most legacy surface, including all 37 language-tables/*.mjs grammars, the 15 release scripts, and the 3 scripts/ci helpers, has no identified native counterpart at all)",
+    "nativeTests": null,
+    "gap": "Caller cutover is not observed for this cluster (or for the blueprint/ tree generally): scripts/run-m0-baseline-current.mjs still executes \"pnpm --dir blueprint test:all\" via blueprint/scripts/release/npm-cli.mjs, scripts/qualification/cases/bpt-windows.mjs explicitly states DELIVERED status is void for the native path per REC-02 until engine/crates/membrane-blueprint lands equivalent behavior and still loads files from this legacy tree directly, mcp/capability-inventory.mjs lists blueprint/src/lib/findings/detect.mjs, blueprint/src/graph/module-surface.mjs, and blueprint/src/graph/resolution/index.mjs as the live artifacts backing shipped capabilities, and released-build SBOM/runtime-language-manifest evidence under docs/evidence/releases/ still enumerates blueprint/ as shipped runtime. Per NCL-02, a cluster with no caller cutover is rejected regardless of native module existence or test evidence, so no parity-proven verdict is claimed for any file in this cluster. No passing I1 test name is cited as proving replacement because doing so would not establish parity while a live caller still reaches the legacy path — the negative control in NCL-02 (vacuous/incomplete assertion does not count) is read here to mean incomplete caller-cutover evidence does not count either."
+  },
+  {
+    "owner": "blueprint-repair",
+    "cluster": "blueprint/src/providers/modules",
+    "verdict": "insufficient",
+    "fileCount": 2,
+    "nativeDestination": "engine/crates/membrane-blueprint (partial/uncertain — no file-level mapping confirmed for this cluster; native crate has 20 src files vs 234 legacy files across 32 clusters, so most legacy surface, including all 37 language-tables/*.mjs grammars, the 15 release scripts, and the 3 scripts/ci helpers, has no identified native counterpart at all)",
+    "nativeTests": null,
+    "gap": "Caller cutover is not observed for this cluster (or for the blueprint/ tree generally): scripts/run-m0-baseline-current.mjs still executes \"pnpm --dir blueprint test:all\" via blueprint/scripts/release/npm-cli.mjs, scripts/qualification/cases/bpt-windows.mjs explicitly states DELIVERED status is void for the native path per REC-02 until engine/crates/membrane-blueprint lands equivalent behavior and still loads files from this legacy tree directly, mcp/capability-inventory.mjs lists blueprint/src/lib/findings/detect.mjs, blueprint/src/graph/module-surface.mjs, and blueprint/src/graph/resolution/index.mjs as the live artifacts backing shipped capabilities, and released-build SBOM/runtime-language-manifest evidence under docs/evidence/releases/ still enumerates blueprint/ as shipped runtime. Per NCL-02, a cluster with no caller cutover is rejected regardless of native module existence or test evidence, so no parity-proven verdict is claimed for any file in this cluster. No passing I1 test name is cited as proving replacement because doing so would not establish parity while a live caller still reaches the legacy path — the negative control in NCL-02 (vacuous/incomplete assertion does not count) is read here to mean incomplete caller-cutover evidence does not count either."
+  },
+  {
+    "owner": "blueprint-repair",
+    "cluster": "blueprint/src/providers/ranking",
+    "verdict": "insufficient",
+    "fileCount": 1,
+    "nativeDestination": "engine/crates/membrane-blueprint (partial/uncertain — no file-level mapping confirmed for this cluster; native crate has 20 src files vs 234 legacy files across 32 clusters, so most legacy surface, including all 37 language-tables/*.mjs grammars, the 15 release scripts, and the 3 scripts/ci helpers, has no identified native counterpart at all)",
+    "nativeTests": null,
+    "gap": "Caller cutover is not observed for this cluster (or for the blueprint/ tree generally): scripts/run-m0-baseline-current.mjs still executes \"pnpm --dir blueprint test:all\" via blueprint/scripts/release/npm-cli.mjs, scripts/qualification/cases/bpt-windows.mjs explicitly states DELIVERED status is void for the native path per REC-02 until engine/crates/membrane-blueprint lands equivalent behavior and still loads files from this legacy tree directly, mcp/capability-inventory.mjs lists blueprint/src/lib/findings/detect.mjs, blueprint/src/graph/module-surface.mjs, and blueprint/src/graph/resolution/index.mjs as the live artifacts backing shipped capabilities, and released-build SBOM/runtime-language-manifest evidence under docs/evidence/releases/ still enumerates blueprint/ as shipped runtime. Per NCL-02, a cluster with no caller cutover is rejected regardless of native module existence or test evidence, so no parity-proven verdict is claimed for any file in this cluster. No passing I1 test name is cited as proving replacement because doing so would not establish parity while a live caller still reaches the legacy path — the negative control in NCL-02 (vacuous/incomplete assertion does not count) is read here to mean incomplete caller-cutover evidence does not count either."
+  },
+  {
+    "owner": "blueprint-repair",
+    "cluster": "blueprint/src/providers/schemas",
+    "verdict": "insufficient",
+    "fileCount": 1,
+    "nativeDestination": "engine/crates/membrane-blueprint (partial/uncertain — no file-level mapping confirmed for this cluster; native crate has 20 src files vs 234 legacy files across 32 clusters, so most legacy surface, including all 37 language-tables/*.mjs grammars, the 15 release scripts, and the 3 scripts/ci helpers, has no identified native counterpart at all)",
+    "nativeTests": null,
+    "gap": "Caller cutover is not observed for this cluster (or for the blueprint/ tree generally): scripts/run-m0-baseline-current.mjs still executes \"pnpm --dir blueprint test:all\" via blueprint/scripts/release/npm-cli.mjs, scripts/qualification/cases/bpt-windows.mjs explicitly states DELIVERED status is void for the native path per REC-02 until engine/crates/membrane-blueprint lands equivalent behavior and still loads files from this legacy tree directly, mcp/capability-inventory.mjs lists blueprint/src/lib/findings/detect.mjs, blueprint/src/graph/module-surface.mjs, and blueprint/src/graph/resolution/index.mjs as the live artifacts backing shipped capabilities, and released-build SBOM/runtime-language-manifest evidence under docs/evidence/releases/ still enumerates blueprint/ as shipped runtime. Per NCL-02, a cluster with no caller cutover is rejected regardless of native module existence or test evidence, so no parity-proven verdict is claimed for any file in this cluster. No passing I1 test name is cited as proving replacement because doing so would not establish parity while a live caller still reaches the legacy path — the negative control in NCL-02 (vacuous/incomplete assertion does not count) is read here to mean incomplete caller-cutover evidence does not count either."
+  },
+  {
+    "owner": "blueprint-repair",
+    "cluster": "blueprint/src/service",
+    "verdict": "insufficient",
+    "fileCount": 9,
+    "nativeDestination": "engine/crates/membrane-blueprint (partial/uncertain — no file-level mapping confirmed for this cluster; native crate has 20 src files vs 234 legacy files across 32 clusters, so most legacy surface, including all 37 language-tables/*.mjs grammars, the 15 release scripts, and the 3 scripts/ci helpers, has no identified native counterpart at all)",
+    "nativeTests": null,
+    "gap": "Caller cutover is not observed for this cluster (or for the blueprint/ tree generally): scripts/run-m0-baseline-current.mjs still executes \"pnpm --dir blueprint test:all\" via blueprint/scripts/release/npm-cli.mjs, scripts/qualification/cases/bpt-windows.mjs explicitly states DELIVERED status is void for the native path per REC-02 until engine/crates/membrane-blueprint lands equivalent behavior and still loads files from this legacy tree directly, mcp/capability-inventory.mjs lists blueprint/src/lib/findings/detect.mjs, blueprint/src/graph/module-surface.mjs, and blueprint/src/graph/resolution/index.mjs as the live artifacts backing shipped capabilities, and released-build SBOM/runtime-language-manifest evidence under docs/evidence/releases/ still enumerates blueprint/ as shipped runtime. Per NCL-02, a cluster with no caller cutover is rejected regardless of native module existence or test evidence, so no parity-proven verdict is claimed for any file in this cluster. No passing I1 test name is cited as proving replacement because doing so would not establish parity while a live caller still reaches the legacy path — the negative control in NCL-02 (vacuous/incomplete assertion does not count) is read here to mean incomplete caller-cutover evidence does not count either."
+  },
+  {
+    "owner": "blueprint-repair",
+    "cluster": "blueprint/src/sources",
+    "verdict": "insufficient",
+    "fileCount": 9,
+    "nativeDestination": "engine/crates/membrane-blueprint (partial/uncertain — no file-level mapping confirmed for this cluster; native crate has 20 src files vs 234 legacy files across 32 clusters, so most legacy surface, including all 37 language-tables/*.mjs grammars, the 15 release scripts, and the 3 scripts/ci helpers, has no identified native counterpart at all)",
+    "nativeTests": null,
+    "gap": "Caller cutover is not observed for this cluster (or for the blueprint/ tree generally): scripts/run-m0-baseline-current.mjs still executes \"pnpm --dir blueprint test:all\" via blueprint/scripts/release/npm-cli.mjs, scripts/qualification/cases/bpt-windows.mjs explicitly states DELIVERED status is void for the native path per REC-02 until engine/crates/membrane-blueprint lands equivalent behavior and still loads files from this legacy tree directly, mcp/capability-inventory.mjs lists blueprint/src/lib/findings/detect.mjs, blueprint/src/graph/module-surface.mjs, and blueprint/src/graph/resolution/index.mjs as the live artifacts backing shipped capabilities, and released-build SBOM/runtime-language-manifest evidence under docs/evidence/releases/ still enumerates blueprint/ as shipped runtime. Per NCL-02, a cluster with no caller cutover is rejected regardless of native module existence or test evidence, so no parity-proven verdict is claimed for any file in this cluster. No passing I1 test name is cited as proving replacement because doing so would not establish parity while a live caller still reaches the legacy path — the negative control in NCL-02 (vacuous/incomplete assertion does not count) is read here to mean incomplete caller-cutover evidence does not count either."
+  },
+  {
+    "owner": "blueprint-repair",
+    "cluster": "blueprint/watchman",
+    "verdict": "insufficient",
+    "fileCount": 4,
+    "nativeDestination": "engine/crates/membrane-blueprint (partial/uncertain — no file-level mapping confirmed for this cluster; native crate has 20 src files vs 234 legacy files across 32 clusters, so most legacy surface, including all 37 language-tables/*.mjs grammars, the 15 release scripts, and the 3 scripts/ci helpers, has no identified native counterpart at all)",
+    "nativeTests": null,
+    "gap": "Caller cutover is not observed for this cluster (or for the blueprint/ tree generally): scripts/run-m0-baseline-current.mjs still executes \"pnpm --dir blueprint test:all\" via blueprint/scripts/release/npm-cli.mjs, scripts/qualification/cases/bpt-windows.mjs explicitly states DELIVERED status is void for the native path per REC-02 until engine/crates/membrane-blueprint lands equivalent behavior and still loads files from this legacy tree directly, mcp/capability-inventory.mjs lists blueprint/src/lib/findings/detect.mjs, blueprint/src/graph/module-surface.mjs, and blueprint/src/graph/resolution/index.mjs as the live artifacts backing shipped capabilities, and released-build SBOM/runtime-language-manifest evidence under docs/evidence/releases/ still enumerates blueprint/ as shipped runtime. Per NCL-02, a cluster with no caller cutover is rejected regardless of native module existence or test evidence, so no parity-proven verdict is claimed for any file in this cluster. No passing I1 test name is cited as proving replacement because doing so would not establish parity while a live caller still reaches the legacy path — the negative control in NCL-02 (vacuous/incomplete assertion does not count) is read here to mean incomplete caller-cutover evidence does not count either."
+  },
+  {
+    "owner": "public-runtime",
+    "cluster": "continuity-transcript-core",
+    "verdict": "insufficient",
+    "fileCount": 5,
+    "nativeDestination": "engine/crates/membrane-transcript (adapters.rs, canonical.rs, classify.rs, error.rs, event.rs, evidence.rs, parser.rs, redact.rs, source.rs; 3472 total lines)",
+    "nativeTests": null,
+    "gap": "Six live Adapt production modules still import continuity.transcript directly. Deleting driver.py/host_adapters.py/__init__.py would break adapt/src/adapt/insights.py, transcript_snapshots.py, taste_v2_pipeline.py at import time. No Rust-backed replacement is wired into Adapt's Python call sites (no FFI/subprocess bridge to membrane-transcript found from adapt/src/adapt/*.py). Needed before parity: (a) Adapt's Python callers switched to call the compiled membrane-transcript binary/FFI instead of importing continuity.transcript, (b) a passing test that exercises that switched call path, (c) then this file group becomes a caller-cutover candidate."
+  },
+  {
+    "owner": "public-runtime",
+    "cluster": "continuity-transcript-tests",
+    "verdict": "insufficient",
+    "fileCount": 3,
+    "nativeDestination": "n/a (these are tests of continuity-transcript-core, not production code)",
+    "nativeTests": null,
+    "gap": "Cannot be deleted before continuity-transcript-core is cut over; deleting them first would strip coverage from code six live Adapt modules still depend on."
+  },
+  {
+    "owner": "public-runtime",
+    "cluster": "mcp-server-entrypoint-and-runtime",
+    "verdict": "insufficient",
+    "fileCount": 37,
+    "nativeDestination": "engine/crates/membrane-mcp (discovery.rs, http_security.rs, jsonrpc.rs, prompts.rs, resources.rs, tools.rs, lib.rs; 1860 total lines) launched via mcp/membrane-mcp-native.mjs -> engine/target/.../membrane stdio-mcp",
+    "nativeTests": null,
+    "gap": "interpreter-dispositions.json labels mcp/server.mjs currentPolicy as 'dev-only', but the grep evidence contradicts that: productization/doc-generation scripts and CI invocation-graph checks call into this module tree at build/qualification time, not just in dev. The native crate (1860 lines across 6 modules: discovery, http_security, jsonrpc, prompts, resources, tools) has no counterpart for decision-points, delivery-receipt/serialization, rollout, workspace-routing, feedback-loop, push-client/push-limits, adapters/provenance, authorization, or the diagnostics/verification-command libs — behavior in those legacy files has no plausible native destination file to check assertions against, so no 'exists' claim can be made for named native destination modules covering them. Needed before parity: name the specific native module per legacy file (most don't have one yet), port the missing behavior, cut over blueprint.mjs/repair.mjs/productization scripts/qualification scripts to the native path, then supply passing tests naming the ported assertions."
+  },
+  {
+    "owner": "public-runtime",
+    "cluster": "mcp-host-adapter-chain",
+    "verdict": "insufficient",
+    "fileCount": 12,
+    "nativeDestination": "None found. No engine crate or Rust module named for host adapter/candidate-set/capability-matrix/observable-ingress/delivery-ledger concepts.",
+    "nativeTests": null,
+    "gap": "No named native destination module exists for this cluster at all, which alone fails NCL-02's bar ('named native destination module exists'). Caller cutover also not observed (40 live references into mcp/host/index.mjs). Needed before parity: design and land the native host-adapter equivalent, wire callers to it, then produce test evidence."
+  },
+  {
+    "owner": "public-runtime",
+    "cluster": "mcp-membrane-mcp-native-shim",
+    "verdict": "insufficient",
+    "fileCount": 1,
+    "nativeDestination": "engine/target/.../membrane (stdio-mcp binary) — this file is already just an 8-line spawn wrapper around the native binary, not legacy logic to port.",
+    "nativeTests": null,
+    "gap": "Even though this file has essentially no legacy behavior left to port (it already just spawns the native binary), NCL-02 requires 'integration checkpoint I1 test evidence hash recorded' and no test in i1-passing-tests.txt exercises membrane-mcp-native.mjs (no mcp/membrane-mcp-native*.test.mjs exists in the 100-file list or the repo). Absent any passing test naming this file's behavior, and per the negative control ('vacuous test... counts as no assertion'), there is no assertion to cite. It is functionally near-parity but not evidenced — insufficient, not invented as parity-proven."
+  },
+  {
+    "owner": "public-runtime",
+    "cluster": "mcp-test-suite-for-still-live-modules",
+    "verdict": "insufficient",
+    "fileCount": 42,
+    "nativeDestination": "n/a — these are the test files for mcp-server-entrypoint-and-runtime and mcp-host-adapter-chain, not independent production code.",
+    "nativeTests": null,
+    "gap": "Same as parent modules: no native destination is cut over for what these test, so the tests cannot be deleted without leaving the still-live production files uncovered. This directly matches the packet's stated pattern ('cleanup owner deletes only after these exact runtime cases pass') — the runtime cases here still exercise legacy code, not native code."
+  }
+]

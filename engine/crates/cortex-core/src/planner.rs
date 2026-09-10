@@ -974,7 +974,7 @@ pub fn plan(input: &PlannerInput) -> Result<PlannerOutput, PlannerError> {
         } else {
             (DeliveryClass::MetadataOnly, 0, DropReason::NotSelected)
         };
-        let content_sha = sha256_hex(&cand.text);
+        let content_sha = format!("sha256:{}", sha256_hex(&cand.text));
         receipts.push(ContextReceiptV2 {
             schema_version: 2,
             trace_id: trace_id.clone(),
@@ -1419,11 +1419,11 @@ mod tests {
         );
         assert_eq!(
             output.receipts[0].content_sha256,
-            sha256_hex("first admitted content")
+            format!("sha256:{}", sha256_hex("first admitted content"))
         );
         assert_eq!(
             output.receipts[1].content_sha256,
-            sha256_hex("second admitted content")
+            format!("sha256:{}", sha256_hex("second admitted content"))
         );
     }
 

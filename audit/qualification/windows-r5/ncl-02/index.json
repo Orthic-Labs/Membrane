@@ -1,0 +1,43 @@
+{
+  "case": "NCL-02",
+  "generatedAt": "2026-09-10",
+  "lane": "NCL02",
+  "method": "Consolidated existing per-lane parity receipts (adapt-completion, blueprint-repair, public-runtime, native-cleanup deletion accounting) against the 373 delete-after-parity rows in D:/Claude/review/windows-r5/interpreter-dispositions.json. Spot-verified cited native destinations and test files on disk (engine/crates/membrane-adapt/tests/{clarification_state,proposal_state_machine,remediation_outcomes_cost,taste_contracts}.rs exist with real fn bodies; engine/crates/membrane-adapt/src/manifest.rs confirmed to have no #[cfg(test)] module, matching the insufficient claim). NCL_02 in scripts/qualification/cases/ncl-windows.mjs does not read any per-cluster receipt path -- it computes only nativeDestinationOwner presence/absence from interpreter-dispositions.json and always returns status=insufficient by design (see its source comment: per-cluster test-name/vacuous-assertion evidence 'requires reading each collaborator lane's actual test bodies ... which this worker's allowlist ... do not permit'). That means this index is the honest human/lane-level parity ledger; it cannot change the case's own machine verdict without editing case logic, which this task forbids unless the receipt-path resolution is broken (it is not broken -- it simply never looks for one).",
+  "sourceReceipts": [
+    "C:/Users/adrds/AppData/Local/Temp/claude/D--Claude-membrane/7759bdd9-8334-4a8e-a8c7-dc9aae3b3b99/scratchpad/lanes/receipts/adapt-completion__ncl02-parity.json",
+    "C:/Users/adrds/AppData/Local/Temp/claude/D--Claude-membrane/7759bdd9-8334-4a8e-a8c7-dc9aae3b3b99/scratchpad/lanes/receipts/blueprint-repair__ncl02-parity.json",
+    "C:/Users/adrds/AppData/Local/Temp/claude/D--Claude-membrane/7759bdd9-8334-4a8e-a8c7-dc9aae3b3b99/scratchpad/lanes/receipts/public-runtime__ncl02-parity.json",
+    "C:/Users/adrds/AppData/Local/Temp/claude/D--Claude-membrane/7759bdd9-8334-4a8e-a8c7-dc9aae3b3b99/scratchpad/lanes/receipts/native-cleanup__adapt-deletions.json"
+  ],
+  "rowAccounting": {
+    "totalDeleteAfterParityRows": 373,
+    "byNativeDestinationOwner": { "adapt-completion": 39, "blueprint-repair": 234, "public-runtime": 100 },
+    "note": "interpreter-dispositions.json still lists 39 rows under adapt-completion; those are the files LEFT after 42 files (8 parity-proven clusters, out of adapt-completion's original 11 clusters / 81 files) were already deleted yesterday per native-cleanup__adapt-deletions.json. 39 remaining + 42 already deleted = 81, matching adapt-completion's original filesCovered. The 42 deleted files are not double-counted below; they are closed."
+  },
+  "discrepanciesCarriedForward": [
+    "adapt-completion__ncl02-parity.json summary.clustersParityProven says 7 but 8 clusters are actually tagged verdict=parity-proven in its own clusters array (cli-entrypoint, admission-authority, proposal-lifecycle-and-conflict, multiwriter-precedence, outcomes-effectiveness, taste-record-and-v2-pipeline, insights-detectors-and-recurrence, clarification-resume-cancel). native-cleanup already flagged the matching file-count mismatch (46 claimed vs 42 actual unique legacyFiles). Both are summary-block bugs in the source lane's own receipt, not re-litigated here; the per-cluster verdict/legacyFiles arrays are treated as authoritative, consistent with native-cleanup's precedent.",
+    "public-runtime flags mcp/server.mjs's currentPolicy=dev-only in interpreter-dispositions.json as stale/contradicted by live wiring into blueprint.mjs, repair.mjs, doc-generation, and CI invocation-graph checks -- i.e. one row's own disposition metadata should not be trusted as caller-cutover evidence."
+  ],
+  "clusters": {
+    "totalClusters": 50,
+    "clustersAlreadyActionedDeleted": 8,
+    "clustersRemainingOpen": 42,
+    "parityProven": 8,
+    "insufficient": 42,
+    "filesInRemainingOpenClusters": 331,
+    "byOwner": {
+      "adapt-completion": { "clustersTotal": 11, "parityProven": 8, "insufficient": 4, "filesDeleted": 42, "filesRemainingInsufficient": 39 },
+      "blueprint-repair": { "clustersTotal": 32, "parityProven": 0, "insufficient": 32, "filesRemainingInsufficient": 234 },
+      "public-runtime": { "clustersTotal": 6, "parityProven": 0, "insufficient": 100, "filesRemainingInsufficient": 100 }
+    }
+  },
+  "perClusterFile": "D:/Claude/membrane/audit/qualification/windows-r5/ncl-02/clusters.json",
+  "topMissingNativeDestinationsByRowCount": [
+    { "cluster": "blueprint/src/graph (core)", "owner": "blueprint-repair", "rows": 61, "missing": "No confirmed file-level native destination; engine/crates/membrane-blueprint has only 20 src files against 234 legacy files across all 32 blueprint clusters" },
+    { "cluster": "mcp-test-suite-for-still-live-modules", "owner": "public-runtime", "rows": 42, "missing": "These are legacy test files for mcp-server-entrypoint-and-runtime / mcp-host-adapter-chain; no native equivalent test suite exists to receive them" },
+    { "cluster": "blueprint/src/graph/language-tables", "owner": "blueprint-repair", "rows": 37, "missing": "37 *.mjs grammar tables with no identified native grammar/parser module counterpart" },
+    { "cluster": "mcp-server-entrypoint-and-runtime", "owner": "public-runtime", "rows": 37, "missing": "Native destination engine/crates/membrane-mcp exists and is wired live, but caller cutover / no-installed-reachability not yet proven for all 37 legacy files individually" },
+    { "cluster": "blueprint/src/lib (misc)", "owner": "blueprint-repair", "rows": 20, "missing": "No confirmed file-level native destination inside membrane-blueprint's 20-file src tree" }
+  ],
+  "verdict": "PARTIAL: 8 of 50 clusters (42 of 373 rows) are PARITY-PROVEN and already deleted. The remaining 42 clusters (331 rows) are INSUFFICIENT -- each has a named missing native destination and/or missing native test evidence recorded in the per-lane source receipts above and mirrored in clusters.json. No further rows are safe to delete on today's evidence. NCL_02's machine-scored case output will still read status=insufficient after --group NCL because its case body does not consume these receipts (see method note); that is a case-scope limitation, not a finding this lane fabricated past."
+}
