@@ -569,7 +569,7 @@ fn lexical_facts(file: &FileRecord, text: &str, files: &BTreeMap<String, &FileRe
 fn ast_facts(file: &FileRecord, text: &str, language: &str, cancellation: &CancellationToken) -> Result<AstResult, GraphError> {
     if cancellation.is_cancelled() { return Err(GraphError::Cancelled); }
     let mut parser = Parser::new();
-    let language_result: tree_sitter::Language = match language { "javascript" => tree_sitter_javascript::LANGUAGE.into(), "typescript" => tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(), "tsx" => tree_sitter_typescript::LANGUAGE_TSX.into(), "python" => tree_sitter_python::LANGUAGE.into(), "rust" => tree_sitter_rust::LANGUAGE.into(), _ => return Ok(AstResult::failed(file, "unsupported parser")), };
+    let language_result: tree_sitter::Language = match language { "javascript" => tree_sitter_javascript::LANGUAGE.into(), "typescript" => tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(), "tsx" => tree_sitter_typescript::LANGUAGE_TSX.into(), "python" => tree_sitter_python::LANGUAGE.into(), "rust" => tree_sitter_rust::LANGUAGE.into(), "go" => tree_sitter_go::LANGUAGE.into(), "java" => tree_sitter_java::LANGUAGE.into(), "c" => tree_sitter_c::LANGUAGE.into(), "cpp" => tree_sitter_cpp::LANGUAGE.into(), "c_sharp" => tree_sitter_c_sharp::LANGUAGE.into(), "ruby" => tree_sitter_ruby::LANGUAGE.into(), "php" => tree_sitter_php::LANGUAGE_PHP.into(), "bash" => tree_sitter_bash::LANGUAGE.into(), _ => return Ok(AstResult::failed(file, "unsupported parser")), };
     if parser.set_language(&language_result).is_err() { return Ok(AstResult::failed(file, "parser language unavailable")); }
     let Some(tree) = parser.parse(text, None) else { return Ok(AstResult::failed(file, "parser returned no tree")); };
     let root = tree.root_node();
@@ -586,12 +586,13 @@ impl AstResult { fn failed(file: &FileRecord, message: &str) -> Self { Self { no
 fn walk_ast(node: Node<'_>, source: &str, file: &FileRecord, nodes: &mut Vec<GraphNode>, edges: &mut Vec<GraphEdge>, scope: Option<String>, cancellation: &CancellationToken) -> Result<(), GraphError> {
     if cancellation.is_cancelled() { return Err(GraphError::Cancelled); }
     let kind = node.kind();
-    let declaration = matches!(kind, "function_declaration"|"function_definition"|"function_item"|"method_definition"|"class_declaration"|"class_definition"|"class"|"struct_item"|"enum_item"|"trait_item"|"interface_declaration"|"type_alias_declaration");
-    let name = node.child_by_field_name("name").and_then(|n| n.utf8_text(source.as_bytes()).ok()).map(str::to_owned);
+    let declaration = matches!(kind, "function_declaration"|"function_definition"|"function_item"|"method_definition"|"method_declaration"|"class_declaration"|"class_definition"|"class"|"struct_item"|"enum_item"|"trait_item"|"interface_declaration"|"type_alias_declaration"|"type_spec"|"struct_specifier"|"enum_specifier"|"union_specifier"|"namespace_definition"|"interface_body"|"module"|"singleton_method"|"method"|"function_definition_statement");
+    let name = node.child_by_field_name("name").and_then(|n| n.utf8_text(source.as_bytes()).ok()).map(str::to_owned)
+        .or_else(|| if matches!(kind, "function_definition"|"declaration") { declarator_name(node, source) } else { None });
     let mut next_scope = scope.clone();
     if declaration { if let Some(raw) = name {
         let qualified = scope.as_ref().map(|s| format!("{s}.{raw}")).unwrap_or_else(|| raw.clone());
-        let class = kind.contains("class") || kind.contains("struct") || kind.contains("enum") || kind.contains("trait") || kind.contains("interface");
+        let class = kind.contains("class") || kind.contains("struct") || kind.contains("enum") || kind.contains("trait") || kind.contains("interface") || matches!(kind, "type_spec"|"namespace_definition"|"module");
         let label = if class { "Class" } else if scope.is_some() || kind == "method_definition" { "Method" } else { "Function" };
         let n = ast_symbol(file, if class { "class" } else { "symbol" }, &raw, &qualified, node, label);
         next_scope = Some(qualified); nodes.push(n);
@@ -599,6 +600,23 @@ fn walk_ast(node: Node<'_>, source: &str, file: &FileRecord, nodes: &mut Vec<Gra
     let mut cursor = node.walk();
     for child in node.named_children(&mut cursor) { walk_ast(child, source, file, nodes, edges, next_scope.clone(), cancellation)?; }
     Ok(())
+}
+
+/// C/C++ function definitions carry their name inside a nested `declarator`
+/// chain (pointer/function declarators) rather than a direct `name` field.
+/// Descend that chain to the innermost identifier.
+fn declarator_name(node: Node<'_>, source: &str) -> Option<String> {
+    let mut current = node.child_by_field_name("declarator")?;
+    loop {
+        if matches!(current.kind(), "identifier"|"field_identifier"|"type_identifier") {
+            return current.utf8_text(source.as_bytes()).ok().map(str::to_owned);
+        }
+        if let Some(name_field) = current.child_by_field_name("declarator") {
+            current = name_field;
+            continue;
+        }
+        return None;
+    }
 }
 
 fn merge_facts(lex_nodes: Vec<GraphNode>, lex_edges: Vec<GraphEdge>, ast_nodes: Vec<GraphNode>, ast_edges: Vec<GraphEdge>, compiler: Option<CompilerFacts>) -> (Vec<GraphNode>, Vec<GraphEdge>) {
@@ -643,7 +661,7 @@ fn import_edge(source: &str, target: Option<&str>, specifier: &str, file: &FileR
     edge
 }
 
-fn parser_language(ext: &str) -> Option<&'static str> { match ext.to_ascii_lowercase().as_str() { "rs" => Some("rust"), "py" => Some("python"), "js"|"jsx"|"mjs"|"cjs" => Some("javascript"), "ts"|"mts"|"cts" => Some("typescript"), "tsx" => Some("tsx"), _ => None } }
+fn parser_language(ext: &str) -> Option<&'static str> { match ext.to_ascii_lowercase().as_str() { "rs" => Some("rust"), "py" => Some("python"), "js"|"jsx"|"mjs"|"cjs" => Some("javascript"), "ts"|"mts"|"cts" => Some("typescript"), "tsx" => Some("tsx"), "go" => Some("go"), "java" => Some("java"), "c"|"h" => Some("c"), "cpp"|"cc"|"cxx"|"hpp"|"hh"|"hxx" => Some("cpp"), "cs" => Some("c_sharp"), "rb" => Some("ruby"), "php" => Some("php"), "sh"|"bash" => Some("bash"), _ => None } }
 fn language_for_path(path: &str) -> Option<&'static str> { parser_language(path.rsplit_once('.').map(|(_,e)| e).unwrap_or("")) }
 fn is_file_only(name: &str) -> bool { matches!(name.rsplit_once('.').map(|(_,e)| e).unwrap_or(""), "md"|"markdown"|"txt"|"json"|"jsonl"|"yaml"|"yml"|"toml"|"html"|"css"|"svg"|"sql"|"csv"|"tsv") }
 fn normalize_path(path: &str) -> String { path.replace('\\', "/").trim_start_matches("./").to_owned() }

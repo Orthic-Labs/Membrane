@@ -6,13 +6,19 @@ use std::{
     io::{Read, Write},
     net::TcpListener,
     os::windows::process::CommandExt,
-    process::Command,
+    path::PathBuf,
+    process::{Command, Output},
     thread,
 };
 use serde_json::Value;
 
-#[test]
-fn failed_hub_start_preserves_installed_client_binding() {
+struct Fixture {
+    temp: tempfile::TempDir,
+    current: PathBuf,
+    port: u16,
+}
+
+fn setup() -> Fixture {
     let temp = tempfile::tempdir().unwrap();
     let local = temp.path().join("local");
     let product = local.join("Orthic Labs").join("Membrane");
@@ -39,45 +45,103 @@ fn failed_hub_start_preserves_installed_client_binding() {
         .env("MEMBRANE_TEST_LINK", &current).env("MEMBRANE_TEST_TARGET", &version)
         .creation_flags(0x08000000).output().unwrap();
     assert!(linked.status.success(), "{}", String::from_utf8_lossy(&linked.stderr));
-    let command = |mode: &str| {
-        let mut command = Command::new(current.join("membrane.exe"));
-        command.args([mode, "--install-root"]).arg(&current)
+    Fixture { temp, current, port }
+}
+
+impl Fixture {
+    fn command(&self, mode: &str) -> Command {
+        let mut command = Command::new(self.current.join("membrane.exe"));
+        command.args([mode, "--install-root"]).arg(&self.current)
             .args(["--client", "cursor", "--timeout-ms", "1000"])
-            .env("HOME", temp.path()).env("USERPROFILE", temp.path())
-            .env("LOCALAPPDATA", &local).env("APPDATA", temp.path().join("roaming"))
-            .env("MEMBRANE_TEST_USER_BINDINGS_ROOT", temp.path().join("user-bindings"))
-            .env("MEMBRANE_TEST_INSTALLED_PORT", port.to_string())
+            .env("HOME", self.temp.path()).env("USERPROFILE", self.temp.path())
+            .env("LOCALAPPDATA", self.temp.path().join("local"))
+            .env("APPDATA", self.temp.path().join("roaming"))
+            .env("MEMBRANE_TEST_USER_BINDINGS_ROOT", self.temp.path().join("user-bindings"))
+            .env("MEMBRANE_TEST_INSTALLED_PORT", self.port.to_string())
             .env_remove("MEMBRANE_RUNTIME_ORIGIN").env_remove("WORKSPACE_ROOT")
             .env_remove("CORTEX_DB").creation_flags(0x08000000);
         command
-    };
-    let bindings = command("activate").arg("--bindings-only").output().unwrap();
-    let listener = TcpListener::bind(("127.0.0.1", port)).unwrap();
-    let health = format!(
-        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n{{\"ok\":true,\"serviceId\":\"membrane-hub\",\"nativeOnly\":true,\"runtimeOrigin\":\"installed\",\"releaseGeneration\":\"fixture-prior-generation\",\"installationId\":\"{installation_id}\"}}"
-    );
+    }
+
+    fn bindings_binding(&self) -> std::io::Result<Vec<u8>> {
+        fs::read(self.temp.path().join(".cursor/mcp.json"))
+    }
+}
+
+fn run(command: &mut Command) -> Output {
+    command.output().unwrap()
+}
+
+/// No resident answers the Membrane port at all (the common case: no prior
+/// installed process, foreign or otherwise). Activation must still attempt
+/// to launch the resident tray -- and, since the fixture's tray binary is
+/// not a valid executable, must fail deterministically at that launch --
+/// while explicit installed MCP/CLI bindings are reconciled regardless.
+#[test]
+fn failed_hub_start_preserves_installed_client_binding() {
+    let fixture = setup();
+    let bindings = run(fixture.command("activate").arg("--bindings-only"));
+    let activation = run(&mut fixture.command("activate"));
+    let binding = fixture.bindings_binding();
+    // Remove only this fixture's binding/PATH entry before any assertion can fail.
+    let cleanup = run(fixture.command("deactivate").arg("--bindings-only"));
+    assert!(cleanup.status.success(), "{}", String::from_utf8_lossy(&cleanup.stderr));
+
+    assert!(bindings.status.success(), "{}", String::from_utf8_lossy(&bindings.stderr));
+    let receipt: Value = serde_json::from_slice(&bindings.stdout).unwrap();
+    assert_eq!(receipt["dryRun"], false);
+    assert_eq!(receipt["service"]["port"], fixture.port);
+    assert_eq!(receipt["clients"][0]["changed"], true);
+
+    assert!(!activation.status.success(), "invalid tray unexpectedly launched");
+    let activation_error = String::from_utf8_lossy(&activation.stderr);
+    assert!(activation_error.contains("launch installed tray"), "{activation_error}");
+    assert!(activation_error.contains("--activate"), "{activation_error}");
+
+    let config: Value = serde_json::from_slice(&binding.expect("explicit binding survives Hub failure")).unwrap();
+    assert_eq!(config["mcpServers"]["membrane"]["command"], fixture.current.join("membrane.exe").to_string_lossy().as_ref());
+    assert_eq!(config["mcpServers"]["membrane"]["args"], serde_json::json!(["stdio-mcp"]));
+}
+
+/// A service answers the Membrane port but cannot present the installed
+/// health credential (e.g. an unrelated process, or a listener predating
+/// credential provisioning). Activation must refuse to treat it as a
+/// verified Membrane resident and must not attempt to launch a competing
+/// tray against it -- but explicit installed MCP/CLI bindings, which
+/// precede any resident-start attempt, must still be reconciled.
+#[test]
+fn unverified_service_on_membrane_port_is_refused_but_bindings_still_reconcile() {
+    let fixture = setup();
+    let bindings = run(fixture.command("activate").arg("--bindings-only"));
+    let listener = TcpListener::bind(("127.0.0.1", fixture.port)).unwrap();
+    let health = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n{\"ok\":true}";
     let health_server = thread::spawn(move || {
         let (mut stream, _) = listener.accept().unwrap();
         let mut request = [0_u8; 1024];
         let _ = stream.read(&mut request).unwrap();
-        stream.write_all(health.as_bytes()).unwrap();
+        let _ = stream.write_all(health.as_bytes());
     });
-    let activation = command("activate").output().unwrap();
+    let activation = run(&mut fixture.command("activate"));
     health_server.join().unwrap();
-    let binding = fs::read(temp.path().join(".cursor/mcp.json"));
+    let binding = fixture.bindings_binding();
     // Remove only this fixture's binding/PATH entry before any assertion can fail.
-    let cleanup = command("deactivate").arg("--bindings-only").output().unwrap();
+    let cleanup = run(fixture.command("deactivate").arg("--bindings-only"));
     assert!(cleanup.status.success(), "{}", String::from_utf8_lossy(&cleanup.stderr));
+
     assert!(bindings.status.success(), "{}", String::from_utf8_lossy(&bindings.stderr));
-    let receipt: Value = serde_json::from_slice(&bindings.stdout).unwrap();
-    assert_eq!(receipt["dryRun"], false);
-    assert_eq!(receipt["service"]["port"], port);
-    assert_eq!(receipt["clients"][0]["changed"], true);
-    assert!(!activation.status.success(), "invalid tray unexpectedly launched");
+
+    assert!(!activation.status.success(), "unverified service on Membrane port unexpectedly accepted");
     let activation_error = String::from_utf8_lossy(&activation.stderr);
-    assert!(activation_error.contains("launch installed tray"), "{activation_error}");
-    assert!(activation_error.contains("--replace"), "{activation_error}");
-    let config: Value = serde_json::from_slice(&binding.expect("explicit binding survives Hub failure")).unwrap();
-    assert_eq!(config["mcpServers"]["membrane"]["command"], current.join("membrane.exe").to_string_lossy().as_ref());
+    assert!(
+        activation_error.contains("refusing to activate against unverified service on Membrane port"),
+        "{activation_error}"
+    );
+    assert!(!activation_error.contains("launch installed tray"), "{activation_error}");
+
+    let config: Value = serde_json::from_slice(
+        &binding.expect("explicit binding still reconciles ahead of a refused resident start"),
+    )
+    .unwrap();
+    assert_eq!(config["mcpServers"]["membrane"]["command"], fixture.current.join("membrane.exe").to_string_lossy().as_ref());
     assert_eq!(config["mcpServers"]["membrane"]["args"], serde_json::json!(["stdio-mcp"]));
 }

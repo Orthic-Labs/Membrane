@@ -63,3 +63,25 @@ pub fn lifecycle_state_for_error(error: &str) -> LifecycleState {
     }
     LifecycleState::TransportUnavailable
 }
+
+pub mod dependency_dag;
+
+pub mod merkle_ledger;
+
+pub mod bm25_index;
+
+pub mod entry_points;
+
+pub mod conformance_verifier;
+pub mod freshness_receipt;
+
+pub mod ast_structural_search;
+pub mod ast_walker;
+
+pub mod static_provider;
+pub mod delta_store;
+
+pub mod contract_registry;
+pub mod conventions;
+pub mod evidence_authority;
+pub mod liveness;

@@ -416,6 +416,16 @@ fn activate_with_residency(options: ActivationOptions, start_resident: bool) -> 
     };
     let initial = constrain_health_to_existing_installation(initial, &workspace_root);
     let already_running = matches!(&initial, HealthObservation::Ready { .. });
+    // Explicit installed access survives a failed resident startup. Bind MCP
+    // clients & the CLI path before attempting any automatic Hub process, so
+    // an unverified/foreign listener on the Membrane port cannot suppress
+    // explicit binding reconciliation (docs/architecture/execution-lifecycle-boundary.md).
+    let clients = reconcile_clients(
+        &membrane, &options.clients, options.dry_run, run_client,
+    )?;
+    if !options.dry_run {
+        ensure_user_path(&install_root)?;
+    }
     if start_resident && !options.dry_run && matches!(&initial, HealthObservation::Foreign(_)) {
         return Err(match initial {
             HealthObservation::Foreign(reason) => format!(
@@ -423,14 +433,6 @@ fn activate_with_residency(options: ActivationOptions, start_resident: bool) -> 
             ),
             _ => unreachable!(),
         });
-    }
-    // Explicit installed access survives a failed resident startup. Bind MCP
-    // clients & the CLI path before attempting any automatic Hub process.
-    let clients = reconcile_clients(
-        &membrane, &options.clients, options.dry_run, run_client,
-    )?;
-    if !options.dry_run {
-        ensure_user_path(&install_root)?;
     }
     let (release_generation, service_state, service_reason) = if options.dry_run || !start_resident {
         match initial {
