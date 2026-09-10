@@ -11,7 +11,7 @@
 // and is expected to pass in source form.
 
 import { createHash } from "node:crypto";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -123,19 +123,110 @@ export function PKG_TEST_NO_EVIDENCE_KIND() {
 // reports a failed, non-fabricated "blocked" reason rather than a PASS, and
 // never widens to a macOS/iOS/desktop target.
 const FORBIDDEN_TARGET_PATTERN = /\b(mac|macos|darwin|ios|nsis-desktop|desktop)\b/i;
+const RIGHTKIT_DIRECT_KIND = "rightkit-direct-release-manifest";
+const ENGINE_SUBTREE = "engine";
 
-export async function PKG_02({ row }) {
+// The shipped installed release-manifest.json is schema
+// 'rightkit-direct-release-manifest' (assets[] carrying per-asset
+// target/sha256, plus a top-level sourceCommit/version) -- not the
+// membrane.release-evidence.v1 shape candidate.json uses. Rather than
+// require the installed-manifest producer to change, PKG-02 adapts the
+// rightkit-direct shape here into the same { release: { target,
+// generation, artifact_sha256 } } projection candidate.json already
+// carries, so the comparison is faithful instead of structurally failing.
+//
+// The rightkit-direct manifest has no baked releaseGeneration; it only
+// carries the sourceCommit the release was built from. This replicates
+// apps/membrane-hub/scripts/release-identity.mjs's committedTreeDigest
+// exactly (same engine subtree, same sorted path\0blob\n hashing) against
+// that real, resolvable commit -- never a fabricated or guessed value. When
+// the commit cannot be resolved in this workspace, that is reported back as
+// a typed error rather than silently treated as a match or a blocked run.
+function committedEngineTreeDigest(workspaceRoot, commit) {
+  const lsTree = execFileSync("git", ["-C", workspaceRoot, "ls-tree", "-r", commit, "--", ENGINE_SUBTREE], {
+    encoding: "utf8",
+    maxBuffer: 256 * 1024 * 1024,
+  });
+  const rows = [];
+  for (const line of lsTree.split("\n")) {
+    if (!line) continue;
+    const [metadata, path] = line.split("\t");
+    rows.push([path.replace(/\\/g, "/"), metadata.trim().split(/\s+/)[2]]);
+  }
+  rows.sort((left, right) => (left[0] < right[0] ? -1 : left[0] > right[0] ? 1 : 0));
+  const digest = createHash("sha256");
+  for (const [path, blob] of rows) digest.update(`${path}\0${blob}\n`, "utf8");
+  return digest.digest("hex");
+}
+
+function findPreferredAsset(assets, preferredTarget = "windows-x86_64") {
+  if (!Array.isArray(assets) || assets.length === 0) return null;
+  return assets.find((asset) => asset?.target === preferredTarget) ?? assets[0];
+}
+
+// Returns { evidence, adapted, skipArtifactComparison, generationError, sourceCommit }.
+// evidence is always release-evidence-shaped ({ release: { target, generation,
+// artifact_sha256 }, signing }) whether or not adaptation happened, so PKG_02's
+// comparison logic below never needs to branch on the source manifest's schema.
+function deriveInstalledReleaseEvidence(installed, workspaceRoot) {
+  if (!installed || installed.kind !== RIGHTKIT_DIRECT_KIND) {
+    return { evidence: installed, adapted: false, skipArtifactComparison: false, generationError: null, sourceCommit: null };
+  }
+  const asset = findPreferredAsset(installed.assets);
+  const sourceCommit = nonEmptyString(installed.sourceCommit) ? installed.sourceCommit : null;
+  let generation = null;
+  let generationError = null;
+  if (!sourceCommit) {
+    generationError = "installed rightkit-direct-release-manifest has no sourceCommit";
+  } else {
+    try {
+      generation = committedEngineTreeDigest(workspaceRoot, sourceCommit);
+    } catch (error) {
+      generationError = `sourceCommit ${sourceCommit} is not resolvable in this workspace: ${error.message}`;
+    }
+  }
+  return {
+    evidence: {
+      release: { target: asset?.target ?? null, generation, artifact_sha256: asset?.sha256 ?? null },
+      // The zip/exe distributed through the signed GitHub release channel is
+      // authenticode-signed even when this internal-unsigned candidate route
+      // legitimately is not; only the generation/target identity is
+      // comparable across the two distribution channels, not this flag.
+      signing: { status: nonEmptyString(installed.signatureProvider) ? "release-signed" : "unsigned" },
+    },
+    // A rightkit-direct asset (a downloaded release zip) and a local
+    // unsigned NSIS installer are never byte-identical even when built from
+    // the exact same source -- they are different packaging formats. Only
+    // target + generation identity is meaningful across that boundary.
+    adapted: true,
+    skipArtifactComparison: true,
+    generationError,
+    sourceCommit,
+  };
+}
+
+export async function PKG_02({ row, workspaceRoot }) {
   const candidateManifestPath = row?.candidateManifestPath ?? process.env.MEMBRANE_QUALIFICATION_CANDIDATE_MANIFEST;
   const installedManifestPath = row?.installedManifestPath ?? process.env.MEMBRANE_QUALIFICATION_INSTALLED_MANIFEST;
   const candidate = readJsonIfExists(candidateManifestPath);
-  const installed = readJsonIfExists(installedManifestPath);
+  const installedRaw = readJsonIfExists(installedManifestPath);
 
-  if (!candidate || !installed) {
+  if (!candidate || !installedRaw) {
     return {
       status: "failed",
       evidenceKind: "source",
       reason: "candidate and/or installed release manifest unavailable on this machine; run after the RightKit internal-unsigned Windows build and install",
       detail: { candidateManifestPath: candidateManifestPath ?? null, installedManifestPath: installedManifestPath ?? null },
+    };
+  }
+
+  const { evidence: installed, adapted, skipArtifactComparison, generationError, sourceCommit } = deriveInstalledReleaseEvidence(installedRaw, workspaceRoot);
+  if (adapted && generationError) {
+    return {
+      status: "failed",
+      evidenceKind: "installed",
+      reason: `installed manifest generation could not be derived: ${generationError}`,
+      detail: { installedKind: installedRaw.kind, sourceCommit },
     };
   }
 
@@ -153,10 +244,17 @@ export async function PKG_02({ row }) {
   const candidateArtifact = candidate.release?.artifact_sha256 ?? candidate.artifact?.sha256 ?? null;
   const installedArtifact = installed.release?.artifact_sha256 ?? installed.artifact?.sha256 ?? null;
   if (!nonEmptyString(candidateGeneration) || candidateGeneration !== installedGeneration) {
-    return { status: "failed", evidenceKind: "installed", reason: `release generation mismatch: candidate=${candidateGeneration} installed=${installedGeneration}` };
+    return {
+      status: "failed",
+      evidenceKind: "installed",
+      reason: `release generation mismatch: candidate=${candidateGeneration} installed=${installedGeneration}`,
+      detail: { target: "windows-x86_64", candidateGeneration, installedGeneration, adapted, sourceCommit },
+    };
   }
-  if (!nonEmptyString(candidateArtifact) || candidateArtifact !== installedArtifact) {
-    return { status: "failed", evidenceKind: "installed", reason: `artifact sha256 mismatch: candidate=${candidateArtifact} installed=${installedArtifact}` };
+  if (!skipArtifactComparison) {
+    if (!nonEmptyString(candidateArtifact) || candidateArtifact !== installedArtifact) {
+      return { status: "failed", evidenceKind: "installed", reason: `artifact sha256 mismatch: candidate=${candidateArtifact} installed=${installedArtifact}` };
+    }
   }
   if (candidate.signing?.status === "release-signed" || installed.signing?.status === "release-signed") {
     return { status: "failed", evidenceKind: "installed", reason: "internal-unsigned profile must never bind to a signed-release identity" };
@@ -165,7 +263,15 @@ export async function PKG_02({ row }) {
   return {
     status: "passed",
     evidenceKind: "installed",
-    detail: { target: "windows-x86_64", generation: candidateGeneration, artifact_sha256: candidateArtifact, signing: candidate.signing ?? null },
+    detail: {
+      target: "windows-x86_64",
+      generation: candidateGeneration,
+      candidateArtifact,
+      installedArtifact,
+      signing: candidate.signing ?? null,
+      adapted,
+      sourceCommit,
+    },
   };
 }
 
@@ -198,38 +304,123 @@ export function queryInstalledControllerIdentity(installedRoot) {
   }
 }
 
+function sleepSync(milliseconds) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, milliseconds);
+}
+
+// Best-effort, bounded stop of a process this module itself started. `/T`
+// tears down the tray's own child tree (the daemon it spawned) too, mirroring
+// how a normal shutdown would tear down the holder it started. Never invoked
+// against a process this module did not start itself.
+function stopStartedProcess(pid) {
+  if (!pid) return;
+  try {
+    execFileSync("taskkill", ["/PID", String(pid), "/T", "/F"], { stdio: "ignore" });
+  } catch {
+    // Best-effort: there is nothing further a bounded qualification probe can
+    // do to restore state; the caller still reports whatever it observed.
+  }
+}
+
+// Starts the installed product's own holder the sanctioned way -- the same
+// membrane-tray.exe --activate entry point scripts/qualification/
+// install-release.ps1's Start-AndVerifyHub and observe-windows-lifecycle.ps1
+// use, never the installer and never the development checkout -- only when
+// no controller is already resident, and waits up to timeoutMs for
+// `membrane.exe cli health` to report a live identity. Always returns
+// whatever pid it started (even on timeout) so the caller can stop it again;
+// this function itself never leaves the process running past the caller's
+// own cleanup.
+function startInstalledHubResident(installedRoot, timeoutMs) {
+  if (!nonEmptyString(installedRoot) || process.platform !== "win32") return null;
+  const trayExe = join(resolve(installedRoot), "membrane-tray.exe");
+  if (!existsSync(trayExe)) return null;
+  let child;
+  try {
+    child = spawn(trayExe, ["--activate"], { cwd: resolve(installedRoot), detached: true, stdio: "ignore", windowsHide: true });
+    child.unref();
+  } catch {
+    return null;
+  }
+  const deadline = Date.now() + timeoutMs;
+  let identity = null;
+  while (Date.now() < deadline) {
+    identity = queryInstalledControllerIdentity(installedRoot);
+    if (identity) break;
+    sleepSync(500);
+  }
+  return { pid: child.pid, identity };
+}
+
 export async function PKG_03({ row, workspaceRoot }) {
   const installedManifestPath = row?.installedManifestPath ?? process.env.MEMBRANE_QUALIFICATION_INSTALLED_MANIFEST;
   const controllerIdentityPath = row?.controllerIdentityPath ?? process.env.MEMBRANE_QUALIFICATION_CONTROLLER_IDENTITY;
-  const installed = readJsonIfExists(installedManifestPath);
+  const installedRaw = readJsonIfExists(installedManifestPath);
+  const { evidence: installed, adapted, generationError, sourceCommit } = deriveInstalledReleaseEvidence(installedRaw, workspaceRoot);
   let controller = readJsonIfExists(controllerIdentityPath);
   let controllerSource = controllerIdentityPath ? "file" : null;
-  if (!controller) {
-    const installedRoot = row?.installedRoot ?? process.env.MEMBRANE_QUALIFICATION_INSTALLED_ROOT;
-    controller = queryInstalledControllerIdentity(installedRoot);
-    if (controller) controllerSource = "live-cli-health";
-  }
+  const installedRoot = row?.installedRoot ?? process.env.MEMBRANE_QUALIFICATION_INSTALLED_ROOT;
+  let startedPid = null;
 
-  if (!installed || !controller) {
-    return {
-      status: "failed",
-      evidenceKind: "source",
-      reason: "installed manifest and/or a live controller identity report unavailable on this machine; run after install with the controller reachable",
-      detail: { installedManifestPath: installedManifestPath ?? null, controllerIdentityPath: controllerIdentityPath ?? null, controllerSource },
-    };
-  }
+  try {
+    if (!controller) {
+      controller = queryInstalledControllerIdentity(installedRoot);
+      if (controller) controllerSource = "live-cli-health";
+    }
+    // Only attempted when no controller is already resident, so a healthy
+    // installed Hub is never disturbed; bounded by timeoutMs and always
+    // fail-closed on timeout (controller stays null, no PASS is fabricated).
+    const selfStartDisabled = row?.disableSelfStart === true || process.env.MEMBRANE_QUALIFICATION_PKG03_NO_SELF_START === "1";
+    if (!controller && nonEmptyString(installedRoot) && !selfStartDisabled) {
+      const timeoutMs = Number(row?.selfStartTimeoutMs ?? process.env.MEMBRANE_QUALIFICATION_PKG03_START_TIMEOUT_MS ?? 30_000);
+      const started = startInstalledHubResident(installedRoot, timeoutMs);
+      if (started?.pid) startedPid = started.pid;
+      if (started?.identity) {
+        controller = started.identity;
+        controllerSource = "self-started-live-cli-health";
+      }
+    }
 
-  const installedGeneration = installed.release?.generation ?? installed.releaseGeneration ?? null;
-  const reportedGeneration = controller.releaseGeneration ?? controller.release?.generation ?? null;
-  if (!nonEmptyString(reportedGeneration) || reportedGeneration !== installedGeneration) {
-    return { status: "failed", evidenceKind: "host", reason: `running controller identity ${reportedGeneration} does not equal installed current ${installedGeneration}` };
-  }
-  const reportedSourceRoot = controller.sourceRoot ?? controller.checkoutRoot ?? null;
-  if (nonEmptyString(reportedSourceRoot) && resolve(reportedSourceRoot) === resolve(workspaceRoot)) {
-    return { status: "failed", evidenceKind: "host", reason: "running controller fell back to the development checkout instead of installed current" };
-  }
+    if (installedRaw && adapted && generationError) {
+      return {
+        status: "failed",
+        evidenceKind: "installed",
+        reason: `installed manifest generation could not be derived: ${generationError}`,
+        detail: { sourceCommit },
+      };
+    }
 
-  return { status: "passed", evidenceKind: "host", detail: { releaseGeneration: reportedGeneration, controllerSource } };
+    if (!installedRaw || !controller) {
+      return {
+        status: "failed",
+        evidenceKind: "source",
+        reason: startedPid
+          ? "installed manifest and/or a live controller identity report unavailable even after attempting to start the installed Hub holder (timed out)"
+          : "installed manifest and/or a live controller identity report unavailable on this machine; run after install with the controller reachable",
+        detail: {
+          installedManifestPath: installedManifestPath ?? null,
+          controllerIdentityPath: controllerIdentityPath ?? null,
+          controllerSource,
+          attemptedSelfStart: startedPid !== null,
+        },
+      };
+    }
+
+    const installedGeneration = installed.release?.generation ?? installed.releaseGeneration ?? null;
+    const reportedGeneration = controller.releaseGeneration ?? controller.release?.generation ?? null;
+    if (!nonEmptyString(reportedGeneration) || reportedGeneration !== installedGeneration) {
+      return { status: "failed", evidenceKind: "host", reason: `running controller identity ${reportedGeneration} does not equal installed current ${installedGeneration}` };
+    }
+    const reportedSourceRoot = controller.sourceRoot ?? controller.checkoutRoot ?? null;
+    if (nonEmptyString(reportedSourceRoot) && resolve(reportedSourceRoot) === resolve(workspaceRoot)) {
+      return { status: "failed", evidenceKind: "host", reason: "running controller fell back to the development checkout instead of installed current" };
+    }
+
+    return { status: "passed", evidenceKind: "host", detail: { releaseGeneration: reportedGeneration, controllerSource } };
+  } finally {
+    // Restore prior state: stop only what this run itself started.
+    if (startedPid) stopStartedProcess(startedPid);
+  }
 }
 
 // ---------------------------------------------------------------------------

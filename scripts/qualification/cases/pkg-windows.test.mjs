@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import test from 'node:test';
@@ -7,6 +9,29 @@ import { runRegistryQualification } from '../run.mjs';
 import { PKG_01, PKG_02, PKG_03, PKG_04, PKG_05, queryInstalledControllerIdentity } from './pkg-windows.mjs';
 
 const workspaceRoot = resolve(new URL('../../../', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1'));
+
+// Independent re-implementation of the same committed-engine-tree-digest
+// algorithm pkg-windows.mjs uses to adapt a rightkit-direct-release-manifest,
+// so these tests can assert against a real, independently-derived value
+// instead of trusting the module's own output.
+function committedEngineTreeDigestForTest(commit) {
+  const rows = [];
+  const lsTree = execFileSync('git', ['-C', workspaceRoot, 'ls-tree', '-r', commit, '--', 'engine'], { encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 });
+  for (const line of lsTree.split('\n')) {
+    if (!line) continue;
+    const [metadata, path] = line.split('\t');
+    rows.push([path.replace(/\\/g, '/'), metadata.trim().split(/\s+/)[2]]);
+  }
+  rows.sort((left, right) => (left[0] < right[0] ? -1 : left[0] > right[0] ? 1 : 0));
+  const digest = createHash('sha256');
+  for (const [path, blob] of rows) digest.update(`${path}\0${blob}\n`, 'utf8');
+  return digest.digest('hex');
+}
+
+// A real, resolvable commit distinct from HEAD (the sourceCommit the
+// currently-installed 0.1.24 manifest actually carries), used so the
+// mismatch/adapter tests exercise a genuine commit instead of a fabricated one.
+const KNOWN_INSTALLED_SOURCE_COMMIT = '9481f2fc9eabec0879947ae59a0fc2b54ed3e1e9';
 
 test('PKG_01: registry runner contract passes every self-contained negative control', async () => {
   const result = await PKG_01({ workspaceRoot, profile: 'internal-unsigned', platform: 'windows', evidencePath: null });
@@ -64,6 +89,85 @@ test('PKG_02: passes on matched windows-x86_64 unsigned identities', async () =>
     const result = await PKG_02({ row: { candidateManifestPath: candidatePath, installedManifestPath: installedPath }, workspaceRoot });
     assert.equal(result.status, 'passed');
     assert.equal(result.evidenceKind, 'installed');
+  } finally {
+    rmSync(scratch, { recursive: true, force: true });
+  }
+});
+
+test('PKG_02: adapts a rightkit-direct-release-manifest installed shape and reports a typed generation mismatch instead of a structural error', async () => {
+  const scratch = mkdtempSync(join(tmpdir(), 'pkg02-direct-mismatch-'));
+  try {
+    const candidatePath = join(scratch, 'candidate.json');
+    const installedPath = join(scratch, 'installed.json');
+    writeFileSync(candidatePath, JSON.stringify({
+      schema: 'membrane.release-evidence.v1',
+      release: { target: 'windows-x86_64', generation: 'deadbeef'.repeat(8), artifact_sha256: 'a'.repeat(64) },
+      signing: { status: 'unsigned' },
+    }));
+    writeFileSync(installedPath, JSON.stringify({
+      kind: 'rightkit-direct-release-manifest',
+      sourceCommit: KNOWN_INSTALLED_SOURCE_COMMIT,
+      assets: [{ target: 'windows-x86_64', sha256: 'b'.repeat(64) }],
+    }));
+    const result = await PKG_02({ row: { candidateManifestPath: candidatePath, installedManifestPath: installedPath }, workspaceRoot });
+    assert.equal(result.status, 'failed');
+    assert.equal(result.evidenceKind, 'installed');
+    assert.match(result.reason, /generation mismatch/);
+    assert.equal(result.detail.installedGeneration, committedEngineTreeDigestForTest(KNOWN_INSTALLED_SOURCE_COMMIT));
+    assert.notEqual(result.detail.installedGeneration, result.detail.candidateGeneration);
+  } finally {
+    rmSync(scratch, { recursive: true, force: true });
+  }
+});
+
+test('PKG_02: adapts a rightkit-direct-release-manifest installed shape and passes when the derived generation matches, without requiring byte-identical artifacts', async () => {
+  const scratch = mkdtempSync(join(tmpdir(), 'pkg02-direct-pass-'));
+  try {
+    const derivedGeneration = committedEngineTreeDigestForTest(KNOWN_INSTALLED_SOURCE_COMMIT);
+    const candidatePath = join(scratch, 'candidate.json');
+    const installedPath = join(scratch, 'installed.json');
+    writeFileSync(candidatePath, JSON.stringify({
+      schema: 'membrane.release-evidence.v1',
+      release: { target: 'windows-x86_64', generation: derivedGeneration, artifact_sha256: 'a'.repeat(64) },
+      signing: { status: 'unsigned' },
+    }));
+    writeFileSync(installedPath, JSON.stringify({
+      kind: 'rightkit-direct-release-manifest',
+      sourceCommit: KNOWN_INSTALLED_SOURCE_COMMIT,
+      // Deliberately a different sha256 than the candidate's NSIS installer:
+      // the installed asset is a downloaded release zip, never byte-identical
+      // to a locally-built unsigned installer even from the same source.
+      assets: [{ target: 'windows-x86_64', sha256: 'c'.repeat(64) }],
+    }));
+    const result = await PKG_02({ row: { candidateManifestPath: candidatePath, installedManifestPath: installedPath }, workspaceRoot });
+    assert.equal(result.status, 'passed');
+    assert.equal(result.evidenceKind, 'installed');
+    assert.equal(result.detail.generation, derivedGeneration);
+    assert.equal(result.detail.adapted, true);
+  } finally {
+    rmSync(scratch, { recursive: true, force: true });
+  }
+});
+
+test('PKG_02: reports a typed failure, not a fabricated pass or a structural crash, when the rightkit-direct sourceCommit is not resolvable', async () => {
+  const scratch = mkdtempSync(join(tmpdir(), 'pkg02-direct-unresolvable-'));
+  try {
+    const candidatePath = join(scratch, 'candidate.json');
+    const installedPath = join(scratch, 'installed.json');
+    writeFileSync(candidatePath, JSON.stringify({
+      schema: 'membrane.release-evidence.v1',
+      release: { target: 'windows-x86_64', generation: 'a'.repeat(64), artifact_sha256: 'a'.repeat(64) },
+      signing: { status: 'unsigned' },
+    }));
+    writeFileSync(installedPath, JSON.stringify({
+      kind: 'rightkit-direct-release-manifest',
+      sourceCommit: '0'.repeat(40),
+      assets: [{ target: 'windows-x86_64', sha256: 'b'.repeat(64) }],
+    }));
+    const result = await PKG_02({ row: { candidateManifestPath: candidatePath, installedManifestPath: installedPath }, workspaceRoot });
+    assert.equal(result.status, 'failed');
+    assert.equal(result.evidenceKind, 'installed');
+    assert.match(result.reason, /generation could not be derived/);
   } finally {
     rmSync(scratch, { recursive: true, force: true });
   }
@@ -143,6 +247,38 @@ test('PKG_03: falls back to a live installed CLI health query only when no contr
     assert.equal(result.status, 'failed');
     assert.equal(result.evidenceKind, 'source');
     assert.equal(result.detail.controllerSource, null);
+  } finally {
+    rmSync(scratch, { recursive: true, force: true });
+  }
+});
+
+test('PKG_03: attempts a bounded self-start of the installed Hub holder when no controller is resident, and fails closed (not a fabricated PASS) on timeout, cleaning up what it started', { skip: process.platform !== 'win32' ? 'tray-stub spawn is Windows-only' : false }, async () => {
+  const scratch = mkdtempSync(join(tmpdir(), 'pkg03-selfstart-timeout-'));
+  try {
+    const cmdExe = join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'cmd.exe');
+    const trayStub = join(scratch, 'membrane-tray.exe');
+    if (!existsSync(cmdExe)) return; // no usable stub executable on this host; nothing to prove here
+    copyFileSync(cmdExe, trayStub);
+    const result = await PKG_03({ row: { installedRoot: scratch, selfStartTimeoutMs: 300 }, workspaceRoot });
+    assert.equal(result.status, 'failed');
+    assert.equal(result.evidenceKind, 'source');
+    assert.equal(result.detail.attemptedSelfStart, true);
+    assert.match(result.reason, /timed out/);
+  } finally {
+    rmSync(scratch, { recursive: true, force: true });
+  }
+});
+
+test('PKG_03: never attempts a self-start when disableSelfStart is set', async () => {
+  const scratch = mkdtempSync(join(tmpdir(), 'pkg03-selfstart-disabled-'));
+  try {
+    const cmdExe = join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'cmd.exe');
+    const trayStub = join(scratch, 'membrane-tray.exe');
+    if (existsSync(cmdExe)) copyFileSync(cmdExe, trayStub);
+    const result = await PKG_03({ row: { installedRoot: scratch, disableSelfStart: true, selfStartTimeoutMs: 300 }, workspaceRoot });
+    assert.equal(result.status, 'failed');
+    assert.equal(result.detail.attemptedSelfStart, false);
+    assert.doesNotMatch(result.reason, /timed out/);
   } finally {
     rmSync(scratch, { recursive: true, force: true });
   }
