@@ -189,13 +189,13 @@ function sourceSuites(ids) {
   add("membrane", "pnpm", ["--dir", membraneRoot, "test"] , root);
   if (ids.includes("F13")) add("m0", "node", [join(membraneRoot, "scripts", "run-m0-baseline-current.mjs")], root);
   if (ids.includes("F14")) add("ccx", "node", [join(membraneRoot, "scripts", "run-ccx-live.mjs")], root);
-  if (ids.some((id) => ["C03", "C15"].includes(id))) add("benchmark", "node", ["--test", join(membraneRoot, "mcp", "e2e-benchmark.test.mjs")], root);
-  if (ids.includes("C10")) add("capability", "node", ["--test", join(membraneRoot, "mcp", "capability-inventory.test.mjs")], root);
-  if (ids.includes("C11")) add("rollout", "node", ["--test", join(membraneRoot, "mcp", "rollout.test.mjs")], root);
+  if (ids.some((id) => ["C03", "C15"].includes(id))) add("benchmark", "pnpm", ["--dir", membraneRoot, "test:mcp"], root);
+  if (ids.includes("C10")) add("capability", "pnpm", ["--dir", membraneRoot, "check:host-contracts"], root);
+  if (ids.includes("C11")) add("rollout", "node", [join(membraneRoot, "scripts", "ci", "check-lifecycle-conformance.mjs")], root);
   if (ids.includes("C16")) add("sync", join(root, ".venv-tools", "bin", "python"), ["-m", "unittest", "tools.pipelines.memory.test_sync"], root);
   if (ids.some((id) => /^F1[5-8]$/.test(id))) add("forge", "pnpm", ["--dir", join(root, "forge"), "test"], root);
   if (ids.some((id) => ["F07", "F08", "F09", "F10", "F11", "F18", "F19", "F20", "C01", "C04", "C05", "C06", "C07", "C13"].includes(id))) add("engine", "cargo", ["check", "--manifest-path", join(membraneRoot, "engine", "Cargo.toml"), "--workspace", "--all-targets"], root);
-  if (ids.some((id) => ["F03", "F04", "F11", "C02", "C04", "C05", "C06", "C07"].includes(id))) add("blueprint", "pnpm", ["--dir", join(membraneRoot, "blueprint"), "test:all"], root);
+  if (ids.some((id) => ["F03", "F04", "F11", "C02", "C04", "C05", "C06", "C07"].includes(id))) add("blueprint", "rightkit", ["cargo", "test", "--manifest-path", join(membraneRoot, "engine", "Cargo.toml"), "-p", "membrane-blueprint", "--locked", "--no-fail-fast"], root);
   if (ids.some((id) => ["F05", "F12"].includes(id))) add("adapt", join(root, ".venv-tools", "bin", "python"), ["-m", "pytest", join(membraneRoot, "adapt")], root);
   return suites;
 }

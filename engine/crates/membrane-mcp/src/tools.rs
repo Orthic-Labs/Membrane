@@ -137,7 +137,7 @@ fn schema(name: &str) -> Value {
         ),
         "membrane_blueprint" => (
             vec!["repository", "caller", "operation"],
-            json!({"repository":{"type":"string"},"caller":caller(),"operation":{"type":"string","enum":["architecture","search","recall","expand","build","refresh","status","documentTruth","path","symbol","reference","references","impact","changes","snapshot_get","snapshot_list","changes_since"]},"node":{"type":"string","minLength":1},"items":{"type":"array"},"generationId":{"type":"string","minLength":1},"snapshot":{"type":"string"},"sinceGeneration":{"type":"string"},"treeish":{"type":"string"},"query":{"type":"string","maxLength":8192},"from":{"type":"string"},"to":{"type":"string"},"limit":{"type":"integer","minimum":1,"maximum":64},"budget":{"type":"integer","minimum":1,"maximum":4000},"depth":{"type":"integer","minimum":1,"maximum":5},"deadlineMs":{"type":"integer","minimum":10,"maximum":30000}}),
+            json!({"repository":{"type":"string"},"caller":caller(),"operation":{"type":"string","enum":["architecture","search","recall","expand","build","refresh","status","documentTruth","path","symbol","reference","references","impact","changes","snapshot_get","snapshot_list","changes_since","federate","findings.get","findings.explain","findings.evidence_pack","findings.baseline.capture","findings.baseline.list","findings.sarif"]},"federateOperation":{"type":"string","enum":["search","recall","expand","impact"]},"repositories":{"type":"array","items":{"type":"object"},"maxItems":32},"allowedRepoIds":{"type":"array","items":{"type":"string","minLength":1},"maxItems":32,"uniqueItems":true},"node":{"type":"string","minLength":1},"items":{"type":"array"},"generationId":{"type":"string","minLength":1},"snapshot":{"type":"string"},"sinceGeneration":{"type":"string"},"treeish":{"type":"string"},"query":{"type":"string","maxLength":8192},"from":{"type":"string"},"to":{"type":"string"},"limit":{"type":"integer","minimum":1,"maximum":64},"budget":{"type":"integer","minimum":1,"maximum":4000},"depth":{"type":"integer","minimum":1,"maximum":5},"deadlineMs":{"type":"integer","minimum":10,"maximum":30000},"paths":{"type":"array","items":{"type":"string","minLength":1,"maxLength":4096},"maxItems":4096},"fingerprint":{"type":"string","minLength":1,"maxLength":256},"fingerprints":{"type":"array","items":{"type":"string","minLength":1,"maxLength":256},"minItems":1,"maxItems":100,"uniqueItems":true},"baselineGeneration":{"type":"string","minLength":1},"name":{"type":"string","minLength":1,"maxLength":80},"stale":{"type":"boolean"},"allowStale":{"type":"boolean"},"toolVersion":{"type":"string","minLength":1,"maxLength":128},"view":{"type":"string","minLength":1,"maxLength":128},"task":{"type":"string","maxLength":8192}}),
         ),
         "membrane_knowledge_propose" => (
             vec!["repository", "caller", "emission"],
@@ -493,6 +493,15 @@ pub fn validate_arguments(name: &str, arguments: &Value) -> Result<(), String> {
             "expand"
                 if arguments.get("node").and_then(Value::as_str).is_none_or(|node| node.trim().is_empty()) =>
                 return Err("Blueprint expand requires node".into()),
+            "findings.explain"
+                if arguments.get("fingerprint").and_then(Value::as_str).is_none_or(|value| value.trim().is_empty()) =>
+                return Err("Blueprint findings.explain requires fingerprint".into()),
+            "findings.evidence_pack"
+                if arguments.get("fingerprints").and_then(Value::as_array).is_none_or(|values| values.is_empty()) =>
+                return Err("Blueprint findings.evidence_pack requires fingerprints".into()),
+            "findings.baseline.capture"
+                if arguments.get("name").and_then(Value::as_str).is_none_or(|value| value.trim().is_empty()) =>
+                return Err("Blueprint findings.baseline.capture requires name".into()),
             _ => {}
         }
     }

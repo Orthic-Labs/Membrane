@@ -4,14 +4,14 @@
 //! typed client identity and a task/turn request envelope from process
 //! environment + stdin, (b) calls out to a resident HTTP service or spawns a
 //! `membrane-client.mjs` subprocess, and (c) renders the response by
-//! delegating to `mcp/context-renderer-lib.cjs` (`finalize`,
+//! historically delegating to the retired context renderer (`finalize`,
 //! `ContextSessionV1`, `applyDeliveryLedger`) — a module outside this lane's
 //! 11-module port list and not present anywhere in this crate's dependency
 //! tree. This port covers the pure, host-owned identity/envelope logic
 //! (`defaultClient`, `buildRequest`, `taskId`, `ledgerKey`) faithfully; the
 //! subprocess/HTTP transport and the renderer-delegating `render`/`finalize`/
 //! `prepareDelivery` functions are process-orchestration, not MCP-surface
-//! logic, and are intentionally left to the Node hook they ship in.
+//! logic, and are intentionally owned by native host modules now.
 
 use membrane_protocol::digest_str;
 

@@ -162,20 +162,6 @@ test("matrix clients and operations arrays match the registry and the index", ()
   assert.deepEqual(matrixOpNames, indexOpNames);
 });
 
-test("the install path's read-only helpers see the same client list", async () => {
-  const install = await import("../../mcp/install.mjs");
-  const ids = await install.clientsForEnrollment();
-  const expected = REGISTRY.clients.map((c) => c.id);
-  assert.deepEqual(ids, expected);
-  // supportedOperationsFor returns the matrix's 'supported' subset for each
-  // client.
-  for (const client of REGISTRY.clients) {
-    const supported = await install.supportedOperationsFor(client.id);
-    const expectedOps = client.supported_operations.slice().sort();
-    assert.deepEqual(supported.slice().sort(), expectedOps, `mismatch for ${client.id}`);
-  }
-});
-
 let failed = 0;
 for (const [name, fn] of checks) {
   try {

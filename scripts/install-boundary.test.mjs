@@ -29,10 +29,8 @@ test("development Hub cannot become installed product or mutate global bindings"
     dev,
     /\bactivate\b|--install-root|activation-receipt|\bcurrent\b|\.cursor[\\/]mcp\.json|\.codeium[\\/]windsurf|\.gemini[\\/]config[\\/]mcp_config\.json|\bmcp\s+(?:add|remove)\b/i,
   );
-  const enrollment = read("mcp/install.mjs");
-  assert.doesNotMatch(enrollment, /\?\s*createInstalledNativeInstaller\([^)]*\)\s*:\s*createNativeInstaller/);
-  assert.match(enrollment, /MEMBRANE_RUNTIME_ORIGIN !== "installed"/);
-  assert.match(enrollment, /global client binding requires installed runtime origin, stable current, and activation identity receipt/);
+  const nativeCli = read("engine/crates/membrane-runtime/src/cli.rs");
+  assert.match(nativeCli, /run_native_blueprint|blueprint_one_shot/);
 });
 
 test("installed activation is stable-current only & persists identity receipt", () => {
@@ -47,16 +45,7 @@ test("installed activation is stable-current only & persists identity receipt", 
     "runtime_origin: RuntimeOrigin::Installed",
     "release_generation",
   ]) assert.ok(activation.includes(term), term);
-  const enrollment = read("mcp/install.mjs");
-  for (const term of [
-    'join(dirname(root), "state", "activation-receipt.json")',
-    'receipt.runtimeOrigin !== "installed"',
-    "receipt.dryRun !== false",
-    "sameInstalledPath(receipt.installRoot, root, platform)",
-    "sameInstalledPath(receipt.membraneExecutable, executable, platform)",
-    'receipt.service?.serviceId !== "membrane-hub"',
-    "installedActivationReceipt({ env, platform });",
-  ]) assert.ok(enrollment.includes(term), term);
+  assert.match(activation, /RuntimeOrigin::Installed/);
 });
 
 test("installed dogfood binds stable current to installation identity evidence", () => {

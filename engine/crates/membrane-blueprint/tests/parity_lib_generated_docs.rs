@@ -86,7 +86,7 @@ fn maintain_readme_pointer_creates_block_first_time() {
     let text = fs::read_to_string(dir.join("README.md")).unwrap();
     assert!(text.contains("<!-- blueprint:docs:start -->"));
     assert!(text.contains("<!-- blueprint:docs:end -->"));
-    assert!(text.contains("[Product overview](docs/product.md)"));
+    assert!(text.contains("[Product overview](docs/product/README.md)"));
     let _ = fs::remove_dir_all(&dir);
 }
 
@@ -113,7 +113,7 @@ fn maintain_readme_pointer_updates_stale_block_content() {
     let text = fs::read_to_string(dir.join("README.md")).unwrap();
     assert!(!text.contains("OLD CONTENT"));
     assert!(text.contains("Tail text"));
-    assert!(text.contains("[Architecture](docs/architecture.md)"));
+    assert!(text.contains("[Architecture](docs/architecture/membrane.md)"));
     let _ = fs::remove_dir_all(&dir);
 }
 
@@ -187,18 +187,20 @@ fn generate_docs_reports_conflict_for_handwritten_target() {
     .unwrap();
     let docs_dir = dir.join("docs");
     fs::create_dir_all(&docs_dir).unwrap();
-    fs::write(docs_dir.join("product.md"), "# Hand-written product doc\n").unwrap();
-    fs::write(docs_dir.join("architecture.md"), "# Hand-written arch doc\n").unwrap();
+    fs::create_dir_all(docs_dir.join("product")).unwrap();
+    fs::create_dir_all(docs_dir.join("architecture")).unwrap();
+    fs::write(docs_dir.join("product/README.md"), "# Hand-written product doc\n").unwrap();
+    fs::write(docs_dir.join("architecture/membrane.md"), "# Hand-written arch doc\n").unwrap();
 
     let result = generate_docs(&dir, GenerateDocsOptions::default()).unwrap();
     assert_eq!(result.mode, "docs_conflict");
     assert_eq!(result.conflicts.len(), 2);
     assert_eq!(result.fallback.len(), 2);
-    assert!(dir.join(".agent/docs/product.md").exists());
-    assert!(dir.join(".agent/docs/architecture.md").exists());
+    assert!(dir.join(".agent/docs/product/README.md").exists());
+    assert!(dir.join(".agent/docs/architecture/membrane.md").exists());
     // Hand-written targets must be left untouched.
     assert_eq!(
-        fs::read_to_string(docs_dir.join("product.md")).unwrap(),
+        fs::read_to_string(docs_dir.join("product/README.md")).unwrap(),
         "# Hand-written product doc\n"
     );
 

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import test from "node:test";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -56,6 +57,13 @@ test("installed Cortex probe fails closed when stable CLI is unreachable", () =>
   const result = cases.probeInstalled({ cliPath: "membrane-binary-that-does-not-exist-xyz" });
   assert.equal(result.status, "blocked");
   assert.equal(result.evidenceKind, "installed");
+});
+
+test("installed Cortex identity probe fails closed outside installer-owned current root", () => {
+  const result = cases.probeInstalledIdentity({ cliPath: process.execPath });
+  assert.equal(result.status, "blocked");
+  assert.equal(result.evidenceKind, "installed");
+  assert.match(result.reason, /current root/i);
 });
 
 // ---------------------------------------------------------------------------
@@ -257,11 +265,12 @@ test("negative control: BM07 episode-proposal check fails when review.rs omits r
 // fails on the injected fault (wrong corpus id).
 // ---------------------------------------------------------------------------
 
-test("OPT-02 never returns pass:true for the ablation itself (requires a live instrumented harness this pass does not run)", () => {
+test("OPT-02 refuses missing corpus instead of claiming fixture-only ablation", () => {
   const result = cases.OPT_02();
   assert.equal(result.pass, false);
-  assert.equal(result.status, "insufficient");
+  assert.equal(result.status, "blocked");
   assert.equal(result.id, "OPT-02");
+  assert.match(result.reason, /pinned matched corpus|missing corpus/i);
 });
 
 test("negative control: OPT-02 rejects ablation requested against a non-matched corpus id", () => {
@@ -273,8 +282,25 @@ test("negative control: OPT-02 rejects ablation requested against a non-matched 
 
 test("OPT-02 accepts the matched corpus id as the (still insufficient, unexecuted) target", () => {
   const result = cases.OPT_02({ corpusId: "cortex-matched-corpus-v1" });
-  // Corpus id matches, so no rejection fires — but the ablation itself is
-  // still not executed by this pass, so it must remain typed insufficient.
+  // Corpus id matches, but no pinned corpus was supplied, so execution is
+  // refused rather than replaced with a source/fixture assertion.
   assert.equal(result.pass, false);
-  assert.equal(result.status, "insufficient");
+  assert.equal(result.status, "blocked");
+  assert.match(result.reason, /pinned matched corpus|missing corpus/i);
+});
+
+test("OPT-02 executes all three installed native arms and binds release identity", () => {
+  const root = mkdtempSync(join(tmpdir(), "opt02-native-"));
+  try {
+    const corpusPath = join(root, "matched.json");
+    const corpusBytes = JSON.stringify({ corpusId: "cortex-matched-corpus-v1", pinned: true, cases: [{ query: "temporal preference" }] });
+    writeFileSync(corpusPath, corpusBytes, "utf8");
+    const mock = join(root, "mock-native.mjs");
+    writeFileSync(mock, "const a=process.argv.slice(2); if(a[0]==='--version') console.log('Membrane 1.0'); else if(a.includes('build-info')) console.log(JSON.stringify({release_generation:'sha256:installed'})); else console.log(JSON.stringify({status:'passed',metrics:{recall:1,ranking:1,temporal:1,paraphrase:1,preference:1,contradiction:1,latency:1,startup:1,rss:1}}));", "utf8");
+    const result = cases.OPT_02({ corpusPath, expectedCorpusSha256: createHash("sha256").update(corpusBytes).digest("hex"), cliPath: process.execPath, cliPrefix: [mock] });
+    assert.equal(result.pass, true);
+    assert.equal(result.status, "passed");
+    assert.deepEqual(Object.keys(result.evidence.arms).sort(), ["hybrid", "lexical-only", "vector-only"]);
+    assert.equal(result.evidence.installedReleaseGeneration, "sha256:installed");
+  } finally { rmSync(root, { recursive: true, force: true }); }
 });

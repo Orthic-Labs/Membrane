@@ -121,11 +121,27 @@ function lifecycleRuntimeCheck(id, options, structural) {
     .filter((p) => forbiddenPattern.test(String(p?.name || "")));
   const missing = expected.filter((name) => !byId.has(name));
   const notPassed = expected.filter((name) => byId.has(name) && byId.get(name).status !== "passed");
-  const pass = missing.length === 0 && notPassed.length === 0 && forbidden.length === 0;
+  const identity = observation.value.buildIdentity;
+  const identityValid = identity?.root && identity?.generation && /^[0-9a-f]{64}$/i.test(String(identity.membraneSha256 || ""));
+  const evidenceMissing = laneScenarios.filter((s) => s.status === "passed" &&
+    (!Array.isArray(s.actions) || s.actions.length === 0 ||
+      s.actions.some((a) => a.terminal !== true || a.nativeEvidence !== true || typeof a.exitCode !== "number")));
+  const semanticMissing = laneScenarios.filter((s) => s.status === "passed" && !s.actions.some((action) => {
+    try {
+      const value = JSON.parse(action.stdout);
+      return value.schema === "membrane.installed-lifecycle-scenario.v1" &&
+        value.runtimeOrigin === "installed" && value.installedIdentity?.verified === true &&
+        value.evidence?.expectedControllerState && value.evidence?.watcherActivity;
+    } catch { return false; }
+  }));
+  const pass = missing.length === 0 && notPassed.length === 0 && forbidden.length === 0 && identityValid && evidenceMissing.length === 0 && semanticMissing.length === 0;
   const detail = [];
   if (missing.length) detail.push(`missing scenarios: ${missing.join(", ")}`);
   if (notPassed.length) detail.push(`not passed: ${notPassed.map((name) => `${name} (${byId.get(name).status}: ${byId.get(name).reason})`).join("; ")}`);
   if (forbidden.length) detail.push("interpreter child observed");
+  if (!identityValid) detail.push("missing installed build identity");
+  if (evidenceMissing.length) detail.push(`missing terminal native evidence: ${evidenceMissing.map((s) => s.id).join(", ")}`);
+  if (semanticMissing.length) detail.push(`missing installed controller-state/watcher evidence: ${semanticMissing.map((s) => s.id).join(", ")}`);
   return {
     id, kind: "installed", evidenceKind: "installed",
     status: pass ? "passed" : "insufficient", pass,

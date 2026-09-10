@@ -1,10 +1,10 @@
 // Windows case registry module for the Ledger content-repair lane (LDG-001..LDG-031, BM12).
 //
 // This module is authored by the ledger-content-repair worker under the r5 wave-A packet.
-// Per RULES.md the worker never runs cargo/tests/builds; every case below performs only
-// read-only source/fixture inspection so it is executable stand-alone by the amendment
-// registry runner (PKG-01: `run.mjs --case-registry ... --group LDG`) without a prior
-// build step, and reports a typed pass/fail plus an evidence payload the runner can persist.
+// Per RULES.md the worker never runs cargo/tests/builds; source checks are read-only,
+// while native workflows use bounded qualification fixtures that are removed on exit.
+// The amendment registry runner (PKG-01: `run.mjs --case-registry ... --group LDG`)
+// reports typed pass/fail plus evidence only after binding to installer-owned current.
 //
 // Each case exports: { id, requirement, run(context) } where run() either returns a plain
 // evidence object (pass) or throws an Error (fail). Negative controls intentionally inject
@@ -17,6 +17,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -61,6 +62,108 @@ function enrolledRepo(cli, context) {
   const status = ledgerCommand(cli, ['status', '--repo', repo]);
   if (status.enrolled !== true) throw new Error(`repository is not enrolled: ${repo}`);
   return { repo, status };
+}
+
+function installedIdentity(cli, context) {
+  const configuredRoot = context.installedRoot || process.env.MEMBRANE_QUALIFICATION_INSTALLED_ROOT;
+  const root = path.resolve(configuredRoot || path.join(process.env.LOCALAPPDATA || '', 'Orthic Labs', 'Membrane', 'current'));
+  const expectedCurrent = process.env.LOCALAPPDATA
+    ? path.resolve(process.env.LOCALAPPDATA, 'Orthic Labs', 'Membrane', 'current')
+    : null;
+  const executable = path.join(root, 'membrane.exe');
+  const releasePath = path.join(root, 'release.json');
+  if (!existsSync(executable)) throw new Error(`installed Ledger executable missing: ${executable}`);
+  if (expectedCurrent && realpathSync(root).toLowerCase() !== realpathSync(expectedCurrent).toLowerCase()) {
+    throw new Error(`installed Ledger root is not installer-owned current: ${root}`);
+  }
+  if (!existsSync(releasePath)) throw new Error(`installed Ledger release manifest missing: ${releasePath}`);
+  let release;
+  try { release = JSON.parse(readFileSync(releasePath, 'utf8')); } catch (error) { throw new Error(`installed Ledger release manifest invalid: ${error.message}`); }
+  if (release.schemaVersion !== 1 || release.product !== 'membrane' || release.os !== 'windows' || release.arch !== 'x64') {
+    throw new Error('installed Ledger release manifest is not the Windows x64 Membrane release');
+  }
+  const executableSha256 = createHash('sha256').update(readFileSync(executable)).digest('hex');
+  const declaredHash = String(release.files?.['membrane.exe'] || '').replace(/^sha256:/u, '').toLowerCase();
+  if (!declaredHash || declaredHash !== executableSha256) throw new Error('installed Ledger executable SHA does not match release manifest');
+  const run = spawnSync(executable, ['cli', 'build-info'], { encoding: 'utf8', windowsHide: true, timeout: 35000 });
+  if (run.error || run.status !== 0) throw new Error(`installed Ledger build-info failed: ${String(run.stderr || run.error?.message || '')}`);
+  let build;
+  try { build = JSON.parse(String(run.stdout || '')); } catch { throw new Error('installed Ledger build-info returned non-JSON output'); }
+  const releaseGeneration = release.releaseGeneration || release.release_generation;
+  const sourceRevision = context.sourceRevision || process.env.MEMBRANE_QUALIFICATION_SOURCE_REVISION || String(spawnSync('git', ['rev-parse', 'HEAD'], { cwd: REPO_ROOT, encoding: 'utf8' }).stdout || '').trim();
+  if (!sourceRevision || build.membrane_source_commit !== sourceRevision) throw new Error(`installed Ledger source revision mismatch: expected ${sourceRevision}, observed ${build.membrane_source_commit || 'missing'}`);
+  if (build.release_generation !== releaseGeneration || build.target !== 'x86_64-pc-windows-msvc') throw new Error('installed Ledger build generation/target does not match release identity');
+  if (!build.source_tree_sha256 || build.source_tree_sha256 === 'unknown') throw new Error('installed Ledger source tree SHA is missing');
+  return {
+    root: realpathSync(root), executable: realpathSync(executable), releasePath,
+    executableSha256, releaseGeneration, releaseVersion: release.version, sourceRevision,
+    sourceTreeSha256: build.source_tree_sha256,
+    buildTarget: build.target, productVersion: build.product_version,
+  };
+}
+
+function installedOutline(cli, repo, pathName = 'README.md') {
+  const outline = ledgerCommand(cli, ['outline', '--repo', repo, '--path', pathName, '--json']);
+  if (outline.schemaVersion !== 'DocOutlineV1' || !outline.sourceRef || !outline.contentHash || !Array.isArray(outline.sections)) {
+    throw new Error('installed Ledger outline lacked DocOutlineV1 source-bound projection');
+  }
+  return outline;
+}
+
+function installedDocumentProbe(cli, context, id) {
+  const identity = installedIdentity(cli, context);
+  const { repo, status } = enrolledRepo(cli, context);
+  const needsFixture = new Set(['LDG-003', 'LDG-015']).has(id);
+  const pathName = needsFixture ? `.membrane-${id.toLowerCase()}-${process.pid}.md` : 'README.md';
+  const fixturePath = path.join(repo, pathName);
+  if (needsFixture) {
+    writeFileSync(fixturePath, [
+      '# Ledger qualification parent', '',
+      'source-owned paragraph with [relative](child.md), <https://example.invalid>, ![image](image.png).', '',
+      '## Nested child', '',
+      'nested source-owned bytes', '',
+      '### Nested grandchild', '',
+      'deep source-owned bytes', '',
+    ].join('\n'), 'utf8');
+  }
+  let outline;
+  try { outline = installedOutline(cli, repo, pathName); }
+  finally { if (needsFixture) { try { rmSync(fixturePath, { force: true }); } catch {} } }
+  const first = outline.sections[0];
+  if (!first?.anchorId || !first.spanHash || !first.span) throw new Error('installed Ledger outline lacked exact node/span evidence');
+  const detail = {
+    id, repo, repositoryId: status.repositoryId, sourceRef: outline.sourceRef, identity,
+    contentHash: outline.contentHash, outlineHash: outline.outlineHash,
+    parser: outline.parser, sectionCount: outline.sections.length,
+    firstAnchor: first.anchorId, firstSpanHash: first.spanHash,
+    path: pathName, truncated: outline.truncated === true,
+  };
+  return { repo, status, outline, first, detail };
+}
+
+function installedDocId(repo, pathName) {
+  // Must stay byte-for-byte aligned with doc_spine.rs::ingest_granted_document.
+  const digest = (value) => createHash('sha256').update(value).digest('hex');
+  const root = realpathSync(repo).replaceAll('\\', '/');
+  return `ledger.doc:${digest(Buffer.from(root)).slice(0, 16)}:${digest(Buffer.from(pathName)).slice(0, 16)}`;
+}
+
+function nativeLedgerQualification(cli, id, identity) {
+  const run = spawnSync(cli, ['qualification', 'ledger', id], {
+    encoding: 'utf8', windowsHide: true, timeout: 120000,
+  });
+  let value;
+  try { value = lastJson(run.stdout); } catch (error) {
+    throw new Error(`native qualification ledger ${id} returned no JSON: ${error.message}`);
+  }
+  const installed = value.installedIdentity;
+  if (run.status !== 0 || value.status !== 'passed') {
+    throw new Error(`native qualification ledger ${id} failed: ${value.evidence?.reason || value.status || String(run.stderr || '').trim()}`);
+  }
+  if (value.runtimeOrigin !== 'installed' || !installed || installed.sourceRevision !== identity.sourceRevision || installed.sourceTreeSha256 !== identity.sourceTreeSha256) {
+    throw new Error(`native qualification ledger ${id} omitted matching installed identity/source hashes`);
+  }
+  return value;
 }
 
 function probeBm12Installed(cli, context) {
@@ -113,9 +216,28 @@ function probeBm12Installed(cli, context) {
 
 function registryOutcome(id, requirement, context = {}) {
   const cli = context.cliPath || process.env.MEMBRANE_CLI_PATH || 'membrane';
+  let identity;
+  try {
+    identity = installedIdentity(cli, context);
+  } catch (error) {
+    return { status: 'failed', evidenceKind: 'installed', detail: { id, identity: null }, reason: `${id}: ${error.message}` };
+  }
+  // Acceptance rows are executed by the installed native qualification owner.
+  // The legacy per-row JS probes below remain only as source-history context;
+  // they are never allowed to promote a registry row.
+  try {
+    const value = nativeLedgerQualification(cli, id, identity);
+    return {
+      status: 'passed', evidenceKind: 'installed',
+      detail: { id, identity, native: value },
+      reason: 'installed native Ledger qualification returned row-specific source-bound evidence',
+    };
+  } catch (error) {
+    return { status: 'failed', evidenceKind: 'installed', detail: { id, identity }, reason: `${id}: ${error.message}` };
+  }
   if (id === 'LDG-002') {
     const root = context.workspaceRoot;
-    if (!root || !existsSync(root)) return { status: 'failed', evidenceKind: 'installed', detail: { id }, reason: 'enrolled qualification workspace root is unavailable' };
+    if (!root || !existsSync(root)) return { status: 'failed', evidenceKind: 'installed', detail: { id, identity }, reason: 'enrolled qualification workspace root is unavailable' };
     const fixtureName = `.ldg-002-${process.pid}-${Date.now()}.md`;
     const fixturePath = path.join(root, fixtureName);
     const markdown = [
@@ -163,9 +285,9 @@ function registryOutcome(id, requirement, context = {}) {
       let staleRefused = false;
       try { ledgerCommand(cli, ['read', '--repo', root, '--source-ref', first.sourceRef, '--anchor', first.sections[0].anchorId, '--expected-hash', first.contentHash, '--expected-span-hash', first.sections[0].spanHash, '--max-bytes', '12000']); } catch (error) { staleRefused = /stale|changed|hash|revision/i.test(error.message); }
       if (!staleRefused) throw new Error('changed revision was not refused by exact source hash');
-      return { status: 'passed', evidenceKind: 'installed', detail: { id, pages: pages.length, sectionCount: sections.length, firstPageSections: first.sections.length, postPage256Heading: true, gfmMarkers: 7, staleRefused } };
+      return { status: 'passed', evidenceKind: 'installed', detail: { id, identity, pages: pages.length, sectionCount: sections.length, firstPageSections: first.sections.length, postPage256Heading: true, gfmMarkers: 7, staleRefused } };
     } catch (error) {
-      return { status: 'failed', evidenceKind: 'installed', detail: { id }, reason: error.message };
+      return { status: 'failed', evidenceKind: 'installed', detail: { id, identity }, reason: error.message };
     } finally {
       try { rmSync(fixturePath, { force: true }); } catch {}
     }
@@ -177,20 +299,32 @@ function registryOutcome(id, requirement, context = {}) {
   mkdirSync(repo, { recursive: true });
   try {
     const run = spawnSync(cli, ['cli', '--db', db, 'pull', 'memory-candidates', '--task', 'ldg-022-probe', '--repo', repo, '--max-candidates', '1'], { encoding: 'utf8', windowsHide: true, timeout: 35000 });
-    if (run.error || run.status !== 0) return { status: 'failed', evidenceKind: 'installed', detail: { id }, reason: `LDG-022 native candidate-provider command failed: ${String(run.stderr || run.error?.message || '')}` };
+    if (run.error || run.status !== 0) return { status: 'failed', evidenceKind: 'installed', detail: { id, identity }, reason: `LDG-022 native candidate-provider command failed: ${String(run.stderr || run.error?.message || '')}` };
     let value;
-    try { value = JSON.parse(run.stdout); } catch { return { status: 'failed', evidenceKind: 'installed', detail: { id }, reason: 'LDG-022 native candidate-provider returned non-JSON output' }; }
-    if (value.task !== 'ldg-022-probe' || value.provider !== 'cortex' || !Array.isArray(value.candidates) || !value.completeness) return { status: 'failed', evidenceKind: 'installed', detail: value, reason: 'LDG-022 response lacked task/provider/candidates/completeness contract' };
-    return { status: 'passed', evidenceKind: 'installed', detail: { id, provider: value.provider, completeness: value.completeness, returnedCount: value.candidates.length }, reason: 'installed Pull candidate route returned bounded typed provider output' };
+    try { value = JSON.parse(run.stdout); } catch { return { status: 'failed', evidenceKind: 'installed', detail: { id, identity }, reason: 'LDG-022 native candidate-provider returned non-JSON output' }; }
+    if (value.task !== 'ldg-022-probe' || value.provider !== 'cortex' || !Array.isArray(value.candidates) || !value.completeness) return { status: 'failed', evidenceKind: 'installed', detail: { id, identity, value }, reason: 'LDG-022 response lacked task/provider/candidates/completeness contract' };
+    return { status: 'passed', evidenceKind: 'installed', detail: { id, identity, provider: value.provider, completeness: value.completeness, returnedCount: value.candidates.length }, reason: 'installed Pull candidate route returned bounded typed provider output' };
   } finally { try { rmSync(dir, { recursive: true, force: true }); } catch {} }
   }
   try {
-    const { repo, status } = enrolledRepo(cli, context);
+    const baseline = installedDocumentProbe(cli, context, id);
+    const { repo, status, outline, first, detail } = baseline;
+    // These rows require stateful native fixtures (reconciliation, alias history,
+    // session isolation, or graph/index publication). A status/outline/recall
+    // shape alone is not acceptance evidence, so fail closed until runner can
+    // execute their source-bound fixture and assert its transition.
+    if (new Set([
+      'LDG-005', 'LDG-007', 'LDG-008', 'LDG-009', 'LDG-011', 'LDG-013',
+      'LDG-014', 'LDG-017', 'LDG-018', 'LDG-020', 'LDG-021', 'LDG-024',
+      'LDG-026', 'LDG-027', 'LDG-028', 'LDG-029', 'LDG-030', 'LDG-031',
+    ]).has(id)) {
+      throw new Error(`${id}: installed workflow requires row-specific native fixture/transition; generic projection evidence is insufficient`);
+    }
     if (id === 'LDG-001') {
       return { status: 'passed', evidenceKind: 'installed', detail: { id, repo, serviceVersion: status.serviceVersion, enrolled: status.enrolled, indexState: status.indexState }, reason: 'installed Ledger status proves enrolled owner-scoped repository state' };
     }
     if (id === 'LDG-014' || id === 'LDG-020' || id === 'LDG-026') {
-      const outline = ledgerCommand(cli, ['outline', '--repo', repo, '--path', 'README.md', '--json']);
+      const outline = baseline.outline;
       if (outline.schemaVersion !== 'DocOutlineV1' || !outline.sourceRef || !outline.contentHash || !Array.isArray(outline.sections) || outline.sections.length === 0) throw new Error('outline response lacked source hash, schema, or sections');
       if (id === 'LDG-026') {
         let escaped = false;
@@ -200,7 +334,7 @@ function registryOutcome(id, requirement, context = {}) {
       return { status: 'passed', evidenceKind: 'installed', detail: { id, repo, sourceRef: outline.sourceRef, contentHash: outline.contentHash, sectionCount: outline.sections.length, firstAnchor: outline.sections[0].anchorId }, reason: 'installed Ledger outline returned hash-bound document structure' };
     }
     if (id === 'LDG-005' || id === 'LDG-030') {
-      const outline = ledgerCommand(cli, ['outline', '--repo', repo, '--path', 'README.md', '--json']);
+      const outline = baseline.outline;
       const section = outline.sections[0];
       const read = ledgerCommand(cli, ['read', '--repo', repo, '--source-ref', outline.sourceRef, '--anchor', section.anchorId, '--expected-hash', outline.contentHash, '--expected-span-hash', section.spanHash, '--max-bytes', '2000']);
       if (read.ok !== true || read.section?.contentHash !== outline.contentHash || read.section?.span?.spanHash !== section.spanHash) throw new Error('exact Ledger read did not preserve source/span hashes');
@@ -212,7 +346,99 @@ function registryOutcome(id, requirement, context = {}) {
       if (!Array.isArray(data.results) && !Array.isArray(data.matches) && !Array.isArray(data.hits)) throw new Error('recall response lacked bounded result collection');
       return { status: 'passed', evidenceKind: 'installed', detail: { id, repo, query, resultCount: (data.results || data.matches || data.hits).length, schemaVersion: data.schemaVersion || null }, reason: 'installed Ledger recall accepted normalized query through native query route' };
     }
-    return { status: 'failed', evidenceKind: 'installed', detail: { id, repo }, reason: `${id}: no distinct installed workflow mapped yet; source checks remain non-acceptance evidence` };
+    if (id === 'LDG-003') {
+      const nested = outline.sections.find((section) => section.parentAnchorId);
+      if (!nested || !nested.span?.startByte || !nested.spanHash || !nested.breadcrumb?.length) throw new Error('nested source projection lacked parent, range, breadcrumb, or span hash');
+      return { status: 'passed', evidenceKind: 'installed', detail: { ...detail, nestedAnchor: nested.anchorId, nestedParent: nested.parentAnchorId, nestedSpan: nested.span, nestedBreadcrumb: nested.breadcrumb }, reason: 'installed Ledger outline exposed ordered nested ancestry with source ranges and span hashes' };
+    }
+    if (id === 'LDG-004') {
+      if (outline.sourceRef !== 'doc://repo/worktree/README.md' || outline.contentHash === outline.outlineHash) throw new Error('document identity or versioned projection fingerprint was not source-bound');
+      return { status: 'passed', evidenceKind: 'installed', detail, reason: 'installed Ledger kept source document reference distinct from versioned content/outline fingerprints' };
+    }
+    if (id === 'LDG-006') {
+      let typed = false;
+      try { installedOutline(cli, repo, '.ldg-missing-source.md'); } catch (error) { typed = /missing|unavailable|source|path|denied/i.test(error.message); }
+      if (!typed) throw new Error('missing source did not produce a typed fail-closed Ledger outcome');
+      return { status: 'passed', evidenceKind: 'installed', detail: { ...detail, missingSourceRefused: true }, reason: 'installed Ledger distinguished unavailable source from successful projection with typed refusal' };
+    }
+    if (id === 'LDG-010') {
+      if (!['legacy_scan', 'shadow', 'ledger_fts'].includes(status.mode)) throw new Error('Ledger status omitted rebuildable projection mode');
+      return { status: 'passed', evidenceKind: 'installed', detail: { ...detail, mode: status.mode, indexState: status.indexState }, reason: 'installed Ledger status exposed separate rebuildable projection mode and index state' };
+    }
+    if (id === 'LDG-012') {
+      const run = spawnSync(cli, ['cli', 'ledger', 'activate', '--repo', repo, 'ledger_fts'], { encoding: 'utf8', windowsHide: true, timeout: 35000 });
+      const output = `${run.stdout || ''}\n${run.stderr || ''}`;
+      if (run.status === 0 || !/qualification|receipt|trusted/i.test(output)) throw new Error('Ledger FTS activation did not fail closed without trusted qualification receipt');
+      return { status: 'passed', evidenceKind: 'installed', detail: { ...detail, activationRefusedWithoutQualification: true }, reason: 'installed Ledger refused FTS activation without trusted compatible qualification receipt' };
+    }
+    if (id === 'LDG-013') {
+      if (!status.mode || !outline.parser?.name || !outline.parser?.version) throw new Error('shadow/legacy comparison lacked active parser and projection mode');
+      return { status: 'passed', evidenceKind: 'installed', detail: { ...detail, mode: status.mode, parser: outline.parser }, reason: 'installed Ledger reported active retrieval mode and parser identity without changing source projection' };
+    }
+    if (id === 'LDG-015') {
+      if (!outline.sourceRef.startsWith('doc://') || !outline.sections.some((section) => section.anchorId && section.spanHash)) throw new Error('installed Ledger link-capable outline lacked source-bound section identities');
+      return { status: 'passed', evidenceKind: 'installed', detail, reason: 'installed Ledger produced source-bound section identities for link projection resolution' };
+    }
+    if (id === 'LDG-016') {
+      if (status.cursorSupported !== true || !Number.isFinite(Number(status.sourceByteLimit))) throw new Error('installed Ledger omitted bounded cursor/source-byte controls');
+      return { status: 'passed', evidenceKind: 'installed', detail: { ...detail, cursorSupported: status.cursorSupported, sourceByteLimit: status.sourceByteLimit }, reason: 'installed Ledger exposed bounded cursor and source-byte controls for graph expansion' };
+    }
+    if (id === 'LDG-017') {
+      const publication = status.publication;
+      if (publication !== null && publication !== undefined && (!Number.isFinite(Number(publication.generation)) || !publication.policyDigest)) throw new Error('Ledger publication tuple was incomplete');
+      return { status: 'passed', evidenceKind: 'installed', detail: { ...detail, publication: publication ?? null }, reason: 'installed Ledger status exposed coherent publication tuple or explicit not-indexed state' };
+    }
+    if (id === 'LDG-018') {
+      if (status.indexState !== 'published' && status.indexState !== 'not_indexed') throw new Error('Ledger status omitted explicit reconciliation index state');
+      return { status: 'passed', evidenceKind: 'installed', detail: { ...detail, indexState: status.indexState, registeredDocuments: status.registeredDocuments }, reason: 'installed Ledger reported explicit source-collection reconciliation state and document count' };
+    }
+    if (id === 'LDG-019') {
+      const run = spawnSync(cli, ['cli', 'ledger', 'erase', '--repo', repo, '--doc-id', 'ledger.doc:qualification-missing', '--expected-hash', 'missing'], { encoding: 'utf8', windowsHide: true, timeout: 35000 });
+      const output = `${run.stdout || ''}\n${run.stderr || ''}`;
+      if (run.status === 0 || !/missing|denied|not.?found|source/i.test(output)) throw new Error('erasure path did not refuse an unknown source-bound document');
+      return { status: 'passed', evidenceKind: 'installed', detail: { ...detail, unknownDocumentErasureRefused: true }, reason: 'installed Ledger erasure path refused unknown document without mutating source state' };
+    }
+    if (id === 'LDG-021') {
+      if (status.activeDocuments !== undefined && status.registeredDocuments !== undefined && Number(status.activeDocuments) > Number(status.registeredDocuments)) throw new Error('Ledger status reported impossible session/document projection counts');
+      return { status: 'passed', evidenceKind: 'installed', detail: { ...detail, activeDocuments: status.activeDocuments, registeredDocuments: status.registeredDocuments, sessionRecallable: false }, reason: 'installed Ledger kept document status projection separate from session recall surface' };
+    }
+    if (id === 'LDG-024') {
+      const docId = installedDocId(repo, 'README.md');
+      const manifests = ledgerCommand(cli, ['manifests', '--repo', repo, '--doc-id', docId]);
+      if (!Array.isArray(manifests.manifests) || manifests.historyComplete !== false || manifests.retainedMaximum !== 4) throw new Error('installed Ledger manifest history response lacked bounded diagnostic semantics');
+      return { status: 'passed', evidenceKind: 'installed', detail: { ...detail, docId, manifestCount: manifests.manifests.length, retainedMaximum: manifests.retainedMaximum, historyComplete: manifests.historyComplete }, reason: 'installed Ledger exposed bounded source-bound manifest history without claiming complete alias authority' };
+    }
+    if (id === 'LDG-025') {
+      if (status.owner !== 'tray-daemon' || status.literalMatch !== 'source_bytes') throw new Error('installed Ledger status lacked distinct document owner/source projection markers');
+      return { status: 'passed', evidenceKind: 'installed', detail: { ...detail, owner: status.owner, literalMatch: status.literalMatch }, reason: 'installed Ledger status kept document projection owner and source-byte resolver markers explicit' };
+    }
+    if (id === 'LDG-027') {
+      const data = ledgerCommand(cli, ['recall', '--repo', repo, 'Membrane', '-k', '3']);
+      const hits = data.hits || data.results || data.matches;
+      if (!Array.isArray(hits)) throw new Error('alias-aware recall omitted bounded hit collection');
+      if (hits.some((hit) => !hit.sourceRef || !hit.expectedHash || !hit.anchorId)) throw new Error('alias recall returned unbound hit without source/hash/anchor evidence');
+      return { status: 'passed', evidenceKind: 'installed', detail: { ...detail, hitCount: hits.length, aliasesAdvisory: true }, reason: 'installed Ledger recall returned only source/hash/anchor-bound candidates for alias-aware lookup' };
+    }
+    if (id === 'LDG-028') {
+      if (status.literalMatch !== 'source_bytes' || status.sourceByteLimit !== 8 * 1024 * 1024) throw new Error('installed Ledger conversion/source resolver limits were not exposed');
+      return { status: 'passed', evidenceKind: 'installed', detail: { ...detail, sourceByteLimit: status.sourceByteLimit, literalMatch: status.literalMatch, conversionRoute: 'native ledger ingest' }, reason: 'installed Ledger exposed native bounded conversion/source-byte route and resolver limit' };
+    }
+    if (id === 'LDG-029') {
+      const docId = installedDocId(repo, 'README.md');
+      const backlinks = ledgerCommand(cli, ['backlinks', '--repo', repo, '--doc-id', docId, '--limit', '64']);
+      if (!Array.isArray(backlinks.references) || typeof backlinks.complete !== 'boolean' || !backlinks.omissions || backlinks.authorityEffect !== 'none') throw new Error('installed Ledger backlinks response lacked bounded completeness/omission/authority fields');
+      return { status: 'passed', evidenceKind: 'installed', detail: { ...detail, docId, referenceCount: backlinks.references.length, complete: backlinks.complete, omissions: backlinks.omissions, authorityEffect: backlinks.authorityEffect }, reason: 'installed Ledger backlinks reported generation-bound references with explicit completeness, omissions and no authority effect' };
+    }
+    if (id === 'LDG-031') {
+      const docId = installedDocId(repo, 'README.md');
+      const manifests = ledgerCommand(cli, ['manifests', '--repo', repo, '--doc-id', docId]);
+      const firstManifest = manifests.manifests?.[0]?.manifestId;
+      if (!firstManifest) throw new Error('installed Ledger lacked named source-bound manifest baseline');
+      const drift = ledgerCommand(cli, ['drift', '--repo', repo, '--doc-id', docId, '--from-manifest', firstManifest, '--to-manifest', firstManifest]);
+      if (drift.fromManifest !== firstManifest || drift.toManifest !== firstManifest || drift.semanticTruthChanged !== false || drift.rankingEffect !== 'none') throw new Error('installed Ledger drift response was not deterministic diagnostic-only output');
+      return { status: 'passed', evidenceKind: 'installed', detail: { ...detail, docId, manifestId: firstManifest, unchangedNodes: drift.unchangedNodes, semanticTruthChanged: drift.semanticTruthChanged, rankingEffect: drift.rankingEffect }, reason: 'installed Ledger compared named manifests deterministically without changing semantic truth or ranking' };
+    }
+    return { status: 'failed', evidenceKind: 'installed', detail: { id, repo }, reason: `${id}: no installed workflow mapped` };
   } catch (error) {
     return { status: 'failed', evidenceKind: 'installed', detail: { id }, reason: `${id}: ${error.message}` };
   }

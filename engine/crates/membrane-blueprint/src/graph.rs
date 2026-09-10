@@ -40,6 +40,7 @@ pub fn is_canonical_ignored_dir(name: &str) -> bool {
 pub fn is_canonical_ignored_file(relative: &str, name: &str) -> bool {
     IGNORED_FILES.iter().any(|ignored| *ignored == name)
         || (relative.starts_with("docs/") && matches!(name, "product.md" | "architecture.md"))
+        || matches!(relative, "docs/product/README.md" | "docs/architecture/membrane.md")
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Ord, PartialOrd)]
@@ -377,7 +378,7 @@ pub fn build_generation_from_files_with_cancellation(root: &Path, scan: ScanRepo
     let provider_context = crate::providers::ProviderContext { repo_root: root, files: &scan.files, file_map: &file_map };
     let mut supplemental = crate::providers::ProviderOutput::default();
     for descriptor in crate::providers::registry() {
-    supplemental.merge((descriptor.run)(&provider_context));
+        supplemental.merge((descriptor.run)(&provider_context));
     }
     merge_supplemental(&mut nodes, &mut edges, supplemental, &file_map);
     let source_hash = source_hash(&scan.files);

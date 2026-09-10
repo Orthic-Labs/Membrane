@@ -13,7 +13,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  node-checks:
+  native-blueprint-checks:
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
@@ -29,42 +29,12 @@ jobs:
           version: 11.24.0
       - name: Install JavaScript dependencies without package build scripts
         run: pnpm install --frozen-lockfile --ignore-scripts
-      - name: Apply reviewed search freshness fix
-        run: python3 .github/blueprint-completion-input/apply-search-freshness-fix.py
-      - name: Blueprint focused Node tests
-        working-directory: blueprint
-        run: >-
-          node --test
-          tests/watchman-phase2-completion.test.mjs
-          tests/watchman.test.mjs
-          tests/incremental-phase2.test.mjs
-          tests/semantic-incremental.test.mjs
-          tests/freshness-barrier.test.mjs
-          tests/relationship-vocabulary.test.mjs
-          tests/relationship-parity.test.mjs
-          tests/compiler-adapters.test.mjs
-          tests/parse-cache-fingerprint.test.mjs
-          tests/scip-normalizer.test.mjs
-          tests/javascript-module-resolution.test.mjs
-          tests/provenance-semantics.test.mjs
-          tests/evidence-authority.test.mjs
-          tests/evidence-authority-boundary.test.mjs
-          tests/recall-circuit.test.mjs
-          tests/semantic-conformance.test.mjs
-          tests/publication-policy.test.mjs
-          tests/readiness-status.test.mjs
-          tests/init-plan.test.mjs
-          tests/confidence-migration.test.mjs
-          tests/provenance-roundtrip.test.mjs
-          tests/store-sqlite.test.mjs
-          tests/store-migrations.test.mjs
-          tests/store-rollback.test.mjs
-          tests/delta-store.test.mjs
-          tests/production-provider-cluster.test.mjs
-          tests/graph-query.test.mjs
-      - name: Full no-build Blueprint Node corpus
-        working-directory: blueprint
-        run: node scripts/test-random.mjs --ordered --no-build --keep-going --batch-size=32
+      - name: Generated native manifests are current
+        run: |
+          node scripts/ci/check-runtime-language-manifest.mjs
+          node scripts/ci/check-invocation-graph.mjs
+      - name: Native Blueprint crate tests
+        run: cargo test --manifest-path engine/Cargo.toml -p membrane-blueprint --locked --no-fail-fast
 
   cargo-check:
     runs-on: ubuntu-24.04

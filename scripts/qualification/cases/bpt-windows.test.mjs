@@ -54,10 +54,19 @@ test("OPT-01 exists, is callable, and never fabricates a pass ahead of its NCL-0
   assert.notEqual(outcome.status, "passed", "OPT-01 must never report passed until NCL-02/NCL-05 pass");
 });
 
-test("BPT-002 uses native source evidence", async () => {
+test("BPT-002 refuses source-only closure when installed current is absent", async () => {
   const outcome = await cases.BPT_002();
-  assert.equal(outcome.evidenceKind, "source");
-  assert.equal(outcome.status, "passed");
+  assert.equal(outcome.evidenceKind, "installed");
+  if (!process.env.MEMBRANE_QUALIFICATION_INSTALLED_ROOT) assert.notEqual(outcome.status, "passed");
+});
+
+test("unmapped BPT rows fail closed instead of using generic refresh as acceptance evidence", async () => {
+  const prior = process.env.MEMBRANE_QUALIFICATION_INSTALLED_ROOT;
+  delete process.env.MEMBRANE_QUALIFICATION_INSTALLED_ROOT;
+  const outcome = await cases.BPT_006();
+  if (prior !== undefined) process.env.MEMBRANE_QUALIFICATION_INSTALLED_ROOT = prior;
+  assert.notEqual(outcome.status, "passed");
+  assert.match(outcome.reason, /row-specific|generic refresh|installed native/i);
 });
 
 // ---------------------------------------------------------------------------
@@ -67,7 +76,10 @@ test("BPT-002 uses native source evidence", async () => {
 // ---------------------------------------------------------------------------
 
 test("BM03/BM04/BM05 report insufficient (never a fabricated pass) if installed membrane.exe is unavailable", () => {
+  const prior = process.env.MEMBRANE_QUALIFICATION_INSTALLED_ROOT;
+  delete process.env.MEMBRANE_QUALIFICATION_INSTALLED_ROOT;
   const outcome = cases.BM03({ root: "/definitely/does/not/exist/on/this/machine" });
+  if (prior !== undefined) process.env.MEMBRANE_QUALIFICATION_INSTALLED_ROOT = prior;
   assert.notEqual(outcome.status, "passed");
   assert.equal(outcome.evidenceKind, "installed");
   assert.match(outcome.reason, /installed native probe|MEMBRANE_QUALIFICATION_INSTALLED_ROOT|membrane\.exe/i);
@@ -119,7 +131,8 @@ test("BM05 classifyRefusal negative control: a zero exit code (unexpected succes
 
 test("BPT-020: native dependency DAG parity suite passes", async () => {
   const result = await cases.BPT_020();
-  assert.equal(result.status, "passed", result.reason);
+  if (process.env.MEMBRANE_QUALIFICATION_INSTALLED_ROOT) assert.equal(result.status, "passed", result.reason);
+  else assert.notEqual(result.status, "passed");
 });
 
 test("BPT-020 negative control: a full-rebuild fault (invalidatedProjections always returns every projection) fails", () => {
@@ -177,7 +190,8 @@ test("BPT-020 negative control: a dropped config-edge fault (config change inval
 
 test("BPT-026: native recall circuit parity suite passes", async () => {
   const result = await cases.BPT_026();
-  assert.equal(result.status, "passed", result.reason);
+  if (process.env.MEMBRANE_QUALIFICATION_INSTALLED_ROOT) assert.equal(result.status, "passed", result.reason);
+  else assert.notEqual(result.status, "passed");
 });
 
 test("BPT-026 negative control: a compensatory (summed-score) comparator that ignores hop-count fails", () => {

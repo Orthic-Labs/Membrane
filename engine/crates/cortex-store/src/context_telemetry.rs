@@ -274,7 +274,7 @@ pub fn registered_artifact_family(value: &str) -> bool {
 pub const SELECTED_WITHOUT_DELIVERY_ALERT: &str = "selected_without_delivery";
 
 /// MBR-011: the delivery verdict for a turn. This mirrors the renderer's
-/// `evaluateDeliveryOutcome` (mcp/context-renderer-lib.cjs) so the persistent
+/// historical `evaluateDeliveryOutcome` renderer helper so the persistent
 /// telemetry layer and the in-prompt renderer agree byte-for-byte on the same
 /// selected/delivered counts and the same promotion decision.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -309,7 +309,7 @@ pub fn evaluate_delivery_outcome(selected: i64, delivered: i64) -> DeliveryOutco
 }
 
 /// MBR-012: the canonical delivered-content metrics. This mirrors
-/// `canonicalDeliveryMetrics` (mcp/context-renderer-lib.cjs) so the Rust
+/// historical `canonicalDeliveryMetrics` renderer helper so the Rust
 /// telemetry and the JS renderer agree byte-for-byte on a qualification fixture.
 /// Conventions: bytes = UTF-8 byte count; chars = Unicode code-point count;
 /// tokens = ceil(bytes/4); sha256 = hex digest of the UTF-8 bytes.
@@ -3512,7 +3512,7 @@ mod lifecycle_intent_tests {
 
     #[test]
     fn mbr012_canonical_delivery_metrics_match_js_fixture_byte_for_byte() {
-        // The same fixture is pinned in mcp/delivery-serialization.test.mjs; the
+        // The same fixture is pinned in historical delivery-serialization tests; the
         // two implementations must agree byte-for-byte on all four surfaces.
         let metrics = canonical_delivery_metrics("Membrane café ☕");
         assert_eq!(metrics.bytes, 18);

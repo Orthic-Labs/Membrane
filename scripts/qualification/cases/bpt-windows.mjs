@@ -10,8 +10,9 @@
 // Native qualification checks the landed Rust implementation in
 // engine/crates/membrane-blueprint. Source checks prove native artifacts exist;
 // behavior checks use installed CLI probes or focused Rust parity suites.
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -26,8 +27,47 @@ function resolveRoot(context) {
 function installedExecutable() {
   const root = process.env.MEMBRANE_QUALIFICATION_INSTALLED_ROOT;
   if (!root) throw new Error("MEMBRANE_QUALIFICATION_INSTALLED_ROOT is required");
-  const exe = join(resolve(root), "membrane.exe");
+  const stableRoot = resolve(root);
+  if (stableRoot.split(/[\\\\/]/).pop()?.toLowerCase() !== "current") {
+    throw new Error(`installed Blueprint probe requires installer-owned current root, got ${stableRoot}`);
+  }
+  const releasePath = join(stableRoot, "release.json");
+  if (!existsSync(releasePath)) throw new Error(`installed current release.json missing: ${releasePath}`);
+  let release;
+  try { release = JSON.parse(readFileSync(releasePath, "utf8")); } catch (error) { throw new Error(`installed current release.json invalid: ${error.message}`); }
+  if (typeof release.version !== "string" || !release.version.trim()) throw new Error("installed current release.json has no version identity");
+  if (release.product !== "membrane" || release.os !== "windows" || release.arch !== "x64") {
+    throw new Error("installed current release.json is not canonical membrane windows x64 identity");
+  }
+  if (!/^sha256:[0-9a-f]{64}$/i.test(String(release.releaseGeneration || ""))) {
+    throw new Error("installed current release.json has no canonical releaseGeneration");
+  }
+  if (!release.files || typeof release.files !== "object") throw new Error("installed current release.json has no canonical file manifest");
+  const exe = join(stableRoot, "membrane.exe");
   if (!existsSync(exe)) throw new Error(`installed membrane.exe missing: ${exe}`);
+  const manifestHash = String(release.files["membrane.exe"] || "").replace(/^sha256:/i, "").toLowerCase();
+  const actualHash = createHash("sha256").update(readFileSync(exe)).digest("hex");
+  if (!/^[0-9a-f]{64}$/i.test(manifestHash) || actualHash !== manifestHash) {
+    throw new Error("installed membrane.exe hash does not match canonical release manifest");
+  }
+  for (const required of ["blueprint.cmd", "mcp.json", "runtime/resources/blueprint-contract/membrane-blueprint.v1.schema.json"]) {
+    const expected = String(release.files[required] || "").replace(/^sha256:/i, "").toLowerCase();
+    const target = join(stableRoot, required);
+    if (!existsSync(target) || !/^[0-9a-f]{64}$/i.test(expected)) throw new Error(`installed manifest entry missing: ${required}`);
+    const observed = createHash("sha256").update(readFileSync(target)).digest("hex");
+    if (observed !== expected) throw new Error(`installed ${required} hash does not match canonical release manifest`);
+  }
+  let identity;
+  try { identity = JSON.parse(execFileSync(exe, ["cli", "build-info"], { cwd: stableRoot, encoding: "utf8", windowsHide: true })); }
+  catch (error) { throw new Error(`installed build-info identity unavailable: ${error.message}`); }
+  const generation = identity.release_generation ?? identity.releaseGeneration;
+  const revision = identity.membrane_source_commit ?? identity.sourceRevision ?? identity.source_commit;
+  if (generation !== release.releaseGeneration) throw new Error("installed build-info releaseGeneration differs from release manifest");
+  if (!/^[0-9a-f]{40}$/i.test(String(revision || ""))) throw new Error("installed build-info has no source revision identity");
+  const expectedRevision = process.env.MEMBRANE_QUALIFICATION_SOURCE_REVISION;
+  if (expectedRevision && revision.toLowerCase() !== expectedRevision.toLowerCase()) {
+    throw new Error(`installed source revision ${revision} differs from qualified revision ${expectedRevision}`);
+  }
   return exe;
 }
 
@@ -113,7 +153,7 @@ function nativeFixture(files, probe) {
 }
 
 function installedResult(id, fn) {
-  try { return { status: "passed", evidenceKind: "installed", detail: { id, ...fn() } }; }
+  try { return { status: "passed", evidenceKind: "installed", detail: { id, ...fn() }, reason: `${id}: installed current executed native Blueprint control successfully` }; }
   catch (error) { return { status: "insufficient", evidenceKind: "installed", detail: { id, error: error.message }, reason: `${id}: installed native probe unavailable or failed: ${error.message}` }; }
 }
 
@@ -124,10 +164,144 @@ function fileEvidence(root, relPath) {
     const st = statSync(abs);
     if (!st.isFile()) return { path: relPath, exists: false, nonEmpty: false };
     const content = readFileSync(abs, "utf8");
-    return { path: relPath, exists: true, nonEmpty: content.trim().length > 0 };
+    const sourceHash = createHash("sha256").update(readFileSync(abs)).digest("hex");
+    return { path: relPath, exists: true, nonEmpty: content.trim().length > 0, sha256: sourceHash };
   } catch {
     return { path: relPath, exists: false, nonEmpty: false };
   }
+}
+
+// Source presence remains useful as a secondary binding, but Windows rows are
+// only functionally closed after the installed current executable executes a
+// native Blueprint operation against an isolated fixture.  Keep this helper
+// deliberately conservative: if installed identity/executable is absent, it
+// returns insufficient instead of promoting source markers to runtime proof.
+const INSTALLED_ROW_OPERATIONS = new Map([
+  ["BPT-002", { operation: "refresh", required: ["generationId", "sourceHash", "sourceObservation"] }],
+  ["BPT-003", { operation: "refresh", required: ["generationId", "sourceObservation", "complete"] }],
+  ["BPT-004", { operation: "refresh", required: ["generationId", "sourceHash", "complete"] }],
+  ["BPT-005", { operation: "refresh", required: ["generationId", "sourceObservation"] }],
+  ["BPT-007", { operation: "resolve", required: ["generationId", "resolution", "candidateSet"] }],
+  ["BPT-008", { operation: "refresh", required: ["generationId", "sourceHash", "complete"] }],
+  ["BPT-009", { operation: "refresh", required: ["generationId", "sourceHash", "complete"] }],
+  ["BPT-011", { operation: "document_truth", required: ["generationId", "claims", "counts"] }],
+  ["BPT-013", { operation: "refresh", required: ["generationId", "sourceHash", "complete"] }],
+  ["BPT-014", { operation: "refresh", required: ["generationId", "sourceHash", "freshnessReceipt"] }],
+  ["BPT-015", { operation: "refresh", required: ["generationId", "storePath", "complete"] }],
+  ["BPT-016", { operation: "refresh", required: ["generationId", "storePath", "complete"] }],
+  ["BPT-017", { operation: "resolve", required: ["generationId", "resolution", "candidateSet"] }],
+  ["BPT-018", { operation: "resolve", required: ["generationId", "resolution", "candidateSet"] }],
+  ["BPT-023", { operation: "recall", required: ["generationId", "resolution", "nodes", "omissions"] }],
+  ["BPT-024", { operation: "recall", required: ["generationId", "resolution", "nodes", "edges", "omissions"] }],
+  ["BPT-025", { operation: "path", required: ["generationId", "path", "edges", "omissions", "found"] }],
+  ["BPT-026", { operation: "recall", required: ["generationId", "resolution", "nodes", "omissions"] }],
+  ["BPT-027", { operation: "expand", required: ["generationId", "candidateSet", "omissions"] }],
+  ["BPT-028", { operation: "search", required: ["generationId", "candidates", "omissions"] }],
+  ["BPT-029", { operation: "resolve", required: ["generationId", "resolution", "candidateSet"] }],
+  ["BPT-030", { operation: "expand", required: ["generationId", "nodes", "edges", "depths"] }],
+  ["BPT-031", { operation: "path", required: ["generationId", "path", "edges", "omissions"] }],
+  ["BPT-032", { operation: "impact", required: ["generationId", "impact", "edges", "omissions"] }],
+  ["BPT-035", { operation: "impact", required: ["generationId", "impact", "edges", "omissions"] }],
+  ["BPT-036", { operation: "snapshot_list", required: ["generationId", "snapshots"] }],
+  ["BPT-037", { operation: "changes", required: ["generationId", "currentTruth", "omissions"] }],
+  ["BPT-038", { operation: "document_truth", required: ["generationId", "claims", "counts"] }],
+  ["BPT-039", { operation: "document_truth", required: ["generationId", "claims", "counts"] }],
+  ["BPT-044", { operation: "status", required: ["generationId", "state", "freshnessReceipt"] }],
+  ["BPT-049", { operation: "findings.baseline.capture", required: ["generationId", "name", "path"] }],
+  ["BPT-050", { operation: "findings.sarif", required: ["generationId", "sarif", "findingCount", "omissions"] }],
+  ["BPT-051", { operation: "findings.explain", required: ["generationId", "finding", "reasoning", "evidence", "omissions"] }],
+  ["BPT-052", { operation: "findings.evidence_pack", required: ["generationId", "pack"] }],
+]);
+
+function installedRowProbe(id) {
+  if (/^BPT-0(?:0[2-9]|1[0-6])$/.test(id)) {
+    const exe = installedExecutable();
+    let report;
+    try { report = JSON.parse(execFileSync(exe, ["cli", "qualification", "blueprint", id], { cwd: dirname(exe), encoding: "utf8", windowsHide: true })); }
+    catch (error) { throw new Error(`${id}: native provider qualification command unavailable: ${error.message}`); }
+    if (report.status !== "passed" || report.runtimeOrigin !== "installed" || report.evidence?.caseId !== id || report.evidence?.runtime !== "native-rust") {
+      throw new Error(`${id}: installed provider qualification did not return a passed native report`);
+    }
+    return { operation: `qualification.blueprint.${id}`, generationId: report.evidence.payload?.generationId ?? null, responseKeys: Object.keys(report).sort(), sourceHash: report.evidence.payload?.sourceHash ?? null, assertions: report.evidence.assertions };
+  }
+  const control = INSTALLED_ROW_OPERATIONS.get(id);
+  if (!control) throw new Error(`${id}: no row-specific native Blueprint control is exposed; generic refresh is not acceptance evidence`);
+  const operation = control.operation;
+  return nativeFixture({
+    "src/main.rs": "fn leaf() {}\nfn middle() { leaf(); }\nfn main() { middle(); }\n",
+    "src/imports.js": "import { missing } from './absent.js';\nexport function imported() { return missing; }\n",
+    "src/schema.sql": "CREATE TABLE users (id INTEGER PRIMARY KEY);\n",
+  }, (exe, root) => {
+    const refresh = nativeCall(exe, ["refresh", "--repo-root", root], root);
+    if (!refresh || typeof refresh.generationId !== "string" || !refresh.generationId) {
+      throw new Error("native refresh did not publish generation identity");
+    }
+    if (operation === "refresh") {
+      const requiredRefresh = control.required || [];
+      for (const key of requiredRefresh) if (refresh[key] === undefined || refresh[key] === null) throw new Error(`native refresh omitted requirement-specific field ${key}`);
+      if (id === "BPT-015" || id === "BPT-016") {
+        const status = nativeCall(exe, ["status", "--repo-root", root], root);
+        if (status.generationId !== refresh.generationId || !status.storePath) throw new Error(`${id}: published generation is not recoverable through status`);
+        const rejected = nativeCallExpectRefusal(exe, ["refresh", "--repo-root", join(root, "missing-input-root")], root, "canonical");
+        if (!rejected.refused) throw new Error(`${id}: invalid refresh unexpectedly succeeded instead of preserving last-known-good state`);
+        const afterReject = nativeCall(exe, ["status", "--repo-root", root], root);
+        if (afterReject.generationId !== refresh.generationId) throw new Error(`${id}: rejected refresh changed committed generation`);
+      }
+      return { operation, generationId: refresh.generationId, responseKeys: Object.keys(refresh).sort(), sourceHash: refresh.sourceHash ?? null };
+    }
+    if (id === "BPT-037") {
+      nativeCall(exe, ["snapshot", "create", "bpt-history", "--repo-root", root], root);
+      writeFileSync(join(root, "src/main.rs"), "fn leaf() {}\nfn middle() { leaf(); }\nfn main() { middle(); }\nfn changed() {}\n");
+      const next = nativeCall(exe, ["refresh", "--repo-root", root], root);
+      const result = nativeCall(exe, ["changes", "--repo-root", root, "--snapshot", "bpt-history"], root);
+      if (!result.currentTruth || result.currentTruth.generationId !== next.generationId || !Array.isArray(result.changes) || !Array.isArray(result.omissions) || !result.semanticDelta) throw new Error("changes did not return snapshot-bound semantic delta/current truth");
+      return { operation, generationId: next.generationId, responseKeys: Object.keys(result).sort(), sourceHash: next.sourceHash ?? null, changeCount: result.changes.length };
+    }
+    if (id === "BPT-049" || id === "BPT-051" || id === "BPT-052") {
+      const bundle = nativeCall(exe, ["findings.get", "--repo-root", root, "--generation", refresh.generationId, "--query", "leaf"], root);
+      if (!Array.isArray(bundle.findings) || bundle.findings.length === 0) throw new Error("findings fixture produced no selected finding");
+      const fingerprint = bundle.findings[0].fingerprint;
+      if (id === "BPT-049") {
+        const captured = nativeCall(exe, ["findings.baseline.capture", "--repo-root", root, "--generation", refresh.generationId, "--name", "bpt-baseline"], root);
+        const listed = nativeCall(exe, ["findings.baseline.list", "--repo-root", root, "--generation", refresh.generationId], root);
+        if (captured.name !== "bpt-baseline" || !captured.path || !Array.isArray(listed.baselines) || !listed.baselines.some((row) => row.name === "bpt-baseline")) throw new Error("findings baseline capture/list did not round-trip deterministically");
+        return { operation, generationId: refresh.generationId, responseKeys: Object.keys(captured).sort(), baselineCount: listed.baselines.length, sourceHash: refresh.sourceHash ?? null };
+      }
+      const specific = id === "BPT-051"
+        ? nativeCall(exe, ["findings.explain", "--repo-root", root, "--generation", refresh.generationId, "--fingerprint", fingerprint], root)
+        : nativeCall(exe, ["findings.evidence_pack", "--repo-root", root, "--generation", refresh.generationId, "--fingerprints", fingerprint], root);
+      for (const key of control.required || []) if (specific[key] === undefined || specific[key] === null) throw new Error(`native ${operation} omitted requirement-specific field ${key}`);
+      return { operation, generationId: specific.generationId, responseKeys: Object.keys(specific).sort(), fingerprint, sourceHash: refresh.sourceHash ?? null };
+    }
+    let args = [operation, "--repo-root", root, "--generation", refresh.generationId];
+    if (["search", "findings.get", "findings.sarif"].includes(operation)) args.push("--query", "leaf");
+    if (["resolve"].includes(operation)) args.push("--target", "leaf");
+    if (["recall"].includes(operation)) args.push("--seed", "middle", "--direction", "both", "--depth", "2");
+    if (["expand"].includes(operation)) args.push("--seed", "middle", "--direction", "both", "--depth", "2");
+    if (["path"].includes(operation)) args.push("--from", "main", "--to", "leaf", "--depth", "4");
+    if (["impact"].includes(operation)) args.push("--node", "leaf", "--depth", "2");
+    if (["changes"].includes(operation)) args = [operation, "--repo-root", root];
+    if (["snapshot_list", "document_truth", "status"].includes(operation)) args = [operation, "--repo-root", root];
+    const result = nativeCall(exe, args, root);
+    if (!result || typeof result !== "object" || result.error) throw new Error(`native ${operation} returned no successful object`);
+    for (const key of control.required || []) if (result[key] === undefined || result[key] === null) throw new Error(`native ${operation} omitted requirement-specific field ${key}`);
+    if (operation === "resolve" && !["resolved", "ambiguous", "unresolved"].includes(result.resolution?.state)) throw new Error("resolve returned untyped resolution state");
+    if (operation === "impact" && result.impact.some((item) => typeof item.class !== "string" || !item.edgeId)) throw new Error("impact returned adjacency without typed edge evidence");
+    if (operation === "path" && result.edges.some((edge) => !edge.edgeId && !edge.id)) throw new Error("path returned edge without stable identity");
+    return {
+      operation,
+      generationId: result.generationId ?? refresh.generationId,
+      responseKeys: Object.keys(result).sort(),
+      sourceHash: refresh.sourceHash ?? null,
+    };
+  });
+}
+
+function sourceRevision(root) {
+  try {
+    const revision = execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8", windowsHide: true }).trim();
+    return /^[0-9a-f]{40}$/i.test(revision) ? revision : null;
+  } catch { return null; }
 }
 
 function bptRow(id, requirement, files, _legacyVoid, context) {
@@ -141,21 +315,41 @@ function bptRow(id, requirement, files, _legacyVoid, context) {
     };
   }
   const evidence = files.map((f) => fileEvidence(root, f));
+  const revision = sourceRevision(root);
+  const expectedRevision = process.env.MEMBRANE_QUALIFICATION_SOURCE_REVISION;
+  if (expectedRevision && revision?.toLowerCase() !== expectedRevision.toLowerCase()) {
+    return {
+      status: "failed",
+      evidenceKind: "source",
+      detail: { id, requirement, evidence, sourceRevision: revision, expectedRevision, legacyVoid: false },
+      reason: `${id}: source checkout revision ${revision || "unavailable"} does not match qualified revision ${expectedRevision}`,
+    };
+  }
   const allPresent = evidence.every((e) => e.exists && e.nonEmpty);
   if (!allPresent) {
     return {
       status: "failed",
       evidenceKind: "source",
-      detail: { id, requirement, evidence, legacyVoid: false },
+      detail: { id, requirement, evidence, sourceRevision: revision, legacyVoid: false },
       reason: id + ": one or more canonical implementation artifact(s) missing/empty: " + evidence.filter((e) => !e.exists || !e.nonEmpty).map((e) => e.path).join(", "),
     };
   }
-  return {
-    status: "passed",
-    evidenceKind: "source",
-    detail: { id, requirement, evidence, legacyVoid: false },
-    reason: id + ": native implementation artifact(s) present and non-empty (structural presence proof, not a functional proof)",
-  };
+  try {
+    const installed = installedRowProbe(id);
+    return {
+      status: "passed",
+      evidenceKind: "installed",
+      detail: { id, requirement, evidence, sourceEvidence: evidence, installed, legacyVoid: false },
+      reason: `${id}: installed current executed native Blueprint ${installed.operation}; source artifacts are bound as secondary evidence`,
+    };
+  } catch (error) {
+    return {
+      status: "insufficient",
+      evidenceKind: "installed",
+      detail: { id, requirement, evidence, sourceRevision: revision, sourceEvidence: evidence, legacyVoid: false, installedError: error.message },
+      reason: `${id}: installed native Blueprint probe unavailable or failed; source presence is not runtime closure: ${error.message}`,
+    };
+  }
 }
 
 // Real, executable fixture proof for BPT-020/021's selective-invalidation negative control.
@@ -226,7 +420,23 @@ export async function bpt026RankingCheck(context) {
   };
 }
 export function BPT_026(context) {
-  return bpt026RankingCheck(context);
+  const native = bpt026RankingCheck(context);
+  return Promise.resolve(native).then((parity) => {
+    try {
+      const installed = installedRowProbe("BPT-026");
+      const passed = parity.status === "passed" && installed;
+      return {
+        status: passed ? "passed" : "insufficient",
+        evidenceKind: "installed",
+        detail: { id: "BPT-026", native: parity.detail?.native ?? null, installed, sourceParity: parity },
+        reason: passed
+          ? "BPT-026: installed current executed native Blueprint recall with non-compensatory ranking parity retained as secondary evidence"
+          : "BPT-026: installed native recall probe or ranking parity suite failed; source evidence alone is not runtime closure",
+      };
+    } catch (error) {
+      return { status: "insufficient", evidenceKind: "installed", detail: { id: "BPT-026", sourceParity: parity, installedError: error.message }, reason: `BPT-026: installed native probe unavailable; source parity is not runtime closure: ${error.message}` };
+    }
+  });
 }
 
 // Exported for the negative-control test to call with a substitute (faulty) comparator.
@@ -362,14 +572,20 @@ export function BPT_018(context) {
     ],
     root,
   );
-  return {
-    status: native.ok ? "passed" : "failed",
-    evidenceKind: "source",
-    detail: { id: "BPT-018", native },
-    reason: native.ok
-      ? "BPT-018: engine/crates/membrane-blueprint/src/module_resolution.rs (the native production path) proves exact-first cross-file identity resolution, same-tier-ambiguity-stops, and typed unsupported/miss module semantics via the parity_module_resolution.rs suite -- DELIVERED per REC-02, native evidence, not legacy structural presence"
-      : `BPT-018: native module_resolution.rs parity suite did not pass (requiredTestsMissing=${JSON.stringify(native.requiredTestsMissing)}, suitePassed=${native.suitePassed}, error=${native.error})`,
-  };
+  try {
+    const installed = installedRowProbe("BPT-018");
+    const passed = native.ok && installed;
+    return {
+      status: passed ? "passed" : "insufficient",
+      evidenceKind: "installed",
+      detail: { id: "BPT-018", native, installed, sourceParity: native },
+      reason: passed
+        ? "BPT-018: installed current resolved native Blueprint module identity after native parity suite; source parity retained as secondary evidence"
+        : `BPT-018: installed native module-resolution probe or parity suite failed (native=${native.error || "failed"})`,
+    };
+  } catch (error) {
+    return { status: "insufficient", evidenceKind: "installed", detail: { id: "BPT-018", native, installedError: error.message }, reason: `BPT-018: installed native probe unavailable; source parity is not runtime closure: ${error.message}` };
+  }
 }
 export function BPT_019(context) {
   return installedResult("BPT-019", () => nativeFixture({
@@ -392,14 +608,19 @@ export async function bpt020DependencyDagInvalidation(context) {
     ["invalidation_closure_is_projection_specific_and_deterministic", "projection_dag_explicitly_binds_declared_parents", "projection_cache_invalidates_when_declared_parent_changes"],
     root,
   );
-  return {
-    status: native.ok ? "passed" : "failed",
-    evidenceKind: "source",
-    detail: { id: "BPT-020", native },
-    reason: native.ok
-      ? "BPT-020: native dependency_dag.rs passes selective (not full-rebuild) invalidation parity tests"
-      : `BPT-020: native dependency_dag.rs parity suite did not pass (requiredTestsMissing=${JSON.stringify(native.requiredTestsMissing)}, suitePassed=${native.suitePassed}, error=${native.error})`,
-  };
+  try {
+    const installed = installedRowProbe("BPT-020");
+    return {
+      status: native.ok ? "passed" : "insufficient",
+      evidenceKind: "installed",
+      detail: { id: "BPT-020", native, installed, sourceParity: native },
+      reason: native.ok
+        ? "BPT-020: installed current executed native Blueprint refresh with selective invalidation parity retained as secondary evidence"
+        : `BPT-020: native dependency DAG parity suite failed (requiredTestsMissing=${JSON.stringify(native.requiredTestsMissing)}, suitePassed=${native.suitePassed}, error=${native.error})`,
+    };
+  } catch (error) {
+    return { status: "insufficient", evidenceKind: "installed", detail: { id: "BPT-020", native, installedError: error.message }, reason: `BPT-020: installed native probe unavailable; source parity is not runtime closure: ${error.message}` };
+  }
 }
 export function BPT_020(context) {
   return bpt020DependencyDagInvalidation(context);
@@ -412,14 +633,19 @@ export async function BPT_021(context) {
     ["full_incremental_sequence_matches_full_rebuild_membership_across_add_remove_move"],
     resolveRoot(context),
   );
-  return {
-    status: native.ok ? "passed" : "failed",
-    evidenceKind: "source",
-    detail: { id: "BPT-021", native },
-    reason: native.ok
-      ? "BPT-021: native watch_loop.rs passes cold/incremental membership equivalence parity"
-      : `BPT-021: native watch_loop.rs parity suite did not pass (requiredTestsMissing=${JSON.stringify(native.requiredTestsMissing)}, suitePassed=${native.suitePassed}, error=${native.error})`,
-  };
+  try {
+    const installed = installedRowProbe("BPT-021");
+    return {
+      status: native.ok ? "passed" : "insufficient",
+      evidenceKind: "installed",
+      detail: { id: "BPT-021", native, installed, sourceParity: native },
+      reason: native.ok
+        ? "BPT-021: installed current executed native Blueprint refresh with cold/incremental parity retained as secondary evidence"
+        : `BPT-021: native watch-loop parity suite failed (requiredTestsMissing=${JSON.stringify(native.requiredTestsMissing)}, suitePassed=${native.suitePassed}, error=${native.error})`,
+    };
+  } catch (error) {
+    return { status: "insufficient", evidenceKind: "installed", detail: { id: "BPT-021", native, installedError: error.message }, reason: `BPT-021: installed native probe unavailable; source parity is not runtime closure: ${error.message}` };
+  }
 }
 export function BPT_023(context) {
   return installedResult("BPT-023", () => nativeFixture({
@@ -750,12 +976,67 @@ export function BM05(context) {
 // ---------------------------------------------------------------------------
 
 export function OPT_01(context) {
-  return {
-    status: "insufficient",
-    evidenceKind: "source",
-    detail: { id: "OPT-01", gatedOn: ["NCL-02", "NCL-05"] },
-    reason: "OPT-01: optional indexed lexical search parity is explicitly gated on NCL-02 and NCL-05 passing first (state OPTIONAL_AFTER_PARITY); this module has no authority to observe or assert those cross-lane results and never fabricates a pass ahead of that gate",
-  };
+  const root = resolveRoot(context);
+  let gate = context && context.nclPrerequisites;
+  if (!gate && process.env.MEMBRANE_QUALIFICATION_NCL_PREREQUISITES) {
+    try { gate = JSON.parse(process.env.MEMBRANE_QUALIFICATION_NCL_PREREQUISITES); } catch { gate = null; }
+  }
+  if (!gate || gate.NCL02 !== "passed" || gate.NCL05 !== "passed") {
+    return { status: "insufficient", evidenceKind: "installed",
+      detail: { id: "OPT-01", gatedOn: ["NCL-02", "NCL-05"], prerequisites: gate ?? null },
+      reason: "OPT-01: NCL-02 and NCL-05 must each carry an explicit passed prerequisite before indexed parity may execute" };
+  }
+  try {
+    const exe = context?.installedExecutable || installedExecutable();
+    if (!existsSync(exe)) throw new Error(`installed membrane.exe missing: ${exe}`);
+    const scenarios = ["initial", "dirty-untracked", "renamed", "deleted", "branch-reset"];
+    const observations = [];
+    for (const scenario of scenarios) {
+      const fixture = mkdtempSync(join(tmpdir(), "membrane-opt01-"));
+      try {
+        const initialFiles = { "src/needle.rs": "fn needle() {}\n", "src/other.rs": "fn other() {}\n" };
+        for (const [rel, text] of Object.entries(initialFiles)) {
+          const dest = join(fixture, rel); mkdirSync(dirname(dest), { recursive: true }); writeFileSync(dest, text);
+        }
+        execFileSync("git", ["init", "-q"], { cwd: fixture, windowsHide: true });
+        execFileSync("git", ["config", "user.email", "opt01@example.invalid"], { cwd: fixture, windowsHide: true });
+        execFileSync("git", ["config", "user.name", "OPT-01"], { cwd: fixture, windowsHide: true });
+        execFileSync("git", ["add", "."], { cwd: fixture, windowsHide: true });
+        execFileSync("git", ["commit", "-qm", "initial"], { cwd: fixture, windowsHide: true });
+        if (scenario === "dirty-untracked") {
+          writeFileSync(join(fixture, "src/needle.rs"), "fn needle() {}\nfn dirty_needle() {}\n");
+          writeFileSync(join(fixture, "src/new.rs"), "fn needle_new() {}\n");
+        } else if (scenario === "renamed") {
+          execFileSync("git", ["mv", "src/needle.rs", "src/renamed.rs"], { cwd: fixture, windowsHide: true });
+          writeFileSync(join(fixture, "src/new.rs"), "fn needle_new() {}\n");
+        } else if (scenario === "deleted") {
+          execFileSync("git", ["rm", "-q", "src/needle.rs"], { cwd: fixture, windowsHide: true });
+          writeFileSync(join(fixture, "src/new.rs"), "fn needle_new() {}\n");
+        } else if (scenario === "branch-reset") {
+          execFileSync("git", ["switch", "-q", "-c", "feature-opt01"], { cwd: fixture, windowsHide: true });
+          writeFileSync(join(fixture, "src/needle.rs"), "fn needle() {}\nfn branch_needle() {}\n");
+          execFileSync("git", ["add", "."], { cwd: fixture, windowsHide: true });
+          execFileSync("git", ["commit", "-qm", "feature"], { cwd: fixture, windowsHide: true });
+          execFileSync("git", ["switch", "-q", "master"], { cwd: fixture, windowsHide: true });
+          execFileSync("git", ["reset", "-q", "--hard", "HEAD"], { cwd: fixture, windowsHide: true });
+        }
+        const currentFiles = {};
+        for (const rel of readdirSync(join(fixture, "src"))) currentFiles[`src/${rel}`] = readFileSync(join(fixture, "src", rel), "utf8");
+        const refresh = nativeCall(exe, ["refresh", "--repo-root", fixture], fixture);
+        const result = nativeCall(exe, ["search", "--repo-root", fixture, "--query", "needle", "--generation", refresh.generationId], fixture);
+        const expected = Object.entries(currentFiles).filter(([, text]) => text.includes("needle")).map(([p]) => p.replaceAll("\\", "/")).sort();
+        const actual = [...new Set((result.candidates || []).flatMap((c) => [c.path, c.filePath, c.sourcePath].filter(Boolean)).map((p) => String(p).replaceAll("\\", "/").replace(`${fixture.replaceAll("\\", "/")}/`, "")).filter((p) => expected.includes(p)))].sort();
+        const missing = expected.filter((p) => !actual.includes(p));
+        observations.push({ scenario: scenario.name, generationId: refresh.generationId, expectedCount: expected.length, actualCount: actual.length, missing });
+        if (missing.length) throw new Error(`${scenario.name}: indexed search false negative(s): ${missing.join(", ")}`);
+      } finally { rmSync(fixture, { recursive: true, force: true }); }
+    }
+    const release = join(dirname(exe), "release.json");
+    const installedIdentity = existsSync(release) ? JSON.parse(readFileSync(release, "utf8")) : null;
+    return { status: "passed", evidenceKind: "installed", detail: { id: "OPT-01", installedExecutable: exe, installedIdentity, scenarios: observations, falseNegatives: 0 }, reason: "OPT-01: installed native Blueprint search matched exhaustive fixture matcher across VCS mutation scenarios with zero false negatives" };
+  } catch (error) {
+    return { status: "insufficient", evidenceKind: "installed", detail: { id: "OPT-01", error: error.message }, reason: `OPT-01: installed native parity harness unavailable or did not complete: ${error.message}` };
+  }
 }
 
 export const BPT_CASES = {

@@ -244,6 +244,14 @@ fn dispatch_cli(tail: &[String]) -> DispatchOutcome {
     if is_doctor_paths_invocation(tail) {
         return run_doctor_paths(&tail[2..]);
     }
+    if tail.first().map(String::as_str) == Some("qualification")
+        && tail.get(1).map(String::as_str) == Some("lifecycle")
+        && tail.len() == 3
+        && is_installed_lifecycle_control(&tail[2])
+    {
+        let scenario = &tail[2];
+        return dispatch_installed_lifecycle_scenario(scenario);
+    }
     if matches!(tail.first().map(String::as_str), Some("diagnostics")) {
         return dispatch_diagnostics(&tail[1..]);
     }
@@ -292,6 +300,64 @@ fn dispatch_cli(tail: &[String]) -> DispatchOutcome {
     match membrane_runtime::cli::run_cli_from(&refs) {
         Ok(()) => DispatchOutcome::Ok,
         Err(error) => classify_runtime_error(error),
+    }
+}
+
+fn is_installed_lifecycle_control(scenario: &str) -> bool {
+    matches!(scenario,
+        "hub-background" | "coderight-adopt" | "provision-missing" |
+        "reject-corrupt" | "reject-denied" | "reject-unverifiable" |
+        "reject-development-checkout" |
+        "startup-lock" | "atomic-promotion" | "hook-containment")
+}
+
+/// Installed qualification controls are deliberately intercepted before the
+/// general runtime CLI.  Their owners run isolated in-process probes, so this
+/// command cannot mutate the installed `current` root or fall back to a
+/// development checkout.
+fn dispatch_installed_lifecycle_scenario(scenario: &str) -> DispatchOutcome {
+    let value = if matches!(scenario,
+        "hub-background" | "coderight-adopt" | "provision-missing" |
+        "reject-corrupt" | "reject-denied" | "reject-unverifiable" |
+        "reject-development-checkout") {
+        crate::install_tx::run_lc04_scenario(scenario)
+    } else if matches!(scenario, "startup-lock" | "atomic-promotion" | "hook-containment") {
+        crate::activation::run_lc06_scenario(scenario)
+    } else {
+        let value = serde_json::json!({
+            "schema": "membrane.installed-lifecycle-scenario.v1",
+            "scenario": scenario,
+            "status": "failed",
+            "terminal": true,
+            "runtimeOrigin": "unknown",
+            "evidence": {"nativeEvidence": false},
+            "reason": "unknown installed lifecycle scenario"
+        });
+        println!("{}", serde_json::to_string(&value).unwrap());
+        return DispatchOutcome::UserError("unknown installed lifecycle scenario".into());
+    };
+    let status = value
+        .get("status")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("failed");
+    let runtime_origin = if value.get("identity").is_some() {
+        "installed"
+    } else {
+        "unknown"
+    };
+    let envelope = serde_json::json!({
+        "schema": "membrane.installed-lifecycle-scenario.v1",
+        "scenario": scenario,
+        "status": status,
+        "terminal": true,
+        "runtimeOrigin": runtime_origin,
+        "evidence": value,
+    });
+    println!("{}", serde_json::to_string(&envelope).unwrap());
+    if status == "passed" {
+        DispatchOutcome::Ok
+    } else {
+        DispatchOutcome::UserError(format!("installed lifecycle scenario {scenario} failed"))
     }
 }
 
@@ -1350,6 +1416,28 @@ mod tests {
         // that the dispatcher routes the call — the runtime may legitimately refuse to start
         // outside a real install, which is fine for this test.
         let _ = dispatch(&inv);
+    }
+
+    #[test]
+    fn installed_lifecycle_dispatches_lc04_controls_before_runtime() {
+        let inv = parse_mode(
+            ["membrane", "cli", "qualification", "lifecycle", "reject-corrupt"]
+                .iter()
+                .copied(),
+        )
+        .unwrap();
+        assert_ne!(dispatch(&inv), DispatchOutcome::Ok);
+    }
+
+    #[test]
+    fn installed_lifecycle_dispatches_lc06_isolated_controls() {
+        let inv = parse_mode(
+            ["membrane", "cli", "qualification", "lifecycle", "atomic-promotion"]
+                .iter()
+                .copied(),
+        )
+        .unwrap();
+        assert_ne!(dispatch(&inv), DispatchOutcome::Ok);
     }
 
     #[test]

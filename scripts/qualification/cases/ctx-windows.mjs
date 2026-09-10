@@ -14,18 +14,11 @@
 // bare boolean.
 //
 // What this module DOES provide, and what IS real and executable now:
-//   - CTX_001 .. CTX_041 (per installedCaseIds): structural/contract
-//     attestations. Each checks that the canonical implementation artifact(s)
-//     named in windows-acceptance.json's canonicalImplementationRow for that
-//     CTX id exist and contain the symbol/marker the requirement depends on.
-//     These are NOT functional proofs against a running store — they are
-//     presence/contract checks the integration owner's installed-path run
-//     (real SQLite store, real MCP surface) can build on. Every result
-//     carries `kind: "structural"` so the runner/registry never confuses a
-//     structural attestation with an installed functional pass. Rows whose
-//     canonicalImplementationRow records a residual (PARTIAL) carry that
-//     residual verbatim in `note` — the structural check itself only claims
-//     the cited symbol exists, never that the residual is closed.
+//   - CTX_001 .. CTX_041 (per installedCaseIds): source-bound structural
+//     attestations for direct unit checks, plus row-specific native controls
+//     when registry execution supplies an installed CLI. Installed controls
+//     invoke `qualification cortex <id>` in installer-owned `current` and
+//     require release/file/source identity, native evidence, and typed output.
 //   - BM06, BM07: the two Required Amendments this lane owns. With a current
 //     installed CLI both execute bounded functional probes; without one they
 //     return typed `insufficient` results rather than fabricate a pass.
@@ -54,18 +47,16 @@
 //     implemented as a real, executable check (a structural presence check
 //     or a forbidden-anti-pattern scan) that fails today on its own
 //     injected fault, proven in ctx-windows.test.mjs.
-//   - OPT_02: optional post-parity ablation. Not executed by an edit-only
-//     pass (it requires running lexical/vector/hybrid retrieval against a
-//     live corpus). Returns a typed `insufficient` result for the ablation
-//     itself, but its one negativeControl ("ablation on non-matched corpus
-//     is rejected") is a real, executable corpus-identity check.
+//   - OPT_02: installed lexical/vector/hybrid ablation over an externally
+//     pinned matched corpus. Runtime-generated metrics are never read from
+//     corpus bytes.
 //
-// Nothing here claims an installed/functional pass. The runner/registry
-// integration owner is the only actor who may bind a `pass` result from this
-// module to a CTX-Q installed acceptance row.
+// Registry execution binds installed passes only after native identity and
+// row-specific evidence validate; direct source calls remain structural.
 
 import { existsSync, readFileSync, readdirSync, statSync, mkdtempSync, writeFileSync, rmSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { createHash } from "node:crypto";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
@@ -101,6 +92,28 @@ function nativeCli(options = {}, args, input) {
     try { return JSON.parse(lines[i]); } catch {}
   }
   throw new Error("native CLI returned no JSON result");
+}
+
+function nativeQualificationCli(options = {}, id) {
+  const cli = options.cliPath || process.env.MEMBRANE_CLI_PATH || "membrane";
+  const env = options.env ? { ...process.env, ...options.env } : process.env;
+  const result = spawnSync(cli, ["qualification", "cortex", id], {
+    encoding: "utf8",
+    windowsHide: true,
+    timeout: 120000,
+    env,
+  });
+  if (result.error || result.status !== 0) {
+    throw new Error(String(result.stderr || result.error?.message || `native qualification exited ${result.status}`));
+  }
+  const lines = String(result.stdout || "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  for (let i = lines.length - 1; i >= 0; i -= 1) {
+    try { return JSON.parse(lines[i]); } catch {}
+  }
+  throw new Error("native qualification returned no JSON result");
 }
 
 // Run a bounded Cortex workflow against a throwaway database.  This helper is
@@ -185,7 +198,7 @@ function structuralCheck(id, options, relPaths, markers, note) {
       if (re.test(content)) hits.push({ file: relPath, marker: String(marker) });
     }
   }
-  return {
+  const structural = {
     id,
     kind: "structural",
     evidenceKind: "source",
@@ -197,6 +210,95 @@ function structuralCheck(id, options, relPaths, markers, note) {
     evidence: hits.length > 0 ? hits : files,
     note,
   };
+  // Registry qualification is deliberately stricter than source smoke tests:
+  // bind each CTX row to current installed CLI when runner supplies registry
+  // row context.  Direct unit calls keep structural behavior, while installed
+  // runs execute one row-specific native control below.
+  if (/^CTX-\d+$/.test(id) && options?.row) {
+    if (!installedCli(options)) {
+      return {
+        ...structural,
+        kind: "insufficient",
+        pass: false,
+        status: "insufficient",
+        reason: "installed Cortex qualification CLI is unavailable; source evidence cannot close registry row",
+      };
+    }
+    return nativeCtxQualification(id, options, structural);
+  }
+  return structural;
+}
+
+function installedCli(options = {}) {
+  if (!options?.row) return null;
+  const explicit = options.cliPath || process.env.MEMBRANE_CLI_PATH;
+  if (explicit) return explicit;
+  const root = process.env.MEMBRANE_QUALIFICATION_INSTALLED_ROOT;
+  if (root) {
+    const candidate = join(root, "membrane.exe");
+    if (existsSync(candidate)) return candidate;
+  }
+  return null;
+}
+
+function verifyInstalledIdentity(cli, options = {}) {
+  const root = resolve(dirname(cli));
+  const expectedRoot = resolve(process.env.MEMBRANE_QUALIFICATION_INSTALLED_ROOT || root);
+  if (root.toLowerCase() !== expectedRoot.toLowerCase() || basename(root).toLowerCase() !== "current") {
+    throw new Error(`installed CLI is not from installer-owned current root: ${root}`);
+  }
+  const releasePath = join(root, "release.json");
+  if (!existsSync(releasePath)) throw new Error("installed release.json is missing");
+  let release;
+  try { release = JSON.parse(readFileSync(releasePath, "utf8")); } catch (error) { throw new Error(`installed release.json is invalid: ${error.message}`); }
+  const build = nativeCli({ cliPath: cli }, ["build-info"]);
+  const releaseGeneration = release.releaseGeneration;
+  if (typeof releaseGeneration !== "string" || build.release_generation !== releaseGeneration) throw new Error("build-info/release.json release generation mismatch");
+  const executable = join(root, "membrane.exe");
+  if (!existsSync(executable) || !release.files?.["membrane.exe"]) throw new Error("installed executable or release file SHA is missing");
+  const executableSha256 = createHash("sha256").update(readFileSync(executable)).digest("hex");
+  if (executableSha256.toLowerCase() !== String(release.files["membrane.exe"]).toLowerCase()) throw new Error("installed executable SHA does not match release.json");
+  if (typeof build.source_tree_sha256 !== "string" || !/^[0-9a-f]{64}$/i.test(build.source_tree_sha256)) throw new Error("installed build-info source tree SHA is missing");
+  const expectedRevision = process.env.MEMBRANE_QUALIFICATION_SOURCE_REVISION;
+  if (!expectedRevision) throw new Error("qualification source revision binding is missing");
+  if (build.membrane_source_commit !== expectedRevision) throw new Error(`installed source revision ${build.membrane_source_commit} does not match qualification revision ${expectedRevision}`);
+  return { root, releasePath, releaseGeneration, version: release.version, executable, executableSha256, sourceRevision: build.membrane_source_commit, sourceTreeSha256: build.source_tree_sha256 };
+}
+
+export function probeInstalledIdentity(options = {}) {
+  const cli = options.cliPath || process.env.MEMBRANE_CLI_PATH || "membrane";
+  try {
+    return { status: "passed", evidenceKind: "installed", detail: verifyInstalledIdentity(cli, options) };
+  } catch (error) {
+    return { status: "blocked", evidenceKind: "installed", reason: `installed identity verification failed: ${error.message}` };
+  }
+}
+
+function nativeCtxQualification(id, options, structural) {
+  const cli = installedCli(options);
+  try {
+    const identity = verifyInstalledIdentity(cli, options);
+    const native = nativeQualificationCli({ cliPath: cli, env: options.env }, id);
+    const nativeIdentity = native.installedIdentity;
+    if (native.caseId !== id || native.status !== "passed" || native.evidence?.evidenceKind !== "native"
+      || nativeIdentity?.releaseGeneration !== identity.releaseGeneration
+      || nativeIdentity?.executableSha256?.toLowerCase() !== identity.executableSha256.toLowerCase()
+      || nativeIdentity?.sourceRevision !== identity.sourceRevision
+      || nativeIdentity?.sourceTreeSha256 !== identity.sourceTreeSha256) {
+      throw new Error("native Cortex control returned incomplete case-bound evidence");
+    }
+    return {
+      id,
+      kind: "functional",
+      evidenceKind: "installed",
+      pass: true,
+      status: "passed",
+      reason: `installed native Cortex qualification ${id} executed against production APIs`,
+      detail: { identity, native },
+    };
+  } catch (error) {
+    return { ...structural, kind: "functional", evidenceKind: "installed", pass: false, status: "failed", reason: `${id} installed native control failed: ${error.message}`, detail: { cli } };
+  }
 }
 
 // Typed "insufficient" result for a capability this pass does not
@@ -344,35 +446,8 @@ export function CTX_017(options) {
     "BM07 repair: MemoryStore::record_evidence_relation/evidence_relations_from give supports/contradicts/derived_from a durable production ingest+traversal path alongside supersedes; restart/replay and installed traversal proof remain unrun by this edit-only pass (PARTIAL).");
 }
 export function CTX_018(options) {
-  const structural = structuralCheck("CTX-018", options, "engine/crates/membrane-runtime/src/checkpoint.rs",
+  return structuralCheck("CTX-018", options, "engine/crates/membrane-runtime/src/checkpoint.rs",
     [/checkpoint/i, /retire|list|load|save/i]);
-  const cli = options?.cliPath || process.env.MEMBRANE_CLI_PATH || "membrane";
-  const probe = spawnSync(cli, ["--version"], { encoding: "utf8", windowsHide: true, timeout: 15000 });
-  if (probe.error || probe.status !== 0) return structural;
-  const dir = mkdtempSync(join(tmpdir(), "ctx-checkpoint-"));
-  const db = join(dir, "checkpoint.sqlite");
-  const input = join(dir, "checkpoint.json");
-  const id = `ctx-018-${process.pid}-${Date.now()}`;
-  const checkpoint = {
-    checkpointId: id, installationId: "qualification", client: "windows-acceptance",
-    sessionId: id, repositoryId: "isolated", worktreeRev: "fixture", scopeId: "fixture",
-    summary: "isolated checkpoint lifecycle", createdAtMs: 1, expiresAtMs: 4102444800000, sourceRefs: [],
-  };
-  try {
-    writeFileSync(input, JSON.stringify(checkpoint), "utf8");
-    const saved = nativeCli({ cliPath: cli }, ["--db", db, "checkpoint", "save", "--input", input]);
-    const loaded = nativeCli({ cliPath: cli }, ["--db", db, "checkpoint", "load", id]);
-    if (saved.saved !== true || saved.checkpoint_id !== id || loaded.checkpoint?.checkpointId !== id || loaded.checkpoint?.summary !== checkpoint.summary) {
-      return { ...structural, kind: "installed", evidenceKind: "installed", pass: false, status: "failed", reason: "checkpoint save/load did not preserve typed identity and summary" };
-    }
-    const closed = nativeCli({ cliPath: cli }, ["--db", db, "checkpoint", "done", id]);
-    if (closed.closed !== true || closed.checkpoint_id !== id) return { ...structural, kind: "installed", evidenceKind: "installed", pass: false, status: "failed", reason: "checkpoint close did not return typed closure" };
-    return { id: "CTX-018", kind: "installed", evidenceKind: "installed", pass: true, status: "passed", detail: { db, checkpointId: id, saved: true, loaded: true, closed: true }, reason: "isolated native checkpoint save/load/close lifecycle preserved typed identity" };
-  } catch (error) {
-    return { id: "CTX-018", kind: "installed", evidenceKind: "installed", pass: false, status: "failed", reason: `native checkpoint lifecycle failed: ${error.message}` };
-  } finally {
-    try { rmSync(dir, { recursive: true, force: true }); } catch {}
-  }
 }
 export function CTX_019(options) {
   return structuralCheck("CTX-019", options, "engine/crates/membrane-runtime/src/cortex_lifecycle.rs",
@@ -631,14 +706,28 @@ export function BM07_provider_quality_signal_overrides_sufficiency(options) {
 }
 
 // ---------------------------------------------------------------------------
-// OPT-02 — optional post-parity Cortex retrieval ablation.
-// Not executed by an edit-only pass (requires a running corpus + retrieval
-// harness). Positive result is typed `insufficient`; its one negativeControl
-// (ablation on a non-matched corpus is rejected) is a real, executable
-// corpus-identity check.
+// OPT-02 — optional post-parity Cortex retrieval ablation. This is an
+// installed-runtime qualification only: source fixtures are never accepted.
 // ---------------------------------------------------------------------------
 
 const OPT_02_EXPECTED_CORPUS_ID = "cortex-matched-corpus-v1";
+
+function opt02Blocked(reason, evidence = {}) {
+  return { id: "OPT-02", kind: "exclusion", evidenceKind: "installed", pass: false, status: "blocked", reason, evidence };
+}
+
+function opt02JsonLines(stdout) {
+  const lines = String(stdout || "").split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  for (let i = lines.length - 1; i >= 0; i -= 1) {
+    try { return JSON.parse(lines[i]); } catch {}
+  }
+  return null;
+}
+
+function opt02Run(cli, args, env, prefix = []) {
+  const result = spawnSync(cli, [...prefix, ...args], { encoding: "utf8", windowsHide: true, timeout: 120000, env });
+  return { result, value: opt02JsonLines(result.stdout) };
+}
 
 export function OPT_02(options) {
   const corpusId = (options && options.corpusId) || null;
@@ -646,15 +735,52 @@ export function OPT_02(options) {
     return {
       id: "OPT-02",
       kind: "exclusion",
-      evidenceKind: "source",
+      evidenceKind: "installed",
       pass: false,
       reason: `ablation requested against non-matched corpus id "${corpusId}", expected "${OPT_02_EXPECTED_CORPUS_ID}"`,
       evidence: { corpusId, expected: OPT_02_EXPECTED_CORPUS_ID },
     };
   }
-  return insufficientResult("OPT-02",
-    "Lexical-only/vector-only/hybrid comparison across recall/ranking, temporal/paraphrase/preference/contradiction, latency/startup and RSS/footprint requires a running instrumented harness against the matched corpus; not executed by this edit-only pass.",
-    "OPTIONAL_AFTER_PARITY; IMPLEMENT_THEN_RUN per packet; no runtime result claimed.");
+  const corpusPath = options?.corpusPath || process.env.MEMBRANE_OPT02_CORPUS;
+  if (!corpusPath || !existsSync(corpusPath) || !statSync(corpusPath).isFile()) return opt02Blocked(
+    "OPT-02 requires an existing pinned matched corpus; fixture-only or missing corpus is refused.", { corpusPath: corpusPath || null });
+  let corpus;
+  try { corpus = JSON.parse(readFileSync(corpusPath, "utf8")); } catch (error) {
+    return opt02Blocked(`OPT-02 matched corpus is not valid JSON: ${error.message}`, { corpusPath });
+  }
+  const declaredSha256 = corpus.sha256 || corpus.corpusSha256;
+  const expectedSha256 = options?.expectedCorpusSha256 || process.env.MEMBRANE_OPT02_CORPUS_SHA256;
+  const actualSha256 = createHash("sha256").update(readFileSync(corpusPath)).digest("hex");
+  if (corpus.corpusId !== OPT_02_EXPECTED_CORPUS_ID || corpus.synthetic === true || corpus.fixture === true || corpus.pinned !== true || !/^[0-9a-f]{64}$/i.test(expectedSha256 || "") || expectedSha256.toLowerCase() !== actualSha256 || (declaredSha256 && declaredSha256.toLowerCase() !== actualSha256)) {
+    return opt02Blocked("OPT-02 corpus identity/pinning check failed; expected exact matched non-fixture corpus and content hash.", {
+      corpusPath, corpusId: corpus.corpusId || null, expectedCorpusId: OPT_02_EXPECTED_CORPUS_ID,
+      declaredSha256: declaredSha256 || null, expectedSha256: expectedSha256 || null, actualSha256, pinned: corpus.pinned === true,
+    });
+  }
+  const cli = options.cliPath || process.env.MEMBRANE_CLI_PATH || "membrane";
+  const cliPrefix = options.cliPrefix || [];
+  const env = { ...process.env, ...(options.env || {}) };
+  const version = opt02Run(cli, ["--version"], env, cliPrefix);
+  if (version.result.error || version.result.status !== 0) return opt02Blocked("OPT-02 installed native runtime --version probe failed.", { cli });
+  const buildInfo = opt02Run(cli, ["cli", "build-info"], env, cliPrefix);
+  if (buildInfo.result.error || buildInfo.result.status !== 0 || !buildInfo.value?.release_generation) return opt02Blocked(
+    "OPT-02 installed native runtime identity is unavailable; build-info release_generation is required.", { cli, version: String(version.result.stdout || "").trim() });
+  const arms = ["lexical-only", "vector-only", "hybrid"];
+  const runs = {};
+  for (const arm of arms) {
+    const run = opt02Run(cli, ["cli", "qualification", "retrieval", "--arm", arm, "--corpus", corpusPath, "--corpus-sha256", actualSha256], env, cliPrefix);
+    if (run.result.error || run.result.status !== 0 || !run.value) return opt02Blocked(
+      `OPT-02 native retrieval arm "${arm}" failed or returned non-JSON output; required runtime control is unavailable.`, { cli, arm, stderr: String(run.result.stderr || "").trim() });
+    const metrics = run.value.metrics || run.value;
+    const required = ["recall", "ranking", "temporal", "paraphrase", "preference", "contradiction", "latency", "startup", "rss"];
+    if (!required.every((name) => Number.isFinite(Number(metrics[name])))) return opt02Blocked(
+      `OPT-02 native retrieval arm "${arm}" omitted required recall/ranking/category/latency/startup/RSS metrics.`, { cli, arm, metrics });
+    runs[arm] = { metrics, pass: run.value.pass === true || run.value.status === "passed" };
+  }
+  const passed = arms.every((arm) => runs[arm].pass);
+  return { id: "OPT-02", kind: "functional", evidenceKind: "installed", pass: passed, status: passed ? "passed" : "failed",
+    reason: passed ? "installed native lexical-only/vector-only/hybrid retrieval ablation passed on matched corpus" : "one or more installed native retrieval arms failed thresholds",
+    evidence: { corpusId: corpus.corpusId, corpusSha256: actualSha256, installedReleaseGeneration: buildInfo.value.release_generation, arms: runs } };
 }
 
 export const CTX_CASES = {

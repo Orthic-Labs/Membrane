@@ -1,26 +1,21 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { parseToolsetConfig, toolsetNames } from "../../mcp/toolsets.mjs";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
-const safeDefault = ["membrane_context", "membrane_source_read", "membrane_blueprint", "membrane_ledger", "membrane_knowledge_propose", "membrane_memory", "membrane_memory_read", "membrane_checkpoint_save", "membrane_checkpoint_load"];
-const groups = {
-  default: safeDefault,
-  memory: ["membrane_context", "membrane_knowledge_propose", "membrane_memory", "membrane_memory_read", "membrane_checkpoint_save", "membrane_checkpoint_load", "membrane_working_context", "membrane_temporal_fact", "membrane_scratchpad", "membrane_feedback"],
-  blueprint: ["membrane_source_read", "membrane_blueprint"], ledger: ["membrane_source_read", "membrane_ledger"], diagnostic: [], adapt: ["membrane_adapt_inspect"], push: ["membrane_push_prepare", "membrane_push_resolve"], operator: ["membrane_knowledge_review"],
-};
-const params = (value) => ({ _meta: { "membrane.toolsets.v1": value } });
+const registry = JSON.parse(readFileSync(join(process.cwd(), "schemas/registry/toolsets.yaml"), "utf8"));
 
-test("toolsets negotiate valid groups & conservative metadata fallback", () => {
-  assert.deepEqual(toolsetNames({}, groups), safeDefault);
-  assert.deepEqual(toolsetNames(params(["memory"]), groups), [...safeDefault, "membrane_working_context", "membrane_temporal_fact", "membrane_scratchpad", "membrane_feedback"]);
-  assert.deepEqual(toolsetNames(params(["blueprint"]), groups), safeDefault);
-  assert.deepEqual(toolsetNames(params(["operator"]), groups), [...safeDefault, "membrane_knowledge_review"]);
-  for (const value of ["memory", ["unknown"], ["memory", "memory"], { memory: true }]) assert.deepEqual(toolsetNames(params(value), groups), safeDefault);
+test("native registry declares conservative toolset groups", () => {
+  assert.equal(registry.version, "membrane.toolsets.v1");
+  assert.ok(Array.isArray(registry.groups.default));
+  assert.ok(registry.groups.default.includes("membrane_context"));
+  assert.ok(registry.groups.memory.includes("membrane_memory_read"));
+  assert.ok(registry.groups.push.includes("membrane_push_prepare"));
+  assert.ok(registry.groups.operator.includes("membrane_knowledge_review"));
 });
 
-test("invalid configuration falls back", () => {
-  assert.equal(parseToolsetConfig('{"version":"membrane.toolsets.v1","groups":{}}'), null);
-  assert.equal(parseToolsetConfig('{"version":"wrong","groups":{}}'), null);
-  assert.equal(parseToolsetConfig(JSON.stringify({ version: "membrane.toolsets.v1", groups: { ...groups, default: ["membrane_context"] } })), null);
-  assert.deepEqual(toolsetNames(params(["memory"]), null), safeDefault);
+test("native MCP implementation owns toolset negotiation", () => {
+  const source = readFileSync(join(process.cwd(), "engine/crates/membrane-mcp/src/tools.rs"), "utf8");
+  assert.match(source, /membrane\.toolsets\.v1/);
+  assert.match(source, /CORE|ADAPT|OPERATOR|DIAGNOSTIC/);
 });

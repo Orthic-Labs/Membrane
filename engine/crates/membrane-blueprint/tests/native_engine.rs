@@ -1,5 +1,5 @@
 use membrane_blueprint::{native_blueprint_operation, BlueprintOperation, BlueprintRequest, Bounds, CancellationToken, NativeBlueprintOperation, Operation};
-use serde_json::Value;
+use serde_json::{json, Value};
 use std::fs;
 use tempfile::tempdir;
 
@@ -84,6 +84,36 @@ fn refresh_observation_survives_persistence_and_query() {
     let result = execute(&operation, &query).unwrap();
     assert_eq!(result["sourceObservation"]["sourceClock"], 42);
     assert_eq!(result["sourceObservation"]["eventKind"], "changed");
+}
+
+#[test]
+fn every_findings_operation_is_dispatched_by_native_engine() {
+    let root = tempdir().unwrap();
+    fs::write(root.path().join("main.rs"), "fn entry() {}\n").unwrap();
+    let operation = NativeBlueprintOperation;
+    execute(&operation, &request("findings-build", Operation::Build, root.path())).unwrap();
+
+    for (id, method, input, expected_kind) in [
+        ("findings-get", Operation::FindingsGet, json!({}), "findings.get"),
+        ("findings-list", Operation::FindingsBaselineList, json!({}), "findings.baseline.list"),
+        ("findings-sarif", Operation::FindingsSarif, json!({}), "findings.sarif"),
+        ("findings-capture", Operation::FindingsBaselineCapture, json!({"name":"native"}), "findings.baseline.capture"),
+    ] {
+        let mut req = request(id, method, root.path());
+        req.input.as_object_mut().unwrap().extend(input.as_object().unwrap().clone());
+        let result = execute(&operation, &req).unwrap();
+        assert_eq!(result["kind"], expected_kind, "{id}");
+    }
+
+    let mut explain = request("findings-explain", Operation::FindingsExplain, root.path());
+    explain.input["fingerprint"] = Value::String("missing".into());
+    let error = execute(&operation, &explain).unwrap_err();
+    assert!(error.starts_with("finding_not_found:"));
+
+    let mut pack = request("findings-pack", Operation::FindingsEvidencePack, root.path());
+    pack.input["fingerprints"] = Value::Array(vec![]);
+    let error = execute(&operation, &pack).unwrap_err();
+    assert!(error.starts_with("finding_selection_empty:"));
 }
 
 #[test]

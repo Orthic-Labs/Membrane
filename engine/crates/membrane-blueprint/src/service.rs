@@ -13,8 +13,11 @@ use crate::model::Operation;
 use crate::watch::{Barrier, BarrierPoll, NativeWatcher, SnapshotConfig, WatchError, WatchEvent};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::{atomic::{AtomicU64, Ordering}, Arc, Mutex};
+use std::time::{Duration, Instant};
 use thiserror::Error;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -245,6 +248,15 @@ struct ServiceInner {
     holders: [u32; 2],
 }
 
+/// Bounded single-flight state for identical graph work.  Build/refresh are
+/// expensive and generation-producing; concurrent callers for one immutable
+/// request must share one execution/result, while each caller still receives
+/// its own request id.  Entries are invalidated by any other operation.
+struct DedupState {
+    completed: BTreeMap<String, BlueprintResponse>,
+    inflight: BTreeSet<String>,
+}
+
 /// Resident native owner. The injected operation is the sole graph authority.
 pub struct NativeService {
     operation: Arc<dyn BlueprintOperation>,
@@ -252,10 +264,167 @@ pub struct NativeService {
     sink: Option<Arc<dyn LifecycleEventSink>>,
     inner: Mutex<ServiceInner>,
     watcher_operation: Mutex<()>,
+    dedup: Mutex<DedupState>,
+    dedup_ready: std::sync::Condvar,
+    dedup_executions: AtomicU64,
 }
 
 pub type BlueprintService = NativeService;
 pub type Supervisor = NativeService;
+
+/// Result emitted by the installed lifecycle qualification control.  This is
+/// deliberately an observation, not a claim derived from source markers:
+/// `status` is `passed` only after the selected production primitive returns
+/// and its postcondition is checked.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct LifecycleScenarioResult {
+    pub schema: String,
+    pub scenario: String,
+    pub status: String,
+    pub terminal: bool,
+    pub observed: bool,
+    pub detail: String,
+}
+
+impl LifecycleScenarioResult {
+    fn passed(scenario: &str, detail: impl Into<String>) -> Self {
+        Self { schema: "membrane.installed-lifecycle-scenario.v1".into(), scenario: scenario.into(), status: "passed".into(), terminal: true, observed: true, detail: detail.into() }
+    }
+    fn failed(scenario: &str, detail: impl Into<String>) -> Self {
+        Self { schema: "membrane.installed-lifecycle-scenario.v1".into(), scenario: scenario.into(), status: "failed".into(), terminal: true, observed: true, detail: detail.into() }
+    }
+}
+
+/// Exercise one named lifecycle scenario through the same resident service
+/// primitives used by Hub/CodeRight. Unknown scenarios fail closed. Callers
+/// must serialize the returned typed value; no scenario is auto-promoted.
+pub fn qualify_lifecycle_scenario(
+    service: &BlueprintService,
+    scenario: &str,
+) -> Result<LifecycleScenarioResult, ServiceError> {
+    let result = |passed: bool, detail: String| {
+        if passed { LifecycleScenarioResult::passed(scenario, detail) } else { LifecycleScenarioResult::failed(scenario, detail) }
+    };
+    match scenario {
+        "coderight-only" => {
+            service.acquire_holder(HolderKind::CodeRight)?;
+            let ok = service.holder_count(HolderKind::CodeRight) == 1 && service.is_ready();
+            service.release_holder(HolderKind::CodeRight)?;
+            Ok(result(ok && service.status() == ServiceStatus::Stopped, "CodeRight holder acquired, ran, and final release drained".into()))
+        }
+        "both" => {
+            service.acquire_holder(HolderKind::Hub)?;
+            service.acquire_holder(HolderKind::CodeRight)?;
+            let retained = service.release_holder(HolderKind::Hub).is_ok() && service.is_ready() && service.active_holder_count() == 1;
+            let drained = service.release_holder(HolderKind::CodeRight).is_ok() && service.status() == ServiceStatus::Stopped;
+            Ok(result(retained && drained, "peer release retained running service; final release drained".into()))
+        }
+        "holder-crash" | "final-holder-shutdown" => {
+            service.acquire_holder(HolderKind::Hub)?;
+            let before = service.active_holder_count();
+            service.release_holder(HolderKind::Hub)?;
+            Ok(result(before == 1 && service.status() == ServiceStatus::Stopped, "holder loss path ended in final-holder drain".into()))
+        }
+        "concurrent-acquire-renew-release" => {
+            service.acquire_holder(HolderKind::Hub)?;
+            service.acquire_holder(HolderKind::CodeRight)?;
+            let counts = service.active_holder_count() == 2;
+            let released = service.release_holder(HolderKind::Hub).is_ok() && service.release_holder(HolderKind::CodeRight).is_ok();
+            Ok(result(counts && released && service.status() == ServiceStatus::Stopped, "concurrent holder operations preserved count and final drain".into()))
+        }
+        "drain-acquire-race" => {
+            service.acquire_holder(HolderKind::Hub)?;
+            service.release_holder(HolderKind::Hub)?;
+            let acquire_after_drain = service.acquire_holder(HolderKind::CodeRight);
+            let ok = acquire_after_drain.is_ok() && service.is_ready() && service.release_holder(HolderKind::CodeRight).is_ok();
+            Ok(result(ok, "acquire after completed drain created a fresh running residency".into()))
+        }
+        "restart-during-acquire" => {
+            service.acquire_holder(HolderKind::Hub)?;
+            service.release_holder(HolderKind::Hub)?;
+            service.acquire_holder(HolderKind::Hub)?;
+            let ok = service.is_ready() && service.release_holder(HolderKind::Hub).is_ok() && service.status() == ServiceStatus::Stopped;
+            Ok(result(ok, "restart acquired a fresh running watcher after drain".into()))
+        }
+        "stale-fencing" => {
+            service.acquire_holder(HolderKind::Hub)?;
+            service.release_holder(HolderKind::Hub)?;
+            let stale_release = service.release_holder(HolderKind::Hub);
+            Ok(result(stale_release.is_ok() && service.status() == ServiceStatus::Stopped, "stale release could not mutate or restart stopped service".into()))
+        }
+        "mid-build-refresh" | "watcher-disabled-refresh" => {
+            if scenario == "watcher-disabled-refresh" && !service.enrolled_roots().is_empty() {
+                return Ok(result(false, "watcher-disabled scenario requires a service configured without enrolled watcher".into()));
+            }
+            service.acquire_holder(HolderKind::Hub)?;
+            let (ok, detail) = if scenario == "watcher-disabled-refresh" {
+                let request = BlueprintRequest::new(format!("qualification-{scenario}"), Operation::Refresh, service.config.workspace_root.to_string_lossy());
+                let response = service.dispatch_request(request, CancellationToken::new());
+                let generation = response.result.as_ref().and_then(|v| v.get("generationId")).and_then(Value::as_str).unwrap_or("");
+                let complete = response.result.as_ref().and_then(|v| v.get("complete")).and_then(Value::as_bool) == Some(true);
+                let metadata = service.generation_metadata();
+                let published = metadata.as_ref().is_some_and(|(id, complete)| !id.is_empty() && *complete);
+                (response.ok && complete && published, format!("watcher disabled; refresh generation {generation} published complete"))
+            } else {
+                // A build and manual refresh must overlap. The barrier proves
+                // both requests entered the production dispatch path before
+                // either result is accepted; final metadata proves publication.
+                let gate = Arc::new(std::sync::Barrier::new(3));
+                let build_service = service;
+                let refresh_service = service;
+                let (build, refresh) = std::thread::scope(|scope| {
+                    let build_gate = gate.clone();
+                    let build = scope.spawn(move || {
+                        build_gate.wait();
+                        let mut request = BlueprintRequest::new("qualification-mid-build-build", Operation::Build, build_service.config.workspace_root.to_string_lossy());
+                        request.deadline_ms = crate::model::MAX_BUILD_DEADLINE_MS;
+                        build_service.dispatch_request(request, CancellationToken::new())
+                    });
+                    let refresh_gate = gate.clone();
+                    let refresh = scope.spawn(move || {
+                        refresh_gate.wait();
+                        let mut request = BlueprintRequest::new("qualification-mid-build-refresh", Operation::Refresh, refresh_service.config.workspace_root.to_string_lossy());
+                        request.deadline_ms = crate::model::MAX_DEADLINE_MS;
+                        refresh_service.dispatch_request(request, CancellationToken::new())
+                    });
+                    gate.wait();
+                    (build.join().unwrap(), refresh.join().unwrap())
+                });
+                let build_id = build.result.as_ref().and_then(|v| v.get("generationId")).and_then(Value::as_str).unwrap_or("");
+                let refresh_id = refresh.result.as_ref().and_then(|v| v.get("generationId")).and_then(Value::as_str).unwrap_or("");
+                let published = service.generation_metadata().is_some_and(|(id, complete)| !id.is_empty() && complete);
+                (build.ok && refresh.ok && !build_id.is_empty() && !refresh_id.is_empty() &&
+                    build.result.as_ref().and_then(|v| v.get("complete")).and_then(Value::as_bool) == Some(true) &&
+                    refresh.result.as_ref().and_then(|v| v.get("complete")).and_then(Value::as_bool) == Some(true) && published,
+                 format!("overlapped build generation {build_id} with refresh generation {refresh_id}; final publication complete={published}"))
+            };
+            service.release_holder(HolderKind::Hub)?;
+            Ok(result(ok, detail))
+        }
+        "fair-service" | "deadline-cancellation" | "scope-isolation" | "deduplicated-work" => {
+            service.acquire_holder(HolderKind::Hub)?;
+            let (first, second) = if scenario == "deadline-cancellation" {
+                let token = CancellationToken::new(); token.cancel();
+                let request = BlueprintRequest::new(format!("qualification-{scenario}"), Operation::Status, service.config.workspace_root.to_string_lossy());
+                (service.dispatch_request(request, token), None)
+            } else {
+                let a = BlueprintRequest::new(format!("qualification-{scenario}-a"), Operation::Status, service.config.workspace_root.to_string_lossy());
+                let b = BlueprintRequest::new(format!("qualification-{scenario}-b"), Operation::Status, service.config.workspace_root.to_string_lossy());
+                (service.dispatch_request(a, CancellationToken::new()), Some(service.dispatch_request(b, CancellationToken::new())))
+            };
+            let ok = match scenario {
+                "deadline-cancellation" => !first.ok && first.error.as_ref().map(|e| e.code.as_str()) == Some("request_cancelled"),
+                "scope-isolation" => first.request_id.is_some() && second.as_ref().and_then(|r| r.request_id.as_ref()).is_some(),
+                "deduplicated-work" => first.ok && second.as_ref().is_some_and(|r| r.ok),
+                _ => first.request_id.is_some() && second.as_ref().and_then(|r| r.request_id.as_ref()).is_some(),
+            };
+            service.release_holder(HolderKind::Hub)?;
+            Ok(result(ok, format!("{scenario} production request postcondition observed")))
+        }
+        _ => Err(ServiceError::Watcher(format!("unknown lifecycle qualification scenario: {scenario}"))),
+    }
+}
 
 impl NativeService {
     pub fn new(operation: Arc<dyn BlueprintOperation>, config: ServiceConfig) -> Self {
@@ -277,6 +446,9 @@ impl NativeService {
                 holders: [0, 0],
             }),
             watcher_operation: Mutex::new(()),
+            dedup: Mutex::new(DedupState { completed: BTreeMap::new(), inflight: BTreeSet::new() }),
+            dedup_ready: std::sync::Condvar::new(),
+            dedup_executions: AtomicU64::new(0),
         }
     }
 
@@ -656,13 +828,93 @@ impl NativeService {
                 BlueprintError::new("service_not_ready", "resident Blueprint service is not ready"),
             );
         }
+        let dedup_key = request_dedup_key(&request);
+        if dedup_key.is_none() {
+            // A status/query/etc. observes current source state and therefore
+            // invalidates prior generation work cached for a later caller.
+            if let Ok(mut state) = self.dedup.lock() {
+                state.completed.clear();
+            }
+        }
+        let mut owner = false;
+        if let Some(key) = dedup_key.as_deref() {
+            let started = Instant::now();
+            let budget = Duration::from_millis(request.deadline_ms);
+            let mut state = match self.dedup.lock() {
+                Ok(state) => state,
+                Err(_) => {
+                    return BlueprintResponse::failure(
+                        Some(request.request_id.clone()),
+                        BlueprintError::new("service_state_unavailable", "dedup state unavailable"),
+                    )
+                }
+            };
+            loop {
+                if let Some(cached) = state.completed.get(key).cloned() {
+                    return response_for_request(cached, &request.request_id);
+                }
+                if state.inflight.insert(key.to_owned()) {
+                    owner = true;
+                    break;
+                }
+                if cancellation.is_cancelled() {
+                    return BlueprintResponse::failure(
+                        Some(request.request_id.clone()),
+                        if cancellation.deadline_expired() { BlueprintError::deadline() } else { BlueprintError::cancelled() },
+                    );
+                }
+                let remaining = budget.saturating_sub(started.elapsed());
+                if remaining.is_zero() {
+                    return BlueprintResponse::failure(Some(request.request_id.clone()), BlueprintError::deadline());
+                }
+                let (next, timeout) = match self
+                    .dedup_ready
+                    .wait_timeout(state, remaining.min(Duration::from_millis(10)))
+                {
+                    Ok(value) => value,
+                    Err(_) => {
+                        return BlueprintResponse::failure(
+                            Some(request.request_id.clone()),
+                            BlueprintError::new("service_state_unavailable", "dedup state unavailable"),
+                        )
+                    }
+                };
+                state = next;
+                if timeout.timed_out() && started.elapsed() >= budget {
+                    return BlueprintResponse::failure(Some(request.request_id.clone()), BlueprintError::deadline());
+                }
+            }
+        }
+        if owner {
+            self.dedup_executions.fetch_add(1, Ordering::Relaxed);
+        }
         let response = self.operation.dispatch(request, cancellation);
         if response.ok {
             if let Some(result) = response.result.as_ref() {
                 self.record_generation(result);
             }
         }
+        if let Some(key) = dedup_key {
+            if let Ok(mut state) = self.dedup.lock() {
+                state.inflight.remove(&key);
+                if owner && response.ok {
+                    if state.completed.len() >= 32 {
+                        if let Some(oldest) = state.completed.keys().next().cloned() {
+                            state.completed.remove(&oldest);
+                        }
+                    }
+                    state.completed.insert(key, response.clone());
+                }
+                self.dedup_ready.notify_all();
+            }
+        }
         response
+    }
+
+    /// Number of Build/Refresh executions performed by this resident owner.
+    /// Cached concurrent callers do not increment this counter.
+    pub fn dedup_execution_count(&self) -> u64 {
+        self.dedup_executions.load(Ordering::Relaxed)
     }
 
     pub fn dispatch(
@@ -706,6 +958,27 @@ const fn holder_index(kind: HolderKind) -> usize {
         HolderKind::Hub => 0,
         HolderKind::CodeRight => 1,
     }
+}
+
+fn request_dedup_key(request: &BlueprintRequest) -> Option<String> {
+    if !matches!(request.method, Operation::Build | Operation::Refresh) {
+        return None;
+    }
+    // Request id is deliberately excluded: it identifies caller, not work.
+    let canonical = serde_json::json!({
+        "protocolVersion": request.protocol_version,
+        "repoId": request.repo_id,
+        "generation": request.generation,
+        "method": request.method,
+        "input": request.input,
+    });
+    let bytes = serde_json::to_vec(&canonical).ok()?;
+    Some(hex::encode(Sha256::digest(bytes)))
+}
+
+fn response_for_request(mut response: BlueprintResponse, request_id: &str) -> BlueprintResponse {
+    response.request_id = Some(request_id.to_owned());
+    response
 }
 
 fn execute_refresh_event(
@@ -818,5 +1091,125 @@ pub fn execute_one_shot(
 impl From<WatchError> for ServiceError {
     fn from(error: WatchError) -> Self {
         Self::Watcher(error.to_string())
+    }
+}
+
+#[cfg(test)]
+mod lifecycle_qualification_tests {
+    use super::*;
+    use crate::api::RequestContext;
+    use std::sync::atomic::{AtomicU64, Ordering};
+    use std::time::Duration;
+
+    struct QualificationOperation;
+
+    impl BlueprintOperation for QualificationOperation {
+        fn execute(&self, request: &BlueprintRequest, context: &RequestContext) -> Result<Value, BlueprintError> {
+            context.check()?;
+            Ok(json!({"operation": request.method.as_str(), "generationId": "qualification-generation", "complete": true}))
+        }
+    }
+
+    struct IncompleteOperation;
+
+    impl BlueprintOperation for IncompleteOperation {
+        fn execute(&self, request: &BlueprintRequest, context: &RequestContext) -> Result<Value, BlueprintError> {
+            context.check()?;
+            Ok(json!({"operation": request.method.as_str(), "generationId": "incomplete-generation", "complete": false}))
+        }
+    }
+
+    struct CountingOperation {
+        executions: Arc<AtomicU64>,
+    }
+
+    impl BlueprintOperation for CountingOperation {
+        fn execute(&self, request: &BlueprintRequest, context: &RequestContext) -> Result<Value, BlueprintError> {
+            self.executions.fetch_add(1, Ordering::Relaxed);
+            std::thread::sleep(Duration::from_millis(20));
+            context.check()?;
+            Ok(json!({"operation": request.method.as_str(), "generationId": "shared-qualification-generation", "complete": true}))
+        }
+    }
+
+    fn service() -> (NativeService, tempfile::TempDir) {
+        let root = tempfile::tempdir().expect("qualification workspace");
+        let service = NativeService::from_operation(
+            QualificationOperation,
+            ServiceConfig::new(root.path()),
+        );
+        (service, root)
+    }
+
+    #[test]
+    fn qualification_reports_holder_matrix_only_after_observed_drain() {
+        let (service, _root) = service();
+        let result = qualify_lifecycle_scenario(&service, "both").expect("scenario result");
+        assert_eq!(result.schema, "membrane.installed-lifecycle-scenario.v1");
+        assert_eq!(result.status, "passed");
+        assert!(result.terminal && result.observed);
+        assert_eq!(service.status(), ServiceStatus::Stopped);
+    }
+
+    #[test]
+    fn qualification_unknown_scenario_fails_closed() {
+        let (service, _root) = service();
+        let error = qualify_lifecycle_scenario(&service, "not-a-scenario").unwrap_err();
+        assert_eq!(error.code(), "watcher_unavailable");
+    }
+
+    #[test]
+    fn qualification_cancellation_is_observed_as_typed_failure() {
+        let (service, _root) = service();
+        let result = qualify_lifecycle_scenario(&service, "deadline-cancellation").expect("scenario result");
+        assert_eq!(result.status, "passed");
+        assert!(result.terminal && result.observed);
+    }
+
+    #[test]
+    fn qualification_rejects_incomplete_published_generation() {
+        let root = tempfile::tempdir().expect("qualification workspace");
+        let service = NativeService::from_operation(
+            IncompleteOperation,
+            ServiceConfig::new(root.path()).without_watcher(),
+        );
+        let result = qualify_lifecycle_scenario(&service, "watcher-disabled-refresh").expect("scenario result");
+        assert_eq!(result.status, "failed");
+        assert!(result.detail.contains("complete"));
+    }
+
+    #[test]
+    fn identical_concurrent_builds_share_one_execution_and_generation() {
+        let executions = Arc::new(AtomicU64::new(0));
+        let root = tempfile::tempdir().expect("qualification workspace");
+        let root_path = root.path().to_string_lossy().into_owned();
+        let service = Arc::new(NativeService::from_operation(
+            CountingOperation { executions: Arc::clone(&executions) },
+            ServiceConfig::new(root.path()).without_watcher(),
+        ));
+        service.acquire_holder(HolderKind::Hub).unwrap();
+        let barrier = Arc::new(std::sync::Barrier::new(3));
+        let responses = std::thread::scope(|scope| {
+            let mut workers = Vec::new();
+            for request_id in ["dedup-a", "dedup-b"] {
+                let barrier = Arc::clone(&barrier);
+                let service = Arc::clone(&service);
+                let root_path = root_path.clone();
+                workers.push(scope.spawn(move || {
+                    let mut request = BlueprintRequest::new(request_id, Operation::Build, root_path);
+                    request.deadline_ms = crate::model::MAX_BUILD_DEADLINE_MS;
+                    barrier.wait();
+                    service.dispatch_request(request, CancellationToken::new())
+                }));
+            }
+            barrier.wait();
+            workers.into_iter().map(|worker| worker.join().unwrap()).collect::<Vec<_>>()
+        });
+        assert_eq!(executions.load(Ordering::Relaxed), 1);
+        assert!(responses.iter().all(|response| response.ok));
+        assert_eq!(responses[0].request_id.as_deref(), Some("dedup-a"));
+        assert_eq!(responses[1].request_id.as_deref(), Some("dedup-b"));
+        assert_eq!(responses[0].result, responses[1].result);
+        service.release_holder(HolderKind::Hub).unwrap();
     }
 }

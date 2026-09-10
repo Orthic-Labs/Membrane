@@ -188,6 +188,22 @@ pub fn audit_source_dispositions(root: &Path, admitted_paths: &[String]) -> Sour
     }
 }
 
+/// Registry entry for ingestion accounting. Source disposition is deliberately
+/// side-effect free; graph build owns publication of its typed summary.
+pub fn run(ctx: &crate::providers::ProviderContext<'_>) -> crate::providers::ProviderOutput {
+    let admitted = ctx.files.iter().map(|file| file.path.clone()).collect::<Vec<_>>();
+    let report = audit_source_dispositions(ctx.repo_root, &admitted);
+    let evidence = serde_json::to_value(report).unwrap_or(serde_json::Value::Null);
+    crate::providers::ProviderOutput {
+        nodes: vec![crate::model::GraphNode {
+            id: "provider:ingestion".into(), kind: "provider_diagnostic".into(), path: None,
+            name: Some("ingestion".into()), generation_id: String::new(),
+            evidence: vec![evidence],
+        }],
+        edges: Vec::new(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

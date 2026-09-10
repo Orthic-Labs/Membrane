@@ -9,10 +9,11 @@
 //! - CodeGraph `fetch-engine.js`: stage complete output before atomic promotion;
 //! - OpenViking `openviking-entrypoint.sh`: start, wait for health, fail when
 //!   child exits early or readiness deadline expires.
-//! Existing `mcp/install.mjs::createNativeInstaller` supplies exact Membrane
-//! add/get/remove command shapes & conflict-restoration contract.
+//! Native activation owns exact Membrane add/get/remove command shapes &
+//! conflict-restoration contract; the former MCP installer is historical.
 
 use serde::{Deserialize, Serialize};
+use sha2::Digest;
 use std::{
     ffi::OsString,
     net::{SocketAddr, TcpStream},
@@ -366,6 +367,49 @@ impl Drop for ActivationLock {
 
 pub fn default_install_root() -> Result<PathBuf, String> {
     expected_stable_install_root()
+}
+
+/// Verify caller identity against the installer-owned stable `current` tree.
+/// Qualification controls must never turn a source checkout or synthetic
+/// executable into installed evidence.
+pub fn verified_installed_identity() -> Result<serde_json::Value, String> {
+    let executable = std::env::current_exe().map_err(|e| format!("current executable: {e}"))?;
+    let current = executable.parent().ok_or_else(|| "current executable has no parent".to_string())?;
+    let stable = expected_stable_install_root()?;
+    if !paths_equal(&current.to_string_lossy(), &stable.to_string_lossy()) {
+        return Err("caller executable is not under installer-owned stable current".into());
+    }
+    let release_path = current.join("release.json");
+    let release: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(&release_path).map_err(|e| format!("read release identity: {e}"))?,
+    ).map_err(|e| format!("parse release identity: {e}"))?;
+    let version = release.get("version").and_then(serde_json::Value::as_str)
+        .filter(|value| !value.trim().is_empty())
+        .ok_or_else(|| "release identity lacks non-empty version".to_string())?;
+    let files = release.get("files").and_then(serde_json::Value::as_object)
+        .ok_or_else(|| "release identity lacks files map".to_string())?;
+    let bytes = std::fs::read(&executable).map_err(|e| format!("read current executable: {e}"))?;
+    let digest = hex::encode(sha2::Sha256::digest(&bytes));
+    let expected = files.get("membrane.exe")
+        .and_then(serde_json::Value::as_str).ok_or_else(|| "release identity lacks membrane.exe digest".to_string())?;
+    if !expected.eq_ignore_ascii_case(&digest) {
+        return Err("current executable digest does not match release identity".into());
+    }
+    let mut verified_files = Vec::with_capacity(files.len());
+    for (relative, expected) in files {
+        let relative_path = Path::new(relative);
+        if relative_path.is_absolute() || relative_path.components().any(|component| matches!(component, std::path::Component::ParentDir)) {
+            return Err(format!("release identity contains unsafe file path {relative}"));
+        }
+        let path = current.join(relative_path);
+        let bytes = std::fs::read(&path).map_err(|e| format!("read installed file {relative}: {e}"))?;
+        let actual = hex::encode(sha2::Sha256::digest(&bytes));
+        if expected.as_str().is_none_or(|value| !value.eq_ignore_ascii_case(&actual)) {
+            return Err(format!("installed file digest does not match release identity: {relative}"));
+        }
+        verified_files.push(serde_json::json!({"path": path, "sha256": actual}));
+    }
+    Ok(serde_json::json!({"current":current,"executable":executable,"release":release_path,"version":version,"executableSha256":digest,"files":verified_files}))
 }
 
 pub fn activate(options: ActivationOptions) -> Result<ActivationReceiptV1, String> {
@@ -743,8 +787,26 @@ fn require_file(path: &Path, label: &str) -> Result<(), String> {
 }
 
 fn acquire_lock(install_root: &Path) -> Result<ActivationLock, String> {
+    acquire_lock_with_wait(install_root, LOCK_WAIT)
+}
+
+fn acquire_lock_with_wait(install_root: &Path, wait: Duration) -> Result<ActivationLock, String> {
+    acquire_lock_with_policy(install_root, wait, LOCK_STALE_AFTER)
+}
+
+/// Acquire activation lock with an explicit stale threshold.
+///
+/// Production callers use [`LOCK_STALE_AFTER`] through
+/// `acquire_lock_with_wait`.  Keeping threshold injection here lets the
+/// installed qualification exercise stale-owner recovery without waiting
+/// ninety seconds or weakening production policy.
+fn acquire_lock_with_policy(
+    install_root: &Path,
+    wait: Duration,
+    stale_after: Duration,
+) -> Result<ActivationLock, String> {
     let path = install_root.join(LOCK_DIR);
-    let deadline = Instant::now() + LOCK_WAIT;
+    let deadline = Instant::now() + wait;
     loop {
         match std::fs::create_dir(&path) {
             Ok(()) => {
@@ -763,7 +825,7 @@ fn acquire_lock(install_root: &Path) -> Result<ActivationLock, String> {
                     .and_then(|metadata| metadata.modified())
                     .ok()
                     .and_then(|modified| modified.elapsed().ok())
-                    .is_some_and(|age| age > LOCK_STALE_AFTER);
+                    .is_some_and(|age| age > stale_after);
                 // Age alone is not evidence that the holder is gone. Breaking
                 // on age meant a slow-but-live activation had its lock taken
                 // away and a second one ran against the same install — and
@@ -1600,6 +1662,16 @@ fn reconcile_claude_hooks(install_root: &Path) -> Result<(), String> {
         .map(PathBuf::from)
         .ok_or_else(|| "Claude settings profile is unavailable".to_string())?;
     let settings_path = profile.join(".claude").join("settings.json");
+    reconcile_claude_hooks_at(&settings_path, install_root)
+}
+
+/// Reconcile native Claude hooks at an explicit settings path.
+///
+/// The production path supplies the user's real Claude settings path through
+/// `reconcile_claude_hooks`; LC-06 supplies an isolated path so it can verify
+/// the same read, merge, atomic-write, and read-back behavior without touching
+/// operator configuration.
+fn reconcile_claude_hooks_at(settings_path: &Path, install_root: &Path) -> Result<(), String> {
     let mut settings: serde_json::Value = if settings_path.is_file() {
         serde_json::from_slice(
             &std::fs::read(&settings_path)
@@ -1715,6 +1787,14 @@ fn remove_claude_hooks(
         .map(PathBuf::from)
         .ok_or_else(|| "Claude settings profile is unavailable".to_string())?;
     let settings_path = profile.join(".claude").join("settings.json");
+    remove_claude_hooks_at(&settings_path, install_root, dry_run)
+}
+
+fn remove_claude_hooks_at(
+    settings_path: &Path,
+    install_root: &Path,
+    dry_run: bool,
+) -> Result<usize, String> {
     if !settings_path.is_file() {
         return Ok(0);
     }
@@ -2442,6 +2522,134 @@ fn replace_file(source: &Path, destination: &Path) -> Result<(), String> {
         .map_err(|error| format!("promote activation receipt: {error}"))
 }
 
+/// Run isolated LC-06 controls through the same lock, promotion, and hook
+/// containment helpers used by activation.  The dispatcher never resolves or
+/// mutates the installed `current` root.
+pub fn run_lc06_scenario(name: &str) -> serde_json::Value {
+    let identity = match verified_installed_identity() {
+        Ok(identity) => identity,
+        Err(reason) => return serde_json::json!({"status":"failed", "reason":reason}),
+    };
+    let install_root = match identity
+        .get("current")
+        .and_then(serde_json::Value::as_str)
+        .map(PathBuf::from)
+    {
+        Some(path) => path,
+        None => return serde_json::json!({"status":"failed", "reason":"installed identity omitted current root"}),
+    };
+    let unique = format!("membrane-lc06-{}-{}", std::process::id(), now_unix_ms());
+    let root = std::env::temp_dir().join(unique);
+    let result = match name {
+        "startup-lock" => {
+            let outcome = (|| -> Result<serde_json::Value, String> {
+                std::fs::create_dir_all(&root).map_err(|e| e.to_string())?;
+                let held = acquire_lock_with_wait(&root, Duration::from_millis(100))?;
+                // Age never overrides a live owner: even an artificially stale
+                // lock must reject a second owner while this process holds it.
+                let contention_refused =
+                    acquire_lock_with_policy(&root, Duration::from_millis(50), Duration::ZERO)
+                        .is_err();
+                drop(held);
+                // Simulate an abandoned owner with an invalid PID, then use
+                // the production stale-owner path with an injected threshold
+                // so this installed control stays bounded and deterministic.
+                let lock = root.join(LOCK_DIR);
+                std::fs::create_dir_all(&lock).map_err(|e| e.to_string())?;
+                std::fs::write(lock.join("owner"), b"4294967294\n")
+                    .map_err(|e| e.to_string())?;
+                std::thread::sleep(Duration::from_millis(5));
+                let recovered = match acquire_lock_with_policy(
+                    &root,
+                    Duration::from_millis(100),
+                    Duration::ZERO,
+                ) {
+                    Ok(lock) => {
+                        drop(lock);
+                        true
+                    }
+                    Err(_) => false,
+                };
+                if !contention_refused || !recovered {
+                    return Err("startup lock contention/stale recovery invariant failed".into());
+                }
+                Ok(serde_json::json!({"status":"passed", "nativeEvidence":true,
+                    "contentionRefused":true,"staleOwnerRejected":true,"recovered":true,
+                    "reason":"native activation lock refused live contention, rejected stale owner, then recovered"}))
+            })();
+            outcome.unwrap_or_else(|reason| serde_json::json!({"status":"failed", "reason":reason}))
+        }
+        "atomic-promotion" => {
+            let outcome = (|| -> Result<serde_json::Value, String> {
+                std::fs::create_dir_all(&root).map_err(|e| e.to_string())?;
+                let staged = root.join("candidate"); let target = root.join("current");
+                std::fs::write(&target, b"old").map_err(|e| e.to_string())?;
+                std::fs::write(&staged, b"new-native").map_err(|e| e.to_string())?;
+                replace_file(&staged, &target)?;
+                let promoted = std::fs::read(&target).map_err(|e| e.to_string())?;
+                let before = promoted.clone();
+                let failed = replace_file(&root.join("missing"), &target).is_err();
+                let unchanged = std::fs::read(&target).map_err(|e| e.to_string())? == before;
+                let read_back_hash = format!("sha256:{}", hex::encode(sha2::Sha256::digest(&promoted)));
+                if promoted != b"new-native" || !failed || !unchanged {
+                    return Err("atomic promotion invariant failed".into());
+                }
+                Ok(serde_json::json!({"status":"passed","nativeEvidence":true,
+                    "existingCurrent":true,"failedInputNonreplacement":true,
+                    "readBackHash":read_back_hash,"contentSha256":read_back_hash.clone(),
+                    "reason":"native staged candidate atomically replaced existing current; failed input left current unchanged"}))
+            })();
+            outcome.unwrap_or_else(|reason| serde_json::json!({"status":"failed", "reason":reason}))
+        }
+        "hook-containment" => {
+            let outcome = (|| -> Result<serde_json::Value, String> {
+                std::fs::create_dir_all(&root).map_err(|e| e.to_string())?;
+                let settings_path = root.join("claude-settings.json");
+                let expected = installed_hook_command(&install_root);
+                let near_match = format!("{expected} --near-match");
+                let unrelated = r"C:\other\tool.exe";
+                std::fs::write(&settings_path, serde_json::to_vec_pretty(&serde_json::json!({"hooks":{"PreToolUse":[
+                    {"hooks":[{"type":"command","command":expected},
+                        {"type":"command","command":near_match},
+                        {"type":"command","command":unrelated}]}
+                ]}})).map_err(|e| e.to_string())?)
+                    .map_err(|e| e.to_string())?;
+                reconcile_claude_hooks_at(&settings_path, &install_root)?;
+                let after_activation: serde_json::Value = serde_json::from_slice(
+                    &std::fs::read(&settings_path).map_err(|e| e.to_string())?,
+                ).map_err(|e| e.to_string())?;
+                let commands = after_activation["hooks"]["PreToolUse"][0]["hooks"]
+                    .as_array().ok_or_else(|| "native hook roundtrip omitted hook items".to_string())?;
+                let exact = commands.iter().any(|item| item["command"] == expected);
+                let near = commands.iter().any(|item| item["command"] == near_match);
+                let other = commands.iter().any(|item| item["command"] == unrelated);
+                let removed = remove_claude_hooks_at(&settings_path, &install_root, false)?;
+                let after_removal: serde_json::Value = serde_json::from_slice(
+                    &std::fs::read(&settings_path).map_err(|e| e.to_string())?,
+                ).map_err(|e| e.to_string())?;
+                let remaining = after_removal["hooks"]["PreToolUse"][0]["hooks"]
+                    .as_array().ok_or_else(|| "native hook removal omitted near matches".to_string())?;
+                let exact_removed = !remaining.iter().any(|item| item["command"] == expected);
+                let near_preserved = remaining.iter().any(|item| item["command"] == near_match);
+                let other_preserved = remaining.iter().any(|item| item["command"] == unrelated);
+                if !(exact && near && other && removed >= 1 && exact_removed && near_preserved && other_preserved) {
+                    return Err("native hook config roundtrip did not preserve exact/near-match boundaries".into());
+                }
+                Ok(serde_json::json!({"status":"passed","nativeEvidence":true,
+                    "nativeCommand":expected,"roundTrip":true,"removed":removed,
+                    "exactRemoved":true,"nearMatchPreserved":true,"unrelatedPreserved":true,
+                    "reason":"native activation/deactivation config roundtrip removed only exact installed hook command"}))
+            })();
+            outcome.unwrap_or_else(|reason| serde_json::json!({"status":"failed", "reason":reason}))
+        }
+        _ => serde_json::json!({"status":"invalid", "reason":"unknown LC-06 scenario"}),
+    };
+    let mut result = result;
+    if let Some(object) = result.as_object_mut() { object.insert("identity".into(), identity); }
+    let _ = std::fs::remove_dir_all(root);
+    result
+}
+
 fn now_unix_ms() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -2460,6 +2668,27 @@ mod tests {
             stdout: stdout.to_string(),
             stderr: String::new(),
         }
+    }
+
+    #[test]
+    fn startup_lock_rejects_live_owner_and_recovers_abandoned_owner() {
+        let root = std::env::temp_dir().join(format!(
+            "membrane-activation-lock-test-{}-{}",
+            std::process::id(),
+            now_unix_ms()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        let held = acquire_lock_with_wait(&root, Duration::from_millis(100)).unwrap();
+        assert!(acquire_lock_with_policy(&root, Duration::from_millis(20), Duration::ZERO).is_err());
+        drop(held);
+        let lock = root.join(LOCK_DIR);
+        std::fs::create_dir_all(&lock).unwrap();
+        std::fs::write(lock.join("owner"), b"4294967294\n").unwrap();
+        std::thread::sleep(Duration::from_millis(5));
+        let recovered = acquire_lock_with_policy(&root, Duration::from_millis(100), Duration::ZERO).unwrap();
+        drop(recovered);
+        assert!(!lock.exists());
+        let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]

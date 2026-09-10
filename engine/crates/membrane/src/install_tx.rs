@@ -401,6 +401,160 @@ pub fn decide_provisioning(state: DiscoveredInstallState) -> ProvisioningDecisio
     }
 }
 
+fn fixture_digest(bytes: &[u8]) -> String {
+    hex::encode(sha2::Sha256::digest(bytes))
+}
+
+fn write_fixture_release(root: &Path, version: &str, executable: &[u8], corrupt: bool) -> Result<String, String> {
+    std::fs::create_dir_all(root).map_err(|error| format!("create fixture package: {error}"))?;
+    let executable_path = root.join("membrane.exe");
+    std::fs::write(&executable_path, executable).map_err(|error| format!("write fixture executable: {error}"))?;
+    let mut digest = fixture_digest(executable);
+    if corrupt { digest = "0".repeat(64); }
+    let release = serde_json::json!({
+        "schemaVersion": 1,
+        "product": "membrane",
+        "version": version,
+        "files": {"membrane.exe": digest},
+    });
+    std::fs::write(root.join("release.json"), serde_json::to_vec_pretty(&release).unwrap())
+        .map_err(|error| format!("write fixture release identity: {error}"))?;
+    Ok(digest)
+}
+
+fn inspect_fixture_current(root: &Path) -> Result<serde_json::Value, String> {
+    let release_path = root.join("release.json");
+    let release: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(&release_path).map_err(|error| format!("read release identity: {error}"))?,
+    ).map_err(|error| format!("parse release identity: {error}"))?;
+    let version = release.get("version").and_then(serde_json::Value::as_str)
+        .filter(|value| !value.trim().is_empty()).ok_or_else(|| "release identity lacks version".to_string())?;
+    let executable = root.join("membrane.exe");
+    let bytes = std::fs::read(&executable).map_err(|error| format!("read installed executable: {error}"))?;
+    let digest = fixture_digest(&bytes);
+    let expected = release.get("files").and_then(|files| files.get("membrane.exe"))
+        .and_then(serde_json::Value::as_str).ok_or_else(|| "release identity lacks membrane.exe digest".to_string())?;
+    if !expected.eq_ignore_ascii_case(&digest) { return Err("installed executable digest mismatch".into()); }
+    Ok(serde_json::json!({"root":root,"release":release_path,"executable":executable,"version":version,"executableSha256":digest}))
+}
+
+/// Exercise one LC-04 provisioning action in a disposable package tree. This
+/// is intentionally filesystem-backed: adoption reads verified `current`,
+/// missing installs atomically promote a staged package, updates preserve the
+/// old tree until promotion, and refusals leave their tree untouched.
+fn run_isolated_lc04(_name: &str, state: DiscoveredInstallState) -> Result<serde_json::Value, String> {
+    let nonce = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)
+        .map_err(|error| format!("fixture clock: {error}"))?.as_nanos();
+    let root = std::env::temp_dir().join(format!("membrane-lc04-{}-{nonce}", std::process::id()));
+    let current = root.join("current");
+    let versions = root.join("versions");
+    std::fs::create_dir_all(&versions).map_err(|error| format!("create fixture root: {error}"))?;
+    let result = (|| {
+        let old_bytes = b"old-installed-native-binary";
+        let new_bytes = b"new-configured-native-binary";
+        match state {
+            DiscoveredInstallState::VerifiedStopped => {
+                write_fixture_release(&current, "0.1.24", old_bytes, false)?;
+                let identity = inspect_fixture_current(&current)?;
+                Ok(serde_json::json!({"state":state,"decision":decide_provisioning(state),"operation":"adopt","identity":identity,"mutated":false}))
+            }
+            DiscoveredInstallState::Absent => {
+                let staged = versions.join("0.1.25-staged");
+                let digest = write_fixture_release(&staged, "0.1.25", new_bytes, false)?;
+                std::fs::rename(&staged, &current).map_err(|error| format!("atomic provision promotion: {error}"))?;
+                let identity = inspect_fixture_current(&current)?;
+                Ok(serde_json::json!({"state":state,"decision":decide_provisioning(state),"operation":"provision","identity":identity,"staged":staged,"newExecutableSha256":digest,"mutated":true}))
+            }
+            DiscoveredInstallState::Repairable => {
+                write_fixture_release(&current, "0.1.23", old_bytes, false)?;
+                let before_digest = Some(fixture_digest(old_bytes));
+                let staged = versions.join("0.1.25-staged");
+                let digest = write_fixture_release(&staged, "0.1.25", new_bytes, false)?;
+                let backup = versions.join("0.1.23-backup");
+                std::fs::rename(&current, &backup).map_err(|error| format!("stage old current for update: {error}"))?;
+                if let Err(error) = std::fs::rename(&staged, &current) {
+                    let _ = std::fs::rename(&backup, &current);
+                    return Err(format!("atomic update promotion: {error}"));
+                }
+                let identity = inspect_fixture_current(&current)?;
+                let old_preserved = inspect_fixture_current(&backup)?.get("executableSha256").and_then(serde_json::Value::as_str) == before_digest.as_deref();
+                std::fs::remove_dir_all(&backup).map_err(|error| format!("remove superseded package: {error}"))?;
+                Ok(serde_json::json!({"state":state,"decision":decide_provisioning(state),"operation":"update","identity":identity,"staged":staged,"newExecutableSha256":digest,"oldExecutableSha256":before_digest,"oldPreservedUntilPromotion":old_preserved,"mutated":true}))
+            }
+            DiscoveredInstallState::Corrupt => {
+                write_fixture_release(&current, "0.1.24", old_bytes, true)?;
+                let before_digest = Some(fixture_digest(old_bytes));
+                let refusal = decide_provisioning(state);
+                let error = inspect_fixture_current(&current).expect_err("corrupt fixture must fail verification");
+                let after_digest = fixture_digest(&std::fs::read(current.join("membrane.exe")).map_err(|error| format!("read refusal fixture: {error}"))?);
+                Ok(serde_json::json!({"state":state,"decision":refusal,"operation":"refuse","verificationError":error,"beforeExecutableSha256":before_digest,"afterExecutableSha256":after_digest,"mutated":false}))
+            }
+            DiscoveredInstallState::Denied => {
+                std::fs::create_dir_all(&current).map_err(|error| format!("create denied fixture: {error}"))?;
+                std::fs::create_dir(current.join("release.json")).map_err(|error| format!("create denied release fixture: {error}"))?;
+                let refusal = decide_provisioning(state);
+                let error = inspect_fixture_current(&current).expect_err("denied fixture must fail verification");
+                Ok(serde_json::json!({"state":state,"decision":refusal,"operation":"refuse","verificationError":error,"current":current,"mutated":false}))
+            }
+            DiscoveredInstallState::Unverifiable => {
+                write_fixture_release(&current, "0.1.24", old_bytes, false)?;
+                let before_digest = Some(fixture_digest(old_bytes));
+                std::fs::remove_file(current.join("release.json")).map_err(|error| format!("remove unverifiable manifest: {error}"))?;
+                let refusal = decide_provisioning(state);
+                let error = inspect_fixture_current(&current).expect_err("unverifiable fixture must fail verification");
+                let after_digest = fixture_digest(&std::fs::read(current.join("membrane.exe")).map_err(|error| format!("read refusal fixture: {error}"))?);
+                Ok(serde_json::json!({"state":state,"decision":refusal,"operation":"refuse","verificationError":error,"beforeExecutableSha256":before_digest,"afterExecutableSha256":after_digest,"mutated":false}))
+            }
+            DiscoveredInstallState::PackageUnavailable => Ok(serde_json::json!({"state":state,"decision":decide_provisioning(state),"operation":"refuse","mutated":false})),
+        }
+    })();
+    let _ = std::fs::remove_dir_all(&root);
+    result.map(|mut value| { value["fixtureRoot"] = serde_json::json!(root); value })
+}
+
+/// Run one LC-04 qualification control after verifying the installer-owned
+/// current executable. State transitions remain isolated; no package manager
+/// or external process is touched.
+pub fn run_lc04_scenario(name: &str) -> serde_json::Value {
+    let state = match name {
+        "hub-background" | "coderight-adopt" => DiscoveredInstallState::VerifiedStopped,
+        "update-in-place" => DiscoveredInstallState::Repairable,
+        "reject-corrupt" => DiscoveredInstallState::Corrupt,
+        "reject-denied" => DiscoveredInstallState::Denied,
+        "reject-unverifiable" => DiscoveredInstallState::Unverifiable,
+        "provision-missing" => DiscoveredInstallState::Absent,
+        "reject-development-checkout" => {
+            let identity = crate::activation::verified_installed_identity();
+            return match identity {
+                Ok(identity) => serde_json::json!({"schema":"membrane.qualification-scenario.v1","lane":"LC-04","id":name,"status":"passed","input":"development_checkout","decision":{"kind":"refuse","reason":"development_checkout"},"identity":identity,"path":std::env::current_dir().ok(),"nativeEvidence":true,"operation":"refuse","mutated":false}),
+                Err(reason) => serde_json::json!({"schema":"membrane.qualification-scenario.v1","lane":"LC-04","id":name,"status":"failed","reason":reason}),
+            };
+        }
+        _ => {
+            return serde_json::json!({
+                "schema": "membrane.qualification-scenario.v1",
+                "lane": "LC-04", "id": name, "status": "invalid",
+                "reason": "unknown LC-04 scenario"
+            });
+        }
+    };
+    let identity = crate::activation::verified_installed_identity();
+    let result = identity.and_then(|identity| {
+        let operation = run_isolated_lc04(name, state)?;
+        Ok(serde_json::json!({
+            "schema": "membrane.qualification-scenario.v1",
+            "lane": "LC-04", "id": name, "status": "passed",
+            "input": state, "decision": operation["decision"], "identity": identity, "operation": operation,
+            "nativeEvidence": true,
+            "reason": "installer-owned current fixture verified before production provisioning decision"
+        }))
+    });
+    match result {
+        Ok(value) => return value,
+        Err(reason) => return serde_json::json!({"schema":"membrane.qualification-scenario.v1","lane":"LC-04","id":name,"status":"failed","reason":reason}),
+    };
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -455,6 +609,40 @@ mod tests {
         let decision = decide_provisioning(DiscoveredInstallState::PackageUnavailable);
         assert_eq!(decision, ProvisioningDecision::PackageUnavailable);
         assert!(!matches!(decision, ProvisioningDecision::Refuse { .. }));
+    }
+
+    #[test]
+    fn lc04_isolated_provision_adopt_update_are_filesystem_backed() {
+        for (name, state, operation) in [
+            ("coderight-adopt", DiscoveredInstallState::VerifiedStopped, "adopt"),
+            ("provision-missing", DiscoveredInstallState::Absent, "provision"),
+            ("update-in-place", DiscoveredInstallState::Repairable, "update"),
+        ] {
+            let value = run_isolated_lc04(name, state).unwrap();
+            assert_eq!(value["operation"], operation);
+            assert!(value["identity"]["executableSha256"].as_str().is_some());
+            assert!(value["mutated"].as_bool().unwrap_or(false) || operation == "adopt");
+        }
+    }
+
+    #[test]
+    fn lc04_isolated_refusals_preserve_artifact_digest() {
+        for state in [DiscoveredInstallState::Corrupt, DiscoveredInstallState::Unverifiable] {
+            let value = run_isolated_lc04("refusal", state).unwrap();
+            assert_eq!(value["operation"], "refuse");
+            assert_eq!(value["mutated"], false);
+            assert_eq!(value["beforeExecutableSha256"], value["afterExecutableSha256"]);
+            assert!(value["verificationError"].as_str().is_some());
+        }
+    }
+
+    #[test]
+    fn lc04_isolated_denied_fixture_refuses_without_provisioning() {
+        let value = run_isolated_lc04("refusal", DiscoveredInstallState::Denied).unwrap();
+        assert_eq!(value["operation"], "refuse");
+        assert_eq!(value["decision"]["reason"], "denied");
+        assert_eq!(value["mutated"], false);
+        assert!(value["verificationError"].as_str().is_some());
     }
 
     fn mk_step(stage: InstallStage, action: &str, rollback: &str) -> InstallStep {

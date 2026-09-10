@@ -503,7 +503,10 @@ test('registry runner imports cases from caseSourceRoot while executing them aga
     assert.equal(summary.status, 'passed');
     assert.equal(summary.workspaceRoot, runtimeRoot);
     assert.equal(summary.caseSourceRoot, caseSourceRoot);
-    assert.deepEqual(summary.results[0].detail, { workspaceRoot: runtimeRoot, caseSourceRoot });
+    assert.deepEqual(summary.results[0].detail, {
+      case: { workspaceRoot: runtimeRoot, caseSourceRoot },
+      nativeRowEvidence: null,
+    });
   } finally {
     rmSync(scratch, { recursive: true, force: true });
   }

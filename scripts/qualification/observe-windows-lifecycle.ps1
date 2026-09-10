@@ -37,6 +37,11 @@ function Descendants([object[]]$Snapshot, [int]$RootPid) {
   $result.ToArray()
 }
 
+function File-Sha256([string]$Path) {
+  if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return $null }
+  try { return (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant() } catch { return $null }
+}
+
 function Run-Native([string]$Path, [string[]]$Arguments) {
   if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
     return [ordered]@{ path = $Path; status = 'missing'; processTree = @() }
@@ -70,7 +75,7 @@ function Run-Native([string]$Path, [string[]]$Arguments) {
     $stdout = if (Test-Path -LiteralPath $out) { Get-Content -LiteralPath $out -Raw } else { '' }
     $stderr = if (Test-Path -LiteralPath $err) { Get-Content -LiteralPath $err -Raw } else { '' }
     $failure = if ($timedOut) { 'timeout' } elseif ($forbidden.Count -gt 0) { 'forbidden-child' } elseif ($process.ExitCode -ne 0) { 'nonzero-exit' } elseif ([string]::IsNullOrWhiteSpace($stdout)) { 'empty-output' } else { $null }
-    [ordered]@{ path = $Path; status = if ($null -eq $failure) { 'passed' } else { 'failed' }; failureType = $failure; exitCode = if ($process.HasExited) { $process.ExitCode } else { $null }; pid = $process.Id; stdout = $stdout; stderr = $stderr; processTree = $tree; forbiddenChildren = $forbidden }
+    [ordered]@{ path = $Path; sha256 = File-Sha256 $Path; status = if ($null -eq $failure) { 'passed' } else { 'failed' }; failureType = $failure; exitCode = if ($process.HasExited) { $process.ExitCode } else { $null }; pid = $process.Id; stdout = $stdout; stderr = $stderr; processTree = $tree; forbiddenChildren = $forbidden }
   } catch {
     [ordered]@{ path = $Path; status = 'failed'; error = $_.Exception.Message; processTree = @() }
   } finally {
@@ -80,10 +85,10 @@ function Run-Native([string]$Path, [string[]]$Arguments) {
   }
 }
 
-function Invoke-Membrane([string]$ExePath, [string[]]$Arguments, [int]$Timeout = 8000) {
+function Invoke-Membrane([string]$ExePath, [string[]]$Arguments, [int]$Timeout = 8000, [string]$StdinText = $null, [bool]$CaptureTree = $false) {
   $sw = [System.Diagnostics.Stopwatch]::StartNew()
   if (-not (Test-Path -LiteralPath $ExePath -PathType Leaf)) {
-    return [ordered]@{ command = "$ExePath $($Arguments -join ' ')".Trim(); exitCode = -1; stdout = ''; stderr = "executable not found: $ExePath"; durationMs = 0; timedOut = $false }
+    return [ordered]@{ command = "$ExePath $($Arguments -join ' ')".Trim(); executable = $ExePath; sha256 = $null; exitCode = -1; stdout = ''; stderr = "executable not found: $ExePath"; durationMs = 0; timedOut = $false; processTree = @(); forbiddenChildren = @() }
   }
   $psi = New-Object System.Diagnostics.ProcessStartInfo
   $psi.FileName = $ExePath
@@ -99,12 +104,22 @@ function Invoke-Membrane([string]$ExePath, [string[]]$Arguments, [int]$Timeout =
   $stdout = ''
   $stderr = ''
   $timedOut = $false
+  $observed = [System.Collections.Generic.List[object]]::new()
   try {
     [void]$proc.Start()
-    try { $proc.StandardInput.Close() } catch { }
+    try {
+      if ($null -ne $StdinText) { $proc.StandardInput.Write($StdinText) }
+      $proc.StandardInput.Close()
+    } catch { }
     $stdoutTask = $proc.StandardOutput.ReadToEndAsync()
     $stderrTask = $proc.StandardError.ReadToEndAsync()
-    $exited = $proc.WaitForExit($Timeout)
+    $watch = [System.Diagnostics.Stopwatch]::StartNew()
+    while (-not $proc.HasExited -and $watch.ElapsedMilliseconds -lt [Math]::Max(1, $Timeout)) {
+      if ($CaptureTree) { foreach ($item in @(Descendants (Snapshot) $proc.Id)) { if (-not ($observed | Where-Object { $_.pid -eq $item.pid })) { $observed.Add($item) } } }
+      [void]$proc.WaitForExit(50)
+    }
+    $exited = $proc.HasExited
+    if ($CaptureTree) { foreach ($item in @(Descendants (Snapshot) $proc.Id)) { if (-not ($observed | Where-Object { $_.pid -eq $item.pid })) { $observed.Add($item) } } }
     if (-not $exited) {
       $timedOut = $true
       try { $proc.Kill($true) } catch { }
@@ -130,19 +145,23 @@ function Invoke-Membrane([string]$ExePath, [string[]]$Arguments, [int]$Timeout =
     $stderr = $_.Exception.Message
   }
   $sw.Stop()
-  [ordered]@{ command = "$ExePath $($Arguments -join ' ')".Trim(); exitCode = [int]$exitCode; stdout = [string]$stdout; stderr = [string]$stderr; durationMs = [int]$sw.ElapsedMilliseconds; timedOut = $timedOut }
+  # Keep owner process itself in evidence even when native action has no
+  # descendants; an empty collection collapses to null in Windows PowerShell.
+  [object[]]$tree = @([ordered]@{ pid = $proc.Id; ppid = $null; name = [IO.Path]::GetFileName($ExePath); executable = $ExePath; commandLine = "$ExePath $($Arguments -join ' ')".Trim() }) + @($observed.ToArray())
+  [object[]]$forbidden = @($tree | Where-Object { $_.name -match '^(node|node_repl|python|python3|sh|bash)(\.exe)?$' })
+  [ordered]@{ command = "$ExePath $($Arguments -join ' ')".Trim(); executable = $ExePath; sha256 = File-Sha256 $ExePath; nativeEvidence = (Test-Path -LiteralPath $ExePath -PathType Leaf); terminal = (-not $timedOut); exitCode = [int]$exitCode; pid = $proc.Id; stdout = [string]$stdout; stderr = [string]$stderr; durationMs = [int]$sw.ElapsedMilliseconds; timedOut = $timedOut; processTree = $tree; forbiddenChildren = $forbidden }
 }
 
 function Run-InsufficientScenario([string]$Lane, [string]$Id, [string]$Reason) {
   [ordered]@{ id = $Id; lane = $Lane; status = 'insufficient'; reason = "$($Id): $Reason"; actions = @(); processTreeBefore = @(); processTreeDuring = @(); processTreeAfter = @() }
 }
 
-function Run-ExecScenario([string]$Lane, [string]$Id, [string]$ExePath, [string[]]$Arguments, [scriptblock]$Validate) {
+function Run-ExecScenario([string]$Lane, [string]$Id, [string]$ExePath, [string[]]$Arguments, [scriptblock]$Validate, [string]$StdinText = $null, [bool]$CaptureTree = $false) {
   # No per-scenario full-system snapshot here: the schema only requires
   # processTreeBefore/After to be arrays, and the real evidence is the
   # top-level processTree plus the action's own exit/stdout/stderr.
   $before = @()
-  $action = Invoke-Membrane -ExePath $ExePath -Arguments $Arguments
+  $action = Invoke-Membrane -ExePath $ExePath -Arguments $Arguments -StdinText $StdinText -CaptureTree $CaptureTree
   $after = @()
   $ok = $false
   try { $ok = [bool](& $Validate $action) } catch { $ok = $false }
@@ -283,6 +302,79 @@ $refreshResult = {
   } catch { return $false }
 }
 
+# NCL-05 probes each installed native owner directly. Stdio MCP and explicit
+# SDK are stdin-framed modes; federation is native Pull through CLI.
+$mcpInput = @(
+  '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"windows-qualification","version":"1"}}}',
+  '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}'
+) -join "`n"
+$mcpResult = {
+  param($a)
+  if ($a.exitCode -ne 0 -or $a.timedOut -or [string]::IsNullOrWhiteSpace($a.stdout)) { return $false }
+  try {
+    $rows = @($a.stdout.Trim().Split("`n") | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | ForEach-Object { $_ | ConvertFrom-Json })
+    return $rows.Count -ge 2 -and $rows[0].result.protocolVersion -eq '2025-03-26' -and
+      $null -ne $rows[1].result.tools -and @($rows[1].result.tools).Count -gt 0
+  } catch { return $false }
+}
+$sdkInput = '{"schemaVersion":1,"operation":"binding","expectedBinding":null,"request":{}}'
+$sdkResult = {
+  param($a)
+  if ($a.exitCode -ne 0 -or $a.timedOut -or [string]::IsNullOrWhiteSpace($a.stdout)) { return $false }
+  try {
+    $v = $a.stdout | ConvertFrom-Json
+    return $v.schemaVersion -eq 1 -and $v.status -eq 200 -and $v.binding.nativeOnly -eq $true -and
+      -not [string]::IsNullOrWhiteSpace([string]$v.binding.stableInstallRoot) -and
+      -not [string]::IsNullOrWhiteSpace([string]$v.binding.releaseGeneration)
+  } catch { return $false }
+}
+$federationArgs = @('cli', 'pull', 'federate', '--task', 'ncl-05-surface', '--repo', $refreshProbeRoot, '--max-tokens', '64', '--client', 'qualification')
+$federationResult = {
+  param($a)
+  if ($a.exitCode -ne 0 -or $a.timedOut -or [string]::IsNullOrWhiteSpace($a.stdout)) { return $false }
+  try {
+    $v = $a.stdout | ConvertFrom-Json
+    return $null -ne $v.packet -and $null -ne $v.receipts
+  } catch { return $false }
+}
+# Federation consumes Blueprint freshness metadata. Seed that metadata through
+# the same installed binary before probing Pull, while retaining federation's
+# own process/result as its surface evidence.
+$surfaceRefresh = Invoke-Membrane -ExePath $membrane -Arguments $refreshProbeArgs -Timeout 15000
+
+function Run-QualificationScenario([string]$Lane, [string]$Id, [string]$ExePath) {
+  # Reserved installed control surface. Until shipped, execution is recorded as
+  # failed/insufficient evidence; it is never treated as an implicit pass.
+  Run-ExecScenario $Lane $Id $ExePath @('cli', 'qualification', 'lifecycle', $Id) {
+    param($a)
+    if ($a.exitCode -ne 0 -or [string]::IsNullOrWhiteSpace($a.stdout)) { return $false }
+    try {
+      $v = $a.stdout | ConvertFrom-Json
+      $e = $v.evidence
+      return $v.schema -eq 'membrane.installed-lifecycle-scenario.v1' -and
+        $v.scenario -eq $Id -and $v.status -eq 'passed' -and
+        $v.terminal -eq $true -and $v.runtimeOrigin -eq 'installed' -and
+        $null -ne $v.installedIdentity -and $v.installedIdentity.verified -eq $true -and
+        $null -ne $e.expectedControllerState -and $null -ne $e.watcherActivity
+    } catch { return $false }
+  }
+}
+
+function Run-QualificationObservation([object]$Qualification, [string]$Lane, [string]$Id) {
+  $rows = @()
+  if ($null -ne $Qualification -and $Qualification.lifecycleObservations) {
+    $rows = @($Qualification.lifecycleObservations | Where-Object { $_.lane -eq $Lane -and $_.id -eq $Id })
+  }
+  if ($rows.Count -eq 0) { return Run-InsufficientScenario $Lane $Id "no install-release lifecycle observation for $Id" }
+  $row = $rows[-1]
+  $identity = $Qualification.installedCurrent
+  $identityOk = $null -ne $identity -and -not [string]::IsNullOrWhiteSpace([string]$identity.root)
+  $native = $row.native -eq $true -or ($null -ne $row.processTree -and @($row.processTree).Count -gt 0)
+  $terminal = $row.terminal -eq $true -or $row.completed -eq $true -or ($row.observed -eq $true -and -not [string]::IsNullOrWhiteSpace([string]$row.action))
+  $ok = $row.observed -eq $true -and $identityOk -and $native -and $terminal
+  [ordered]@{ id = $Id; lane = $Lane; status = if ($ok) { 'passed' } else { 'insufficient' }; reason = if ($ok) { "$($Id): install-release observation passed with installed identity and terminal native evidence" } else { "$($Id): install-release observation lacks observed=true, installed identity, terminal, or native evidence" }; actions = @(); processTreeBefore = @($row.before); processTreeDuring = @($row.processTree); processTreeAfter = @($row.after); evidence = $row }
+}
+
 # Real, bounded execution against installed binaries only. Every
 # scenario either runs a real membrane.exe subcommand and derives passed/failed
 # from the observed exit code/stdout/stderr (never a constant), or is recorded
@@ -292,51 +384,56 @@ $refreshResult = {
 # executed here because other qualification lanes concurrently depend on that
 # same installed daemon; each such scenario names the exact command withheld.
 $scenarioSpecs = @(
-  @{ lane = 'LC-01'; id = 'hub-only'; exe = $membrane; args = @('status', '--dry-run'); validate = { param($a) $a.exitCode -eq 0 -and $a.stdout -match '"serviceId"' } }
-  @{ lane = 'LC-01'; id = 'coderight-only'; reason = "membrane.exe exposes no CodeRight-only residency flag; adoption requires a live CodeRight daemon this observation does not control" }
-  @{ lane = 'LC-01'; id = 'both'; reason = "no installed command exercises simultaneous Hub+CodeRight holder arbitration without a live CodeRight daemon" }
-  @{ lane = 'LC-01'; id = 'holder-crash'; reason = "requires 'membrane activate'/'membrane deactivate' without --dry-run against the live resident daemon shared with concurrent qualification lanes; withheld for shared-install safety" }
-  @{ lane = 'LC-01'; id = 'holder-exit'; reason = "requires 'membrane deactivate' without --dry-run against the live resident daemon shared with concurrent qualification lanes; withheld for shared-install safety" }
-  @{ lane = 'LC-01'; id = 'final-holder-shutdown'; reason = "requires 'membrane deactivate' without --dry-run against the live resident daemon shared with concurrent qualification lanes; withheld for shared-install safety" }
-  @{ lane = 'LC-01'; id = 'concurrent-acquire-renew-release'; reason = "no installed CLI command exposes concurrent lease acquire/renew/release" }
-  @{ lane = 'LC-01'; id = 'drain-acquire-race'; reason = "no installed CLI command exposes a drain/acquire race harness" }
-  @{ lane = 'LC-01'; id = 'restart-during-acquire'; reason = "requires 'membrane activate' without --dry-run against the live resident daemon shared with concurrent qualification lanes; withheld for shared-install safety" }
-  @{ lane = 'LC-01'; id = 'stale-fencing'; reason = "no installed command exposes stale-holder fencing rejection" }
-  @{ lane = 'LC-01'; id = 'survivor-continuity'; reason = "no installed command exposes survivor continuity verification after peer holder loss" }
+  @{ lane = 'NCL-05'; id = 'cli'; exe = $membrane; args = @('diagnostics', 'capabilities'); captureProcessTree = $true; validate = { param($a) $a.exitCode -eq 0 -and $a.stdout.TrimStart().StartsWith('{') } }
+  @{ lane = 'NCL-05'; id = 'mcp'; exe = $membrane; args = @('stdio-mcp'); input = $mcpInput; captureProcessTree = $true; validate = $mcpResult }
+  @{ lane = 'NCL-05'; id = 'sdk'; exe = $membrane; args = @('cli', 'explicit-call'); input = $sdkInput; captureProcessTree = $true; validate = $sdkResult }
+  @{ lane = 'NCL-05'; id = 'federation'; exe = $membrane; args = $federationArgs; captureProcessTree = $true; validate = $federationResult }
+
+  @{ lane = 'LC-01'; id = 'hub-only'; control = $true }
+  @{ lane = 'LC-01'; id = 'coderight-only'; control = $true }
+  @{ lane = 'LC-01'; id = 'both'; control = $true }
+  @{ lane = 'LC-01'; id = 'holder-crash'; control = $true }
+  @{ lane = 'LC-01'; id = 'holder-exit'; control = $true }
+  @{ lane = 'LC-01'; id = 'final-holder-shutdown'; control = $true }
+  @{ lane = 'LC-01'; id = 'concurrent-acquire-renew-release'; control = $true }
+  @{ lane = 'LC-01'; id = 'drain-acquire-race'; control = $true }
+  @{ lane = 'LC-01'; id = 'restart-during-acquire'; control = $true }
+  @{ lane = 'LC-01'; id = 'stale-fencing'; control = $true }
+  @{ lane = 'LC-01'; id = 'survivor-continuity'; control = $true }
 
   # Use a tiny temporary repository so this installed-path probe measures the
   # shipped refresh implementation, not an unrelated checkout's scan time.
   @{ lane = 'LC-02'; id = 'idle-refresh'; exe = $membrane; args = $refreshProbeArgs; validate = $refreshResult }
-  @{ lane = 'LC-02'; id = 'mid-build-refresh'; reason = "installed CLI has no safe mid-build coordination control; source/unit coverage remains separate evidence" }
-  @{ lane = 'LC-02'; id = 'watcher-disabled-refresh'; reason = "no installed command toggles the Blueprint watcher independently of refresh" }
+  @{ lane = 'LC-02'; id = 'mid-build-refresh'; control = $true }
+  @{ lane = 'LC-02'; id = 'watcher-disabled-refresh'; control = $true }
   @{ lane = 'LC-02'; id = 'hub-off-refresh'; exe = $membrane; args = $refreshProbeArgs; validate = $refreshResult }
 
-  @{ lane = 'LC-03'; id = 'fair-service'; reason = "no installed CLI command exposes multi-client fair-service scheduling controls" }
-  @{ lane = 'LC-03'; id = 'deadline-cancellation'; reason = "no installed CLI command exposes per-request deadline cancellation" }
-  @{ lane = 'LC-03'; id = 'scope-isolation'; reason = "no installed CLI command exposes multi-scope isolation probing" }
-  @{ lane = 'LC-03'; id = 'deduplicated-work'; reason = "no installed CLI command exposes work-deduplication observation" }
+  @{ lane = 'LC-03'; id = 'fair-service'; control = $true }
+  @{ lane = 'LC-03'; id = 'deadline-cancellation'; control = $true }
+  @{ lane = 'LC-03'; id = 'scope-isolation'; control = $true }
+  @{ lane = 'LC-03'; id = 'deduplicated-work'; control = $true }
 
   @{ lane = 'LC-04'; id = 'hub-off-explicit'; exe = $membrane; args = @('cli', 'doctor', '--json'); validate = { param($a) $a.exitCode -eq 0 -and $a.stdout.TrimStart().StartsWith('{') } }
-  @{ lane = 'LC-04'; id = 'hub-background'; reason = "requires 'membrane activate' without --dry-run against the live resident daemon shared with concurrent qualification lanes; withheld for shared-install safety" }
-  @{ lane = 'LC-04'; id = 'coderight-adopt'; reason = "requires a live CodeRight daemon this observation does not control" }
+  @{ lane = 'LC-04'; id = 'hub-background'; control = $true }
+  @{ lane = 'LC-04'; id = 'coderight-adopt'; control = $true }
   # Dry-run status validates missing-root provisioning refusal without touching
   # shared install state; the canonical installer remains out of scope.
   @{ lane = 'LC-04'; id = 'provision-missing'; exe = $membrane; args = @('status', '--dry-run', '--install-root', $missingRoot); validate = {
       param($a)
       $a.exitCode -ne 0 -and (($a.stdout + $a.stderr) -match 'stable installed path|installed root|activation')
     } }
-  @{ lane = 'LC-04'; id = 'reject-corrupt'; reason = "no installed command accepts a corrupt install-root artifact without mutating the shared installed root to test rejection safely" }
-  @{ lane = 'LC-04'; id = 'reject-denied'; reason = "permission-denial rejection cannot be safely triggered without altering ACLs on the shared installed root" }
-  @{ lane = 'LC-04'; id = 'reject-unverifiable'; reason = "signature-verification rejection is only exercised by 'membrane install'/'activate' transactional staging, not independently probeable read-only" }
+  @{ lane = 'LC-04'; id = 'reject-corrupt'; control = $true }
+  @{ lane = 'LC-04'; id = 'reject-denied'; control = $true }
+  @{ lane = 'LC-04'; id = 'reject-unverifiable'; control = $true }
   @{ lane = 'LC-04'; id = 'reject-development-checkout'; exe = $membrane; args = @('status', '--dry-run', '--install-root', $devCheckoutRoot); validate = { param($a) $a.exitCode -ne 0 } }
 
-  @{ lane = 'LC-05'; id = 'credential-race'; reason = "no installed CLI command exposes LeaseHandleV2 credential-race fault injection independent of a live daemon connection" }
-  @{ lane = 'LC-05'; id = 'lease-incarnation'; reason = "no installed CLI command exposes lease-incarnation fault injection independent of a live daemon connection" }
-  @{ lane = 'LC-05'; id = 'tombstone'; reason = "no installed CLI command exposes tombstone replay fault injection independent of a live daemon connection" }
-  @{ lane = 'LC-05'; id = 'reordered-response'; reason = "no installed CLI command exposes reordered-response fault injection independent of a live daemon connection" }
-  @{ lane = 'LC-05'; id = 'lost-response'; reason = "no installed CLI command exposes lost-response fault injection independent of a live daemon connection" }
-  @{ lane = 'LC-05'; id = 'clock-rewind'; reason = "no installed CLI command exposes clock-rewind fault injection independent of a live daemon connection" }
-  @{ lane = 'LC-05'; id = 'replay-bound'; reason = "no installed CLI command exposes replay-admission-bound fault injection independent of a live daemon connection" }
+  @{ lane = 'LC-05'; id = 'credential-race'; control = $true }
+  @{ lane = 'LC-05'; id = 'lease-incarnation'; control = $true }
+  @{ lane = 'LC-05'; id = 'tombstone'; control = $true }
+  @{ lane = 'LC-05'; id = 'reordered-response'; control = $true }
+  @{ lane = 'LC-05'; id = 'lost-response'; control = $true }
+  @{ lane = 'LC-05'; id = 'clock-rewind'; control = $true }
+  @{ lane = 'LC-05'; id = 'replay-bound'; control = $true }
 
   # canonical-roots validates against the exact observed shape of `status --dry-run`'s
   # JSON stdout: installRoot is emitted as a JSON-escaped Windows path, so each
@@ -358,9 +455,9 @@ $scenarioSpecs = @(
           (($a.stderr) -match 'HTTP 503|health unavailable|health probe')
       } catch { return $false }
     } }
-  @{ lane = 'LC-06'; id = 'startup-lock'; reason = "no installed command exposes startup-lock verification without launching the real daemon" }
-  @{ lane = 'LC-06'; id = 'atomic-promotion'; reason = "atomic promotion is only exercised by the installer, which this observation must never run" }
-  @{ lane = 'LC-06'; id = 'hook-containment'; reason = "no installed command probes hook enrollment independent of client-activation mutation" }
+  @{ lane = 'LC-06'; id = 'startup-lock'; control = $true }
+  @{ lane = 'LC-06'; id = 'atomic-promotion'; control = $true }
+  @{ lane = 'LC-06'; id = 'hook-containment'; control = $true }
 )
 # Overall script-level deadline: bound the whole scenario sweep well under the
 # 4-minute lane budget so a single stuck action can never hang the observer.
@@ -373,25 +470,44 @@ $scenarios = foreach ($spec in $scenarioSpecs) {
     Run-InsufficientScenario $spec.lane $spec.id "observer script-level timeout budget (${scriptBudgetMs}ms) exceeded before this scenario could run"
     continue
   }
-  if ($spec.ContainsKey('reason')) {
+  if ($spec.ContainsKey('observed')) {
+    Run-QualificationObservation $qualification $spec.lane $spec.id
+  } elseif ($spec.ContainsKey('control')) {
+    Run-QualificationScenario $spec.lane $spec.id $membrane
+  } elseif ($spec.ContainsKey('reason')) {
     Run-InsufficientScenario $spec.lane $spec.id $spec.reason
+  } elseif ($spec.ContainsKey('input')) {
+    Run-ExecScenario $spec.lane $spec.id $spec.exe $spec.args $spec.validate $spec.input ([bool]$spec.captureProcessTree)
   } else {
-    Run-ExecScenario $spec.lane $spec.id $spec.exe $spec.args $spec.validate
+    Run-ExecScenario $spec.lane $spec.id $spec.exe $spec.args $spec.validate $null ([bool]$spec.captureProcessTree)
   }
 }
 $dispositionRows = @(); if (Test-Path -LiteralPath $InterpreterDispositions) { $dispositionRows = @(Get-Content -LiteralPath $InterpreterDispositions -Raw | ConvertFrom-Json) }
 $accounting = [ordered]@{ interpretedFiles = $dispositionRows.Count; installedPayloadFiles = $files.Count; interpreterDispositions = $dispositionRows.Count }
-$surfaces = @(
-  [ordered]@{ name = 'cli'; status = $cli.status; processTree = @($cli.processTree | ForEach-Object { $_ }); executable = $cli.path },
-  [ordered]@{ name = 'mcp'; status = 'blocked'; processTree = @(); reason = 'no installed membrane-mcp.exe surface' },
-  [ordered]@{ name = 'sdk'; status = 'blocked'; processTree = @(); reason = 'SDK requires an installed native caller' },
-  [ordered]@{ name = 'federation'; status = 'blocked'; processTree = @(); reason = 'federation requires an installed native caller' }
-)
+$surfaceRows = @($scenarios | Where-Object { $_.lane -eq 'NCL-05' })
+$surfaces = foreach ($name in @('cli', 'mcp', 'sdk', 'federation')) {
+  $row = @($surfaceRows | Where-Object { $_.id -eq $name }) | Select-Object -Last 1
+  $action = if ($null -ne $row) { @($row.actions) | Select-Object -First 1 } else { $null }
+  [object[]]$surfaceTree = if ($null -ne $action) { @($action.processTree) } else { @() }
+  [object[]]$surfaceForbidden = if ($null -ne $action) { @($action.forbiddenChildren) } else { @() }
+  [ordered]@{
+    name = $name
+    status = if ($null -ne $row) { $row.status } else { 'failed' }
+    executable = if ($null -ne $action) { $action.executable } else { $membrane }
+    sha256 = if ($null -ne $action) { $action.sha256 } else { File-Sha256 $membrane }
+    pid = if ($null -ne $action) { $action.pid } else { $null }
+    exitCode = if ($null -ne $action) { $action.exitCode } else { $null }
+    terminal = if ($null -ne $action) { $action.terminal } else { $false }
+    processTree = $surfaceTree
+    forbiddenChildren = $surfaceForbidden
+    reason = if ($null -ne $row) { $row.reason } else { 'surface probe did not execute' }
+  }
+}
 $receipt = [ordered]@{
   schema = 'membrane.windows-lifecycle-observation.v1'; platform = 'windows'; installed = (Test-Path -LiteralPath $membrane -PathType Leaf)
   generatedAt = [DateTime]::UtcNow.ToString('o'); host = $env:COMPUTERNAME; os = $platform; installedRoot = $InstalledRoot
   buildIdentity = [ordered]@{ root = $InstalledRoot; generation = if (Test-Path -LiteralPath (Join-Path $InstalledRoot 'release.json')) { (Get-Content (Join-Path $InstalledRoot 'release.json') -Raw | ConvertFrom-Json).version } else { $null }; membraneSha256 = if (Test-Path -LiteralPath $membrane) { (Get-FileHash -LiteralPath $membrane -Algorithm SHA256).Hash } else { $null }; files = $files }
-  processTree = @(Snapshot); nativeSurfaces = @($cli, $daemon); surfaces = $surfaces; scenarios = @($scenarios)
+  processTree = @(Snapshot); nativeSurfaces = @($surfaces); surfaces = $surfaces; scenarios = @($scenarios)
   accounting = $accounting
   storage = [ordered]@{ compatibility = 'unmeasured'; database = $null }; vectorScale = [ordered]@{ status = 'unmeasured' }; packageSize = [ordered]@{ bytes = (($files | ForEach-Object { $_.bytes }) | Measure-Object -Sum).Sum; status = 'measured' }
   qualificationEvidence = if ($qualification) { [ordered]@{ path = $QualificationEvidence; schema = $qualification.schema; generatedAt = $qualification.generatedAt; artifactSha256 = $qualification.artifact.sha256; installedRoot = $qualification.installedCurrent.root } } else { $null }

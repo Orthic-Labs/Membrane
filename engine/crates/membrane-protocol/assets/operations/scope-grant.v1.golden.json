@@ -20,7 +20,7 @@
   "contextPacketHash": "sha256:0000000000000000000000000000000000000000000000000000000000000003",
   "readPaths": [
     { "path": "engine/crates/membrane-protocol/src/types.rs", "startLine": 1, "endLine": 60 },
-    { "path": "mcp/scope-grant-v1.mjs", "startLine": 78, "endLine": 132 }
+    { "path": "engine/crates/membrane-federation/src/scope.rs", "startLine": 356, "endLine": 365 }
   ],
   "sourceReadBytesMax": 32768,
   "uniqueFilesMax": 2,

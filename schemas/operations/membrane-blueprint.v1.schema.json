@@ -301,6 +301,7 @@
     },
     "blueprintOutput": {
       "oneOf": [
+        { "$ref": "#/$defs/federateOutput" },
         { "$ref": "#/$defs/nativeSearchOutput" },
         { "$ref": "#/$defs/nativeGraphOutput" },
         { "$ref": "#/$defs/blueprintNodeListOutput" },
@@ -308,8 +309,30 @@
         { "$ref": "#/$defs/blueprintSnapshotGetOutput" },
         { "$ref": "#/$defs/blueprintSnapshotListOutput" },
         { "$ref": "#/$defs/blueprintChangesSinceOutput" },
+        { "$ref": "#/$defs/nativeFindingsOutput" },
         { "$ref": "#/$defs/blueprintBatchOutput" }
       ]
+    },
+    "nativeFindingsOutput": {
+      "description": "Generation-bound native Blueprint findings projection. Sub-operation kinds are findings.get, findings.explain, findings.evidence_pack, findings.baseline.capture, findings.baseline.list, and findings.sarif.",
+      "type": "object",
+      "required": ["kind", "generationId"],
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "kind": { "type": "string", "enum": ["findings.get", "findings.explain", "findings.evidence_pack", "findings.baseline.capture", "findings.baseline.list", "findings.sarif"] },
+        "generationId": { "type": "string", "minLength": 1 },
+        "freshness": { "type": "string" }
+      },
+      "additionalProperties": true
+    },
+    "federateOutput": {
+      "description": "Native Pull federation result forwarded by membrane-runtime; fields are owned by the federation contract and may evolve independently.",
+      "type": "object",
+      "required": ["operation"],
+      "properties": {
+        "operation": { "const": "federate" }
+      },
+      "additionalProperties": true
     }
   }
 }

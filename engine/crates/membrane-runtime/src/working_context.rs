@@ -11,10 +11,8 @@
 //! and the calling layer falls back to metadata-only delivery rather than
 //! overflowing the bounded packet.
 //!
-//! The mirror TypeScript twin lives in `mcp/working-context.mjs`. Both
-//! sides must agree byte-for-byte on the canonical digest and on the
-//! `kind` label so a downstream Hub or federation gateway can dispatch
-//! on a single normalized schema.
+//! This Rust module is current authority. Earlier TypeScript twin lived in
+//! retired `mcp/` tree; native consumers dispatch on this normalized schema.
 
 use membrane_protocol::canonical::canonical_digest_of;
 use serde::{Deserialize, Serialize};

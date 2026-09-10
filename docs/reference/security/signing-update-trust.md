@@ -4,9 +4,9 @@
 
 Membrane signs grants with Ed25519 over a domain-separated canonical payload,
 binds a key id, and rejects invalid signatures, expiry, status, or immutable
-field changes ([`mcp/scope-grant-v1.mjs`](../../../mcp/scope-grant-v1.mjs)). The
+field changes ([`engine/crates/membrane-runtime/src/authorization.rs`](../../../engine/crates/membrane-runtime/src/authorization.rs)). The
 tamper and forged-key cases are exercised by
-[`mcp/scope-grant-v1.test.mjs`](../../../mcp/scope-grant-v1.test.mjs) and
+native authorization tests in `engine/crates/membrane-runtime/tests/` and
 [`tests/adversarial/scope-grant-adversarial.test.mjs`](../../../tests/adversarial/scope-grant-adversarial.test.mjs).
 
 ## Platform artifacts

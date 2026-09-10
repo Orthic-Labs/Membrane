@@ -21,6 +21,10 @@ pub(crate) fn dispatch_native(
 
 /// Run a native Blueprint CLI verb from current repository root.
 pub(crate) fn run_cli(args: &[String]) -> Result<(), String> {
+    if let Some(result) = run_legacy_alias(args)? {
+        println!("{}", serde_json::to_string(&result).map_err(|error| format!("encode Blueprint response: {error}"))?);
+        return Ok(());
+    }
     let (method, root, input, cancel_before_dispatch, deadline_ms) = cli_request_with_deadline(args)?;
     let request_id = format!(
         "blueprint-cli-{}-{}",
@@ -48,6 +52,35 @@ pub(crate) fn run_cli(args: &[String]) -> Result<(), String> {
         .map(|error| format!("{}: {}", error.code, error.message))
         .unwrap_or_else(|| "native Blueprint request failed".into());
     Err(error)
+}
+
+/// Keep compatibility verbs that were CLI-only in legacy Blueprint while
+/// routing their implementation through native Rust helpers.
+fn run_legacy_alias(args: &[String]) -> Result<Option<Value>, String> {
+    let Some(verb) = args.first().map(String::as_str) else { return Ok(None); };
+    let root = args.windows(2).find(|pair| pair[0] == "--repo-root").map(|pair| pair[1].clone())
+        .unwrap_or_else(|| std::env::current_dir().map(|p| p.to_string_lossy().into_owned()).unwrap_or_else(|_| ".".into()));
+    match verb {
+        "doctor" => {
+            let full = args.iter().any(|v| v == "--full");
+            Ok(Some(membrane_blueprint::cli::doctor(root, full)))
+        }
+        "languages" => Ok(Some(membrane_blueprint::cli::languages())),
+        "docs" => {
+            let limit = args.windows(2).find(|pair| pair[0] == "--limit").and_then(|pair| pair[1].parse().ok());
+            membrane_blueprint::cli::docs(root, limit, None).map(Some).map_err(|e| e.to_string())
+        }
+        "rules" | "mcp" => {
+            let subcommand = args.get(1).filter(|v| !v.starts_with('-')).map(String::as_str);
+            let value = if verb == "rules" { membrane_blueprint::cli::rules(root, subcommand) } else { membrane_blueprint::cli::mcp(root, subcommand) };
+            value.map(Some).map_err(|e| e.to_string())
+        }
+        "snapshot" if args.get(1).map(String::as_str) == Some("create") => {
+            let name = args.get(2).filter(|v| !v.starts_with('-')).ok_or("snapshot create requires a name")?;
+            membrane_blueprint::cli::snapshot_create(root, name.clone()).map(Some).map_err(|e| e.to_string())
+        }
+        _ => Ok(None),
+    }
 }
 
 /// Parse a native Blueprint CLI verb and its arguments into a dispatchable
@@ -105,6 +138,15 @@ fn cli_request_with_deadline(args: &[String]) -> Result<(Operation, PathBuf, Val
                 "generation" | "baseline-generation" => {
                     input[if field == "generation" { "generation" } else { "baselineGeneration" }] = Value::String(value.clone());
                 }
+                "snapshot" => input["snapshot"] = Value::String(value.clone()),
+                "since-generation" => input["sinceGeneration"] = Value::String(value.clone()),
+                "treeish" => input["treeish"] = serde_json::json!({"base": value}),
+                "head" => {
+                    if !input.get("treeish").is_some_and(Value::is_object) { input["treeish"] = serde_json::json!({}); }
+                    input["treeish"]["head"] = Value::String(value.clone());
+                }
+                "name" | "fingerprint" => input[field] = Value::String(value.clone()),
+                "fingerprints" => input["fingerprints"] = Value::Array(value.split(',').filter(|v| !v.is_empty()).map(|v| Value::String(v.to_owned())).collect()),
                 "node" => input["nodeId"] = Value::String(value.clone()),
                 "seed" | "target" | "from" | "to" | "direction" => {
                     input[field] = Value::String(value.clone());
@@ -273,5 +315,16 @@ mod tests {
             "status".into(), "--repo-root".into(), root, "--deadline-ms".into(), "12000".into(),
         ]).unwrap();
         assert_eq!(deadline_ms, 12000);
+    }
+
+    #[test]
+    fn legacy_cli_aliases_route_to_native_helpers() {
+        let languages = run_legacy_alias(&["languages".into()]).unwrap().unwrap();
+        assert!(languages.get("languages").is_some());
+        let root = tempfile::tempdir().unwrap();
+        let root_arg = root.path().to_string_lossy().into_owned();
+        let doctor = run_legacy_alias(&["doctor".into(), "--repo-root".into(), root_arg]).unwrap().unwrap();
+        assert_eq!(doctor["schemaVersion"], 1);
+        assert_eq!(doctor["state"], "missing");
     }
 }

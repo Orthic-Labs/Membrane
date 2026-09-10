@@ -54,7 +54,12 @@ impl BlueprintOperation for NativeBlueprintOperation {
             }
             Operation::Status | Operation::DbStatus => status(request, context, &root, &db_path)
                 .and_then(|value| bounded_generation_response(request, value)),
-            Operation::FindingsGet => {
+            Operation::FindingsGet
+            | Operation::FindingsExplain
+            | Operation::FindingsEvidencePack
+            | Operation::FindingsBaselineCapture
+            | Operation::FindingsBaselineList
+            | Operation::FindingsSarif => {
                 // Findings are a projection over the same persisted native
                 // generation used by query operations. Keep this dispatch in
                 // the native owner so installed CLI callers cannot fall back
@@ -333,7 +338,10 @@ fn incremental_facts_are_local(
             let provider_context = crate::providers::ProviderContext { repo_root: root, files: &files, file_map: &file_map };
             if crate::providers::registry().into_iter().any(|descriptor| {
                 let output = (descriptor.run)(&provider_context);
-                !output.nodes.is_empty() || !output.edges.is_empty()
+                // Registry accounting/admission lanes emit global diagnostic
+                // nodes; only semantic nodes/edges make a one-file delta
+                // unsafe because they cannot be refreshed in place.
+                output.nodes.iter().any(|node| node.kind != "provider_diagnostic") || !output.edges.is_empty()
             }) { return false; }
             let mut generation = GraphGeneration {
                 schema_version: graph::GRAPH_SCHEMA_VERSION,

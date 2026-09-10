@@ -254,7 +254,9 @@ function focusedProofLooksExact(command, evidence, runIdentity = "") {
     .filter((candidate) => candidate.length >= 8 && !/^(?:TBD|TODO|placeholder|unknown)$/i.test(candidate));
   if (!candidates.length) return false;
   if (focusedAssertionCorpus === undefined) {
-    const testSources = [path.join(root, "engine", "crates"), path.join(root, "blueprint", "tests")]
+    // Blueprint's former Node corpus was retired; native parity tests now live
+    // under engine/crates and are the only source-backed proof corpus.
+    const testSources = [path.join(root, "engine", "crates")]
       .flatMap(testSourceFiles)
       .sort();
     focusedAssertionCorpus = testSources.map((file) => readFileSync(file, "utf8")).join("\n");

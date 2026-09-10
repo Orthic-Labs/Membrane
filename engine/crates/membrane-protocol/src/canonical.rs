@@ -16,7 +16,7 @@
 //!      the ASCII content the contract uses.
 //!
 //! This mirrors the pre-existing `canonical(value)` helper in
-//! `mcp/scope-grant-v1.mjs` so the runtime and the bindings digest identically.
+//! the retired MCP scope-grant implementation so runtime & bindings digest identically.
 //!
 //! The `canonicalize` free function is the reusable primitive; the
 //! `CanonicalSerialize` blanket impl in `lib.rs` exposes `.canonical_json()` and

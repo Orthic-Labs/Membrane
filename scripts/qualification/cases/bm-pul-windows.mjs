@@ -219,6 +219,17 @@ export function collectBM10JourneyStates(outputs) {
   return [...states].sort();
 }
 
+export function validateBM10ControlOutput(output, control) {
+  const value = asObject(output, `BM10 ${control.id}.output`);
+  const map = asObject(value.requirementEvidenceMap, `BM10 ${control.id}.requirementEvidenceMap`);
+  const journeys = asArray(map.journeys, `BM10 ${control.id}.journeys`);
+  const states = new Set(journeys.map((journey, index) => validateJourney(journey, `BM10 ${control.id}.journeys[${index}]`).state));
+  if (!states.has(control.expectedState)) {
+    throw new Error(`BM10 installed control ${control.id} expected journey state ${control.expectedState}, observed ${[...states].sort().join(",") || "none"}`);
+  }
+  return [...states].sort();
+}
+
 export function BM01() { return actual("BM01", (path) => { const exactId = path.candidates[0]?.id; if (!nonEmpty(exactId)) throw new Error("BM01 Recall omitted stable candidate ID"); const exact = invoke(path.exe, ["cli", "blueprint", "resolve", "--repo-root", path.repo, "--node", exactId], path.repo); const ambiguous = invoke(path.exe, ["cli", "blueprint", "resolve", "--repo-root", path.repo, "--node", "same_name"], path.repo); const unknown = invoke(path.exe, ["cli", "blueprint", "resolve", "--repo-root", path.repo, "--node", "does_not_exist"], path.repo); const cancellationCode = cancellation(path); return { releaseGeneration: path.generation, blueprintGeneration: path.blueprintGeneration, ...validateBM01Observations({ exact, ambiguous, unknown, cancellationCode }) }; }); }
 export function BM02() { return actual("BM02", (path) => {
   const controls = [
@@ -241,19 +252,24 @@ export function BM02() { return actual("BM02", (path) => {
 export function BM08() { return actual("BM08", (path) => { const output = invoke(path.exe, ["cli", "pull", "federate", "--repo", path.repo, "--task", "same_name", "--max-tokens", "1"], path.repo); return { releaseGeneration: path.generation, ...validateBM08Admission(output) }; }); }
 export function BM10() { return actual("BM10", (path) => {
   const controls = [
-    { id: "partial", task: "exact_probe", request: { packetCharBudget: 1 } },
-    { id: "stale", task: "exact_probe", request: { generation: "bm10-stale-generation" } },
-    { id: "unsupported", task: "exact_probe", request: { consumerCapabilities: { resolvers: ["bm10-unsupported-resolver"] } } },
-    { id: "timeout", task: "exact_probe", request: { maxWaitMs: 1 } },
-    { id: "unresolved_dynamic", task: "exact_probe", request: { anchors: ["dynamic://bm10/unresolved"] } },
-    { id: "budget_dropped", task: "exact_probe", request: { packetCharBudget: 1, requirementFacts: [{ dimension: "repository_truth", required: true, ruleId: "bm10_budgeted_source", exactTarget: "lib.rs" }] } },
-    { id: "rejected", task: "exact_probe", request: { anchors: ["symbol:exact_probe"], requirementFacts: [{ dimension: "repository_truth", required: true, ruleId: "bm10_rejected_source" }] } },
-    { id: "not_discovered", task: "exact_probe", request: { requirementFacts: [{ dimension: "current_state", required: true, ruleId: "bm10_missing_target", exactTarget: "does_not_exist.rs" }] } },
+    { id: "partial", expectedState: "DISCOVERED_BUDGET_DROPPED", task: "exact_probe", request: { packetCharBudget: 1 } },
+    { id: "stale", expectedState: "STALE", task: "exact_probe", request: { generation: "bm10-stale-generation" } },
+    { id: "unsupported", expectedState: "ADAPTER_DROPPED", task: "exact_probe", request: { consumerCapabilities: { resolvers: ["bm10-unsupported-resolver"] } } },
+    { id: "timeout", expectedState: "EXECUTION_FAILURE", task: "exact_probe", request: { maxWaitMs: 1 } },
+    { id: "unresolved_dynamic", expectedState: "NOT_DISCOVERED", task: "exact_probe", request: { anchors: ["dynamic://bm10/unresolved"] } },
+    { id: "budget_dropped", expectedState: "DISCOVERED_BUDGET_DROPPED", task: "exact_probe", request: { packetCharBudget: 1, requirementFacts: [{ dimension: "repository_truth", required: true, ruleId: "bm10_budgeted_source", exactTarget: "lib.rs" }] } },
+    { id: "rejected", expectedState: "DISCOVERED_REJECTED", task: "exact_probe", request: { anchors: ["symbol:exact_probe"], requirementFacts: [{ dimension: "repository_truth", required: true, ruleId: "bm10_rejected_source" }] } },
+    { id: "not_discovered", expectedState: "NOT_DISCOVERED", task: "exact_probe", request: { requirementFacts: [{ dimension: "current_state", required: true, ruleId: "bm10_missing_target", exactTarget: "does_not_exist.rs" }] } },
   ];
   const outputs = [path.packet];
   for (const control of controls) {
-    try { outputs.push(explicitFederate(path, control).output); }
+    let output;
+    try {
+      output = explicitFederate(path, control).output;
+    }
     catch (error) { insufficient(`BM10 installed transition control unavailable: ${control.id}; ${error.message}`); }
+    validateBM10ControlOutput(output, control);
+    outputs.push(output);
   }
   const states = collectBM10JourneyStates(outputs);
   if (!states.length) insufficient("BM10 installed Pull omitted CandidateJourneyV1 observations");

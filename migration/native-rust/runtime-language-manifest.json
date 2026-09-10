@@ -1,19 +1,19 @@
 {
  "schemaVersion": 1,
  "artifact": "membrane.runtime-language-manifest",
- "generatedAt": "2026-09-10T18:36:54.656Z",
+ "generatedAt": "2026-09-10T20:54:32.569Z",
  "enforcementMode": "sealed",
- "policyDigest": "9d70956ed53ce0f1e6a71be5d4649f5ea86153f295402e5a81347e8f2817eeca",
+ "policyDigest": "7547c188550e51aa529e96a3b173e30765aa70566baa0b19955445b601e53a14",
  "totals": {
-  "files": 1150,
-  "rows": 44,
+  "files": 1084,
+  "rows": 39,
   "byRuntime": {
    "python": 7,
-   "node": 13,
+   "node": 8,
    "rust": 24
   },
   "byDisposition": {
-   "dev-only": 23,
+   "dev-only": 18,
    "migration-oracle": 4,
    "native-port": 17
   },
@@ -608,7 +608,7 @@
     "engine/crates/membrane-blueprint/tests/service.rs",
     "engine/crates/membrane-blueprint/tests/watch.rs"
    ],
-   "content_digest": "0fb63503852ee11553a5d4c9bf6ee9013ba81c6dd17e67aec8503a747b022cac"
+   "content_digest": "ec87c4096bd8d79db57a826887750dd892c12751c6954455847994995c8ffdc0"
   },
   {
    "id": "engine-membrane-client-engine/crates/membrane-client",
@@ -642,7 +642,7 @@
     "engine/crates/membrane-client/tests/memory_backend.rs",
     "engine/crates/membrane-client/tests/residency.rs"
    ],
-   "content_digest": "fbafdd517ba97d700ebce738264988377caba40739c0952666d827b29f44d756"
+   "content_digest": "ce2a3b118b5bf00ce95a4bda7a6deac1bd675a1c738f6ad0280d68608163efbd"
   },
   {
    "id": "engine-membrane-updater-engine/crates/membrane-updater",
@@ -705,7 +705,7 @@
     "engine/crates/cortex-core/tests/absorbed_records.rs",
     "engine/crates/cortex-core/tests/fts5_hybrid.rs"
    ],
-   "content_digest": "fe3ff2c502c0da5872d9bca353005f926c968273ef6fd5c6219c7c908e919835"
+   "content_digest": "61a4ebbac556236f9f2560391d1e974cebef4f4017117fbf6cc63d9f494ca4a6"
   },
   {
    "id": "engine-production-crates-engine/crates/cortex-format",
@@ -761,7 +761,7 @@
     "engine/crates/cortex-store/src/transcript.rs",
     "engine/crates/cortex-store/tests/temporal_validity.rs"
    ],
-   "content_digest": "f4a030cb8477bc96f77986d85a58639d9e41809dc5008550f0b9ca68f2788658"
+   "content_digest": "a3827514c91bb78b433c9eda71890d5c18bf518d49030070cd9fab4f803ec1c2"
   },
   {
    "id": "engine-production-crates-engine/crates/membrane",
@@ -804,7 +804,7 @@
     "engine/crates/membrane/tests/hook_containment.rs",
     "engine/crates/membrane/tests/identifier_contracts.rs"
    ],
-   "content_digest": "fa3cba98d7cb305ecacbd036031dde185a1b570bf1816fb4438fcbf711fa6c03"
+   "content_digest": "5044c59ce1845f2baf850e8da9625f7e470b7c087b23b4678fc4dde1b313f34c"
   },
   {
    "id": "engine-production-crates-engine/crates/membrane-adapt",
@@ -972,7 +972,7 @@
     "engine/crates/membrane-federation/tests/requirements_contract.rs",
     "engine/crates/membrane-federation/tests/shadow_diff.rs"
    ],
-   "content_digest": "93329aa2f20fd6b9c3875a4e95c2b58d2314f0dace4df266056eb7b8ed029cee"
+   "content_digest": "d93f5cc565d6739b9c17452880abf7a872a4e6ee4476c711463f4c0d6e047349"
   },
   {
    "id": "engine-production-crates-engine/crates/membrane-grammars-vendored",
@@ -1049,7 +1049,7 @@
     "engine/crates/membrane-mcp/tests/prompts.rs",
     "engine/crates/membrane-mcp/tests/resources.rs"
    ],
-   "content_digest": "28f8d802e12656b7ce27f51db25e13495c58c79cfe033bd35ae6d007361cc99e"
+   "content_digest": "524c92a9d057f49facb7e5ca66e366d82b5e8ecfa48c341e5bd7412bb6e08ac1"
   },
   {
    "id": "engine-production-crates-engine/crates/membrane-protocol",
@@ -1105,7 +1105,7 @@
     "engine/crates/membrane-protocol/tests/resident_holder_contract.rs",
     "engine/crates/membrane-protocol/tests/roundtrip.rs"
    ],
-   "content_digest": "9c050de70e87803e332f2ae46856e382e1f8bac272b6becbeb32d9059817f470"
+   "content_digest": "d65fcce65d0da47711ef8cc174c83ebaf0c5e00bf55859f51e2a3dcd8548208a"
   },
   {
    "id": "engine-production-crates-engine/crates/membrane-provider-sdk",
@@ -1156,8 +1156,11 @@
     "engine/crates/membrane-runtime/build.rs",
     "engine/crates/membrane-runtime/examples/hub_runtime_test_host.rs",
     "engine/crates/membrane-runtime/src/adapt.rs",
+    "engine/crates/membrane-runtime/src/adapt_admin_qualification.rs",
     "engine/crates/membrane-runtime/src/adapt_effectiveness.rs",
     "engine/crates/membrane-runtime/src/adapt_efficiency.rs",
+    "engine/crates/membrane-runtime/src/adapt_efficiency_qualification.rs",
+    "engine/crates/membrane-runtime/src/adapt_lifecycle_qualification.rs",
     "engine/crates/membrane-runtime/src/adapt_observations.rs",
     "engine/crates/membrane-runtime/src/adapt_path_tests.rs",
     "engine/crates/membrane-runtime/src/adapt_service.rs",
@@ -1170,12 +1173,16 @@
     "engine/crates/membrane-runtime/src/bin/membrane-daemon.rs",
     "engine/crates/membrane-runtime/src/blueprint_explore.rs",
     "engine/crates/membrane-runtime/src/blueprint_one_shot.rs",
+    "engine/crates/membrane-runtime/src/blueprint_provider_qualification.rs",
+    "engine/crates/membrane-runtime/src/blueprint_security_qualification.rs",
     "engine/crates/membrane-runtime/src/cache_prefix.rs",
     "engine/crates/membrane-runtime/src/catalog.rs",
     "engine/crates/membrane-runtime/src/checkpoint.rs",
     "engine/crates/membrane-runtime/src/cli.rs",
     "engine/crates/membrane-runtime/src/code_batch.rs",
     "engine/crates/membrane-runtime/src/cortex_lifecycle.rs",
+    "engine/crates/membrane-runtime/src/cortex_qualification_core.rs",
+    "engine/crates/membrane-runtime/src/cortex_qualification_lifecycle.rs",
     "engine/crates/membrane-runtime/src/cortex_relevance_spotcheck.rs",
     "engine/crates/membrane-runtime/src/delivery_trace_view.rs",
     "engine/crates/membrane-runtime/src/diagnostic_bundle.rs",
@@ -1213,6 +1220,8 @@
     "engine/crates/membrane-runtime/src/ledger/policy.rs",
     "engine/crates/membrane-runtime/src/ledger/provider.rs",
     "engine/crates/membrane-runtime/src/ledger/qualification.rs",
+    "engine/crates/membrane-runtime/src/ledger/qualification_core.rs",
+    "engine/crates/membrane-runtime/src/ledger/qualification_lifecycle.rs",
     "engine/crates/membrane-runtime/src/ledger/query.rs",
     "engine/crates/membrane-runtime/src/ledger/query_alias.rs",
     "engine/crates/membrane-runtime/src/ledger/reconcile.rs",
@@ -1259,6 +1268,8 @@
     "engine/crates/membrane-runtime/src/push/mod.rs",
     "engine/crates/membrane-runtime/src/push/packet_selection.rs",
     "engine/crates/membrane-runtime/src/push/prep.rs",
+    "engine/crates/membrane-runtime/src/push/qualification_core.rs",
+    "engine/crates/membrane-runtime/src/push/qualification_lifecycle.rs",
     "engine/crates/membrane-runtime/src/push/recovery.rs",
     "engine/crates/membrane-runtime/src/push/runc.rs",
     "engine/crates/membrane-runtime/src/push/selection.rs",
@@ -1332,7 +1343,7 @@
     "engine/crates/membrane-runtime/tests/session_projection.rs",
     "engine/crates/membrane-runtime/tests/windows_acl_isolation.rs"
    ],
-   "content_digest": "4283e1679f38365048a2dfcb376d1459d7cc69878a9737ded44cd45e265907a3"
+   "content_digest": "73739b936cb984c0b4640501d6a7af5392657df766f4acc5aa48c212a843457b"
   },
   {
    "id": "engine-production-crates-engine/crates/membrane-transcript",
@@ -1486,7 +1497,7 @@
     "apps/membrane-hub/tests/windows-release-evidence.test.mjs",
     "apps/membrane-hub/tests/windows-release.test.mjs"
    ],
-   "content_digest": "b0ba4ae535829811e8370a0eefe1555970b35fc256b0f807d22e686afa71b038"
+   "content_digest": "deeaeb771650888dd5e671d4dbc88147369b2adccb695cecd9ed8c616daee7a1"
   },
   {
    "id": "hub-scripts-hub-scripts",
@@ -1532,168 +1543,7 @@
     "apps/membrane-hub/scripts/write-release-manifest.mjs",
     "apps/membrane-hub/scripts/write-windows-release-evidence.mjs"
    ],
-   "content_digest": "3b444d18d477b61f24d43377be3b4b21e34b89c1006bbb45a8a66d40f2c28b3e"
-  },
-  {
-   "id": "mcp-decision-points-lib-mcp/decision-points-lib.cjs",
-   "rule": "mcp-decision-points-lib",
-   "runtime": "node",
-   "kind": "source-module",
-   "product_surface": "",
-   "production_reachable": false,
-   "packaged": false,
-   "target_disposition": "dev-only",
-   "owner": "N6 MCP/renderer native cutover packet",
-   "exception": null,
-   "parity_fixture": null,
-   "deletion_or_exclusion_proof": "test-only decision reference; native renderer is compiled into membrane-mcp and release inventory excludes mcp source",
-   "seal_blocker_note": null,
-   "notes": "Reachability authority (invocation-graph.json) shows no production importer: only mcp/decision-points.mjs (itself test-only) requires it. Demoted from the mcp-server-core production rule during N0 reconciliation.",
-   "files": [
-    "mcp/decision-points-lib.cjs"
-   ],
-   "content_digest": "102a4662598b68a297a1f54f33d4d317d86c7a74b96f72ec027e2376dc3ea49e"
-  },
-  {
-   "id": "mcp-native-bootstrap-mcp/membrane-mcp-native.mjs",
-   "rule": "mcp-native-bootstrap",
-   "runtime": "node",
-   "kind": "native-binary-bootstrap",
-   "product_surface": "MCP",
-   "production_reachable": false,
-   "packaged": false,
-   "target_disposition": "dev-only",
-   "owner": null,
-   "exception": null,
-   "parity_fixture": null,
-   "deletion_or_exclusion_proof": "dev bootstrap is absent from mcp.json, package bins, Hub inventory, and release inputs",
-   "seal_blocker_note": null,
-   "notes": "Dev-only stdio-MCP bootstrap that spawns engine/target/debug/membrane; invocation-graph.json shows no installed entrypoint reaches it. Never ship or advertise.",
-   "files": [
-    "mcp/membrane-mcp-native.mjs"
-   ],
-   "content_digest": "c5b0c226eb8644fd797f8d66c716cf80edc2a3949ddd795eab84dd4d6ed52da8"
-  },
-  {
-   "id": "mcp-rest-mcp-rest",
-   "rule": "mcp-rest",
-   "runtime": "node",
-   "kind": "mcp-conformance-source",
-   "product_surface": "MCP",
-   "production_reachable": false,
-   "packaged": false,
-   "target_disposition": "dev-only",
-   "owner": null,
-   "exception": null,
-   "parity_fixture": null,
-   "deletion_or_exclusion_proof": "native host config, package metadata, Hub inventory, and release inputs contain no mcp Node source",
-   "seal_blocker_note": null,
-   "notes": "Retained only as tests, schemas, and differential reference.",
-   "files": [
-    "mcp/adapter-manifest.mjs",
-    "mcp/adapters.mjs",
-    "mcp/adapters/provenance/index.mjs",
-    "mcp/authorization.mjs",
-    "mcp/blueprint-readiness.mjs",
-    "mcp/capability-inventory.mjs",
-    "mcp/client.mjs",
-    "mcp/context-renderer.mjs",
-    "mcp/deadline.mjs",
-    "mcp/decision-points.mjs",
-    "mcp/delivery-receipt.mjs",
-    "mcp/delivery-serialization.mjs",
-    "mcp/e2e-benchmark.mjs",
-    "mcp/feedback-loop.mjs",
-    "mcp/install.mjs",
-    "mcp/installation-binding.mjs",
-    "mcp/lib/diagnostics-client.mjs",
-    "mcp/lib/verification-command.mjs",
-    "mcp/lifecycle.mjs",
-    "mcp/observable-events.mjs",
-    "mcp/project-registry.mjs",
-    "mcp/prompts.mjs",
-    "mcp/proposal-store.mjs",
-    "mcp/push-client.mjs",
-    "mcp/push-limits.mjs",
-    "mcp/repository-catalog.mjs",
-    "mcp/resources.mjs",
-    "mcp/retrieval-contracts.mjs",
-    "mcp/rollout.mjs",
-    "mcp/scope-grant-v1.mjs",
-    "mcp/toolsets.mjs",
-    "mcp/working-context.mjs",
-    "mcp/workspace-routing.mjs"
-   ],
-   "content_digest": "7c3a1dceb6a7a64d1d902717696af3009ff666054fe299885e17d24ee993492f"
-  },
-  {
-   "id": "mcp-server-core-mcp/context-renderer-lib.cjs",
-   "rule": "mcp-server-core",
-   "runtime": "node",
-   "kind": "retired-mcp-reference",
-   "product_surface": "MCP/Push",
-   "production_reachable": false,
-   "packaged": false,
-   "target_disposition": "dev-only",
-   "owner": null,
-   "exception": null,
-   "parity_fixture": null,
-   "deletion_or_exclusion_proof": "mcp.json launches membrane stdio-mcp; Hub runtime inventory and right-release inputs exclude Node MCP source",
-   "seal_blocker_note": null,
-   "notes": "Retained for native conformance comparisons only.",
-   "files": [
-    "mcp/context-renderer-lib.cjs"
-   ],
-   "content_digest": "1fd0bd1e423515a0bc53153061ece065117709b11802f1ff00b30b485e772d26"
-  },
-  {
-   "id": "mcp-tests-mcp-tests",
-   "rule": "mcp-tests",
-   "runtime": "node",
-   "kind": "test-suite",
-   "product_surface": "MCP",
-   "production_reachable": false,
-   "packaged": false,
-   "target_disposition": "dev-only",
-   "owner": null,
-   "exception": null,
-   "parity_fixture": null,
-   "deletion_or_exclusion_proof": "test-only; excluded from package payload (verify at SBOM gate)",
-   "seal_blocker_note": null,
-   "notes": "",
-   "files": [
-    "mcp/adapter-manifest.test.mjs",
-    "mcp/adapters.test.mjs",
-    "mcp/adapters/provenance/index.test.mjs",
-    "mcp/authorization.conformance.test.mjs",
-    "mcp/authorization.test.mjs",
-    "mcp/blueprint-readiness.test.mjs",
-    "mcp/calibration-harness.test.mjs",
-    "mcp/capability-inventory.test.mjs",
-    "mcp/client.test.mjs",
-    "mcp/context-renderer.test.mjs",
-    "mcp/deadline.test.mjs",
-    "mcp/decision-points.test.mjs",
-    "mcp/delivery-receipt.test.mjs",
-    "mcp/delivery-serialization.test.mjs",
-    "mcp/e2e-benchmark.test.mjs",
-    "mcp/feedback-loop.test.mjs",
-    "mcp/install.test.mjs",
-    "mcp/installation-binding.test.mjs",
-    "mcp/lib/verification-command.test.mjs",
-    "mcp/lifecycle.test.mjs",
-    "mcp/product-truth.test.mjs",
-    "mcp/project-registry.test.mjs",
-    "mcp/proposal-store.test.mjs",
-    "mcp/push-limits.test.mjs",
-    "mcp/repository-catalog.test.mjs",
-    "mcp/retrieval-contracts.test.mjs",
-    "mcp/rollout.test.mjs",
-    "mcp/scope-grant-v1.test.mjs",
-    "mcp/working-context.test.mjs",
-    "mcp/workspace-routing.test.mjs"
-   ],
-   "content_digest": "97303a94d65125a063114e071a596c1ab8e71e95c5dd213ee7a9287b061ac3c2"
+   "content_digest": "f5d4052b408755418f7b92b1f3940da0b4d5ead129bf2e8ced4d38b6da6502cb"
   },
   {
    "id": "membrane-testkit-engine/crates/membrane-testkit/src/lib.rs",
@@ -1724,12 +1574,12 @@
    "production_reachable": false,
    "packaged": false,
    "target_disposition": "dev-only",
-   "owner": "N6 MCP/renderer native cutover packet",
+   "owner": null,
    "exception": null,
-   "parity_fixture": "migration/native-rust/fixtures/mcp-conformance.v1.json",
-   "deletion_or_exclusion_proof": "Node batch reference is excluded from signed Hub; membrane-mcp registry and Rust conformance fixture own production behavior",
+   "parity_fixture": null,
+   "deletion_or_exclusion_proof": "Registry code is development-only and excluded from signed Hub runtime.",
    "seal_blocker_note": null,
-   "notes": "Retained as differential reference only.",
+   "notes": "",
    "files": [
     "schemas/registry/code/code-batch-limits.mjs",
     "schemas/registry/code/mbr402-batch.mjs"
@@ -1852,7 +1702,7 @@
     "scripts/tools/productization/generate-support-matrix.test.mjs",
     "scripts/tools/productization/render-docs.mjs"
    ],
-   "content_digest": "dead870b0c27914dfaf96ba30d10d4b1709ba0472e9b8249941d0d400b594e1c"
+   "content_digest": "6e9fd92bdeacf4d1b44795c0c05efeeebafcf868e7ae2f716fddeefb82e9d151"
   },
   {
    "id": "surface-extraction-tool-surface-extraction-tool",
@@ -1890,8 +1740,6 @@
    "seal_blocker_note": null,
    "notes": "",
    "files": [
-    "tests/adapters/heartbeat-classifier.test.mjs",
-    "tests/admission/budget-lane-reconciliation.test.mjs",
     "tests/adversarial/authorization-adversarial.test.mjs",
     "tests/adversarial/scope-grant-adversarial.test.mjs",
     "tests/benchmarks/memory/adapters.mjs",
@@ -1918,7 +1766,6 @@
     "tests/contracts/operations-contract.test.mjs",
     "tests/e2e/mbr801-evidence.test.mjs",
     "tests/e2e/mbr801-run-harness.test.mjs",
-    "tests/events/observable-event.test.mjs",
     "tests/fault-injection/fault-runner.mjs",
     "tests/fault-injection/fault-runner.test.mjs",
     "tests/fault-injection/src/main.rs",
@@ -1926,14 +1773,9 @@
     "tests/http-mcp/http-security.test.mjs",
     "tests/hub-contract/hub-contract.test.mjs",
     "tests/install/install-tx.test.mjs",
-    "tests/install/uninstall-js.test.mjs",
     "tests/install/uninstall-rust.test.mjs",
     "tests/ledger-wiring-contracts.test.mjs",
     "tests/maintenance/maintenance-exec-contract.test.mjs",
-    "tests/mcp-prompts/prompts.contract.test.mjs",
-    "tests/mcp-prompts/prompts.parity.test.mjs",
-    "tests/mcp-resources/resources.contract.test.mjs",
-    "tests/mcp-resources/resources.parity.test.mjs",
     "tests/oci/generate-oci-release.test.mjs",
     "tests/oci/oci-contract.test.mjs",
     "tests/onboarding/getting-started-consistency.test.mjs",
@@ -1941,8 +1783,6 @@
     "tests/outcomes/causal_promotion.rs",
     "tests/platform/platform-artifacts.test.mjs",
     "tests/platform/release-install-identity.test.mjs",
-    "tests/provenance/bridge.mjs",
-    "tests/provenance/runtime-observe.test.mjs",
     "tests/provider-readiness/provider-readiness.test.mjs",
     "tests/runbook-links/hub-alerts.test.mjs",
     "tests/sdk/cross-language-compat.test.mjs",
@@ -1950,12 +1790,11 @@
     "tests/sdk/python_client_test.py",
     "tests/sdk/python_daemon_compatibility_test.py",
     "tests/sdk/python_package_boundary_test.py",
-    "tests/session/working-context.test.mjs",
     "tests/status/multidimensional-status.test.mjs",
     "tests/team/team-policy.test.mjs",
     "tests/toolsets/toolsets.test.mjs"
    ],
-   "content_digest": "9467823cbcefc5d32bd9c4d314cd37abef0a9f6fdbd4ccf0d966dc2ca13bba1c"
+   "content_digest": "ba868231a25878b0016b29269c94e086c842a911e2a230189e6177eb74b80b1f"
   },
   {
    "id": "tray-build-script-apps/membrane-tray-windows/build.rs",

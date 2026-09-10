@@ -74,17 +74,26 @@ test("portable payload is signed, hashed & includes activation plus Agent Plugin
   assert.match(packager, /materializeCycloneDxSbom/);
   assert.match(packager, /materializeInTotoSlsaProvenance/);
   assert.ok(packager.indexOf('writeFileSync(join(payload, "release.json"') < packager.indexOf('if (payloadOnly) process.exit(0)'), "payload-only tree includes current release identity");
-  for (const name of ["mcp/install.mjs", "mcp/project-registry.mjs", "mcp/installation-binding.mjs", "mcp/repository-catalog.mjs", "mcp/blueprint-readiness.mjs"]) {
-    assert.doesNotMatch(packager, new RegExp(name.replaceAll("/", "\\/")));
-    assert.doesNotMatch(candidateBuild, new RegExp(name.replaceAll("/", "\\/")));
-  }
-  assert.match(candidateCheck, /candidate contains obsolete enrollment projection/);
+  assert.match(packager, /blueprint\.cmd/);
+  assert.match(candidateBuild, /assemblePortableCore/);
+  assert.match(candidateCheck, /retired JavaScript runtime path/);
   assert.match(packager, /\["hook", "--help"\]/);
-  assert.match(packager, /obsolete mcp\/hooks payload is forbidden/);
-  assert.doesNotMatch(packager, /mcp\/hooks\/membrane-hook-entrypoint\.mjs/);
-  assert.doesNotMatch(candidateBuild, /mcp\/hooks\/membrane-hook-entrypoint\.mjs/);
   assert.match(candidateCheck, /candidate native hook authority unavailable/);
-  assert.match(candidateCheck, /candidate includes obsolete mcp\/hooks backend/);
+  assert.match(candidateCheck, /candidate archive includes retired runtime tree/);
+  const installer = readFileSync(new URL("../src-tauri/windows/installer.nsi", import.meta.url), "utf8");
+  assert.match(installer, /RemoveRetiredRuntimeTrees/);
+  assert.match(installer, /fsutil\.exe.*reparsepoint query/);
+  assert.match(installer, /RMDir "\$R9"/);
+  assert.match(installer, /RMDir \/r "\$R9"/);
+  assert.match(installer, /Push "\$INSTDIR\\runtime\\blueprint"/);
+  assert.match(installer, /Push "\$INSTDIR\\mcp"/);
+  assert.match(installer, /versions\\\$1\\mcp/);
+  assert.match(installer, /versions\\\$1\\runtime\\blueprint/);
+  assert.match(installer, /versions\\\$\{VERSION\}\\mcp/);
+  assert.match(installer, /versions\\\$\{VERSION\}\\runtime\\blueprint/);
+  assert.match(installer, /FileExists} "\$INSTDIR\\versions\\\$\{VERSION\}\\runtime\\blueprint"/);
+  assert.match(installer, /FileExists} "\$INSTDIR\\versions\\\$\{VERSION\}\\mcp"/);
+  assert.doesNotMatch(installer, /RemoveRetiredBlueprintRuntime/);
   assert.match(packager, /membrane-\$\{pkg\.version\}-windows_x86_64|membrane-\$\{pkg\.version\}-windows-x86_64/);
 });
 

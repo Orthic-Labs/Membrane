@@ -97,20 +97,12 @@ legitimately use the operation at all.
 
 ## How install pulls the matrix
 
-`mcp/install.mjs` exposes four additive helpers:
+Native activation exposes client enrollment through installed executable:
 
-```js
-import {
-  loadClientCapabilities,
-  loadSupportMatrix,
-  clientsForEnrollment,
-  supportedOperationsFor,
-} from "./mcp/install.mjs";
-
-const caps = await loadClientCapabilities();
-const matrix = await loadSupportMatrix();
-const ids = await clientsForEnrollment();             // ["claude", "codex", "cursor", "windsurf", "antigravity", "generic_mcp"]
-const claudeOps = await supportedOperationsFor("claude"); // all nine operations
+```sh
+membrane activate --dry-run
+membrane activate
+membrane deactivate --dry-run
 ```
 
 `membrane activate` and `membrane deactivate` reconcile Claude Code, Codex,
@@ -119,7 +111,7 @@ Each binding uses the installed stable `current` `membrane` executable plus
 `stdio-mcp`, preserves unrelated servers, compares original bytes before atomic
 promotion, restores earlier files on failure, and removes only an exact
 Membrane-owned binding during deactivation. `--dry-run`
-inspects without changing client configuration. The JavaScript helper remains
+inspects without changing client configuration. Native command remains
 a development/fixture surface; installed activation is native.
 
 ## Schema constraints

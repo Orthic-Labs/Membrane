@@ -26,7 +26,7 @@ pub mod host_delivery_receipt;
 pub mod host_delivery_ledger_store;
 pub mod host_push_tool_egress;
 pub mod host_context_adapter;
-// Note (NCL-02 mcp-host-adapter-chain lane): legacy `mcp/host/index.mjs` is a
+// Native host-adapter modules own this surface; legacy `mcp/host/index.mjs` is a
 // pure re-export barrel (`export * from "./capability-matrix.mjs"` etc. for
 // capability-matrix, candidate-set, continuity, evidence-interceptor). Its
 // Rust equivalent is this file's `pub mod host_*` list above plus each

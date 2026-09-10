@@ -29,13 +29,10 @@
 //
 // NCL-05 reads a real process-tree observation receipt (audit/qualification/windows-r5/
 // receipts/native-windows-observation.json by default, overridable via
-// context.observationReceiptPath or MEMBRANE_NATIVE_OBSERVATION) captured by spawning the
-// installed membrane.exe's cli and stdio-mcp subcommands and recording their live child
-// processes. The installed product exposes no standalone "sdk" or "federation" executable
-// independent of membrane.exe's in-process crates, so those two named surfaces cannot be
-// captured without fabricating a process to observe; the receipt records them as
-// "not-observable" with a typed reason instead of a fabricated pass, which keeps NCL-05
-// honestly "insufficient" until a dedicated sdk/federation entry point exists to observe.
+// context.observationReceiptPath or MEMBRANE_NATIVE_OBSERVATION) captured by the installed
+// membrane.exe. CLI diagnostics, stdio MCP JSON-RPC, identity-fenced explicit SDK binding,
+// and native Pull federation are all direct installed modes; no standalone helper process
+// or interpreter is invented for SDK/federation.
 //
 // NCL-01 and NCL-02 are checkable from the live tree/registry alone and are scored
 // pass/fail (NCL-01) or a typed cross-lane "insufficient" (NCL-02) for real.
@@ -424,10 +421,9 @@ export function NCL_04(context) {
 }
 
 // -----------------------------------------------------------------------------------
-// NCL-05 -- native surfaces execute native owners. Requires a live process-tree capture
-// per surface call (CLI/MCP/SDK/federation) -- installed-path evidence this worker cannot
-// produce. It can structurally confirm the native crates exist and that no allowlisted
-// shim file was left in place; that partial evidence is recorded but does not earn "passed".
+// NCL-05 -- native surfaces execute native owners. The Windows observer captures each
+// installed membrane.exe mode (CLI, stdio MCP, explicit SDK, and native federation),
+// including executable hash, terminal result, and live descendant process tree.
 // -----------------------------------------------------------------------------------
 export function NCL_05(context) {
   const root = resolveRoot(context);

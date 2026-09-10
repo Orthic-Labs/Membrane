@@ -1,7 +1,5 @@
-//! Native-path authorization gate (pending §15) — Rust port of the JS authority
-//! implementation: `mcp/authorization.mjs` (`intersectAuthority`,
-//! `authorizeTarget`), `mcp/project-registry.mjs` (installation registry), and
-//! `mcp/server.mjs authorize` (caller/target binding verification).
+//! Native-path authorization gate. Historical behavior was previously mirrored
+//! by the retired MCP JS tree; Rust now owns authority, registry & binding checks.
 //!
 //! MBR-002 / SN-NODE-02 monotone effective authority: effective privilege is the
 //! minimum (intersection) of the installation, caller, target, child-grant, and
@@ -38,7 +36,7 @@ pub const AUTHORIZATION_REQUEST_SCHEMA_VERSION: &str = "membrane.authorization-r
 const RUNTIME_MANIFEST_RELATIVE: &str = "tools/lib/memory/runtime.json";
 const RUNTIME_SERVICE_ID: &str = "membrane-local-v1";
 
-/// Monotone authority levels (`mcp/authorization.mjs LEVEL_RANK`). The order is
+/// Monotone authority levels (`LEVEL_RANK`). The order is
 /// the rank: a higher variant is strictly more authority.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 pub enum AuthorityLevel {
@@ -558,7 +556,7 @@ pub struct AuthorizationDecisionV1 {
 }
 
 /// Read actions admit at `read-only`; every mutating action requires at least
-/// `write-proposed` (`mcp/authorization.mjs READ_ACTIONS` + `permitsLevel`).
+    /// `write-proposed` (`READ_ACTIONS` + `permitsLevel`).
 pub fn is_read_action(action: &str) -> bool {
     matches!(
         action,
@@ -574,7 +572,7 @@ pub fn is_read_action(action: &str) -> bool {
 
 /// Monotone minimum of the provided authorities. Absent (None) slots are
 /// skipped; an all-absent intersection is the fail-closed `read-only`
-/// (`mcp/authorization.mjs intersectAuthority`).
+/// (native `intersect_authority`).
 pub fn intersect_authority(levels: &[Option<AuthorityLevel>]) -> AuthorityLevel {
     levels
         .iter()
@@ -661,7 +659,7 @@ pub fn authorize(
     // denial, never a guess.
     //
     // Gate order (pending doc §15): authority level runs BEFORE cross-root
-    // denial (Gate 5), deliberately diverging from mcp/authorization.mjs
+    // denial (Gate 5), deliberately preserving native gate semantics
     // `authorizeTarget`, which checks cross-root first. The divergence changes
     // only which gate name a denial reports — a request that is both
     // cross-root-ungranted and under-privileged denies at AuthorityLevel here
@@ -959,7 +957,7 @@ pub fn can_reach_target(
         caller_scope_id,
         caller_scope_descriptor: None,
         target_repository,
-        // FAN-OUT task clamp (mcp/authorization.mjs authorizeTarget, line 52:
+        // FAN-OUT task clamp:
         // `taskGrantLevel || "read-only"`): applied explicitly because the
         // direct path this funnels through now falls back to caller_level on
         // an absent grant. The read-only slot cannot widen: it can only clamp

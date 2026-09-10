@@ -14,6 +14,14 @@ pub use lexical::LexicalHit;
 /// Ranks entries in a [`MemoryRegistry`] against a textual query.
 pub struct MemoryRetriever;
 
+/// Explicit retrieval arm used by native qualification and replay controls.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RetrievalArm {
+    LexicalOnly,
+    VectorOnly,
+    Hybrid,
+}
+
 /// Semantic kind assigned to a bounded, query-independent projection row.
 ///
 /// `Preference` is the only authoritative/standing kind: an unrelated query
@@ -95,6 +103,30 @@ impl<'a> CortexProjection<'a> {
 const RRF_K: f64 = 60.0;
 
 impl MemoryRetriever {
+    /// Run one explicit production retrieval arm.  Qualification callers use
+    /// this to make the selected signal visible without reimplementing rankers.
+    pub fn retrieve_with_arm<'a>(
+        registry: &'a MemoryRegistry,
+        arm: RetrievalArm,
+        query: &str,
+        query_embedding: Option<&[f32]>,
+        limit: usize,
+    ) -> Vec<&'a MemoryEntry> {
+        match arm {
+            RetrievalArm::LexicalOnly => Self::retrieve(registry, query, limit),
+            RetrievalArm::VectorOnly => {
+                let Some(qvec) = query_embedding else { return Vec::new(); };
+                let mut ranked = registry
+                    .all()
+                    .into_iter()
+                    .filter_map(|entry| entry.embedding.as_deref().map(|v| (entry, cosine(v, qvec))))
+                    .collect::<Vec<_>>();
+                ranked.sort_by(|a, b| b.1.total_cmp(&a.1).then_with(|| a.0.id.cmp(&b.0.id)));
+                ranked.into_iter().take(limit).map(|(entry, _)| entry).collect()
+            }
+            RetrievalArm::Hybrid => Self::retrieve_hybrid(registry, query, query_embedding, limit),
+        }
+    }
     /// Tokenize a query into lowercased whitespace-separated terms.
     fn query_terms(query: &str) -> Vec<String> {
         lexical::query_terms(query)
@@ -815,5 +847,15 @@ mod tests {
 
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].id, "included");
+    }
+
+    #[test]
+    fn explicit_retrieval_arms_are_deterministic() {
+        let mut registry = MemoryRegistry::new();
+        registry.insert(entry("lex", "alpha", &["alpha"], 1.0, Some(vec![0.0, 1.0])));
+        registry.insert(entry("vec", "beta", &["beta"], 1.0, Some(vec![1.0, 0.0])));
+        let query = [1.0, 0.0];
+        assert_eq!(MemoryRetriever::retrieve_with_arm(&registry, RetrievalArm::LexicalOnly, "alpha", Some(&query), 1)[0].id, "lex");
+        assert_eq!(MemoryRetriever::retrieve_with_arm(&registry, RetrievalArm::VectorOnly, "alpha", Some(&query), 1)[0].id, "vec");
     }
 }

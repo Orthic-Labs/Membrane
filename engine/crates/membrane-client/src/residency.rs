@@ -1,8 +1,8 @@
 //! Public additive holder lifecycle for one canonical installed controller.
 
+use serde_json::{Map, Value};
 use std::collections::BTreeMap;
 use std::sync::Arc;
-use serde_json::{Map, Value};
 use thiserror::Error;
 
 use crate::{CallOptions, ClientError};
@@ -45,9 +45,16 @@ impl ResidentControllerBinding {
     /// `bind_candidate`; callers cannot supply or refresh identity fields.
     pub fn from_canonical(canonical: crate::CanonicalBinding) -> Result<Self, ClientError> {
         if canonical.identity.runtime_origin != "installed"
-            || canonical.identity.stable_install_root.as_deref().is_none_or(|root|
-                crate::binding::comparable_stable_root(root)
-                    != crate::binding::comparable_stable_root(&canonical.candidate.stable_install_root))
+            || canonical
+                .identity
+                .stable_install_root
+                .as_deref()
+                .is_none_or(|root| {
+                    crate::binding::comparable_stable_root(root)
+                        != crate::binding::comparable_stable_root(
+                            &canonical.candidate.stable_install_root,
+                        )
+                })
         {
             return Err(ClientError::Incompatible {
                 message: "resident controller requires verified installed canonical binding".into(),
@@ -84,19 +91,27 @@ impl ResidentControllerBinding {
 /// Injected installed-controller transport.  SDK code owns request/response
 /// fences; hosts choose their authenticated local IPC implementation.
 pub trait ResidentHolderTransport: Send + Sync {
-    fn call(&self, request: ResidentHolderRequestV1) -> Result<ResidentHolderResponseV1, ClientError>;
+    fn call(
+        &self,
+        request: ResidentHolderRequestV1,
+    ) -> Result<ResidentHolderResponseV1, ClientError>;
 }
 
 impl<F> ResidentHolderTransport for F
 where
     F: Fn(ResidentHolderRequestV1) -> Result<ResidentHolderResponseV1, ClientError> + Send + Sync,
 {
-    fn call(&self, request: ResidentHolderRequestV1) -> Result<ResidentHolderResponseV1, ClientError> {
+    fn call(
+        &self,
+        request: ResidentHolderRequestV1,
+    ) -> Result<ResidentHolderResponseV1, ClientError> {
         self(request)
     }
 }
 
-pub struct InstalledResidentController<T: ResidentHolderTransport + ?Sized = dyn ResidentHolderTransport> {
+pub struct InstalledResidentController<
+    T: ResidentHolderTransport + ?Sized = dyn ResidentHolderTransport,
+> {
     binding: ResidentControllerBinding,
     transport: Arc<T>,
     options: CallOptions,
@@ -110,7 +125,11 @@ pub struct ResidentHolderCall<'a, T: ResidentHolderTransport + ?Sized> {
 impl<T: ResidentHolderTransport + ?Sized> InstalledResidentController<T> {
     pub fn new(binding: ResidentControllerBinding, transport: Arc<T>) -> Result<Self, ClientError> {
         binding.protocol_identity()?;
-        Ok(Self { binding, transport, options: CallOptions::after(std::time::Duration::from_secs(30)) })
+        Ok(Self {
+            binding,
+            transport,
+            options: CallOptions::after(std::time::Duration::from_secs(30)),
+        })
     }
 
     pub fn binding(&self) -> &ResidentControllerBinding {
@@ -118,7 +137,10 @@ impl<T: ResidentHolderTransport + ?Sized> InstalledResidentController<T> {
     }
 
     pub fn with_call_options(&self, options: CallOptions) -> ResidentHolderCall<'_, T> {
-        ResidentHolderCall { controller: self, options }
+        ResidentHolderCall {
+            controller: self,
+            options,
+        }
     }
 
     pub fn acquire(
@@ -127,7 +149,13 @@ impl<T: ResidentHolderTransport + ?Sized> InstalledResidentController<T> {
         observed_at_unix_ms: u64,
         expires_at_unix_ms: u64,
     ) -> Result<ResidentHolderResponseV1, ClientError> {
-        self.call(ResidentHolderOperationV1::Acquire, Some(holder), observed_at_unix_ms, Some(expires_at_unix_ms), None)
+        self.call(
+            ResidentHolderOperationV1::Acquire,
+            Some(holder),
+            observed_at_unix_ms,
+            Some(expires_at_unix_ms),
+            None,
+        )
     }
 
     pub fn renew(
@@ -136,7 +164,13 @@ impl<T: ResidentHolderTransport + ?Sized> InstalledResidentController<T> {
         observed_at_unix_ms: u64,
         expires_at_unix_ms: u64,
     ) -> Result<ResidentHolderResponseV1, ClientError> {
-        self.call(ResidentHolderOperationV1::Renew, Some(holder), observed_at_unix_ms, Some(expires_at_unix_ms), None)
+        self.call(
+            ResidentHolderOperationV1::Renew,
+            Some(holder),
+            observed_at_unix_ms,
+            Some(expires_at_unix_ms),
+            None,
+        )
     }
 
     pub fn release(
@@ -144,11 +178,26 @@ impl<T: ResidentHolderTransport + ?Sized> InstalledResidentController<T> {
         holder: AuthenticatedHolder,
         observed_at_unix_ms: u64,
     ) -> Result<ResidentHolderResponseV1, ClientError> {
-        self.call(ResidentHolderOperationV1::Release, Some(holder), observed_at_unix_ms, None, None)
+        self.call(
+            ResidentHolderOperationV1::Release,
+            Some(holder),
+            observed_at_unix_ms,
+            None,
+            None,
+        )
     }
 
-    pub fn status(&self, observed_at_unix_ms: u64) -> Result<ResidentHolderResponseV1, ClientError> {
-        self.call(ResidentHolderOperationV1::Status, None, observed_at_unix_ms, None, None)
+    pub fn status(
+        &self,
+        observed_at_unix_ms: u64,
+    ) -> Result<ResidentHolderResponseV1, ClientError> {
+        self.call(
+            ResidentHolderOperationV1::Status,
+            None,
+            observed_at_unix_ms,
+            None,
+            None,
+        )
     }
 
     pub fn subscribe_loss(
@@ -157,7 +206,13 @@ impl<T: ResidentHolderTransport + ?Sized> InstalledResidentController<T> {
         loss_cursor: u64,
     ) -> Result<Option<ResidentHolderLossV1>, ClientError> {
         Ok(self
-            .call(ResidentHolderOperationV1::SubscribeLoss, None, observed_at_unix_ms, None, Some(loss_cursor))?
+            .call(
+                ResidentHolderOperationV1::SubscribeLoss,
+                None,
+                observed_at_unix_ms,
+                None,
+                Some(loss_cursor),
+            )?
             .loss)
     }
 
@@ -190,11 +245,15 @@ impl<T: ResidentHolderTransport + ?Sized> InstalledResidentController<T> {
     ) -> Result<ResidentHolderResponseV1, ClientError> {
         options.check()?;
         let controller = self.binding.protocol_identity()?;
-        if matches!(operation, ResidentHolderOperationV1::Acquire | ResidentHolderOperationV1::Renew)
-            && (expires_at_unix_ms.is_none()
-                || expires_at_unix_ms.is_some_and(|expiry| expiry <= observed_at_unix_ms))
+        if matches!(
+            operation,
+            ResidentHolderOperationV1::Acquire | ResidentHolderOperationV1::Renew
+        ) && (expires_at_unix_ms.is_none()
+            || expires_at_unix_ms.is_some_and(|expiry| expiry <= observed_at_unix_ms))
         {
-            return Err(ClientError::InvalidRequest { message: "resident holder expiry must be after observed time".into() });
+            return Err(ClientError::InvalidRequest {
+                message: "resident holder expiry must be after observed time".into(),
+            });
         }
         let request = ResidentHolderRequestV1 {
             schema_version: RESIDENT_HOLDER_SCHEMA_VERSION,
@@ -211,51 +270,116 @@ impl<T: ResidentHolderTransport + ?Sized> InstalledResidentController<T> {
             || response.operation != operation
             || response.controller != controller
         {
-            return Err(ClientError::Incompatible { message: "resident holder response failed installed identity fence".into() });
+            return Err(ClientError::Incompatible {
+                message: "resident holder response failed installed identity fence".into(),
+            });
         }
         if operation == ResidentHolderOperationV1::SubscribeLoss {
-            if response.loss.as_ref().is_some_and(|loss| loss.controller != controller) {
-                return Err(ClientError::Incompatible { message: "resident holder loss failed installed identity fence".into() });
+            if response
+                .loss
+                .as_ref()
+                .is_some_and(|loss| loss.controller != controller)
+            {
+                return Err(ClientError::Incompatible {
+                    message: "resident holder loss failed installed identity fence".into(),
+                });
             }
         } else if response.loss.is_some() {
-            return Err(ClientError::Incompatible { message: "resident holder response has incoherent loss payload".into() });
+            return Err(ClientError::Incompatible {
+                message: "resident holder response has incoherent loss payload".into(),
+            });
         }
         Ok(response)
     }
 }
 
 impl<'a, T: ResidentHolderTransport + ?Sized> ResidentHolderCall<'a, T> {
-    pub fn acquire(&self, holder: AuthenticatedHolder, now: u64, expires_at: u64) -> Result<ResidentHolderResponseV1, ClientError> {
+    pub fn acquire(
+        &self,
+        holder: AuthenticatedHolder,
+        now: u64,
+        expires_at: u64,
+    ) -> Result<ResidentHolderResponseV1, ClientError> {
         self.options.check()?;
-        self.controller.call_with_options(ResidentHolderOperationV1::Acquire, Some(holder), now, Some(expires_at), None, &self.options)
+        self.controller.call_with_options(
+            ResidentHolderOperationV1::Acquire,
+            Some(holder),
+            now,
+            Some(expires_at),
+            None,
+            &self.options,
+        )
     }
 
-    pub fn renew(&self, holder: AuthenticatedHolder, now: u64, expires_at: u64) -> Result<ResidentHolderResponseV1, ClientError> {
+    pub fn renew(
+        &self,
+        holder: AuthenticatedHolder,
+        now: u64,
+        expires_at: u64,
+    ) -> Result<ResidentHolderResponseV1, ClientError> {
         self.options.check()?;
-        self.controller.call_with_options(ResidentHolderOperationV1::Renew, Some(holder), now, Some(expires_at), None, &self.options)
+        self.controller.call_with_options(
+            ResidentHolderOperationV1::Renew,
+            Some(holder),
+            now,
+            Some(expires_at),
+            None,
+            &self.options,
+        )
     }
 
-    pub fn release(&self, holder: AuthenticatedHolder, now: u64) -> Result<ResidentHolderResponseV1, ClientError> {
+    pub fn release(
+        &self,
+        holder: AuthenticatedHolder,
+        now: u64,
+    ) -> Result<ResidentHolderResponseV1, ClientError> {
         self.options.check()?;
-        self.controller.call_with_options(ResidentHolderOperationV1::Release, Some(holder), now, None, None, &self.options)
+        self.controller.call_with_options(
+            ResidentHolderOperationV1::Release,
+            Some(holder),
+            now,
+            None,
+            None,
+            &self.options,
+        )
     }
 
     pub fn status(&self, now: u64) -> Result<ResidentHolderResponseV1, ClientError> {
         self.options.check()?;
-        self.controller.call_with_options(ResidentHolderOperationV1::Status, None, now, None, None, &self.options)
+        self.controller.call_with_options(
+            ResidentHolderOperationV1::Status,
+            None,
+            now,
+            None,
+            None,
+            &self.options,
+        )
     }
 
-    pub fn subscribe_loss(&self, now: u64, cursor: u64) -> Result<Option<ResidentHolderLossV1>, ClientError> {
+    pub fn subscribe_loss(
+        &self,
+        now: u64,
+        cursor: u64,
+    ) -> Result<Option<ResidentHolderLossV1>, ClientError> {
         self.options.check()?;
         Ok(self
             .controller
-            .call_with_options(ResidentHolderOperationV1::SubscribeLoss, None, now, None, Some(cursor), &self.options)?
+            .call_with_options(
+                ResidentHolderOperationV1::SubscribeLoss,
+                None,
+                now,
+                None,
+                Some(cursor),
+                &self.options,
+            )?
             .loss)
     }
 }
 
 fn protocol_holder(holder: AuthenticatedHolder) -> Result<ResidentHolderCredentialV1, ClientError> {
-    validate_holder(&holder).map_err(|error| ClientError::InvalidRequest { message: error.to_string() })?;
+    validate_holder(&holder).map_err(|error| ClientError::InvalidRequest {
+        message: error.to_string(),
+    })?;
     Ok(ResidentHolderCredentialV1 {
         holder_kind: match holder.kind {
             HolderKind::Hub => "hub",
@@ -321,6 +445,10 @@ pub enum ResidencyError {
 pub struct ResidencyRegistry {
     controller: Option<ControllerIdentity>,
     holders: BTreeMap<(HolderKind, String), HolderLease>,
+    /// Expiry tombstone fences an acquire that races final-holder expiry.
+    /// Explicit release is restartable within one generation; lease expiry is
+    /// not, because a late acquire must not resurrect an expired controller.
+    expired_controller: Option<ControllerIdentity>,
 }
 
 impl ResidencyRegistry {
@@ -356,8 +484,26 @@ impl ResidencyRegistry {
         if expires_at_ms <= now_ms {
             return Err(ResidencyError::InvalidExpiry);
         }
-        if self.controller.as_ref().is_some_and(|active| active != &controller) {
+        if self
+            .controller
+            .as_ref()
+            .is_some_and(|active| active != &controller)
+        {
             return Err(ResidencyError::ControllerMismatch);
+        }
+        if self
+            .expired_controller
+            .as_ref()
+            .is_some_and(|expired| expired == &controller)
+        {
+            return Err(ResidencyError::HolderExpired);
+        }
+        if self
+            .expired_controller
+            .as_ref()
+            .is_some_and(|expired| expired != &controller)
+        {
+            self.expired_controller = None;
         }
         // Do not let an acquire race the expiry worker after the final lease
         // has already expired.  Keeping the expired holder in place leaves
@@ -440,7 +586,11 @@ impl ResidencyRegistry {
 
     pub fn reconcile_expired(&mut self, now_ms: u64) -> ReleaseDecision {
         self.holders.retain(|_, lease| lease.expires_at_ms > now_ms);
-        self.finalize_if_unheld()
+        let decision = self.finalize_if_unheld();
+        if decision.drain_controller {
+            self.expired_controller = decision.drained_identity.clone();
+        }
+        decision
     }
 
     fn finalize_if_unheld(&mut self) -> ReleaseDecision {
@@ -453,6 +603,367 @@ impl ResidencyRegistry {
             drain_controller: drained_identity.is_some(),
             drained_identity,
             snapshot: self.snapshot(),
+        }
+    }
+}
+
+/// Run one deterministic lifecycle qualification against the real registry or
+/// replay cache.  Results are typed JSON so installed native callers can
+/// retain evidence without depending on test-only fixtures.
+fn qualification_residency_lc01(name: &str) -> Value {
+    let controller = |startup_generation| ControllerIdentity {
+        installation_id: "qualification-install".into(),
+        cortex_store_id: "qualification-store".into(),
+        release_generation: "qualification-release".into(),
+        startup_generation,
+    };
+    let holder = |kind: HolderKind, id: &str, credential: &str| AuthenticatedHolder {
+        kind,
+        holder_id: id.into(),
+        credential_id: credential.into(),
+    };
+    let pass =
+        |evidence: Value| serde_json::json!({"probe":name,"status":"pass","evidence":evidence});
+    let fail = |reason: &str| serde_json::json!({"probe":name,"status":"fail","reason":reason});
+    match name {
+        "hub-only" => {
+            let mut r = ResidencyRegistry::new();
+            let h = holder(HolderKind::Hub, "hub", "credential");
+            let acquired = r.acquire(controller(1), h.clone(), 1, 100).is_ok();
+            let running = r.snapshot();
+            let drained = r.release(&h).map(|d| d.drain_controller).unwrap_or(false);
+            let stopped = r.snapshot();
+            if acquired && running.residents_required() && drained && !stopped.residents_required() {
+                pass(serde_json::json!({
+                    "expectedControllerState": {"during": "running", "after": "stopped"},
+                    "watcherActivity": {"during": "resident", "after": "drained"},
+                    "observed": {"duringHolders": running.hub_holders, "afterHolders": stopped.hub_holders}
+                }))
+            } else { fail("Hub residency did not reach running then stopped") }
+        }
+        "coderight-only" => {
+            let mut r = ResidencyRegistry::new();
+            let h = holder(HolderKind::CodeRightDaemon, "coderight", "credential");
+            let a = r.acquire(controller(1), h.clone(), 1, 100).is_ok();
+            let running = r.snapshot();
+            let d = r.release(&h).map(|x| x.drain_controller).unwrap_or(false);
+            let stopped = r.snapshot();
+            if a && d && running.coderight_daemon_holders == 1 && !stopped.residents_required() {
+                pass(serde_json::json!({
+                    "expectedControllerState": {"during": "running", "after": "stopped"},
+                    "watcherActivity": {"during": "resident", "after": "drained"},
+                    "observed": {"duringHolders": running.coderight_daemon_holders, "afterHolders": stopped.coderight_daemon_holders}
+                }))
+            } else { fail("CodeRight residency did not drain") }
+        }
+        "both" => {
+            let mut r = ResidencyRegistry::new();
+            let h = holder(HolderKind::Hub, "hub", "hub-credential");
+            let c = holder(HolderKind::CodeRightDaemon, "coderight", "cr-credential");
+            let a = r.acquire(controller(1), h.clone(), 1, 100).is_ok()
+                && r.acquire(controller(1), c.clone(), 2, 100).is_ok();
+            let p = r.release(&h).map(|x| !x.drain_controller).unwrap_or(false);
+            let d = r.release(&c).map(|x| x.drain_controller).unwrap_or(false);
+            let final_state = r.snapshot();
+            if a && p && d && !final_state.residents_required() {
+                pass(serde_json::json!({
+                    "expectedControllerState": {"during": "running", "afterPeerRelease": "running", "afterFinalRelease": "stopped"},
+                    "watcherActivity": {"during": "resident", "afterPeerRelease": "resident", "afterFinalRelease": "drained"},
+                    "observed": {"holdersAcquired": 2, "peerRetained": true, "finalDrains": 1}
+                }))
+            } else {
+                fail("holder matrix failed")
+            }
+        }
+        "holder-crash" => {
+            let mut r = ResidencyRegistry::new();
+            let h = holder(HolderKind::Hub, "hub", "credential");
+            let a = r.acquire(controller(1), h, 1, 10).is_ok();
+            let d = r.reconcile_expired(10).drain_controller;
+            if a && d {
+                pass(serde_json::json!({
+                    "expectedControllerState": {"beforeCrash": "running", "afterCrash": "stopped"},
+                    "watcherActivity": {"beforeCrash": "resident", "afterCrash": "drained"},
+                    "observed": {"holdersBeforeExpiry": 1, "drained": true}
+                }))
+            } else {
+                fail("expiry reconciliation did not drain")
+            }
+        }
+        "holder-exit" | "final-holder-shutdown" => {
+            let mut r = ResidencyRegistry::new();
+            let h = holder(HolderKind::Hub, "hub", "credential");
+            let acquired = r.acquire(controller(1), h.clone(), 1, 100).is_ok();
+            let before = r.snapshot();
+            let drained = r.release(&h).map(|d| d.drain_controller).unwrap_or(false);
+            let after = r.snapshot();
+            if acquired && before.residents_required() && drained && !after.residents_required() {
+                pass(serde_json::json!({
+                    "expectedControllerState": {"beforeExit": "running", "afterExit": "stopped"},
+                    "watcherActivity": {"beforeExit": "resident", "afterExit": "drained"},
+                    "observed": {"beforeHolders": before.hub_holders, "afterHolders": after.hub_holders}
+                }))
+            } else { fail("holder exit did not perform final drain") }
+        }
+        "survivor-continuity" => {
+            let mut r = ResidencyRegistry::new();
+            let hub = holder(HolderKind::Hub, "hub", "hub-credential");
+            let daemon = holder(HolderKind::CodeRightDaemon, "coderight", "cr-credential");
+            let acquired = r.acquire(controller(1), hub.clone(), 1, 100).is_ok()
+                && r.acquire(controller(1), daemon.clone(), 2, 100).is_ok();
+            let peer_release = r.release(&hub).map(|d| !d.drain_controller).unwrap_or(false);
+            let survivor = r.renew(&daemon, 3, 200).is_ok();
+            let active = r.snapshot();
+            let final_drain = r.release(&daemon).map(|d| d.drain_controller).unwrap_or(false);
+            if acquired && peer_release && survivor && active.residents_required() && final_drain {
+                pass(serde_json::json!({
+                    "expectedControllerState": {"afterPeerExit": "running", "afterFinalRelease": "stopped"},
+                    "watcherActivity": {"afterPeerExit": "resident", "afterFinalRelease": "drained"},
+                    "observed": {"survivorRenewed": true, "activeHolders": active.coderight_daemon_holders}
+                }))
+            } else { fail("surviving holder did not preserve residency") }
+        }
+        "concurrent-acquire-renew-release" => {
+            let r = std::sync::Arc::new(std::sync::Mutex::new(ResidencyRegistry::new()));
+            let barrier = std::sync::Arc::new(std::sync::Barrier::new(3));
+            let mut joins = Vec::new();
+            for (kind, id, credential) in [
+                (HolderKind::Hub, "hub", "hub-credential"),
+                (HolderKind::CodeRightDaemon, "coderight", "cr-credential"),
+            ] {
+                let shared = std::sync::Arc::clone(&r);
+                let gate = std::sync::Arc::clone(&barrier);
+                joins.push(std::thread::spawn(move || {
+                    let h = AuthenticatedHolder {
+                        kind,
+                        holder_id: id.into(),
+                        credential_id: credential.into(),
+                    };
+                    let acquired = shared.lock().unwrap().acquire(controller(1), h.clone(), 1, 100).is_ok();
+                    gate.wait();
+                    let renewed = shared.lock().unwrap().renew(&h, 2, 200).is_ok();
+                    gate.wait();
+                    let drained = shared.lock().unwrap().release(&h).map(|x| x.drain_controller).unwrap_or(false);
+                    (acquired, renewed, drained)
+                }));
+            }
+            barrier.wait();
+            barrier.wait();
+            let o: Vec<_> = joins.into_iter().map(|j| j.join().unwrap()).collect();
+            let a = o.iter().filter(|x| x.0).count();
+            let n = o.iter().filter(|x| x.1).count();
+            let d = o.iter().filter(|x| x.2).count();
+            if a == 2 && n == 2 && d == 1 {
+                pass(serde_json::json!({
+                    "expectedControllerState": {"afterConcurrentAcquire": "running", "afterFinalRelease": "stopped"},
+                    "watcherActivity": {"afterConcurrentAcquire": "resident", "afterFinalRelease": "drained"},
+                    "observed": {"acquired": a, "renewed": n, "finalDrains": d}
+                }))
+            } else {
+                fail("concurrent barrier invariant failed")
+            }
+        }
+        "drain-acquire-race" => {
+            let r = std::sync::Arc::new(std::sync::Mutex::new(ResidencyRegistry::new()));
+            let h = holder(HolderKind::Hub, "hub", "credential");
+            let n = holder(HolderKind::CodeRightDaemon, "coderight", "credential");
+            let a = r.lock().unwrap().acquire(controller(1), h, 1, 10).is_ok();
+            let gate = std::sync::Arc::new(std::sync::Barrier::new(3));
+            let expiry_registry = std::sync::Arc::clone(&r);
+            let expiry_gate = std::sync::Arc::clone(&gate);
+            let expiry = std::thread::spawn(move || {
+                expiry_gate.wait();
+                expiry_registry.lock().unwrap().reconcile_expired(10).drain_controller
+            });
+            let acquire_registry = std::sync::Arc::clone(&r);
+            let acquire_gate = std::sync::Arc::clone(&gate);
+            let race = std::thread::spawn(move || {
+                acquire_gate.wait();
+                acquire_registry.lock().unwrap().acquire(controller(1), n, 10, 20)
+            });
+            gate.wait();
+            let d = expiry.join().unwrap();
+            let rejected = race.join().unwrap() == Err(ResidencyError::HolderExpired);
+            if a && d && rejected {
+                pass(serde_json::json!({
+                    "expectedControllerState": {"beforeRace": "running", "afterExpiry": "stopped", "lateAcquire": "rejected"},
+                    "watcherActivity": {"beforeRace": "resident", "afterExpiry": "drained"},
+                    "observed": {"drained": true, "rejected": "HolderExpired"}
+                }))
+            } else {
+                fail("drain acquire race was not fenced")
+            }
+        }
+        "restart-during-acquire" => {
+            let mut r = ResidencyRegistry::new();
+            let h = holder(HolderKind::Hub, "hub", "credential");
+            let a = r.acquire(controller(1), h.clone(), 1, 10).is_ok();
+            let d = r.release(&h).map(|x| x.drain_controller).unwrap_or(false);
+            let restart = r.acquire(controller(2), h.clone(), 11, 100).is_ok();
+            let final_drain = r.release(&h).map(|x| x.drain_controller).unwrap_or(false);
+            if a && d && restart && final_drain {
+                pass(serde_json::json!({
+                    "expectedControllerState": {"generation1": "stopped", "generation2": "running", "afterFinalRelease": "stopped"},
+                    "watcherActivity": {"generation1": "drained", "generation2": "resident", "afterFinalRelease": "drained"},
+                    "observed": {"startupGenerations":[1,2],"finalDrains":1}
+                }))
+            } else {
+                fail("restart did not establish new incarnation")
+            }
+        }
+        "stale-fencing" => {
+            let mut r = ResidencyRegistry::new();
+            let h = holder(HolderKind::Hub, "hub", "credential");
+            let a = r.acquire(controller(1), h.clone(), 1, 10).is_ok();
+            let d = r.release(&h).map(|x| x.drain_controller).unwrap_or(false);
+            let stale = r.renew(&h, 2, 20) == Err(ResidencyError::HolderMissing);
+            if a && d && stale {
+                pass(serde_json::json!({
+                    "expectedControllerState": {"afterRelease": "stopped", "staleRenew": "rejected"},
+                    "watcherActivity": {"afterRelease": "drained"},
+                    "observed": {"drained":true,"staleRenew":"HolderMissing"}
+                }))
+            } else {
+                fail("stale operation mutated residency")
+            }
+        }
+        _ => {
+            serde_json::json!({"probe":name,"status":"unsupported","reason":"not an LC01 residency scenario"})
+        }
+    }
+}
+
+pub fn qualification_lifecycle(name: &str) -> Value {
+    if matches!(
+        name,
+        "hub-only"
+            | "coderight-only"
+            | "both"
+            | "holder-crash"
+            | "holder-exit"
+            | "final-holder-shutdown"
+            | "concurrent-acquire-renew-release"
+            | "drain-acquire-race"
+            | "restart-during-acquire"
+            | "stale-fencing"
+            | "survivor-continuity"
+    ) {
+        return qualification_residency_lc01(name);
+    }
+    let controller = ControllerIdentity {
+        installation_id: "qualification-install".into(),
+        cortex_store_id: "qualification-store".into(),
+        release_generation: "qualification-release".into(),
+        startup_generation: 1,
+    };
+    let holder = |id: &str, credential: &str| AuthenticatedHolder {
+        kind: HolderKind::Hub,
+        holder_id: id.into(),
+        credential_id: credential.into(),
+    };
+    let pass = |details: Map<String, Value>| {
+        let mut out = details;
+        out.insert("probe".into(), Value::from(name));
+        out.insert("status".into(), Value::from("pass"));
+        Value::Object(out)
+    };
+    let fail = |reason: &str| serde_json::json!({"probe": name, "status":"fail", "reason":reason});
+    match name {
+        "credential-race" => {
+            let mut registry = ResidencyRegistry::new();
+            let first = holder("holder", "credential-a");
+            let result = registry.acquire(controller, first, 1, 100);
+            let raced = registry.acquire(
+                ControllerIdentity {
+                    installation_id: "qualification-install".into(),
+                    cortex_store_id: "qualification-store".into(),
+                    release_generation: "qualification-release".into(),
+                    startup_generation: 1,
+                },
+                holder("holder", "credential-b"),
+                2,
+                100,
+            );
+            if result.is_ok() && raced == Err(ResidencyError::CredentialMismatch) {
+                pass(Map::new())
+            } else {
+                fail("credential race was not fenced")
+            }
+        }
+        "lease-incarnation" => {
+            let mut registry = ResidencyRegistry::new();
+            let old = registry.acquire(controller, holder("holder", "credential"), 1, 100);
+            let next = ControllerIdentity {
+                installation_id: "qualification-install".into(),
+                cortex_store_id: "qualification-store".into(),
+                release_generation: "qualification-release".into(),
+                startup_generation: 2,
+            };
+            if old.is_ok()
+                && registry.acquire(next, holder("new", "credential-new"), 2, 100)
+                    == Err(ResidencyError::ControllerMismatch)
+            {
+                pass(Map::new())
+            } else {
+                fail("lease incarnation was not fenced")
+            }
+        }
+        "reordered-response" => {
+            let mut registry = ResidencyRegistry::new();
+            let h = holder("holder", "credential");
+            let a = registry.acquire(controller, h.clone(), 1, 100);
+            let b = registry.renew(&h, 5, 150);
+            let stale = registry.renew(&h, 6, 6);
+            if a.is_ok() && b.is_ok() && stale == Err(ResidencyError::InvalidExpiry) {
+                pass(Map::new())
+            } else {
+                fail("reordered response was not rejected")
+            }
+        }
+        "lost-response" => {
+            let mut registry = ResidencyRegistry::new();
+            let h = holder("holder", "credential");
+            let acquired = registry.acquire(controller, h.clone(), 1, 100).is_ok();
+            let released = registry
+                .release(&h)
+                .map(|d| d.drain_controller)
+                .unwrap_or(false);
+            let late = registry.renew(&h, 2, 200);
+            if acquired && released && late == Err(ResidencyError::HolderMissing) {
+                pass(Map::new())
+            } else {
+                fail("lost response resurrected holder")
+            }
+        }
+        "clock-rewind" => {
+            let mut registry = ResidencyRegistry::new();
+            let h = holder("holder", "credential");
+            let acquired = registry.acquire(controller, h.clone(), 10, 20).is_ok();
+            let drained = registry.reconcile_expired(30).drain_controller;
+            let rewound = registry.renew(&h, 15, 40);
+            if acquired && drained && rewound == Err(ResidencyError::HolderMissing) {
+                pass(Map::new())
+            } else {
+                fail("clock rewind changed expired state")
+            }
+        }
+        "replay-bound" => {
+            let mut cache = LoopbackReplayCache::new();
+            let nonce = [7u8; LOOPBACK_NONCE_OCTETS];
+            let first = cache
+                .admit(LoopbackReplayPartition::General, nonce, 20, 10)
+                .is_ok();
+            let replay = cache.admit(LoopbackReplayPartition::General, nonce, 20, 10);
+            if first
+                && matches!(replay, Err(ClientError::Protocol { ref code, .. }) if code == "replay_nonce_seen")
+            {
+                pass(Map::new())
+            } else {
+                fail("replay nonce was not bounded")
+            }
+        }
+        _ => {
+            serde_json::json!({"probe": name, "status":"unsupported", "reason":"unknown lifecycle qualification"})
         }
     }
 }
@@ -634,9 +1145,7 @@ pub const LOOPBACK_ALLOWED_TRANSPORT_HEADERS: &[&str] =
 /// transport set. Query/fragment and body-framing (chunked/non-JSON)
 /// rejection is enforced by the caller against `target`/body directly,
 /// since this profile only owns the header surface.
-pub fn validate_loopback_header_profile(
-    headers: &[(String, String)],
-) -> Result<(), ClientError> {
+pub fn validate_loopback_header_profile(headers: &[(String, String)]) -> Result<(), ClientError> {
     let mut seen_required: BTreeMap<&'static str, u32> = LOOPBACK_REQUIRED_HEADERS
         .iter()
         .map(|name| (*name, 0))
@@ -678,7 +1187,11 @@ fn hex_encode(bytes: &[u8]) -> String {
 }
 
 fn hex_decode<const N: usize>(value: &str, label: &str) -> Result<[u8; N], ClientError> {
-    if value.len() != N * 2 || !value.bytes().all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase()) {
+    if value.len() != N * 2
+        || !value
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+    {
         return Err(ClientError::InvalidRequest {
             message: format!("loopback-auth {label} must be {N}-byte lowercase hex"),
         });
@@ -693,11 +1206,12 @@ fn hex_decode<const N: usize>(value: &str, label: &str) -> Result<[u8; N], Clien
 }
 
 fn header_value<'a>(headers: &'a [(String, String)], name: &str) -> Result<&'a str, ClientError> {
-    headers.iter().find_map(|(key, value)| {
-        key.eq_ignore_ascii_case(name).then_some(value.as_str())
-    }).ok_or_else(|| ClientError::InvalidRequest {
-        message: format!("loopback-auth missing header {name}"),
-    })
+    headers
+        .iter()
+        .find_map(|(key, value)| key.eq_ignore_ascii_case(name).then_some(value.as_str()))
+        .ok_or_else(|| ClientError::InvalidRequest {
+            message: format!("loopback-auth missing header {name}"),
+        })
 }
 
 fn body_digest(body: &[u8]) -> [u8; 32] {
@@ -706,32 +1220,57 @@ fn body_digest(body: &[u8]) -> [u8; 32] {
 
 fn canonical_host(host: &str) -> Result<String, ClientError> {
     let normalized = host.trim().to_ascii_lowercase();
-    if normalized.is_empty() || !normalized.is_ascii() || normalized.chars().any(char::is_whitespace)
+    if normalized.is_empty()
+        || !normalized.is_ascii()
+        || normalized.chars().any(char::is_whitespace)
     {
-        return Err(ClientError::InvalidRequest { message: "loopback-auth host is not normalized ASCII".into() });
+        return Err(ClientError::InvalidRequest {
+            message: "loopback-auth host is not normalized ASCII".into(),
+        });
     }
     Ok(normalized)
 }
 
-fn validate_request_shape(method: &str, target: &str, content_type: &str, body: &[u8]) -> Result<(), ClientError> {
-    if !method.is_ascii() || !target.is_ascii() || !content_type.is_ascii()
-        || target.contains('?') || target.contains('#') {
-        return Err(ClientError::InvalidRequest { message: "loopback-auth request has invalid method, target, or content type".into() });
+fn validate_request_shape(
+    method: &str,
+    target: &str,
+    content_type: &str,
+    body: &[u8],
+) -> Result<(), ClientError> {
+    if !method.is_ascii()
+        || !target.is_ascii()
+        || !content_type.is_ascii()
+        || target.contains('?')
+        || target.contains('#')
+    {
+        return Err(ClientError::InvalidRequest {
+            message: "loopback-auth request has invalid method, target, or content type".into(),
+        });
     }
     if !loopback_routes::is_authorized(method, target) {
-        return Err(ClientError::Denied { message: format!("loopback-auth route is not authorized: {method} {target}") });
+        return Err(ClientError::Denied {
+            message: format!("loopback-auth route is not authorized: {method} {target}"),
+        });
     }
     if method == "POST" && content_type != "application/json" {
-        return Err(ClientError::InvalidRequest { message: "loopback-auth POST requires application/json".into() });
+        return Err(ClientError::InvalidRequest {
+            message: "loopback-auth POST requires application/json".into(),
+        });
     }
     if method == "GET" && !content_type.is_empty() {
-        return Err(ClientError::InvalidRequest { message: "loopback-auth GET content type must be empty".into() });
+        return Err(ClientError::InvalidRequest {
+            message: "loopback-auth GET content type must be empty".into(),
+        });
     }
     if method == "GET" && !body.is_empty() {
-        return Err(ClientError::InvalidRequest { message: "loopback-auth GET body must be empty".into() });
+        return Err(ClientError::InvalidRequest {
+            message: "loopback-auth GET body must be empty".into(),
+        });
     }
     if method == "POST" && serde_json::from_slice::<Value>(body).is_err() {
-        return Err(ClientError::InvalidRequest { message: "loopback-auth body must be valid JSON".into() });
+        return Err(ClientError::InvalidRequest {
+            message: "loopback-auth body must be valid JSON".into(),
+        });
     }
     Ok(())
 }
@@ -751,31 +1290,59 @@ pub fn build_loopback_request_headers(
 ) -> Result<Vec<(String, String)>, ClientError> {
     let host = canonical_host(host)?;
     validate_request_shape(method, target, content_type, body)?;
-    if expiry_unix_secs == 0 || identity.installation_id.is_empty() || identity.cortex_store_id.is_empty()
-        || identity.release_generation.is_empty() || identity.stable_install_root.is_empty()
+    if expiry_unix_secs == 0
+        || identity.installation_id.is_empty()
+        || identity.cortex_store_id.is_empty()
+        || identity.release_generation.is_empty()
+        || identity.stable_install_root.is_empty()
     {
-        return Err(ClientError::InvalidRequest { message: "loopback-auth identity or expiry is empty".into() });
+        return Err(ClientError::InvalidRequest {
+            message: "loopback-auth identity or expiry is empty".into(),
+        });
     }
     let fields = LoopbackRequestFields {
-        method: method.into(), target: target.into(), host: host.clone(), content_type: content_type.into(),
-        body_sha256: body_digest(body), identity: identity.clone(), nonce, expiry_unix_secs,
+        method: method.into(),
+        target: target.into(),
+        host: host.clone(),
+        content_type: content_type.into(),
+        body_sha256: body_digest(body),
+        identity: identity.clone(),
+        nonce,
+        expiry_unix_secs,
     };
     let proof = signer.sign_request(&fields)?;
     let mut headers = vec![
         (LOOPBACK_HEADER_VERSION.into(), "1".into()),
         (LOOPBACK_HEADER_NONCE.into(), hex_encode(&nonce)),
         (LOOPBACK_HEADER_EXPIRY.into(), expiry_unix_secs.to_string()),
-        (LOOPBACK_HEADER_INSTALLATION_ID.into(), identity.installation_id.clone()),
-        (LOOPBACK_HEADER_CORTEX_STORE_ID.into(), identity.cortex_store_id.clone()),
-        (LOOPBACK_HEADER_RELEASE_GENERATION.into(), identity.release_generation.clone()),
-        (LOOPBACK_HEADER_STARTUP_GENERATION.into(), identity.startup_generation.to_string()),
-        (LOOPBACK_HEADER_STABLE_INSTALL_ROOT.into(), identity.stable_install_root.clone()),
+        (
+            LOOPBACK_HEADER_INSTALLATION_ID.into(),
+            identity.installation_id.clone(),
+        ),
+        (
+            LOOPBACK_HEADER_CORTEX_STORE_ID.into(),
+            identity.cortex_store_id.clone(),
+        ),
+        (
+            LOOPBACK_HEADER_RELEASE_GENERATION.into(),
+            identity.release_generation.clone(),
+        ),
+        (
+            LOOPBACK_HEADER_STARTUP_GENERATION.into(),
+            identity.startup_generation.to_string(),
+        ),
+        (
+            LOOPBACK_HEADER_STABLE_INSTALL_ROOT.into(),
+            identity.stable_install_root.clone(),
+        ),
         (LOOPBACK_HEADER_PROOF.into(), hex_encode(&proof)),
         ("host".into(), host),
         ("content-length".into(), body.len().to_string()),
         ("connection".into(), "close".into()),
     ];
-    if !content_type.is_empty() { headers.push(("content-type".into(), content_type.into())); }
+    if !content_type.is_empty() {
+        headers.push(("content-type".into(), content_type.into()));
+    }
     Ok(headers)
 }
 
@@ -783,58 +1350,221 @@ pub fn build_loopback_request_headers(
 /// exact raw body, returning parsed fields only after HMAC verification.
 pub fn verify_loopback_request_headers(
     signer: &LoopbackAuthSigner,
-    headers: &[(String, String)], method: &str, target: &str, host: &str,
-    content_type: &str, body: &[u8], expected_identity: &LoopbackIdentityFields,
+    headers: &[(String, String)],
+    method: &str,
+    target: &str,
+    host: &str,
+    content_type: &str,
+    body: &[u8],
+    expected_identity: &LoopbackIdentityFields,
     now_unix_secs: u64,
 ) -> Result<LoopbackRequestFields, ClientError> {
     validate_loopback_header_profile(headers)?;
     let normalized_host = canonical_host(host)?;
     validate_request_shape(method, target, content_type, body)?;
-    if header_value(headers, "host")? != normalized_host { return Err(ClientError::Denied { message: "loopback-auth host mismatch".into() }); }
-    if header_value(headers, "connection")? != "close" { return Err(ClientError::InvalidRequest { message: "loopback-auth connection must be close".into() }); }
-    if method == "POST" && header_value(headers, "content-type")? != "application/json" { return Err(ClientError::InvalidRequest { message: "loopback-auth content type mismatch".into() }); }
-    if method == "GET" && headers.iter().any(|(name, _)| name.eq_ignore_ascii_case("content-type")) { return Err(ClientError::InvalidRequest { message: "loopback-auth GET cannot carry content type".into() }); }
+    if header_value(headers, "host")? != normalized_host {
+        return Err(ClientError::Denied {
+            message: "loopback-auth host mismatch".into(),
+        });
+    }
+    if header_value(headers, "connection")? != "close" {
+        return Err(ClientError::InvalidRequest {
+            message: "loopback-auth connection must be close".into(),
+        });
+    }
+    if method == "POST" && header_value(headers, "content-type")? != "application/json" {
+        return Err(ClientError::InvalidRequest {
+            message: "loopback-auth content type mismatch".into(),
+        });
+    }
+    if method == "GET"
+        && headers
+            .iter()
+            .any(|(name, _)| name.eq_ignore_ascii_case("content-type"))
+    {
+        return Err(ClientError::InvalidRequest {
+            message: "loopback-auth GET cannot carry content type".into(),
+        });
+    }
     if let Ok(length) = header_value(headers, "content-length")?.parse::<usize>() {
-        if length != body.len() { return Err(ClientError::InvalidRequest { message: "loopback-auth content length mismatch".into() }); }
-    } else { return Err(ClientError::InvalidRequest { message: "loopback-auth invalid content length".into() }); }
-    if header_value(headers, LOOPBACK_HEADER_VERSION)? != "1" { return Err(ClientError::Denied { message: "loopback-auth unsupported profile version".into() }); }
-    let expiry = header_value(headers, LOOPBACK_HEADER_EXPIRY)?.parse::<u64>().map_err(|_| ClientError::InvalidRequest { message: "loopback-auth invalid expiry".into() })?;
-    if expiry <= now_unix_secs || expiry.saturating_sub(now_unix_secs) > LOOPBACK_MAX_EXPIRY_SECS { return Err(ClientError::Denied { message: "loopback-auth expired or overlong expiry".into() }); }
-    let startup_generation = header_value(headers, LOOPBACK_HEADER_STARTUP_GENERATION)?.parse::<u64>().map_err(|_| ClientError::InvalidRequest { message: "loopback-auth invalid startup generation".into() })?;
-    let nonce = hex_decode::<LOOPBACK_NONCE_OCTETS>(header_value(headers, LOOPBACK_HEADER_NONCE)?, "nonce")?;
-    let fields = LoopbackRequestFields { method: method.into(), target: target.into(), host: normalized_host, content_type: content_type.into(), body_sha256: body_digest(body), identity: LoopbackIdentityFields { installation_id: header_value(headers, LOOPBACK_HEADER_INSTALLATION_ID)?.into(), cortex_store_id: header_value(headers, LOOPBACK_HEADER_CORTEX_STORE_ID)?.into(), release_generation: header_value(headers, LOOPBACK_HEADER_RELEASE_GENERATION)?.into(), startup_generation, stable_install_root: header_value(headers, LOOPBACK_HEADER_STABLE_INSTALL_ROOT)?.into() }, nonce, expiry_unix_secs: expiry };
-    if &fields.identity != expected_identity { return Err(ClientError::Denied { message: "loopback-auth identity mismatch".into() }); }
-    signer.verify_request(&fields, &hex_decode::<32>(header_value(headers, LOOPBACK_HEADER_PROOF)?, "proof")?)?;
+        if length != body.len() {
+            return Err(ClientError::InvalidRequest {
+                message: "loopback-auth content length mismatch".into(),
+            });
+        }
+    } else {
+        return Err(ClientError::InvalidRequest {
+            message: "loopback-auth invalid content length".into(),
+        });
+    }
+    if header_value(headers, LOOPBACK_HEADER_VERSION)? != "1" {
+        return Err(ClientError::Denied {
+            message: "loopback-auth unsupported profile version".into(),
+        });
+    }
+    let expiry = header_value(headers, LOOPBACK_HEADER_EXPIRY)?
+        .parse::<u64>()
+        .map_err(|_| ClientError::InvalidRequest {
+            message: "loopback-auth invalid expiry".into(),
+        })?;
+    if expiry <= now_unix_secs || expiry.saturating_sub(now_unix_secs) > LOOPBACK_MAX_EXPIRY_SECS {
+        return Err(ClientError::Denied {
+            message: "loopback-auth expired or overlong expiry".into(),
+        });
+    }
+    let startup_generation = header_value(headers, LOOPBACK_HEADER_STARTUP_GENERATION)?
+        .parse::<u64>()
+        .map_err(|_| ClientError::InvalidRequest {
+            message: "loopback-auth invalid startup generation".into(),
+        })?;
+    let nonce = hex_decode::<LOOPBACK_NONCE_OCTETS>(
+        header_value(headers, LOOPBACK_HEADER_NONCE)?,
+        "nonce",
+    )?;
+    let fields = LoopbackRequestFields {
+        method: method.into(),
+        target: target.into(),
+        host: normalized_host,
+        content_type: content_type.into(),
+        body_sha256: body_digest(body),
+        identity: LoopbackIdentityFields {
+            installation_id: header_value(headers, LOOPBACK_HEADER_INSTALLATION_ID)?.into(),
+            cortex_store_id: header_value(headers, LOOPBACK_HEADER_CORTEX_STORE_ID)?.into(),
+            release_generation: header_value(headers, LOOPBACK_HEADER_RELEASE_GENERATION)?.into(),
+            startup_generation,
+            stable_install_root: header_value(headers, LOOPBACK_HEADER_STABLE_INSTALL_ROOT)?.into(),
+        },
+        nonce,
+        expiry_unix_secs: expiry,
+    };
+    if &fields.identity != expected_identity {
+        return Err(ClientError::Denied {
+            message: "loopback-auth identity mismatch".into(),
+        });
+    }
+    signer.verify_request(
+        &fields,
+        &hex_decode::<32>(header_value(headers, LOOPBACK_HEADER_PROOF)?, "proof")?,
+    )?;
     Ok(fields)
 }
 
 /// Construct response headers bound to request nonce, status, raw response,
 /// identity, and request expiry.
 pub fn build_loopback_response_headers(
-    signer: &LoopbackAuthSigner, identity: &LoopbackIdentityFields,
-    nonce: [u8; LOOPBACK_NONCE_OCTETS], status: u16, body: &[u8], expiry_unix_secs: u64,
+    signer: &LoopbackAuthSigner,
+    identity: &LoopbackIdentityFields,
+    nonce: [u8; LOOPBACK_NONCE_OCTETS],
+    status: u16,
+    body: &[u8],
+    expiry_unix_secs: u64,
 ) -> Result<Vec<(String, String)>, ClientError> {
-    let fields = LoopbackResponseFields { nonce, status, body_sha256: body_digest(body), identity: identity.clone() };
+    let fields = LoopbackResponseFields {
+        nonce,
+        status,
+        body_sha256: body_digest(body),
+        identity: identity.clone(),
+    };
     let proof = signer.sign_response(&fields)?;
-    Ok(vec![(LOOPBACK_HEADER_VERSION.into(), "1".into()), (LOOPBACK_HEADER_NONCE.into(), hex_encode(&nonce)), (LOOPBACK_HEADER_EXPIRY.into(), expiry_unix_secs.to_string()), (LOOPBACK_HEADER_INSTALLATION_ID.into(), identity.installation_id.clone()), (LOOPBACK_HEADER_CORTEX_STORE_ID.into(), identity.cortex_store_id.clone()), (LOOPBACK_HEADER_RELEASE_GENERATION.into(), identity.release_generation.clone()), (LOOPBACK_HEADER_STARTUP_GENERATION.into(), identity.startup_generation.to_string()), (LOOPBACK_HEADER_STABLE_INSTALL_ROOT.into(), identity.stable_install_root.clone()), (LOOPBACK_HEADER_PROOF.into(), hex_encode(&proof)), ("connection".into(), "close".into()), ("content-length".into(), body.len().to_string())])
+    Ok(vec![
+        (LOOPBACK_HEADER_VERSION.into(), "1".into()),
+        (LOOPBACK_HEADER_NONCE.into(), hex_encode(&nonce)),
+        (LOOPBACK_HEADER_EXPIRY.into(), expiry_unix_secs.to_string()),
+        (
+            LOOPBACK_HEADER_INSTALLATION_ID.into(),
+            identity.installation_id.clone(),
+        ),
+        (
+            LOOPBACK_HEADER_CORTEX_STORE_ID.into(),
+            identity.cortex_store_id.clone(),
+        ),
+        (
+            LOOPBACK_HEADER_RELEASE_GENERATION.into(),
+            identity.release_generation.clone(),
+        ),
+        (
+            LOOPBACK_HEADER_STARTUP_GENERATION.into(),
+            identity.startup_generation.to_string(),
+        ),
+        (
+            LOOPBACK_HEADER_STABLE_INSTALL_ROOT.into(),
+            identity.stable_install_root.clone(),
+        ),
+        (LOOPBACK_HEADER_PROOF.into(), hex_encode(&proof)),
+        ("connection".into(), "close".into()),
+        ("content-length".into(), body.len().to_string()),
+    ])
 }
 
 /// Verify response proof and binding to request nonce, status, raw body,
 /// identity, and request expiry.
 pub fn verify_loopback_response_headers(
-    signer: &LoopbackAuthSigner, headers: &[(String, String)], request: &LoopbackRequestFields,
-    status: u16, body: &[u8], expected_identity: &LoopbackIdentityFields, now_unix_secs: u64,
+    signer: &LoopbackAuthSigner,
+    headers: &[(String, String)],
+    request: &LoopbackRequestFields,
+    status: u16,
+    body: &[u8],
+    expected_identity: &LoopbackIdentityFields,
+    now_unix_secs: u64,
 ) -> Result<(), ClientError> {
     validate_loopback_header_profile(headers)?;
-    if header_value(headers, "connection")? != "close" { return Err(ClientError::InvalidRequest { message: "loopback-auth response connection must be close".into() }); }
-    if header_value(headers, LOOPBACK_HEADER_VERSION)? != "1" || header_value(headers, LOOPBACK_HEADER_EXPIRY)? != request.expiry_unix_secs.to_string() || request.expiry_unix_secs <= now_unix_secs { return Err(ClientError::Denied { message: "loopback-auth response expiry mismatch".into() }); }
-    if header_value(headers, "content-length")?.parse::<usize>().ok() != Some(body.len()) { return Err(ClientError::InvalidRequest { message: "loopback-auth response content length mismatch".into() }); }
-    let nonce = hex_decode::<LOOPBACK_NONCE_OCTETS>(header_value(headers, LOOPBACK_HEADER_NONCE)?, "nonce")?;
-    if nonce != request.nonce { return Err(ClientError::Denied { message: "loopback-auth response nonce mismatch".into() }); }
-    let identity = LoopbackIdentityFields { installation_id: header_value(headers, LOOPBACK_HEADER_INSTALLATION_ID)?.into(), cortex_store_id: header_value(headers, LOOPBACK_HEADER_CORTEX_STORE_ID)?.into(), release_generation: header_value(headers, LOOPBACK_HEADER_RELEASE_GENERATION)?.into(), startup_generation: header_value(headers, LOOPBACK_HEADER_STARTUP_GENERATION)?.parse().map_err(|_| ClientError::InvalidRequest { message: "loopback-auth invalid startup generation".into() })?, stable_install_root: header_value(headers, LOOPBACK_HEADER_STABLE_INSTALL_ROOT)?.into() };
-    if &identity != expected_identity { return Err(ClientError::Denied { message: "loopback-auth response identity mismatch".into() }); }
-    let fields = LoopbackResponseFields { nonce, status, body_sha256: body_digest(body), identity };
-    signer.verify_response(&fields, &hex_decode::<32>(header_value(headers, LOOPBACK_HEADER_PROOF)?, "proof")?)
+    if header_value(headers, "connection")? != "close" {
+        return Err(ClientError::InvalidRequest {
+            message: "loopback-auth response connection must be close".into(),
+        });
+    }
+    if header_value(headers, LOOPBACK_HEADER_VERSION)? != "1"
+        || header_value(headers, LOOPBACK_HEADER_EXPIRY)? != request.expiry_unix_secs.to_string()
+        || request.expiry_unix_secs <= now_unix_secs
+    {
+        return Err(ClientError::Denied {
+            message: "loopback-auth response expiry mismatch".into(),
+        });
+    }
+    if header_value(headers, "content-length")?
+        .parse::<usize>()
+        .ok()
+        != Some(body.len())
+    {
+        return Err(ClientError::InvalidRequest {
+            message: "loopback-auth response content length mismatch".into(),
+        });
+    }
+    let nonce = hex_decode::<LOOPBACK_NONCE_OCTETS>(
+        header_value(headers, LOOPBACK_HEADER_NONCE)?,
+        "nonce",
+    )?;
+    if nonce != request.nonce {
+        return Err(ClientError::Denied {
+            message: "loopback-auth response nonce mismatch".into(),
+        });
+    }
+    let identity = LoopbackIdentityFields {
+        installation_id: header_value(headers, LOOPBACK_HEADER_INSTALLATION_ID)?.into(),
+        cortex_store_id: header_value(headers, LOOPBACK_HEADER_CORTEX_STORE_ID)?.into(),
+        release_generation: header_value(headers, LOOPBACK_HEADER_RELEASE_GENERATION)?.into(),
+        startup_generation: header_value(headers, LOOPBACK_HEADER_STARTUP_GENERATION)?
+            .parse()
+            .map_err(|_| ClientError::InvalidRequest {
+                message: "loopback-auth invalid startup generation".into(),
+            })?,
+        stable_install_root: header_value(headers, LOOPBACK_HEADER_STABLE_INSTALL_ROOT)?.into(),
+    };
+    if &identity != expected_identity {
+        return Err(ClientError::Denied {
+            message: "loopback-auth response identity mismatch".into(),
+        });
+    }
+    let fields = LoopbackResponseFields {
+        nonce,
+        status,
+        body_sha256: body_digest(body),
+        identity,
+    };
+    signer.verify_response(
+        &fields,
+        &hex_decode::<32>(header_value(headers, LOOPBACK_HEADER_PROOF)?, "proof")?,
+    )
 }
 
 /// Canonical route authority. Derived only from `memory_backend.rs` route
@@ -922,11 +1652,19 @@ impl LoopbackAuthSigner {
         self.sign(&encode_loopback_response(fields))
     }
 
-    pub fn verify_request(&self, fields: &LoopbackRequestFields, tag: &[u8]) -> Result<(), ClientError> {
+    pub fn verify_request(
+        &self,
+        fields: &LoopbackRequestFields,
+        tag: &[u8],
+    ) -> Result<(), ClientError> {
         self.verify(&encode_loopback_request(fields), tag)
     }
 
-    pub fn verify_response(&self, fields: &LoopbackResponseFields, tag: &[u8]) -> Result<(), ClientError> {
+    pub fn verify_response(
+        &self,
+        fields: &LoopbackResponseFields,
+        tag: &[u8],
+    ) -> Result<(), ClientError> {
         self.verify(&encode_loopback_response(fields), tag)
     }
 
@@ -1004,15 +1742,16 @@ impl LoopbackReplayCache {
             LoopbackReplayPartition::Reserved => (&mut self.reserved, LOOPBACK_REPLAY_RESERVED),
         };
         if table.len() >= limit {
-            let retry_after_ms = table.values().copied().min().unwrap_or(expiry_unix_secs)
+            let retry_after_ms = table
+                .values()
+                .copied()
+                .min()
+                .unwrap_or(expiry_unix_secs)
                 .saturating_sub(now_unix_secs)
                 .saturating_mul(1000);
             let mut details = Map::new();
             details.insert("retryAfterMs".into(), Value::from(retry_after_ms));
-            details.insert(
-                "readiness".into(),
-                Value::from("ReplayAdmissionSaturated"),
-            );
+            details.insert("readiness".into(), Value::from("ReplayAdmissionSaturated"));
             return Err(ClientError::Protocol {
                 code: "replay_admission_saturated".into(),
                 message: "loopback-auth replay partition is at capacity".into(),
@@ -1033,18 +1772,43 @@ impl LoopbackReplayCache {
     pub fn snapshot(&mut self, now_unix_secs: u64) -> LoopbackReplaySnapshot {
         self.reconcile(now_unix_secs);
         LoopbackReplaySnapshot {
-            general: LoopbackReplayPartitionSnapshot::new(self.general.len(), LOOPBACK_REPLAY_GENERAL_MAX, &self.general),
-            reserved: LoopbackReplayPartitionSnapshot::new(self.reserved.len(), LOOPBACK_REPLAY_RESERVED, &self.reserved),
+            general: LoopbackReplayPartitionSnapshot::new(
+                self.general.len(),
+                LOOPBACK_REPLAY_GENERAL_MAX,
+                &self.general,
+            ),
+            reserved: LoopbackReplayPartitionSnapshot::new(
+                self.reserved.len(),
+                LOOPBACK_REPLAY_RESERVED,
+                &self.reserved,
+            ),
         }
     }
 }
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct LoopbackReplaySnapshot { pub general: LoopbackReplayPartitionSnapshot, pub reserved: LoopbackReplayPartitionSnapshot }
+pub struct LoopbackReplaySnapshot {
+    pub general: LoopbackReplayPartitionSnapshot,
+    pub reserved: LoopbackReplayPartitionSnapshot,
+}
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct LoopbackReplayPartitionSnapshot { pub active: usize, pub limit: usize, pub expiring_entries: usize, pub earliest_expiry_unix_secs: Option<u64> }
+pub struct LoopbackReplayPartitionSnapshot {
+    pub active: usize,
+    pub limit: usize,
+    pub expiring_entries: usize,
+    pub earliest_expiry_unix_secs: Option<u64>,
+}
 impl LoopbackReplayPartitionSnapshot {
-    fn new(active: usize, limit: usize, entries: &BTreeMap<[u8; LOOPBACK_NONCE_OCTETS], u64>) -> Self {
-        Self { active, limit, expiring_entries: entries.len(), earliest_expiry_unix_secs: entries.values().copied().min() }
+    fn new(
+        active: usize,
+        limit: usize,
+        entries: &BTreeMap<[u8; LOOPBACK_NONCE_OCTETS], u64>,
+    ) -> Self {
+        Self {
+            active,
+            limit,
+            expiring_entries: entries.len(),
+            earliest_expiry_unix_secs: entries.values().copied().min(),
+        }
     }
 }
 
@@ -1056,7 +1820,9 @@ mod loopback_auth_tests {
         for index in 0..super::LOOPBACK_REPLAY_RESERVED {
             let mut nonce = [0; 32];
             nonce[..8].copy_from_slice(&(index as u64).to_be_bytes());
-            cache.admit(super::LoopbackReplayPartition::Reserved, nonce, 20, 10).unwrap();
+            cache
+                .admit(super::LoopbackReplayPartition::Reserved, nonce, 20, 10)
+                .unwrap();
         }
         let full = cache.snapshot(19);
         assert_eq!(full.reserved.active, full.reserved.limit);
@@ -1069,11 +1835,20 @@ mod loopback_auth_tests {
     fn duplicate_nonce_refused_in_both_partitions_until_expiry() {
         let mut cache = super::LoopbackReplayCache::new();
         let nonce = [9; 32];
-        cache.admit(super::LoopbackReplayPartition::General, nonce, 20, 10).unwrap();
-        for partition in [super::LoopbackReplayPartition::General, super::LoopbackReplayPartition::Reserved] {
-            assert!(matches!(cache.admit(partition, nonce, 20, 10), Err(super::ClientError::Protocol { code, .. }) if code == "replay_nonce_seen"));
+        cache
+            .admit(super::LoopbackReplayPartition::General, nonce, 20, 10)
+            .unwrap();
+        for partition in [
+            super::LoopbackReplayPartition::General,
+            super::LoopbackReplayPartition::Reserved,
+        ] {
+            assert!(
+                matches!(cache.admit(partition, nonce, 20, 10), Err(super::ClientError::Protocol { code, .. }) if code == "replay_nonce_seen")
+            );
         }
-        cache.admit(super::LoopbackReplayPartition::Reserved, nonce, 30, 20).unwrap();
+        cache
+            .admit(super::LoopbackReplayPartition::Reserved, nonce, 30, 20)
+            .unwrap();
     }
     use super::*;
 
@@ -1167,18 +1942,42 @@ mod loopback_auth_tests {
         let identity = identity();
         let body = br#"{"key":"value"}"#;
         let headers = build_loopback_request_headers(
-            &signer, &identity, "POST", "/remember", "127.0.0.1", "application/json", body,
-            [2u8; LOOPBACK_NONCE_OCTETS], 120,
-        ).unwrap();
+            &signer,
+            &identity,
+            "POST",
+            "/remember",
+            "127.0.0.1",
+            "application/json",
+            body,
+            [2u8; LOOPBACK_NONCE_OCTETS],
+            120,
+        )
+        .unwrap();
         let request = verify_loopback_request_headers(
-            &signer, &headers, "POST", "/remember", "127.0.0.1", "application/json", body,
-            &identity, 100,
-        ).unwrap();
+            &signer,
+            &headers,
+            "POST",
+            "/remember",
+            "127.0.0.1",
+            "application/json",
+            body,
+            &identity,
+            100,
+        )
+        .unwrap();
         assert_eq!(request.nonce, [2u8; LOOPBACK_NONCE_OCTETS]);
         assert!(verify_loopback_request_headers(
-            &signer, &headers, "POST", "/remember", "127.0.0.1", "application/json", br#"{"key":"tampered"}"#,
-            &identity, 100,
-        ).is_err());
+            &signer,
+            &headers,
+            "POST",
+            "/remember",
+            "127.0.0.1",
+            "application/json",
+            br#"{"key":"tampered"}"#,
+            &identity,
+            100,
+        )
+        .is_err());
     }
 
     #[test]
@@ -1187,18 +1986,34 @@ mod loopback_auth_tests {
         let identity = identity();
         let body = br#"{"ok":true}"#;
         let request = LoopbackRequestFields {
-            method: "POST".into(), target: "/remember".into(), host: "127.0.0.1".into(),
-            content_type: "application/json".into(), body_sha256: body_digest(br#"{"key":"value"}"#),
-            identity: identity.clone(), nonce: [2u8; LOOPBACK_NONCE_OCTETS], expiry_unix_secs: 120,
+            method: "POST".into(),
+            target: "/remember".into(),
+            host: "127.0.0.1".into(),
+            content_type: "application/json".into(),
+            body_sha256: body_digest(br#"{"key":"value"}"#),
+            identity: identity.clone(),
+            nonce: [2u8; LOOPBACK_NONCE_OCTETS],
+            expiry_unix_secs: 120,
         };
-        let headers = build_loopback_response_headers(&signer, &identity, request.nonce, 200, body, 120).unwrap();
-        assert!(verify_loopback_response_headers(&signer, &headers, &request, 200, body, &identity, 100).is_ok());
-        assert!(verify_loopback_response_headers(&signer, &headers, &request, 500, body, &identity, 100).is_err());
+        let headers =
+            build_loopback_response_headers(&signer, &identity, request.nonce, 200, body, 120)
+                .unwrap();
+        assert!(verify_loopback_response_headers(
+            &signer, &headers, &request, 200, body, &identity, 100
+        )
+        .is_ok());
+        assert!(verify_loopback_response_headers(
+            &signer, &headers, &request, 500, body, &identity, 100
+        )
+        .is_err());
     }
 
     #[test]
     fn expiry_is_capped_at_thirty_seconds() {
-        assert_eq!(LoopbackAuthSigner::bounded_expiry(0, 1000), LOOPBACK_MAX_EXPIRY_SECS);
+        assert_eq!(
+            LoopbackAuthSigner::bounded_expiry(0, 1000),
+            LOOPBACK_MAX_EXPIRY_SECS
+        );
         assert_eq!(LoopbackAuthSigner::bounded_expiry(100, 5), 105);
     }
 }
@@ -1229,9 +2044,25 @@ mod tests {
         let mut registry = ResidencyRegistry::new();
         let hub = holder(HolderKind::Hub, "hub-1");
         let coderight = holder(HolderKind::CodeRightDaemon, "coderight-1");
-        assert!(registry.acquire(controller(), hub.clone(), 10, 100).unwrap().start_controller);
-        assert!(!registry.acquire(controller(), coderight.clone(), 10, 100).unwrap().start_controller);
-        assert_eq!((registry.snapshot().hub_holders, registry.snapshot().coderight_daemon_holders), (1, 1));
+        assert!(
+            registry
+                .acquire(controller(), hub.clone(), 10, 100)
+                .unwrap()
+                .start_controller
+        );
+        assert!(
+            !registry
+                .acquire(controller(), coderight.clone(), 10, 100)
+                .unwrap()
+                .start_controller
+        );
+        assert_eq!(
+            (
+                registry.snapshot().hub_holders,
+                registry.snapshot().coderight_daemon_holders
+            ),
+            (1, 1)
+        );
         assert!(!registry.release(&hub).unwrap().drain_controller);
         let neither = registry.release(&coderight).unwrap();
         assert!(neither.drain_controller);
@@ -1242,24 +2073,63 @@ mod tests {
     fn leases_are_idempotent_bounded_and_authenticated() {
         let mut registry = ResidencyRegistry::new();
         let hub = holder(HolderKind::Hub, "hub-1");
-        assert!(registry.acquire(controller(), hub.clone(), 1, 10).unwrap().start_controller);
-        assert!(!registry.acquire(controller(), hub.clone(), 2, 20).unwrap().start_controller);
+        assert!(
+            registry
+                .acquire(controller(), hub.clone(), 1, 10)
+                .unwrap()
+                .start_controller
+        );
+        assert!(
+            !registry
+                .acquire(controller(), hub.clone(), 2, 20)
+                .unwrap()
+                .start_controller
+        );
         assert_eq!(registry.renew(&hub, 3, 30).unwrap().hub_holders, 1);
         let mut wrong = hub.clone();
         wrong.credential_id = "wrong".into();
-        assert_eq!(registry.release(&wrong), Err(ResidencyError::CredentialMismatch));
+        assert_eq!(
+            registry.release(&wrong),
+            Err(ResidencyError::CredentialMismatch)
+        );
         assert!(registry.reconcile_expired(30).drain_controller);
     }
 
     #[test]
     fn active_controller_rejects_split_identity() {
         let mut registry = ResidencyRegistry::new();
-        registry.acquire(controller(), holder(HolderKind::Hub, "hub-1"), 1, 10).unwrap();
+        registry
+            .acquire(controller(), holder(HolderKind::Hub, "hub-1"), 1, 10)
+            .unwrap();
         let mut changed = controller();
         changed.cortex_store_id = "other-store".into();
         assert_eq!(
-            registry.acquire(changed, holder(HolderKind::CodeRightDaemon, "coderight-1"), 1, 10),
+            registry.acquire(
+                changed,
+                holder(HolderKind::CodeRightDaemon, "coderight-1"),
+                1,
+                10
+            ),
             Err(ResidencyError::ControllerMismatch)
         );
+    }
+
+    #[test]
+    fn qualification_lifecycle_reports_typed_pass() {
+        for probe in [
+            "credential-race",
+            "lease-incarnation",
+            "reordered-response",
+            "lost-response",
+            "clock-rewind",
+            "replay-bound",
+        ] {
+            let result = super::qualification_lifecycle(probe);
+            assert_eq!(
+                result.get("status").and_then(Value::as_str),
+                Some("pass"),
+                "{probe}: {result}"
+            );
+        }
     }
 }

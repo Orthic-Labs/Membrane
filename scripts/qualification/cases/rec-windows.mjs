@@ -14,7 +14,6 @@ import { fileURLToPath } from "node:url";
 const HERE = dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = resolve(HERE, "../../../");
 const REVIEW_ROOT_DEFAULT = "D:/Claude/review/windows-r5";
-const PACKET_SHA256 = "7eed33c39ba37cbed704425a7c0845caa61c091bd9c70ed9c7ab3b0ebc423aee";
 const REQUIRED_SUBCASES = Object.freeze({ BM: 12, NCL: 5, PKG: 5, LC: 6, EX: 9, REC: 3, CRA: 13 });
 
 function rootOf(context = {}) {
@@ -162,8 +161,9 @@ export function evaluateCrosswalk({ membrane, coderight, blueprint, amendment, c
     if (!Array.isArray(row.lanes) || row.lanes.length === 0) failures.push(`${row.id} has no owning lane`);
     if (!Array.isArray(row.caseIds) || row.caseIds.length === 0) failures.push(`${row.id} has no mapped case`);
   }
-  if (manifest?.finalImplementationPacket?.sha256 !== PACKET_SHA256) failures.push("corrected-input-manifest does not pin supplied FINAL packet SHA-256");
-  if (packetHash && packetHash !== PACKET_SHA256) failures.push(`supplied FINAL packet hash mismatch: ${packetHash}`);
+  const manifestPacketHash = String(manifest?.finalImplementationPacket?.sha256 || "").toLowerCase();
+  if (!/^[0-9a-f]{64}$/.test(manifestPacketHash)) failures.push("corrected-input-manifest final packet SHA-256 is missing or invalid");
+  if (packetHash && packetHash !== manifestPacketHash) failures.push(`supplied FINAL packet hash mismatch: ${packetHash} (manifest: ${manifestPacketHash})`);
   return { ok: failures.length === 0, failures, denominators: { membrane: caseIds(membrane).length, coderight: caseIds(coderight).length }, subcases: Object.fromEntries(Object.keys(REQUIRED_SUBCASES).map((prefix) => [prefix, allIds.filter((id) => hasPrefix(id, prefix)).length])), crosswalk: { items: crosswalk?.items, rows: rows.length, mapped: rows.filter((row) => Array.isArray(row.caseIds) && row.caseIds.length > 0).length }, packetSha256: manifest?.finalImplementationPacket?.sha256 };
 }
 
@@ -171,6 +171,14 @@ function hashFile(file) {
   const hash = createHash("sha256");
   hash.update(readFileSync(file));
   return hash.digest("hex");
+}
+
+function manifestPacketPath(manifest, manifestPath) {
+  const packetPath = manifest?.finalImplementationPacket?.path;
+  if (!packetPath) return null;
+  return /^[A-Za-z]:[\\/]/.test(packetPath) || packetPath.startsWith("\\\\")
+    ? packetPath
+    : resolve(dirname(manifestPath), packetPath);
 }
 
 export async function REC_03(context = {}) {
@@ -189,8 +197,11 @@ export async function REC_03(context = {}) {
   let input;
   try {
     input = Object.fromEntries(Object.entries(paths).map(([name, file]) => [name, readJson(file)]));
-    const packetPath = input.manifest.finalImplementationPacket?.path;
-    const packetHash = packetPath && existsSync(packetPath) ? hashFile(packetPath) : null;
+    const packetPath = manifestPacketPath(input.manifest, paths.manifest);
+    if (!packetPath || !existsSync(packetPath)) {
+      return fail(`REC-03: supplied FINAL packet missing: ${packetPath || "manifest finalImplementationPacket.path"}`, { paths, packetPath });
+    }
+    const packetHash = hashFile(packetPath);
     const evaluation = evaluateCrosswalk({ ...input, packetHash });
     if (!evaluation.ok) return fail(`REC-03: ${evaluation.failures.join("; ")}`, { paths, ...evaluation });
     return pass({ paths, ...evaluation }, "REC-03: denominators, amendment mappings, requirement crosswalk, and FINAL packet provenance reconcile");

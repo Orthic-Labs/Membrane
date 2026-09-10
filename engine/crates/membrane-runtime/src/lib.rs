@@ -3,6 +3,11 @@
 //! Pull acquisition and Push reduction.
 
 pub mod adapt;
+mod adapt_admin_qualification;
+mod adapt_efficiency_qualification;
+mod adapt_lifecycle_qualification;
+mod blueprint_provider_qualification;
+mod blueprint_security_qualification;
 pub mod adapt_effectiveness;
 pub mod adapt_efficiency;
 pub mod admission_producer;
@@ -17,6 +22,8 @@ pub mod checkpoint;
 pub mod cli;
 pub mod code_batch;
 pub mod cortex_lifecycle;
+mod cortex_qualification_core;
+mod cortex_qualification_lifecycle;
 pub mod cortex_relevance_spotcheck;
 pub mod delivery_trace_view;
 pub mod diagnostic_bundle;

@@ -27,11 +27,15 @@ run(rightkit, [
   "cortex",
   "--locked",
 ]);
-run("node", [
-  "--test",
-  "mcp/scope-grant-v1.test.mjs",
-  "mcp/deadline.test.mjs",
-  "mcp/delivery-serialization.test.mjs",
+// Legacy mcp Node twins are excluded. Native Rust parity is exercised below.
+run(rightkit, [
+  "cargo",
+  "test",
+  "--manifest-path",
+  "engine/Cargo.toml",
+  "-p",
+  "membrane-mcp",
+  "--locked",
 ]);
 run(rightkit, [
   "cargo",

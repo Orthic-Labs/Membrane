@@ -18,13 +18,14 @@
 // control that silently stopped failing is caught here rather than only at
 // installed-acceptance time.
 //
-// Runner contract (declared, not yet implemented by an integration-owner
-// runner): each export is an async function `(context) => CaseResultV1`,
-// where `context.workspaceRoot` defaults to the repository root resolved
-// from this file's own location. `CaseResultV1` is
-// `{ id, requirement, passed, findings: string[], negativeControls: [{control, passed, howItFails}] }`.
+// Runner contract: each export is an async function `(context) => CaseResultV1`.
+// Without a registry row, exports return source evidence for focused checks.
+// Registry execution additionally requires an independently captured installed
+// observation; source markers are never relabelled as runtime evidence.
 
-import { readFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -38,6 +39,86 @@ const BACKGROUND_REVIEW_INPUT_RS =
 
 function readOwned(workspaceRoot, relativePath) {
   return readFileSync(resolve(workspaceRoot, relativePath), "utf8");
+}
+
+function sourceEvidence(workspaceRoot, files) {
+  return files.map(({ path, markers }) => {
+    const absolute = resolve(workspaceRoot, path);
+    if (!existsSync(absolute)) return { path, exists: false, markers: [] };
+    const content = readFileSync(absolute, "utf8");
+    return {
+      path,
+      exists: true,
+      sha256: createHash("sha256").update(content).digest("hex"),
+      markers: markers.filter((marker) => content.includes(marker)),
+    };
+  });
+}
+
+function installedRoot(context) {
+  const configured = context?.installedRoot || process.env.MEMBRANE_QUALIFICATION_INSTALLED_ROOT;
+  if (!configured) return null;
+  const root = resolve(configured);
+  return /[\\/]current$/iu.test(root) ? root : resolve(root, "current");
+}
+
+function installedObservation(context, id, source) {
+  const root = installedRoot(context);
+  if (!root) return { ok: false, reason: "installed root was not supplied" };
+  const executable = resolve(root, "membrane.exe");
+  if (!existsSync(executable)) return { ok: false, reason: `installed membrane.exe missing: ${executable}` };
+  let identity;
+  try {
+    const raw = execFileSync(executable, ["status", "--dry-run"], {
+      cwd: root, encoding: "utf8", windowsHide: true, timeout: 15000,
+    });
+    identity = JSON.parse(raw);
+  } catch (error) {
+    return { ok: false, reason: `installed identity probe failed: ${error.message}` };
+  }
+  if (identity.runtimeOrigin !== "installed" || identity.installRoot !== root) {
+    return { ok: false, reason: "installed identity probe did not confirm stable current runtime" };
+  }
+  const observationPath = context?.semanticProducerObservationPath ||
+    process.env.MEMBRANE_SEMANTIC_PRODUCER_OBSERVATION ||
+    resolve(context?.workspaceRoot || WORKSPACE_ROOT, "audit/qualification/windows-r5/receipts/semantic-producer-observation.json");
+  if (!existsSync(observationPath)) return { ok: false, reason: `missing native installed observation: ${observationPath}` };
+  let observation;
+  try { observation = JSON.parse(readFileSync(observationPath, "utf8")); }
+  catch (error) { return { ok: false, reason: `cannot read native installed observation: ${error.message}` }; }
+  const result = observation.cases?.[id];
+  const sourceHashes = new Map(source.filter((entry) => entry.exists).map((entry) => [entry.path, entry.sha256]));
+  const bound = result?.sourceBindings;
+  const sourceBound = bound && Object.keys(bound).length === sourceHashes.size &&
+    sourceHashes.size > 0 && Object.entries(bound).every(([path, sha256]) => sourceHashes.get(path) === sha256);
+  if (observation.schema !== "membrane.windows-semantic-producer-observation.v1" ||
+      observation.platform !== "windows" || observation.installed !== true ||
+      observation.runtimeOrigin !== "installed" || observation.installedIdentity?.verified !== true ||
+      result?.status !== "passed" || result?.nativeEvidence !== true || !sourceBound) {
+    return { ok: false, reason: `native installed observation for ${id} is missing verified runtime/source binding` };
+  }
+  return { ok: true, value: { path: observationPath, executable, identity, case: result } };
+}
+
+function resultFor(context, id, requirement, checks, negativeControls, sourceFiles) {
+  const failed = checks.filter((check) => !check.passed);
+  const source = sourceEvidence(context.workspaceRoot ?? WORKSPACE_ROOT, sourceFiles);
+  const sourcePass = failed.length === 0 && negativeControls.every((control) => control.passed);
+  const base = {
+    id, requirement, pass: sourcePass, passed: sourcePass,
+    status: sourcePass ? "passed" : "failed", evidenceKind: "source", kind: "structural",
+    findings: failed.flatMap((check) => check.findings), negativeControls, evidence: { source },
+  };
+  if (!context.row) return base;
+  const installed = installedObservation(context, id, source);
+  const pass = sourcePass && installed.ok;
+  return {
+    ...base, pass, passed: pass,
+    status: pass ? "passed" : installed.ok ? "failed" : "insufficient",
+    evidenceKind: "installed", kind: "installed",
+    evidence: { source, installed: installed.ok ? installed.value : null },
+    reason: pass ? `${id}: source contract & installed native observation passed` : `${id}: ${installed.reason || "source contract failed"}`,
+  };
 }
 
 /** Remove every line containing `marker` from `text` — the fault injection
@@ -120,15 +201,17 @@ export async function MEM_044(context = {}) {
     ),
   ];
 
-  const failed = checks.filter((check) => !check.passed);
-  return {
-    id: "MEM-044",
-    requirement:
-      "Execute only bounded idempotent cancellable checkpointable maintenance with crash-visible receipts.",
-    passed: failed.length === 0 && negativeControls.every((control) => control.passed),
-    findings: failed.flatMap((check) => check.findings),
+  return resultFor(
+    context,
+    "MEM-044",
+    "Execute only bounded idempotent cancellable checkpointable maintenance with crash-visible receipts.",
+    checks,
     negativeControls,
-  };
+    [
+      { path: BACKGROUND_REVIEW_RS, markers: ["MAX_ATTEMPTS", "cursor.last_seq < current.last_seq", "cancellation_timeout_ms", "fn append(", "sync_data()"] },
+      { path: BACKGROUND_REVIEW_INPUT_RS, markers: ["fn write_atomic(", "sync_all()"] },
+    ],
+  );
 }
 
 /**
@@ -176,14 +259,14 @@ export async function MEM_052(context = {}) {
     ),
   ];
 
-  const failed = checks.filter((check) => !check.passed);
-  return {
-    id: "MEM-052",
-    requirement: "Admit daemon review work under configured policy.",
-    passed: failed.length === 0 && negativeControls.every((control) => control.passed),
-    findings: failed.flatMap((check) => check.findings),
+  return resultFor(
+    context,
+    "MEM-052",
+    "Admit daemon review work under configured policy.",
+    checks,
     negativeControls,
-  };
+    [{ path: BACKGROUND_REVIEW_RS, markers: ["pub struct BackgroundReviewProducer", "pub enum BackgroundReviewDecision", "BackgroundReviewDecision::Deferred", ...policyFields] }],
+  );
 }
 
 /**
@@ -241,15 +324,14 @@ export async function MEM_053(context = {}) {
     ),
   ];
 
-  const failed = checks.filter((check) => !check.passed);
-  return {
-    id: "MEM-053",
-    requirement:
-      "Execute authenticated proposal-only background semantic review from event cursor/foreground state & persist proposal sink.",
-    passed: failed.length === 0 && negativeControls.every((control) => control.passed),
-    findings: failed.flatMap((check) => check.findings),
+  return resultFor(
+    context,
+    "MEM-053",
+    "Execute authenticated proposal-only background semantic review from event cursor/foreground state & persist proposal sink.",
+    checks,
     negativeControls,
-  };
+    [{ path: BACKGROUND_REVIEW_RS, markers: ["fn build_background_semantic_review_request", "input.cursor", "foreground_memory_state", "Authorization: Bearer", "Err(BackgroundReviewReasonV1::ProposalSinkUnavailable)", "pub struct JsonlBackgroundReviewProposalAdmission"] }],
+  );
 }
 
 export const CASES = { MEM_044, MEM_052, MEM_053 };

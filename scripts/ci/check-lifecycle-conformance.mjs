@@ -101,23 +101,22 @@ if (existsSync(join(root, nativeOnlySeal))) {
   );
 }
 
-// 5. Retained JS HTTP adapter never starts a resident process. Installed native
-// MCP/CLI owns bounded explicit execution with Hub on or off. Resident process
-// authority remains tray-owned.
-{
-  const mcpClient = read("mcp/client.mjs");
-  check(
-    "mcp/client.mjs must not spawn a child process (stateless clients never start the runtime)",
-    !/child_process|\bspawn\s*\(|\bexecFile\s*\(/.test(mcpClient),
-  );
-}
-
-// 6. The Hub dashboard's production source (excluding #[cfg(test)] blocks)
+// 5. The Hub dashboard's production source (excluding #[cfg(test)] blocks)
 // must not run the runtime in-process: no run_hub_runtime call, no
 // std::thread::spawn, and no supervisor module — those are retired
 // single-process-model constructs. It must instead proxy an inherited
 // dashboard connection.
 {
+  const nativeCli = read("engine/crates/membrane-runtime/src/cli.rs");
+  check(
+    "engine/crates/membrane-runtime/src/cli.rs must dispatch Blueprint through native one-shot code",
+    /run_native_blueprint|blueprint_one_shot/.test(nativeCli),
+  );
+  const nativeMcp = read("engine/crates/membrane-mcp/src/lib.rs");
+  check(
+    "engine/crates/membrane-mcp/src/lib.rs must remain the native MCP owner",
+    /membrane_blueprint|Blueprint|tool/.test(nativeMcp),
+  );
   const mainRs = read("apps/membrane-hub/src-tauri/src/main.rs");
   const production = mainRs.split("#[cfg(test)]")[0];
   check(

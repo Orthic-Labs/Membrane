@@ -128,11 +128,8 @@ membrane uninstall \
   anything. The refused set is echoed alongside so the operator sees
   what would be left alone.
 
-## JS mirror
+## Native authority
 
-`mcp/install.mjs` exports the symmetric `authorizeUninstall` helper and
-`OwnershipTable` shape so the JS enrollment CLI refuses the same
-candidates the Rust binary would refuse. The contract is identical: a
-missing table is empty, a duplicate `(kind, path)` pair surfaces
-`DuplicateOwnershipError`, and the `installationId` is `sha256:<hex>`
-of the receipt root.
+`membrane uninstall` is sole uninstall authority. It reads native ownership
+table, refuses candidates outside it, supports `--dry-run`, & emits installation
+identity as `sha256:<hex>` of receipt-root state.

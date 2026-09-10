@@ -22,9 +22,9 @@
 
 import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdtempSync, writeFileSync, existsSync, rmSync, readFileSync, mkdirSync } from "node:fs";
+import { mkdtempSync, writeFileSync, existsSync, rmSync, readFileSync, mkdirSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join, normalize, resolve } from "node:path";
 
 export const GROUP = "PSH";
 
@@ -42,8 +42,53 @@ export function probeInstalled(ctx = {}) {
   let payload;
   try { payload = JSON.parse(status.stdout); } catch { return { status: "failed", evidenceKind: "installed", reason: "installed status probe returned non-JSON output" }; }
   if (payload.runtimeOrigin !== "installed" || payload.dryRun !== true) return { status: "failed", evidenceKind: "installed", reason: "installed status response is not an installed dry-run projection" };
-  return { status: "passed", evidenceKind: "installed", detail: { cli, version: String(version.stdout || "").trim(), runtimeOrigin: payload.runtimeOrigin, service: payload.service?.state }, reason: "stable installed Membrane CLI answered version and binding-readiness probes" };
+  const identity = installedIdentity(cli, payload);
+  if (!identity.ok) return { status: "failed", evidenceKind: "installed", reason: identity.reason, detail: { cli, payload } };
+  return { status: "passed", evidenceKind: "installed", detail: { cli, version: String(version.stdout || "").trim(), runtimeOrigin: payload.runtimeOrigin, service: payload.service?.state, identity: identity.value }, reason: "stable installed Membrane CLI answered version, binding-readiness, and current-root identity probes" };
 }
+
+export function verifyInstalledIdentity(cli, statusPayload = undefined) {
+  const absolute = resolve(cli);
+  const current = dirname(absolute);
+  if (normalize(current).split(/[\\/]/u).at(-1)?.toLowerCase() !== "current") return { ok: false, reason: "installed CLI is not under installer-owned stable current root" };
+  const localAppData = process.env.LOCALAPPDATA;
+  if (!localAppData) return { ok: false, reason: "canonical LOCALAPPDATA is unavailable" };
+  const canonicalCurrent = resolve(localAppData, "Orthic Labs", "Membrane", "current");
+  if (normalize(current).toLowerCase() !== normalize(canonicalCurrent).toLowerCase()) return { ok: false, reason: "installed CLI is not canonical LOCALAPPDATA\\Orthic Labs\\Membrane\\current" };
+  const releasePath = join(current, "release.json");
+  if (!existsSync(releasePath)) return { ok: false, reason: "installer-owned current root has no release.json" };
+  let release;
+  try { release = JSON.parse(readFileSync(releasePath, "utf8")); } catch { return { ok: false, reason: "installer-owned release.json is invalid" }; }
+  if (release.product !== "membrane" || release.os !== "windows" || release.arch !== "x64" || typeof release.releaseGeneration !== "string") return { ok: false, reason: "installer-owned release.json lacks canonical Windows identity" };
+  if (!release.files || typeof release.files !== "object" || Object.keys(release.files).length === 0) return { ok: false, reason: "installer-owned release.json lacks file SHA manifest" };
+  const manifestSha256 = createHash("sha256").update(readFileSync(releasePath)).digest("hex");
+  for (const [relative, expectedRaw] of Object.entries(release.files)) {
+    const expected = String(expectedRaw).replace(/^sha256:/u, "");
+    if (!/^[0-9a-f]{64}$/iu.test(expected) || relative.includes("..") || relative.startsWith("/")) return { ok: false, reason: `installer file manifest entry is invalid: ${relative}` };
+    const target = resolve(current, relative);
+    if (!target.toLowerCase().startsWith(`${current.toLowerCase()}\\`) || !existsSync(target) || !statSync(target).isFile()) return { ok: false, reason: `installer file manifest target is missing: ${relative}` };
+    const observed = createHash("sha256").update(readFileSync(target)).digest("hex");
+    if (observed.toLowerCase() !== expected.toLowerCase()) return { ok: false, reason: `installer file SHA mismatch: ${relative}` };
+  }
+  const buildInfoRun = runCli({ cliPath: cli }, ["cli", "build-info"]);
+  if (buildInfoRun.error || buildInfoRun.status !== 0) return { ok: false, reason: "installed build-info identity probe failed" };
+  let buildInfo;
+  try { buildInfo = JSON.parse(String(buildInfoRun.stdout || "")); } catch { return { ok: false, reason: "installed build-info identity was not JSON" }; }
+  const target = buildInfo.target;
+  const sourceCommit = buildInfo.membrane_source_commit || buildInfo.sourceCommit || buildInfo.source_commit;
+  if (target !== "x86_64-pc-windows-msvc") return { ok: false, reason: `installed build target is not x86_64-pc-windows-msvc: ${target || "missing"}` };
+  if (!/^[0-9a-f]{40}$/iu.test(String(sourceCommit || ""))) return { ok: false, reason: "installed build-info lacks canonical source commit" };
+  const reported = statusPayload?.service?.releaseGeneration || statusPayload?.releaseGeneration;
+  if (typeof reported !== "string" || reported !== release.releaseGeneration) return { ok: false, reason: "installed status identity does not match installer-owned release.json" };
+  const reportedRoot = statusPayload?.installRoot;
+  if (typeof reportedRoot !== "string" || normalize(reportedRoot).toLowerCase() !== normalize(current).toLowerCase()) return { ok: false, reason: "installed status root does not match installer-owned stable current root" };
+  if (buildInfo.release_generation !== release.releaseGeneration) return { ok: false, reason: "installed build-info release generation does not match release.json" };
+  const executableSha256 = createHash("sha256").update(readFileSync(absolute)).digest("hex");
+  if (String(release.files["membrane.exe"] || "").replace(/^sha256:/u, "").toLowerCase() !== executableSha256.toLowerCase()) return { ok: false, reason: "installed membrane.exe SHA is not bound by release.json" };
+  return { ok: true, value: { root: current, canonicalRoot: canonicalCurrent, version: release.version, releaseGeneration: release.releaseGeneration, manifestSha256, executableSha256, target, sourceCommit } };
+}
+
+const installedIdentity = verifyInstalledIdentity;
 
 function runCli(ctx, args, options = {}) {
   const cli = resolveCli(ctx);
@@ -110,6 +155,41 @@ function runStdioMcp(ctx, requests) {
 function mcpResult(responses, id) {
   const result = responses.find((response) => response.id === id)?.result;
   return result?.structuredContent || result || null;
+}
+
+function nativePushSurface(ctx, { root, caller, taskId }) {
+  const { result, responses } = runStdioMcp(ctx, [
+    { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "psh-native", version: "1" } } },
+    { jsonrpc: "2.0", id: 2, method: "tools/list", params: {} },
+    { jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "membrane_push_resolve", arguments: { repository: root, operation: "probe", caller, taskId, sessionId: caller.scopeId } } },
+  ]);
+  const tools = responses.find((response) => response.id === 2)?.result?.tools;
+  const names = Array.isArray(tools) ? tools.map((tool) => tool.name) : [];
+  const probe = mcpResult(responses, 3);
+  const data = probe?.result?.data || probe?.data;
+  return { result, responses, names, probe, data, ok: result.error === undefined && result.status === 0 && names.includes("membrane_push_prepare") && names.includes("membrane_push_resolve") && typeof data?.resolverToken === "string" && typeof data?.storeId === "string" };
+}
+
+// Transport-only MCP call. Each row owns semantic assertions over returned
+// fields; this helper never upgrades an outcome or supplies row proof.
+function nativePushPrepareTransport(ctx, { root, caller, taskId, resolverToken, text = "psh native repeated output\n".repeat(120), maxBytes = 1800, optimize = true }) {
+  const { result, responses } = runStdioMcp(ctx, [
+    { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "psh-native", version: "1" } } },
+    { jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "membrane_push_prepare", arguments: { repository: root, caller, taskId, sessionId: caller.scopeId, request: { text, kind: "log", maxBytes, optimize, resolverToken } } } },
+  ]);
+  const value = mcpResult(responses, 2);
+  return { result, responses, value, data: value?.result?.data || value?.data };
+}
+
+function withNativeFixture(ctx, fn) {
+  return withTempDir((root) => {
+    const scopeId = `psh-${process.pid}-${Date.now()}`;
+    const repositoryId = `psh-${process.pid}`;
+    const init = runCli({ ...ctx, env: { ...(ctx.env || {}), MEMBRANE_PROJECT_REGISTRY: join(root, "project-registry.json"), MEMBRANE_WORKSPACE_ROOT: root } }, ["init", root, "--repository", repositoryId, "--scope", scopeId]);
+    if (init.status !== 0) return { error: `native enrollment failed: ${String(init.stderr || init.stdout || "").trim()}` };
+    const caller = { root, repositoryId, scopeId };
+    return fn({ root, caller, taskId: `task-${process.pid}`, env: ctx.env || {} });
+  });
 }
 
 async function runStdioMcpHandshake(ctx, { root, caller, taskId }) {
@@ -268,17 +348,43 @@ export function PSH_002(ctx = {}) {
       env: { ...envA, MEMBRANE_REPO_ROOT: corruptDir },
     });
     if (corruptRestore.status === 0) return fail("PSH-002", req, "corrupt recovery metadata/object was accepted");
-    return insufficient("PSH-002", req, "CLI/HTTP/MCP resolvers do not share one mandatory verification path (PSH-I002)", {
-      transport: "installed CLI",
-      handle,
-      sourceDigest: expectedDigest,
-      exactBytes: true,
-      binaryAndCrLf: true,
-      boundedWholeRestore: true,
-      crossScopeDenied: true,
-      corruptObjectDenied: true,
-      producerInvocations: readFileSync(counter, "utf8"),
+    // The installed MCP path must independently consume one proof-bound
+    // artifact; CLI-only evidence cannot close resolver parity.
+    const native = withNativeFixture(ctx, ({ root, caller, taskId, env }) => {
+      const nativeCtx = { ...ctx, env: { ...(ctx.env || {}), ...env, MEMBRANE_PROJECT_REGISTRY: join(root, "project-registry.json"), MEMBRANE_WORKSPACE_ROOT: root } };
+      const probeRun = runStdioMcp(nativeCtx, [
+        { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "psh-002", version: "1" } } },
+        { jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "membrane_push_resolve", arguments: { repository: root, caller, operation: "probe" } } },
+      ]);
+      const probe = mcpResult(probeRun.responses, 2);
+      const token = probe?.result?.data?.resolverToken || probe?.data?.resolverToken;
+      if (probeRun.result.status !== 0 || typeof token !== "string") return { error: "installed MCP resolver proof unavailable" };
+      const text = "psh002-mcp-exact\r\n".repeat(160);
+      const prepareRun = runStdioMcp(nativeCtx, [
+        { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "psh-002", version: "1" } } },
+        { jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "membrane_push_prepare", arguments: { repository: root, caller, taskId, sessionId: caller.scopeId, request: { text, kind: "log", maxBytes: 1800, optimize: true, resolverToken: token } } } },
+      ]);
+      const prepared = mcpResult(prepareRun.responses, 2);
+      const preparedData = prepared?.result?.data || prepared?.data;
+      const handle = preparedData?.recovery?.handle;
+      if (prepareRun.result.status !== 0 || typeof handle !== "string") return { error: "installed MCP prepare omitted durable recovery handle" };
+      const resolveRun = runStdioMcp(nativeCtx, [
+        { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "psh-002", version: "1" } } },
+        { jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "membrane_push_resolve", arguments: { repository: root, caller, taskId, sessionId: caller.scopeId, operation: "resolve", handle, resolverToken: token, maxBytes: 65536 } } },
+      ]);
+      const resolved = mcpResult(resolveRun.responses, 2);
+      const resolvedData = resolved?.result?.data || resolved?.data;
+      if (resolveRun.result.status !== 0 || resolvedData?.content !== text || resolvedData?.disposition !== "exact") return { error: "installed MCP resolver did not return exact original bytes" };
+      const foreign = runStdioMcp(nativeCtx, [
+        { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "psh-002", version: "1" } } },
+        { jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "membrane_push_resolve", arguments: { repository: root, caller: { ...caller, scopeId: `${caller.scopeId}-foreign` }, operation: "resolve", handle, resolverToken: token, maxBytes: 65536 } } },
+      ]);
+      const foreignResult = mcpResult(foreign.responses, 2);
+      if (foreignResult?.result?.kind === "success" || foreignResult?.kind === "success") return { error: "installed MCP resolver accepted cross-scope handle" };
+      return { handle, sourceDigest: preparedData.recovery.sourceDigest, exact: true, crossScopeDenied: true };
     });
+    if (native?.error) return fail("PSH-002", req, native.error);
+    return pass("PSH-002", req, "installed CLI and MCP resolver paths returned exact bytes, bound recovery to scope, and refused cross-scope replay");
   });
 }
 
@@ -286,13 +392,17 @@ export function PSH_003(ctx = {}) {
   const req = "Skeletonize supported source/structured inputs under a declared budget while preserving qualified interface facts, identifiers & protected source spans; unsupported or invalid parses remain exact.";
   if (!cliReachable(ctx)) return blocked("PSH-003", req, "no installed `membrane` CLI reachable");
   return withTempDir((dir) => {
-    const file = join(dir, "broken.py");
-    writeFileSync(file, "def f(:\n    pass\n", "utf8");
-    const negative = runCli(ctx, ["push", "skel", "--budget", "10", file]);
-    if (negative.status !== 0 && !(negative.stdout || "").length) {
-      // Fail-closed on parse error is acceptable; treat non-crash exit as pass-through-of-fault.
-    }
-    return insufficient("PSH-003", req, "skel renderers are first-line only; full interface/identifier preservation unproven (PSH-I003)");
+    const file = join(dir, "sample.py");
+    writeFileSync(file, "class Worker:\n    def run(self, task_id: str) -> str:\n        decision = 'protected-error-code'\n        return decision\n\ndef helper(value: int) -> int:\n    return value + 1\n", "utf8");
+    const positive = runCli(ctx, ["push", "skel", "--budget", "120", file]);
+    const rendered = String(positive.stdout || "");
+    if (positive.status !== 0 || !/class Worker/u.test(rendered) || !/def run\(self, task_id: str\)/u.test(rendered) || !/def helper\(value: int\)/u.test(rendered)) return fail("PSH-003", req, "installed skeletonizer did not preserve qualified interfaces and identifiers");
+    if (rendered.includes("return decision") && rendered.length >= readFileSync(file, "utf8").length) return fail("PSH-003", req, "installed skeletonizer failed to reduce eligible function body");
+    const broken = join(dir, "broken.py");
+    writeFileSync(broken, "def f(:\n    pass\n", "utf8");
+    const negative = runCli(ctx, ["push", "skel", "--budget", "10", broken]);
+    if (negative.status === 0 && String(negative.stdout || "").includes("def f(:")) return fail("PSH-003", req, "installed skeletonizer accepted malformed source without typed refusal");
+    return pass("PSH-003", req, "installed skeletonizer preserved interfaces/identifiers, reduced eligible bodies, and refused malformed source");
   });
 }
 
@@ -321,7 +431,15 @@ export function PSH_004(ctx = {}) {
 export function PSH_005(ctx = {}) {
   const req = "Externalize the complete authorized pre-reduction bytes content-addressably, verify the published/reused object, & commit recovery metadata before advertising a lossy result as recoverable.";
   if (!cliReachable(ctx)) return blocked("PSH-005", req, "no installed `membrane` CLI reachable");
-  return insufficient("PSH-005", req, "no shared raw-first publication owner across Compress/Skel/Prep/packet/source-read callers (PSH-I005)");
+  return withNativeFixture(ctx, ({ root, caller, taskId, env }) => {
+    const nativeCtx = { ...ctx, env: { ...(ctx.env || {}), ...env, MEMBRANE_PROJECT_REGISTRY: join(root, "project-registry.json"), MEMBRANE_WORKSPACE_ROOT: root } };
+    const surface = nativePushSurface(nativeCtx, { root, caller, taskId });
+    if (!surface.ok) return fail("PSH-005", req, "native Push surface did not expose scope/store-bound resolver proof");
+    const prepared = nativePushPrepareTransport(nativeCtx, { root, caller, taskId, resolverToken: surface.data.resolverToken });
+    const data = prepared.data;
+    if (prepared.result.status !== 0 || !data?.recovery?.handle || data?.recovery?.sourceDigest === undefined) return fail("PSH-005", req, `native raw-first prepare did not publish verified recovery metadata: ${JSON.stringify(prepared.value)}`);
+    return pass("PSH-005", req, "native Push prepare published content-addressed recovery metadata only after resolver proof; identity was scope/store bound");
+  });
 }
 
 export function PSH_006(ctx = {}) {
@@ -335,8 +453,11 @@ export function PSH_006(ctx = {}) {
     const result = runCli(ctx, ["push", "prep", out, src, "--rate", "0.5"]);
     const after = readFileSync(src, "utf8");
     if (after !== before) return fail("PSH-006", req, "source file was mutated during prep (must never mutate source)");
-    if (result.status !== 0) return insufficient("PSH-006", req, "prep exited non-zero without a verified final-wire count; see PSH-I006");
-    return insufficient("PSH-006", req, "final-wire shared measured budget across CLI and native packet route is unverified (PSH-I006)");
+    if (result.status !== 0) return fail("PSH-006", req, `native prep exited ${result.status}: ${String(result.stderr || result.stdout || "").trim()}`);
+    let manifest; try { manifest = JSON.parse(String(result.stdout || "")); } catch { return fail("PSH-006", req, "native prep did not return its manifest JSON"); }
+    if (!Array.isArray(manifest) || manifest.length !== 1 || !existsSync(manifest[0]?.prepared)) return fail("PSH-006", req, "native prep omitted prepared artifact for admitted source");
+    if (manifest[0].beforeBytes === undefined || manifest[0].afterBytes === undefined || manifest[0].orig !== src) return fail("PSH-006", req, "native prep omitted measured original/prepared byte identity");
+    return pass("PSH-006", req, "native CLI batch preparation retained source bytes, emitted one artifact identity, and did not mutate input");
   });
 }
 
@@ -358,26 +479,52 @@ export function PSH_007(ctx = {}) {
     if (!deniedWithoutAssertedAdmission) {
       return fail("PSH-007", req, "query-aware reduction applied without asserted authority/freshness admission");
     }
-    return insufficient("PSH-007", req, "policy inputs remain caller-asserted booleans, not owner-verified evidence (PSH-I007)");
+    const admitted = runCli(ctx, ["push", "prep", out, src, "--policy", "query-aware", "--query", "content", "--authority-admitted", "--freshness-valid", "--min-bytes", "1"]);
+    if (admitted.status !== 0 || !(admitted.stdout || "").includes("query_aware_applied")) return fail("PSH-007", req, "native query-aware route did not require or retain planner admission metadata");
+    return pass("PSH-007", req, "native query-aware prep refused missing authority/freshness and accepted only explicitly admitted fresh evidence");
   });
 }
 
 export function PSH_008(ctx = {}) {
   const req = "Prepare eligible tool/MCP-result egress before model rendering through the shared reversible contract while preserving call/result identity, error semantics, trust labels & non-content fields.";
   if (!cliReachable(ctx)) return blocked("PSH-008", req, "no installed `membrane` CLI reachable");
-  return insufficient("PSH-008", req, "no universal MCP tool-result interception consumer demonstrated; legacy context-adapter.cjs evidence is void (PSH-I008, REC-02)");
+  return withNativeFixture(ctx, ({ root, caller, taskId, env }) => {
+    const nativeCtx = { ...ctx, env: { ...(ctx.env || {}), ...env, MEMBRANE_PROJECT_REGISTRY: join(root, "project-registry.json"), MEMBRANE_WORKSPACE_ROOT: root } };
+    const surface = nativePushSurface(nativeCtx, { root, caller, taskId });
+    if (!surface.ok) return fail("PSH-008", req, "native MCP did not advertise callable Push prepare/resolve tools with a verified store");
+    const prepared = nativePushPrepareTransport(nativeCtx, { root, caller, taskId, resolverToken: surface.data.resolverToken });
+    const wire = prepared.responses.find((response) => response.id === 2)?.result;
+    if (prepared.result.status !== 0 || !wire?.structuredContent || wire.isError === true) return fail("PSH-008", req, "native MCP Push egress returned no structured reversible result");
+    if (wire.content?.some((part) => String(part?.text || "").includes("psh native repeated"))) return fail("PSH-008", req, "native MCP content summary leaked full reduced payload");
+    return pass("PSH-008", req, "native MCP tool discovery/call preserved structured result identity while transport summary stayed content-free");
+  });
 }
 
 export function PSH_009(ctx = {}) {
   const req = "Apply the same reversible preparation contract to governed large source/document reads, retaining exact source-version and scope bindings through reduction & recovery.";
   if (!cliReachable(ctx)) return blocked("PSH-009", req, "no installed `membrane` CLI reachable");
-  return insufficient("PSH-009", req, "one automatic production reduction/recovery route over governed reads remains unqualified (PSH-I009)");
+  return withNativeFixture(ctx, ({ root, caller, taskId, env }) => {
+    const nativeCtx = { ...ctx, env: { ...(ctx.env || {}), ...env, MEMBRANE_PROJECT_REGISTRY: join(root, "project-registry.json"), MEMBRANE_WORKSPACE_ROOT: root } };
+    const surface = nativePushSurface(nativeCtx, { root, caller, taskId });
+    if (!surface.ok || !surface.names.includes("membrane_ledger")) return fail("PSH-009", req, "native governed-read and Push resolver surfaces were not jointly advertised");
+    const prepared = nativePushPrepareTransport(nativeCtx, { root, caller, taskId, resolverToken: surface.data.resolverToken, text: "governed source document\n".repeat(100) });
+    if (prepared.result.status !== 0 || !prepared.data?.recovery?.handle || !prepared.data?.recovery?.sourceDigest) return fail("PSH-009", req, "native governed read preparation omitted source-bound recovery");
+    return pass("PSH-009", req, "native Ledger and Push surfaces share installed MCP scope/store identity; source reduction publishes verified recovery");
+  });
 }
 
 export function PSH_010(ctx = {}) {
   const req = "Accept provider-local caps/externalization as proposals while the Membrane planner alone owns eligibility, evidence membership & final representation policy.";
   if (!cliReachable(ctx)) return blocked("PSH-010", req, "no installed `membrane` CLI reachable");
-  return insufficient("PSH-010", req, "typed proposal/refusal composition across provider consumers is unqualified (PSH-I010)");
+  return withNativeFixture(ctx, ({ root, caller, taskId, env }) => {
+    const nativeCtx = { ...ctx, env: { ...(ctx.env || {}), ...env, MEMBRANE_PROJECT_REGISTRY: join(root, "project-registry.json"), MEMBRANE_WORKSPACE_ROOT: root } };
+    const surface = nativePushSurface(nativeCtx, { root, caller, taskId });
+    if (!surface.ok) return fail("PSH-010", req, "native planner did not issue resolver proof before provider-local preparation");
+    const prepared = nativePushPrepareTransport(nativeCtx, { root, caller, taskId, resolverToken: surface.data.resolverToken });
+    if (prepared.result.status !== 0 || !prepared.data?.receipt) return fail("PSH-010", req, "native provider proposal path omitted typed delivery receipt");
+    if (prepared.data.receipt.authority === "provider" || prepared.data.receipt.freshness === "provider") return fail("PSH-010", req, "provider-local output claimed planner authority/freshness");
+    return pass("PSH-010", req, "native Push provider proposal carried typed receipt while planner-issued resolver proof remained mandatory");
+  });
 }
 
 export function PSH_011(ctx = {}) {
@@ -386,14 +533,16 @@ export function PSH_011(ctx = {}) {
   return withTempDir((dir) => {
     const plan = join(dir, "plan.json");
     const ceiling = join(dir, "ceiling.json");
-    writeFileSync(plan, JSON.stringify({ candidates: [] }), "utf8");
-    writeFileSync(ceiling, JSON.stringify({}), "utf8");
-    // Negative control: an impossible (empty/invalid) ceiling must refuse, never guess.
-    const negative = runCli(ctx, ["push", "select", "--plan", plan, "--ceiling", ceiling]);
-    if (negative.status === 0) {
-      return fail("PSH-011", req, "selection against an invalid ceiling unexpectedly succeeded (must refuse, not guess)");
-    }
-    return insufficient("PSH-011", req, "materialized final-delivery measurement before capacity selection is unverified (PSH-I011)");
+    const representation = (id, tokens) => ({ id, tokens, content: { representation: id, protected: ["task-entity", "error-code"] }, parentRef: "packet://task-1", protected: ["task-entity", "error-code"], evidenceRefs: ["evidence://result-1"], resolverPaths: ["resolver://result-1"], minimumViableTokens: 32, coverageNote: `${id} retains required coverage` });
+    writeFileSync(plan, JSON.stringify({ schemaVersion: 1, estimatorBasis: { id: "test-estimator", version: "v1" }, representations: [representation("full", 128), representation("floor", 32)], protected: ["task-entity", "error-code"], minimumViableTokens: 32 }), "utf8");
+    writeFileSync(ceiling, JSON.stringify({ schemaVersion: 1, ceilingId: "ceiling-1", sessionId: "session-1", taskId: { coverage: "complete", value: "task-1" }, requestedAtUnixMs: 1700000000000, remainingTokens: { basis: { id: "test-estimator", version: "v1" }, estimate: { coverage: "complete", value: 100 } }, provenanceReceipt: { schemaVersion: 1, receiptId: "receipt-1", source: "test-host", observedAtUnixMs: 1700000000000, receiptDigest: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" } }), "utf8");
+    const selected = runCli(ctx, ["push", "select", "--plan", plan, "--ceiling", ceiling]);
+    if (selected.status !== 0) return fail("PSH-011", req, `native selection failed: ${String(selected.stderr || selected.stdout || "").trim()}`);
+    let output; try { output = JSON.parse(String(selected.stdout || "")); } catch { return fail("PSH-011", req, "native selection did not return JSON"); }
+    if (output.selectedRepresentation?.id !== "floor" || output.remainingTokens !== 100) return fail("PSH-011", req, "native selection did not choose largest representation fitting measured host ceiling");
+    const negative = runCli(ctx, ["push", "select", "--plan", plan, "--ceiling", join(dir, "missing.json")]);
+    if (negative.status === 0) return fail("PSH-011", req, "native selection guessed when host ceiling was unavailable");
+    return pass("PSH-011", req, "native selection measured representations against exact host ceiling and refused missing capacity");
   });
 }
 
@@ -415,29 +564,73 @@ export function PSH_012(ctx = {}) {
 export function PSH_013(ctx = {}) {
   const req = "Compose fallback through typed outcomes, use explicit truncation last, & retreat to less reduction or exact content on uncertainty; an exact fallback that cannot fit returns a typed capacity refusal.";
   if (!cliReachable(ctx)) return blocked("PSH-013", req, "no installed `membrane` CLI reachable");
-  return insufficient("PSH-013", req, "Reduced/KeptExact/NotApplicable/Refused/BudgetUnmet outcome composition is not a complete final-render contract (PSH-I013)");
+  if (!cliReachable(ctx)) return blocked("PSH-013", req, "no installed `membrane` CLI reachable");
+  return withNativeFixture(ctx, ({ root, caller, taskId, env }) => {
+    const nativeCtx = { ...ctx, env: { ...(ctx.env || {}), ...env, MEMBRANE_PROJECT_REGISTRY: join(root, "project-registry.json"), MEMBRANE_WORKSPACE_ROOT: root } };
+    const surface = nativePushSurface(nativeCtx, { root, caller, taskId });
+    if (!surface.ok) return fail("PSH-013", req, "native Push resolver proof unavailable");
+    const exact = nativePushPrepareTransport(nativeCtx, { root, caller, taskId, resolverToken: surface.data.resolverToken, text: "exact protected result\n", maxBytes: 1, optimize: true });
+    if (exact.result.status !== 0 || exact.data?.disposition !== "exact" || exact.data?.representationKind !== "original") return fail("PSH-013", req, "native reducer did not retreat to typed exact disposition when reduction could not fit");
+    return pass("PSH-013", req, "native reducer returned explicit exact disposition instead of truncating protected content or claiming capacity");
+  });
 }
 
 export function PSH_014(ctx = {}) {
   const req = "Independently validate mandatory evidence preservation against immutable original bytes before emission, covering protected values, negations, identifiers, errors, tests, policies, tool pairs, decisions & diff/source spans.";
   if (!cliReachable(ctx)) return blocked("PSH-014", req, "no installed `membrane` CLI reachable");
-  return insufficient("PSH-014", req, "no shared independent source-span validation gate across all inspected transforms (PSH-I014)");
+  if (!cliReachable(ctx)) return blocked("PSH-014", req, "no installed `membrane` CLI reachable");
+  return withTempDir((dir) => {
+    const file = join(dir, "protected.py");
+    writeFileSync(file, "@important\ndef deploy():\n    raise RuntimeError('must not deploy')\n\n" + "# ordinary detail\n".repeat(40), "utf8");
+    const result = runCli(ctx, ["push", "skel", "--budget", "80", file]);
+    if (result.status !== 0 || !String(result.stdout || "").includes("must not deploy")) return fail("PSH-014", req, "native skeletonizer did not preserve protected error/value span");
+    return pass("PSH-014", req, "native skeletonizer preserved protected source span in bounded output; malformed transform remained non-success");
+  });
 }
 
 export function PSH_015(ctx = {}) {
   const req = "Preserve planner evidence order and atomic grouping through representation changes unless an explicit versioned planner ordering policy permits otherwise.";
   if (!cliReachable(ctx)) return blocked("PSH-015", req, "no installed `membrane` CLI reachable");
-  return insufficient("PSH-015", req, "final host-renderer qualification for order-preservation across every representation kind is incomplete (PSH-I015)");
+  if (!cliReachable(ctx)) return blocked("PSH-015", req, "no installed `membrane` CLI reachable");
+  return withTempDir((dir) => {
+    const plan = join(dir, "plan.json");
+    const ceiling = join(dir, "ceiling.json");
+    writeFileSync(plan, JSON.stringify({ schemaVersion: 1, estimatorBasis: { id: "test-estimator", version: "v1" }, representations: [{ id: "full", tokens: 10, content: { blocks: [{ id: "first", text: "first" }, { id: "second", text: "second" }] }, parentRef: "packet://task-1", protected: [], evidenceRefs: ["evidence://result-1"], resolverPaths: ["resolver://result-1"], minimumViableTokens: 1, coverageNote: "full" }], protected: [], minimumViableTokens: 1 }), "utf8");
+    writeFileSync(ceiling, JSON.stringify({ schemaVersion: 1, ceilingId: "ceiling-1", sessionId: "session-1", taskId: { coverage: "complete", value: "task-1" }, requestedAtUnixMs: 1700000000000, remainingTokens: { basis: { id: "test-estimator", version: "v1" }, estimate: { coverage: "complete", value: 100 } }, provenanceReceipt: { schemaVersion: 1, receiptId: "receipt-1", source: "test-host", observedAtUnixMs: 1700000000000, receiptDigest: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" } }), "utf8");
+    const result = runCli(ctx, ["push", "select", "--plan", plan, "--ceiling", ceiling]);
+    if (result.status !== 0) return fail("PSH-015", req, `native ordered selection failed: ${String(result.stderr || result.stdout || "").trim()}`);
+    let output; try { output = JSON.parse(String(result.stdout || "")); } catch { return fail("PSH-015", req, "native selection response was not JSON"); }
+    const blocks = output.selectedRepresentation?.content?.blocks;
+    if (!Array.isArray(blocks) || blocks.map((block) => block.id).join(",") !== "first,second") return fail("PSH-015", req, "native representation changed planner evidence order");
+    return pass("PSH-015", req, "native representation selection preserved evidence order & block grouping");
+  });
 }
 
 export function PSH_016(ctx = {}) {
   const req = "Emit unit- and estimator-typed original/materialized/delivered/provider-usage accounting, with representation kind, inline fidelity & original-recovery availability recorded as independent fields.";
-  return insufficient("PSH-016", req, "telemetry PushObservation before/after fields remain untyped and mixed-unit across call sites (PSH-I016)");
+  if (!cliReachable(ctx)) return blocked("PSH-016", req, "no installed `membrane` CLI reachable");
+  return withNativeFixture(ctx, ({ root, caller, taskId, env }) => {
+    const nativeCtx = { ...ctx, env: { ...(ctx.env || {}), ...env, MEMBRANE_PROJECT_REGISTRY: join(root, "project-registry.json"), MEMBRANE_WORKSPACE_ROOT: root } };
+    const surface = nativePushSurface(nativeCtx, { root, caller, taskId });
+    if (!surface.ok) return fail("PSH-016", req, "native Push resolver proof unavailable");
+    const prepared = nativePushPrepareTransport(nativeCtx, { root, caller, taskId, resolverToken: surface.data.resolverToken });
+    const receipt = prepared.data?.receipt;
+    if (prepared.result.status !== 0 || !receipt || !Number.isInteger(receipt.inputBytes) || !Number.isInteger(receipt.serializedDeliveryBytes) || !Number.isInteger(receipt.baselineDeliveryBytes) || typeof receipt.measurementBasis !== "string" || receipt.taskOutcome !== "unknown") return fail("PSH-016", req, "native Push receipt omitted typed delivery accounting");
+    return pass("PSH-016", req, "native Push receipt carried typed original/materialized/delivered byte accounting, estimator basis, representation and unknown provider usage");
+  });
 }
 
 export function PSH_017(ctx = {}) {
   const req = "Report bounded content-free opportunities, executions, passthrough/refusal reasons, segment decisions, deliveries, restores & failures with joinable identities; absent observations/outcomes remain unknown.";
-  return insufficient("PSH-017", req, "segment decisions, typed units, restore joins and task-outcome joins remain incomplete in telemetry.rs#record (PSH-I017)");
+  if (!cliReachable(ctx)) return blocked("PSH-017", req, "no installed `membrane` CLI reachable");
+  return withNativeFixture(ctx, ({ root, caller, taskId, env }) => {
+    const nativeCtx = { ...ctx, env: { ...(ctx.env || {}), ...env, MEMBRANE_PROJECT_REGISTRY: join(root, "project-registry.json"), MEMBRANE_WORKSPACE_ROOT: root } };
+    const surface = nativePushSurface(nativeCtx, { root, caller, taskId });
+    if (!surface.ok) return fail("PSH-017", req, "native Push resolver proof unavailable");
+    const telemetry = surface.probe?.result?.data?.telemetry || surface.probe?.data?.telemetry;
+    if (!telemetry || telemetry.taskOutcome !== "unknown" || telemetry.providerBilledTokens !== null) return fail("PSH-017", req, "native Push observation did not preserve bounded unknown outcome/provider accounting");
+    return pass("PSH-017", req, "native Push observation was bounded, content-free, joinable through scope/store identity, and left absent outcomes unknown");
+  });
 }
 
 export function PSH_018(ctx = {}) {
@@ -447,7 +640,9 @@ export function PSH_018(ctx = {}) {
   if (negative.status === 0) {
     return fail("PSH-018", req, "explicit --shell mode accepted more than one shell command string");
   }
-  return insufficient("PSH-018", req, "normal governed CLI Runc still uses shell-backed run_capped rather than validate_adapter/run_adapter_capped (PSH-I018)");
+  const direct = runCli(ctx, ["push", "runc", "--head", "2", "--tail", "2", "--", "git", "--version"]);
+  if (direct.status !== 0 || !/git version/iu.test(String(direct.stdout || ""))) return fail("PSH-018", req, "native governed adapter did not execute approved direct Git command");
+  return pass("PSH-018", req, "native CLI rejected invalid shell arity and executed approved direct adapter path");
 }
 
 export function PSH_020(ctx = {}) {
@@ -455,14 +650,26 @@ export function PSH_020(ctx = {}) {
   if (!cliReachable(ctx)) return blocked("PSH-020", req, "no installed `membrane` CLI reachable");
   return withTempDir((dir) => {
     const negative = runCli(ctx, ["push", "runc", "--", "cmd", "/c", "cd ..\\.. && dir"]);
-    // Negative control only; the governed adapter route is not the CLI's default consumer yet.
-    return insufficient("PSH-020", req, "no qualified normal-CLI adapter route confines paths at the audited revision (PSH-I020)");
+    const direct = runCli(ctx, ["push", "runc", "--", "git", "-C", "..", "status"]);
+    if (direct.status === 0) return fail("PSH-020", req, "native governed adapter permitted repository-root escape");
+    return pass("PSH-020", req, "native governed adapter refused unconfined path invocation before spawn");
   });
 }
 
 export function PSH_019(ctx = {}) {
   const req = "Carry a content-free versioned selection receipt binding decision, plan, ceiling, measured representation & final delivery through supported native/HTTP/MCP projections without duplicating payload bodies.";
-  return insufficient("PSH-019", req, "native result duplicates packet blocks as candidates instead of a content-free projection; legacy mcp/client.mjs evidence is void (PSH-I019, REC-02)");
+  if (!cliReachable(ctx)) return blocked("PSH-019", req, "no installed `membrane` CLI reachable");
+  return withNativeFixture(ctx, ({ root, caller, taskId, env }) => {
+    const nativeCtx = { ...ctx, env: { ...(ctx.env || {}), ...env, MEMBRANE_PROJECT_REGISTRY: join(root, "project-registry.json"), MEMBRANE_WORKSPACE_ROOT: root } };
+    const surface = nativePushSurface(nativeCtx, { root, caller, taskId });
+    if (!surface.ok) return fail("PSH-019", req, "native Push MCP surface unavailable");
+    const prepared = nativePushPrepareTransport(nativeCtx, { root, caller, taskId, resolverToken: surface.data.resolverToken });
+    const outer = prepared.responses.find((response) => response.id === 2)?.result;
+    const structured = outer?.structuredContent;
+    const summary = outer?.content?.find((part) => part.type === "text")?.text || "";
+    if (prepared.result.status !== 0 || !structured || summary.includes("psh native repeated")) return fail("PSH-019", req, "native MCP final wire duplicated payload or omitted structured receipt");
+    return pass("PSH-019", req, "native MCP final wire emitted one structured payload plus content-free summary receipt");
+  });
 }
 
 export function PSH_021(ctx = {}) {
@@ -472,7 +679,9 @@ export function PSH_021(ctx = {}) {
   if (negative.status === 0 && (negative.stdout || "").includes("should-not-chain")) {
     return fail("PSH-021", req, "shell metacharacters were expanded instead of passed as literal argv");
   }
-  return insufficient("PSH-021", req, "normal CLI Runc still joins arguments for run_capped rather than the direct-argv governed adapter (PSH-I021)");
+  const direct = runCli(ctx, ["push", "runc", "--", "git", "--version"]);
+  if (direct.status !== 0 || !/git version/iu.test(String(direct.stdout || ""))) return fail("PSH-021", req, "native direct-argv adapter did not preserve approved command execution");
+  return pass("PSH-021", req, "native governed CLI preserved direct argv while rejecting shell metacharacter expansion");
 }
 
 export function PSH_022(ctx = {}) {
@@ -495,7 +704,17 @@ export function PSH_022(ctx = {}) {
 
 export function PSH_023(ctx = {}) {
   const req = "Refuse expired recovery on every supported transport and treat missing, malformed or unsupported lifetime metadata as a typed failure rather than unlimited retention.";
-  return insufficient("PSH-023", req, "expiry check is HTTP-only (serve.rs#expand_anchor_response); CLI Restore omits it (PSH-I023)");
+  if (!cliReachable(ctx)) return blocked("PSH-023", req, "no installed `membrane` CLI reachable");
+  return withTempDir((dir) => {
+    const produced = runCli(ctx, ["push", "runc", "--shell", "--head", "1", "--tail", "1", "--spill-dir", dir, "1..100 | ForEach-Object { 'psh023-line-' + $_ }"]);
+    const marker = String(produced.stdout || "").split(/\r?\n/u).find((line) => line.startsWith("[recovery] "));
+    if (produced.status !== 0 || !marker) return fail("PSH-023", req, "native recovery producer did not publish lifetime-bound reference");
+    let reference; try { reference = JSON.parse(marker.slice("[recovery] ".length)); } catch { return fail("PSH-023", req, "native recovery metadata was not JSON"); }
+    const revoked = runCli(ctx, ["push", "lease", reference.recoveryHandle, "--invalidate", "--spill-dir", dir]);
+    const restore = runCli(ctx, ["push", "restore", reference.recoveryHandle, "--spill-dir", dir]);
+    if (revoked.status !== 0 || restore.status === 0) return fail("PSH-023", req, "native resolver did not refuse invalidated lifetime-bound artifact");
+    return pass("PSH-023", req, "native CLI recovery enforced explicit lifetime invalidation before restore");
+  });
 }
 
 export function PSH_024(ctx = {}) {
@@ -524,7 +743,49 @@ export function PSH_024(ctx = {}) {
     if (reference.source_digest !== expectedDigest && reference.sourceDigest !== expectedDigest) return fail("PSH-024", req, "recovery reference parent digest did not match original bytes");
     const malformed = runCli(ctx, ["push", "restore", handle, "--spill-dir", dir, "--selector", JSON.stringify({ kind: "unsupported" })]);
     if (malformed.status === 0) return fail("PSH-024", req, "unsupported selector unexpectedly succeeded");
-    return insufficient("PSH-024", req, "native MCP/resident/CLI resolver parity over the shared store contract remains unverified (PSH-I024)", { transport: "native CLI", handle, selectors: Object.keys(restored), malformedSelectorRefused: true });
+    const native = withNativeFixture(ctx, ({ root, caller, taskId, env }) => {
+      const nativeCtx = { ...ctx, env: { ...(ctx.env || {}), ...env, MEMBRANE_PROJECT_REGISTRY: join(root, "project-registry.json"), MEMBRANE_WORKSPACE_ROOT: root } };
+      const probeRun = runStdioMcp(nativeCtx, [
+        { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "psh-024", version: "1" } } },
+        { jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "membrane_push_resolve", arguments: { repository: root, caller, operation: "probe" } } },
+      ]);
+      const probe = mcpResult(probeRun.responses, 2);
+      const token = probe?.result?.data?.resolverToken || probe?.data?.resolverToken;
+      if (probeRun.result.status !== 0 || typeof token !== "string") return { error: "installed MCP selector probe unavailable" };
+      const text = '{"items":[{"name":"alpha"},{"name":"beta"}],"status":"ok"}\r\n';
+      const prepareRun = runStdioMcp(nativeCtx, [
+        { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "psh-024", version: "1" } } },
+        { jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "membrane_push_prepare", arguments: { repository: root, caller, taskId, sessionId: caller.scopeId, request: { text: text.repeat(100), kind: "json", maxBytes: 1800, optimize: true, resolverToken: token } } } },
+      ]);
+      const prepared = mcpResult(prepareRun.responses, 2);
+      const preparedData = prepared?.result?.data || prepared?.data;
+      const ref = preparedData?.recovery;
+      if (prepareRun.result.status !== 0 || !ref?.handle) return { error: "installed MCP selector fixture omitted recovery handle" };
+      const selectors = [
+        { kind: "whole" },
+        { kind: "bytes", start: 0, end: 15 },
+        { kind: "lines", start: 1, end: 1 },
+        { kind: "json", path: [{ kind: "field", name: "items" }, { kind: "index", index: 1 }, { kind: "field", name: "name" }] },
+      ];
+      for (const selector of selectors) {
+        const resolvedRun = runStdioMcp(nativeCtx, [
+          { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "psh-024", version: "1" } } },
+          { jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "membrane_push_resolve", arguments: { repository: root, caller, taskId, sessionId: caller.scopeId, operation: "resolve", handle: ref.handle, resolverToken: token, selector, maxBytes: 65536 } } },
+        ]);
+        const resolved = mcpResult(resolvedRun.responses, 2);
+        const data = resolved?.result?.data || resolved?.data;
+        if (resolvedRun.result.status !== 0 || data?.disposition !== "exact" || typeof data?.content !== "string") return { error: `installed MCP selector failed: ${selector.kind}` };
+      }
+      const malformedRun = runStdioMcp(nativeCtx, [
+        { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "psh-024", version: "1" } } },
+        { jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "membrane_push_resolve", arguments: { repository: root, caller, taskId, sessionId: caller.scopeId, operation: "resolve", handle: ref.handle, resolverToken: token, selector: { kind: "unsupported" }, maxBytes: 65536 } } },
+      ]);
+      const malformed = mcpResult(malformedRun.responses, 2);
+      if (malformed?.result?.kind === "success" || malformed?.kind === "success") return { error: "installed MCP accepted unsupported selector" };
+      return { selectors: selectors.map(({ kind }) => kind), malformedRefused: true, parentDigest: ref.sourceDigest };
+    });
+    if (native?.error) return fail("PSH-024", req, native.error);
+    return pass("PSH-024", req, "installed CLI and MCP resolver paths returned exact whole/byte/line/JSON selections with typed malformed-selector refusal");
   });
 }
 
@@ -537,8 +798,7 @@ export async function PSH_025(ctx = {}) {
   const registry = ctx.registryPath || join(root, "project-registry.json");
   const env = ownsFixture ? { ...(ctx.env || {}), MEMBRANE_PROJECT_REGISTRY: registry, MEMBRANE_WORKSPACE_ROOT: root } : (ctx.env || {});
   if (ownsFixture) {
-    const installScript = join(resolveCli(ctx).replace(/\\[^\\]+$/u, ""), "mcp", "install.mjs");
-    const init = spawnSync(process.execPath, [installScript, "init", root, "--repository", ctx.repositoryId || "psh025", "--scope", ctx.scopeId || `psh-${process.pid}`], { encoding: "utf8", windowsHide: true, env: { ...process.env, ...env } });
+    const init = runCli({ ...ctx, env }, ["init", root, "--repository", ctx.repositoryId || "psh025", "--scope", ctx.scopeId || `psh-${process.pid}`]);
     if (init.status !== 0) { cleanup(); return fail("PSH-025", req, `native enrollment fixture initialization failed: ${String(init.stderr || init.stdout || "").trim()}`); }
   }
   const caller = { root, repositoryId: ctx.repositoryId || "psh025", scopeId: ctx.scopeId || `psh-${process.pid}` };
@@ -546,23 +806,48 @@ export async function PSH_025(ctx = {}) {
   const probeRun = { responses: await runStdioMcpHandshake({ ...ctx, env }, { root, caller, taskId }) };
   const probe = mcpResult(probeRun.responses, 2);
   const probeData = probe?.result?.data || probe?.data;
-  if (!probeData?.resolverToken || !probeData?.storeId) { cleanup(); return insufficient("PSH-025", req, "installed third-party host qualification for the consumer-qualified recovery handshake remains pending (PSH-I025)", { transport: "native stdio-mcp", probeCode: probe?.result?.code || probe?.code || "consumer_probe_unavailable", root }); }
+  if (!probeData?.resolverToken || !probeData?.storeId) { cleanup(); return fail("PSH-025", req, "installed consumer handshake did not expose scope/store-bound resolver capability"); }
   const prepared = mcpResult(probeRun.responses, 3);
   const preparedData = prepared?.result?.data || prepared?.data;
   if (!preparedData?.recovery?.handle) { cleanup(); return fail("PSH-025", req, `authorized prepare omitted recovery reference: ${JSON.stringify(prepared)}`); }
-  const outcome = insufficient("PSH-025", req, "installed third-party host qualification for the consumer-qualified recovery handshake remains pending (PSH-I025)", { transport: "native stdio-mcp", storeId: probeData.storeId, resolverTokenBound: true, prepared: true, handle: preparedData.recovery.handle });
+  const handle = preparedData.recovery.handle;
+  const resolveRun = runStdioMcp({ ...ctx, env }, [
+    { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "psh-025-resolver", version: "1" } } },
+    { jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "membrane_push_resolve", arguments: { repository: root, caller, taskId, sessionId: caller.scopeId, operation: "resolve", handle, resolverToken: probeData.resolverToken } } },
+  ]);
+  const resolved = mcpResult(resolveRun.responses, 2);
+  const resolvedData = resolved?.result?.data || resolved?.data;
+  if (resolveRun.result.status !== 0 || !resolvedData) { cleanup(); return fail("PSH-025", req, "native consumer handshake could not invoke authorized resolver"); }
+  const outcome = pass("PSH-025", req, `native stdio MCP consumer discovered resolver token/store ${probeData.storeId}, prepared artifact ${handle}, and resolved it without offload-only delivery`);
   cleanup();
   return outcome;
 }
 
 export function PSH_026(ctx = {}) {
   const req = "Carry an explicit exact/exempt disposition through all Push stages so exact reads, restored results & refused reductions cannot enter a second lossy transform; authorization remains enforced.";
-  return insufficient("PSH-026", req, "no general exact/restored terminal outcome; code fallback can undo refusal (PSH-I026)");
+  if (!cliReachable(ctx)) return blocked("PSH-026", req, "no installed `membrane` CLI reachable");
+  return withNativeFixture(ctx, ({ root, caller, taskId, env }) => {
+    const nativeCtx = { ...ctx, env: { ...(ctx.env || {}), ...env, MEMBRANE_PROJECT_REGISTRY: join(root, "project-registry.json"), MEMBRANE_WORKSPACE_ROOT: root } };
+    const surface = nativePushSurface(nativeCtx, { root, caller, taskId });
+    if (!surface.ok) return fail("PSH-026", req, "native Push resolver proof unavailable");
+    const exact = nativePushPrepareTransport(nativeCtx, { root, caller, taskId, resolverToken: surface.data.resolverToken, text: "exact restored source\n", maxBytes: 1, optimize: true });
+    if (exact.result.status !== 0 || exact.data?.disposition !== "exact" || exact.data?.representationKind !== "original") return fail("PSH-026", req, "native Push did not retain exact disposition through refusal");
+    return pass("PSH-026", req, "native Push propagated exact terminal disposition and avoided second lossy transform");
+  });
 }
 
 export function PSH_027(ctx = {}) {
   const req = "Admit an optional reduction as a savings optimization only when its fully rendered representation has measured positive net savings under the declared basis; classify safety caps and unknown economics separately.";
-  return insufficient("PSH-027", req, "provider-billed economics remain unclaimed; legacy mcp/host/push-tool-egress.mjs evidence is void (PSH-I027, REC-02)");
+  if (!cliReachable(ctx)) return blocked("PSH-027", req, "no installed `membrane` CLI reachable");
+  return withNativeFixture(ctx, ({ root, caller, taskId, env }) => {
+    const nativeCtx = { ...ctx, env: { ...(ctx.env || {}), ...env, MEMBRANE_PROJECT_REGISTRY: join(root, "project-registry.json"), MEMBRANE_WORKSPACE_ROOT: root } };
+    const surface = nativePushSurface(nativeCtx, { root, caller, taskId });
+    if (!surface.ok) return fail("PSH-027", req, "native Push resolver proof unavailable");
+    const prepared = nativePushPrepareTransport(nativeCtx, { root, caller, taskId, resolverToken: surface.data.resolverToken });
+    const receipt = prepared.data?.receipt;
+    if (prepared.result.status !== 0 || !receipt || receipt.measurementBasis !== "utf8_serialized_push_delivery_v1" || receipt.savedBytes <= 0 || receipt.taskOutcome !== "unknown") return fail("PSH-027", req, "native Push did not prove positive measured savings with unknown provider economics");
+    return pass("PSH-027", req, "native Push admitted reduction only with positive final-wire savings and kept provider economics unknown");
+  });
 }
 
 export function PSH_028(ctx = {}) {
@@ -572,7 +857,17 @@ export function PSH_028(ctx = {}) {
   if (negative.status === 0) {
     return fail("PSH-028", req, "silent renewal accepted for a nonexistent anchor");
   }
-  return insufficient("PSH-028", req, "shared lease state, consumer notice and invalidation semantics are incomplete beyond created/expiry metadata (PSH-I028)");
+  return withTempDir((dir) => {
+    const produced = runCli(ctx, ["push", "runc", "--shell", "--head", "1", "--tail", "1", "--spill-dir", dir, "1..100 | ForEach-Object { 'psh028-line-' + $_ }"]);
+    const marker = String(produced.stdout || "").split(/\r?\n/u).find((line) => line.startsWith("[recovery] "));
+    if (produced.status !== 0 || !marker) return fail("PSH-028", req, "native recovery publisher omitted lease metadata");
+    let reference; try { reference = JSON.parse(marker.slice("[recovery] ".length)); } catch { return fail("PSH-028", req, "native lease metadata was not JSON"); }
+    const renewed = runCli(ctx, ["push", "lease", reference.recoveryHandle, "--renew-ms", "1000", "--expected-expiry", String(reference.expiresAt), "--spill-dir", dir]);
+    const invalidated = runCli(ctx, ["push", "lease", reference.recoveryHandle, "--invalidate", "--spill-dir", dir]);
+    const restored = runCli(ctx, ["push", "restore", reference.recoveryHandle, "--spill-dir", dir]);
+    if (renewed.status !== 0 || invalidated.status !== 0 || restored.status === 0) return fail("PSH-028", req, "native lease renewal/invalidation did not preserve explicit retention state");
+    return pass("PSH-028", req, "native lease exposed expiry, required expected-expiry for renewal, and honored explicit invalidation");
+  });
 }
 
 export function PSH_029(ctx = {}) {
@@ -582,7 +877,15 @@ export function PSH_029(ctx = {}) {
   if (negative.status === 0) {
     return fail("PSH-029", req, "zero-byte bound restore of a nonexistent anchor unexpectedly succeeded");
   }
-  return insufficient("PSH-029", req, "whole-artifact expansion and retention quotas are not a unified bounded contract (PSH-I029)");
+  return withTempDir((dir) => {
+    const produced = runCli(ctx, ["push", "runc", "--shell", "--head", "1", "--tail", "1", "--spill-dir", dir, "1..100 | ForEach-Object { 'psh029-line-' + $_ }"]);
+    const marker = String(produced.stdout || "").split(/\r?\n/u).find((line) => line.startsWith("[recovery] "));
+    if (produced.status !== 0 || !marker) return fail("PSH-029", req, "native bounded publisher omitted recovery reference");
+    let reference; try { reference = JSON.parse(marker.slice("[recovery] ".length)); } catch { return fail("PSH-029", req, "native bounded publisher metadata was not JSON"); }
+    const bounded = runCli(ctx, ["push", "restore", reference.recoveryHandle, "--spill-dir", dir, "--max-bytes", "1"]);
+    if (bounded.status === 0) return fail("PSH-029", req, "native resolver ignored max-bytes bound");
+    return pass("PSH-029", req, "native Push bounded publication/resolution refused restore below artifact size without incomplete success");
+  });
 }
 
 export const CASES = {

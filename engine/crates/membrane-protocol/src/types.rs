@@ -4,7 +4,7 @@
 //! Field names, optionality, and JSON casing are modelled faithfully on how the
 //! shapes are actually produced and consumed:
 //!
-//!   * `ScopeGrantV1`            — minted/validated by `mcp/scope-grant-v1.mjs`.
+//!   * `ScopeGrantV1`            — minted/validated by native federation code.
 //!   * `ContextCandidateSetV1`   — parsed by the admission planner
 //!                                 (`cortex-core::planner`) and emitted by federation.
 //!   * `ContextPacketV1`         — the bounded packet the planner emits.
@@ -36,7 +36,7 @@ pub struct ReadPathV1 {
 }
 
 /// ScopeGrantV1 — the bounded, Ed25519-signed authority to read exact source
-/// ranges for one task. Minted by `mintScopeGrantV1` in `mcp/scope-grant-v1.mjs`;
+/// ranges for one task. Minted & validated by native federation code;
 /// every field name and enum value below matches that module.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -314,7 +314,7 @@ pub const BUDGET_LANE_KINDS: &[BudgetLaneKind] = &[
 
 /// MBR-608: how the content reached the agent at the renderer's level of
 /// detail. Carries the same wire-level meaning as the JS
-/// `mcp/context-renderer-lib.cjs` `deliveryMode` enum but is the canonical
+/// historical renderer `deliveryMode` enum but is the canonical
 /// Rust type for IPC and the receipt.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

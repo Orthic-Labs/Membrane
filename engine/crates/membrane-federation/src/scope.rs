@@ -351,8 +351,8 @@ fn valid_base64ish(value: &str) -> bool {
             .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'+' | b'/' | b'='))
 }
 
-/// Canonical signing bytes match `mcp/scope-grant-v1.mjs`: domain prefix plus
-/// canonical JSON for the grant with `signature` removed.
+/// Canonical signing bytes are owned by this native Rust implementation. The
+/// retired MCP implementation used same domain prefix & JSON shape.
 pub fn signing_bytes(grant: &ScopeGrantV1) -> Vec<u8> {
     let unsigned = UnsignedScopeGrant::from(grant);
     let canonical = membrane_protocol::canonical_json_of(&unsigned);

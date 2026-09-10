@@ -2,6 +2,7 @@
   "schemaVersion": 1,
   "repository": "Orthic-Labs/Membrane",
   "baselineCommit": "322855c33e65dc936e3927570451c98e54fb0bd2",
+  "pathSemantics": "All paths in this historical ledger are baseline launch-site anchors; absent paths are retired and never current runtime or packaging owners.",
   "ownershipRule": "Each legacy executable path or launch site has exactly one future packet owner; packet ownership is not shared.",
   "paths": [
     {"path":"apps/membrane-hub/src-tauri/src/supervisor.rs:Command::new","kind":"launch-site","ownerPacket":"MEM-031","action":"retain native resident child","reason":"Locked contract permits Hub to supervise Rust resident-child."},

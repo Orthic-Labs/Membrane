@@ -230,7 +230,7 @@ future book requires:
    `resources[]`, including the matching `accessGrants` and `version`.
 3. Extending the Rust `resources::read_payload` to substitute the URI
    template variables before the access-grant check.
-4. Mirroring the same substitution in `mcp/resources.mjs`.
+4. Mirroring the same substitution in `engine/crates/membrane-mcp/src/resources.rs`.
 5. Adding a parity assertion to
    `tests/mcp-resources/resources.parity.test.mjs` so native and legacy
    continue to agree on the substituted body.
@@ -242,7 +242,7 @@ resource-versioning roadmap in Books 2 and 3.
 
 The Rust module lives in `engine/crates/membrane-mcp/src/resources.rs`
 (`list_payload`, `read_payload`, `read_result_payload`, `ReadOutcome`,
-`NAMES`, `URIS`). The legacy JS module lives in `mcp/resources.mjs`
+`NAMES`, `URIS`). Resource authority lives in `engine/crates/membrane-mcp/src/resources.rs`
 (`listResources`, `readResource`, `readResourceByName`,
 `allResourceDefinitions`, `RESOURCE_NAMES`, `RESOURCE_URIS`).
 

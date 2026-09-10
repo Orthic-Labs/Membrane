@@ -1,8 +1,10 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "surfaces": {
     "mcp": {
-      "serve": "rightkit cargo run --manifest-path engine/Cargo.toml -p membrane --bin membrane -- stdio-mcp",
+      "command": "${ARTIFACT_ROOT}/membrane.exe",
+      "args": ["stdio-mcp"],
+      "cwd": "${ARTIFACT_ROOT}",
       "tools": 1
     }
   },
@@ -13,6 +15,7 @@
     ]
   },
   "ax": {
+    "scenariosDir": "scripts/qualification/corpus",
     "conformanceExamples": {
       "membrane_context": {
         "task": "conformance-probe",

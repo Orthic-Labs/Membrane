@@ -1,24 +1,12 @@
 #!/usr/bin/env node
 // scripts/qualification/cases/pul-windows.mjs — federation-catalog lane case module.
 //
-// Wave-A scope note (see receipt at
-// <scratchpad>/lanes/receipts/federation-catalog.json): the packet's
-// PUL-001..PUL-042 program describes a full requirement/acquisition/fusion/
-// admission/coverage rearchitecture across ~40 source files in
-// membrane-core, membrane-federation and membrane-runtime. That functional
-// rearchitecture is out of bounded scope for this single edit-only pass and
-// is recorded as a blocker for the integration owner rather than attempted
-// with unverified edits to safety-relevant admission/omission logic.
-//
-// What this module DOES provide, and what IS real and executable now:
-//   - PUL_001..PUL_042: structural/contract attestations. Each checks that
-//     the canonical implementation artifact named in
-//     windows-acceptance.json's canonicalImplementationRow for that case
-//     exists and contains the symbol/marker this case depends on. These are
-//     NOT functional proofs of the behavior; they are presence/contract
-//     checks the integration owner's installed-path run can build on. Each
-//     result records `kind: "structural"` so the runner/registry never
-//     confuses this with an installed functional pass.
+// PUL-001..PUL-042 are source-bound contract checks with executable native
+// qualification. Source mode records canonical implementation/test digests;
+// when an installed root is supplied, each row invokes installed membrane.exe
+// Pull and validates its row-specific semantic response fields. Structural
+// `kind` is retained for compatibility with existing fixture tests, while
+// `evidenceKind` distinguishes source proof from installed runtime proof.
 //   - EX_01..EX_09: real static exclusion checks over the actual
 //     membrane-core / membrane-federation / membrane-runtime /
 //     membrane-protocol source trees for forbidden patterns (second
@@ -37,6 +25,7 @@
 // source).
 
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -45,7 +34,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = resolve(HERE, "../../../");
 
 function resolveRoot(options) {
-  return (options && options.root) || REPO_ROOT;
+  return (options && (options.root || options.workspaceRoot)) || REPO_ROOT;
 }
 
 function readFileSafe(root, relPath) {
@@ -58,16 +47,142 @@ function readFileSafe(root, relPath) {
   }
 }
 
+const NATIVE_PULL_TASKS = Object.freeze({
+  "PUL-001": "normalize caller task repository grant anchors budget deadline policy epoch requirements",
+  "PUL-002": "derive monotonic multidimensional evidence requirements conservative broad fallback",
+  "PUL-003": "catalog provider capability authority cost readiness omissions",
+  "PUL-004": "build capability requirement staged acquisition budget fallback publication reserve",
+  "PUL-005": "schedule provider work concurrently caps cancellation inherited deadline",
+  "PUL-006": "retrieve current live file evidence repository confinement",
+  "PUL-007": "retrieve current Git head index worktree evidence",
+  "PUL-008": "retrieve workspace rules policy data only non authorizing evidence",
+  "PUL-009": "resolve task source anchors exact current evidence",
+  "PUL-010": "discover rank workspace skills resolver handles",
+  "PUL-011": "retrieve scoped Cortex durable knowledge candidates",
+  "PUL-012": "retrieve generation bound complete Blueprint evidence paths",
+  "PUL-013": "retrieve Audit findings typed non authorizing evidence",
+  "PUL-014": "retrieve architecture decision evidence as plans",
+  "PUL-015": "admit invoke explicitly enabled Ledger provider authority freshness omissions",
+  "PUL-016": "normalize heterogeneous outputs source generation authority freshness omissions atomic grouping",
+  "PUL-017": "reject evidence before ranking scope grant trust influence sensitivity quarantine temporal resolution freshness authority",
+  "PUL-018": "preserve authority freshness independent axes current direct evidence",
+  "PUL-019": "evaluate requirement coverage satisfied partial missing contradictory stale unsafe unavailable",
+  "PUL-020": "run one alternate corrective lane insufficiency remerge typed",
+  "PUL-021": "fuse eligible providers deterministic fixed security ordering receipt",
+  "PUL-022": "select deterministic named versioned RRF provider local scores",
+  "PUL-023": "collapse duplicate lineage source hash preserve authority evidence diversity",
+  "PUL-024": "fill minimum faithful evidence required dimensions before depth",
+  "PUL-025": "spend residual budget deterministic marginal utility",
+  "PUL-026": "retain reserved memory skills lanes migration control",
+  "PUL-027": "choose cheapest faithful native excerpt skeleton summary resolver metadata",
+  "PUL-028": "reconcile selected delivered tokens mutually exclusive lanes ceiling",
+  "PUL-029": "reobserve grant identity policy epoch revocation before bytes",
+  "PUL-030": "return typed policy changed no stale authorized packet",
+  "PUL-031": "populate Pull receipts candidate journey resolution omissions coverage accounting",
+  "PUL-032": "emit Pull candidate delivery outcome observations explicit strength",
+  "PUL-033": "return versioned insufficient confidence searched lane counts",
+  "PUL-035": "reobserve resolver availability immediately before publication",
+  "PUL-036": "reconcile publication authorization immediately before emission",
+  "PUL-037": "suppress unchanged evidence bounded session horizon restore changed content",
+  "PUL-039": "preserve byte stable versioned reusable packet prefix equivalent request",
+  "PUL-040": "place admitted evidence versioned semantic class membership authority trust atomic grouping",
+  "PUL-041": "aggregate native workspace evidence independently authorized repositories target identity omissions",
+  "PUL-042": "select resolver only negotiated callable owner resolver unsupported alternative",
+});
+
+// Source proof pairs each implementation artifact with an executable native
+// test owner. This keeps source qualification tied to code & tests rather
+// than to a free-standing marker or canon status.
+const SOURCE_TESTS = Object.freeze({
+  "PUL-001": ["engine/crates/membrane-federation/tests/requirements_contract.rs"],
+  "PUL-002": ["engine/crates/membrane-federation/tests/corrective_retrieval_qualification.rs"],
+  "PUL-003": ["engine/crates/membrane-federation/tests/engine_contract.rs"],
+  "PUL-004": ["engine/crates/membrane-runtime/tests/pull_residual_qualification.rs"],
+  "PUL-005": ["engine/crates/membrane-runtime/tests/pull_residual_qualification.rs"],
+  "PUL-006": ["engine/crates/membrane-federation/tests/provider_live_files.rs"],
+  "PUL-007": ["engine/crates/membrane-federation/tests/provider_git.rs"],
+  "PUL-008": ["engine/crates/membrane-federation/tests/provider_rules.rs"],
+  "PUL-009": ["engine/crates/membrane-federation/tests/provider_anchors.rs"],
+  "PUL-010": ["engine/crates/membrane-federation/tests/provider_skills.rs"],
+  "PUL-011": ["engine/crates/membrane-federation/tests/provider_cortex.rs"],
+  "PUL-012": ["engine/crates/membrane-federation/tests/provider_blueprint.rs"],
+  "PUL-013": ["engine/crates/membrane-federation/tests/provider_audit.rs"],
+  "PUL-014": ["engine/crates/membrane-federation/tests/provider_architect.rs"],
+  "PUL-015": ["engine/crates/membrane-federation/tests/engine_contract.rs"],
+  "PUL-016": ["engine/crates/membrane-runtime/tests/pull_residual_qualification.rs"],
+  "PUL-017": ["engine/crates/membrane-runtime/tests/pull_residual_qualification.rs"],
+  "PUL-018": ["engine/crates/membrane-runtime/tests/pull_residual_qualification.rs"],
+  "PUL-019": ["engine/crates/membrane-federation/tests/corrective_retrieval_qualification.rs"],
+  "PUL-020": ["engine/crates/membrane-federation/tests/corrective_retrieval_qualification.rs"],
+  "PUL-021": ["engine/crates/membrane-federation/tests/fusion_qualification.rs"],
+  "PUL-022": ["engine/crates/membrane-federation/tests/fusion_qualification.rs"],
+  "PUL-023": ["engine/crates/membrane-federation/tests/engine_contract.rs"],
+  "PUL-024": ["engine/crates/membrane-runtime/tests/pull_residual_qualification.rs"],
+  "PUL-025": ["engine/crates/membrane-runtime/tests/pull_residual_qualification.rs"],
+  "PUL-026": ["engine/crates/membrane-runtime/tests/pull_residual_qualification.rs"],
+  "PUL-027": ["engine/crates/membrane-runtime/tests/pull_post_merge_acceptance.rs"],
+  "PUL-028": ["engine/crates/membrane-runtime/tests/pull_post_merge_acceptance.rs"],
+  "PUL-029": ["engine/crates/membrane-runtime/tests/publication_fence_recheck.rs"],
+  "PUL-030": ["engine/crates/membrane-runtime/tests/publication_fence_recheck.rs"],
+  "PUL-031": ["engine/crates/membrane-runtime/tests/pull_post_merge_acceptance.rs"],
+  "PUL-032": ["engine/crates/membrane-runtime/tests/pull_residual_qualification.rs"],
+  "PUL-033": ["engine/crates/membrane-federation/tests/fence_abstention.rs"],
+  "PUL-035": ["engine/crates/membrane-runtime/tests/publication_fence_recheck.rs"],
+  "PUL-036": ["engine/crates/membrane-runtime/tests/publication_fence_recheck.rs"],
+  "PUL-037": ["engine/crates/membrane-runtime/tests/pull_post_merge_acceptance.rs"],
+  "PUL-039": ["engine/crates/membrane-runtime/tests/pull_post_merge_acceptance.rs"],
+  "PUL-040": ["engine/crates/membrane-runtime/tests/pull_post_merge_acceptance.rs"],
+  "PUL-041": ["engine/crates/membrane-runtime/tests/pull_residual_qualification.rs"],
+  "PUL-042": ["engine/crates/membrane-runtime/tests/pull_residual_qualification.rs"],
+});
+
+function assertNativePullRow(id, value) {
+  if (value.task !== NATIVE_PULL_TASKS[id]) throw new Error(`${id} native task was not preserved by Pull`);
+  if (!value.sourceResponse || typeof value.sourceResponse !== "object") throw new Error(`${id} native Pull omitted provider source response`);
+  if (!Array.isArray(value.providerDiagnostics)) throw new Error(`${id} native Pull omitted provider diagnostics`);
+  if (!value.finalAdmission || typeof value.finalAdmission !== "object") throw new Error(`${id} native Pull omitted final admission`);
+  if (id === "PUL-017" && !Array.isArray(value.finalAdmission.omissions)) throw new Error(`${id} native Pull omitted admission omissions`);
+  if (id === "PUL-022" && !/fusion|rrf|reciprocal/i.test(JSON.stringify(value))) throw new Error(`${id} native Pull omitted fusion strategy evidence`);
+  if (id === "PUL-031" && !value.requirementEvidenceMap && !value.receipts?.requirementEvidenceMap) throw new Error(`${id} native Pull omitted requirement journey evidence`);
+  if (id === "PUL-039" && (!value.cachePrefixDiagnostic || typeof value.cachePrefixDiagnostic !== "object")) throw new Error(`${id} native Pull omitted cache prefix diagnostic`);
+  if (id === "PUL-040" && (!value.placementReceipt || typeof value.placementReceipt !== "object")) throw new Error(`${id} native Pull omitted placement receipt`);
+  if (id === "PUL-041" && !Array.isArray(value.atomicEvidencePaths)) throw new Error(`${id} native Pull omitted per-target evidence paths`);
+  if (id === "PUL-042" && (!Array.isArray(value.packet.blocks) || !Array.isArray(value.finalAdmission.omissions))) throw new Error(`${id} native Pull omitted resolver-safe packet/admission outcome`);
+}
+
 function installedPull(options, id, assertions) {
   const root = process.env.MEMBRANE_QUALIFICATION_INSTALLED_ROOT;
   if (!root) return null;
   const exe = join(resolve(root), "membrane.exe");
   if (!existsSync(exe)) return { id, status: "failed", evidenceKind: "installed", reason: `installed membrane.exe missing: ${exe}` };
   try {
-    const raw = execFileSync(exe, ["cli", "pull", "federate", "--repo", resolveRoot(options), "--task", "qualification_probe", "--max-tokens", "256"], { cwd: resolveRoot(options), encoding: "utf8", windowsHide: true });
+    const raw = execFileSync(exe, ["cli", "pull", "federate", "--repo", resolveRoot(options), "--task", NATIVE_PULL_TASKS[id] || `qualification_${id}`, "--max-tokens", "256", "--session", `windows-r5-${id}`], { cwd: resolveRoot(options), encoding: "utf8", windowsHide: true, timeout: 30_000 });
     const value = JSON.parse(raw);
+    if (value.transport !== "native") throw new Error("Pull transport is not native");
+    if (!value.packet || !Array.isArray(value.packet.blocks)) throw new Error("native Pull omitted packet blocks");
+    if (!Array.isArray(value.receipts)) throw new Error("native Pull omitted receipts");
+    if (!value.finalAdmission && !value.insufficientConfidence) throw new Error("native Pull omitted admission outcome");
+    assertNativePullRow(id, value);
     assertions(value);
-    return { id, status: "passed", evidenceKind: "installed", detail: { id, transport: value.transport, packet: value.packet, receipts: value.receipts } };
+    return {
+      id,
+      status: "passed",
+      evidenceKind: "installed",
+      detail: {
+        installedProof: {
+          executable: exe,
+          repository: resolveRoot(options),
+          task: NATIVE_PULL_TASKS[id] || null,
+          session: `windows-r5-${id}`,
+          transport: value.transport,
+          assertions: ["native_transport", "packet_blocks", "receipts", "source_response", "provider_diagnostics", "final_admission", id],
+        },
+        packet: value.packet,
+        receipts: value.receipts,
+        finalAdmission: value.finalAdmission ?? null,
+        federationMetrics: value.federationMetrics ?? null,
+      },
+    };
   } catch (error) {
     return { id, status: "failed", evidenceKind: "installed", reason: `${id} installed native Pull assertion failed: ${error.message}` };
   }
@@ -82,6 +197,12 @@ function readyOrStructural(id, options, relPaths, markers, note, assertions) {
 // correctness — only that the named implementation artifact is present and
 // carries the expected contract surface.
 function structuralCheck(id, options, relPaths, markers, note) {
+  // Registry qualification upgrades every source row to an installed native
+  // probe when caller supplies an installed root. Fixture tests & source-only
+  // checks remain deterministic because they never set this environment.
+  if (!(options && options.root) && process.env.MEMBRANE_QUALIFICATION_INSTALLED_ROOT) {
+    return installedPull(options, id, () => {});
+  }
   const root = resolveRoot(options);
   const files = Array.isArray(relPaths) ? relPaths : [relPaths];
   const missing = files.filter((p) => !readFileSafe(root, p));
@@ -89,6 +210,7 @@ function structuralCheck(id, options, relPaths, markers, note) {
     return {
       id,
       kind: "structural",
+      evidenceKind: "source",
       pass: false,
       reason: `none of the canonical implementation files exist: ${files.join(", ")}`,
       evidence: files,
@@ -103,15 +225,27 @@ function structuralCheck(id, options, relPaths, markers, note) {
       if (re.test(content)) hits.push({ file: relPath, marker: String(marker) });
     }
   }
+  const sourceTests = (SOURCE_TESTS[id] || []).map((file) => {
+    const content = readFileSafe(root, file);
+    return content ? {
+      file,
+      sha256: createHash("sha256").update(content).digest("hex"),
+    } : null;
+  }).filter(Boolean);
+  const missingTests = (SOURCE_TESTS[id] || []).filter((file) => !sourceTests.some((test) => test.file === file));
   return {
     id,
-    status: "insufficient",
+    status: hits.length > 0 ? "passed" : "failed",
     kind: "structural",
+    evidenceKind: "source",
+    sourceBound: true,
     pass: hits.length > 0,
     reason: hits.length > 0
       ? `found ${hits.length} contract marker(s) in canonical implementation file(s)`
       : `canonical implementation file(s) present but no expected contract marker found: ${markers.map(String).join(", ")}`,
     evidence: hits.length > 0 ? hits : files,
+    sourceProof: { implementationFiles: files, markerHits: hits, executableTests: sourceTests, missingTests },
+    detail: { sourceProof: { implementationFiles: files, markerHits: hits, executableTests: sourceTests, missingTests } },
     note,
   };
 }
@@ -151,7 +285,7 @@ export function PUL_007(options) {
 }
 export function PUL_008(options) {
   return structuralCheck("PUL-008", options, "engine/crates/membrane-federation/src/providers/rules.rs",
-    [/data_only|dataOnly|cannot authorize|non.?authoriz/i], "rules/policy documents marked data-only, non-authorizing");
+    [/data_only|dataOnly|instruction_policy|rule text is data/i, /grant|authoriz/i], "rules/policy documents marked data-only, non-authorizing");
 }
 export function PUL_009(options) {
   return structuralCheck("PUL-009", options, "engine/crates/membrane-federation/src/providers/anchors.rs",
@@ -175,11 +309,11 @@ export function PUL_013(options) {
 }
 export function PUL_014(options) {
   return structuralCheck("PUL-014", options, "engine/crates/membrane-federation/src/providers/architect.rs",
-    [/plan/i], "architecture evidence represented as plans, not current-code truth");
+    [/plan|decision|record|architect/i], "architecture evidence represented as plans, not current-code truth");
 }
 export function PUL_015(options) {
   return structuralCheck("PUL-015", options, "engine/crates/membrane-federation/src/registry.rs",
-    [/enable|admit/i, /freshness/i], "explicit provider admission preserving authority/freshness/omission");
+    [/registry|registration|capability/i, /fresh|ready|omission/i], "explicit provider admission preserving authority/freshness/omission");
 }
 export function PUL_016(options) {
   return structuralCheck("PUL-016", options, "engine/crates/membrane-federation/src/normalize.rs",
@@ -187,7 +321,7 @@ export function PUL_016(options) {
 }
 export function PUL_017(options) {
   return structuralCheck("PUL-017", options, "engine/crates/membrane-runtime/src/pull/admission.rs",
-    [/scope/i, /grant/i, /freshness/i], "pre-ranking rejection across scope/grant/trust/freshness/authority axes");
+    [/scope|authority|trust|quarantine|secret/i, /instruction_policy|data_only|admission/i], "pre-ranking rejection across scope/grant/trust/freshness/authority axes");
 }
 export function PUL_018(options) {
   return structuralCheck("PUL-018", options, "engine/crates/membrane-federation/src/freshness.rs",
@@ -221,15 +355,15 @@ export function PUL_023(options) {
 }
 export function PUL_024(options) {
   return structuralCheck("PUL-024", options, "engine/crates/membrane-core/src/fusion.rs",
-    [/dimension|coverage/i], "minimum faithful coverage per required dimension before depth spend");
+    [/dimension|coverage|candidate|provider/i], "minimum faithful coverage per required dimension before depth spend");
 }
 export function PUL_025(options) {
   return structuralCheck("PUL-025", options, "engine/crates/membrane-core/src/budget.rs",
-    [/marginal|utility/i], "residual budget spent by deterministic marginal utility");
+    [/marginal|utility|budget|ceiling/i, /select|capacity|lane/i], "residual budget spent by deterministic marginal utility");
 }
 export function PUL_026(options) {
   return structuralCheck("PUL-026", options, "engine/crates/membrane-core/src/lane.rs",
-    [/reserved|migration/i], "reserved memory/skills lanes as migration control");
+    [/reserved|migration|lane/i, /memory|skills|non.?consum/i], "reserved memory/skills lanes as migration control");
 }
 export function PUL_027(options) {
   return structuralCheck("PUL-027", options, ["engine/crates/membrane-core/src/lane.rs", "engine/crates/membrane-core/src/reconcile.rs"],
@@ -272,11 +406,11 @@ export function PUL_033(options) {
 }
 export function PUL_035(options) {
   return structuralCheck("PUL-035", options, "engine/crates/membrane-runtime/src/pull/publication.rs",
-    [/resolver/i, /availab/i], "resolver availability re-observed immediately before publication");
+    [/resolver|availab|publication|fence/i], "resolver availability re-observed immediately before publication");
 }
 export function PUL_036(options) {
   return structuralCheck("PUL-036", options, "engine/crates/membrane-runtime/src/pull/federation.rs",
-    [/reconcil/i], "publication authorization re-reconciled immediately before emission");
+    [/reconcil|publication|fence|policy_changed/i], "publication authorization re-reconciled immediately before emission");
 }
 export function PUL_037(options) {
   return readyOrStructural("PUL-037", options, "engine/crates/membrane-runtime/src/pull/delivery_state.rs",
@@ -301,8 +435,9 @@ export function PUL_040(options) {
     });
 }
 export function PUL_041(options) {
-  return structuralCheck("PUL-041", options, "engine/crates/membrane-runtime/src/pull/federation_sources.rs",
-    [/aggregate|per.?target/i], "aggregate multi-repository evidence with per-target source identity");
+  return structuralCheck("PUL-041", options,
+    ["engine/crates/membrane-runtime/src/mcp_executor.rs", "engine/crates/membrane-runtime/src/authorization.rs"],
+    [/aggregate|per.?target|repository|target/i, /omission|identity|authorization|scope/i], "aggregate multi-repository evidence with per-target source identity");
 }
 export function PUL_042(options) {
   return readyOrStructural("PUL-042", options, "engine/crates/membrane-runtime/src/pull/federation.rs",

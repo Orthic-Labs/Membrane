@@ -214,3 +214,45 @@ fn malformed_identity_fails_with_its_specific_typed_error() {
         Err(ResidencyError::InvalidHolder)
     );
 }
+
+/// An expiry worker and a late acquire are one serialized lifecycle boundary:
+/// once expiry drains generation N, an acquire for generation N must remain
+/// fenced even when expiry wins the mutex before the late request arrives.
+#[test]
+fn expired_generation_tombstone_blocks_late_acquire_but_allows_new_generation() {
+    let mut registry = ResidencyRegistry::new();
+    let old = holder(HolderKind::Hub, "hub", "credential");
+    let new = holder(HolderKind::CodeRightDaemon, "coderight", "credential-new");
+    registry.acquire(controller(), old, 1, 10).unwrap();
+    assert!(registry.reconcile_expired(10).drain_controller);
+    assert_eq!(
+        registry.acquire(controller(), new.clone(), 10, 20),
+        Err(ResidencyError::HolderExpired)
+    );
+    assert!(registry.acquire(relaunched_controller(), new.clone(), 11, 30).is_ok());
+    assert!(registry.release(&new).unwrap().drain_controller);
+}
+
+/// Installed lifecycle probes must carry semantic state transitions in their
+/// native output; a green process exit alone is insufficient evidence.
+#[test]
+fn installed_lifecycle_probes_report_controller_and_watcher_transitions() {
+    for scenario in [
+        "hub-only",
+        "coderight-only",
+        "both",
+        "holder-crash",
+        "holder-exit",
+        "final-holder-shutdown",
+        "concurrent-acquire-renew-release",
+        "drain-acquire-race",
+        "restart-during-acquire",
+        "stale-fencing",
+        "survivor-continuity",
+    ] {
+        let value = membrane_client::residency::qualification_lifecycle(scenario);
+        assert_eq!(value["status"], "pass", "{scenario} must pass native control");
+        assert!(value["evidence"]["expectedControllerState"].is_object(), "{scenario} missing controller state");
+        assert!(value["evidence"]["watcherActivity"].is_object(), "{scenario} missing watcher activity");
+    }
+}

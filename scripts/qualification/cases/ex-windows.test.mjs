@@ -17,7 +17,7 @@ function mkFixtureSourceRoot() {
 }
 
 // A "real" installed root fixture: canonical executables + a clean mcp.json
-// + a clean mcp/ surface. Executables are dummy (non-runnable) files, so any
+// + a clean native runtime surface. Executables are dummy (non-runnable) files, so any
 // probe that actually invokes them (EX-01's `membrane.exe status`, which
 // this fixture cannot answer) is expected to come back "insufficient", never
 // a fabricated pass — this is exercised explicitly below.
@@ -31,7 +31,7 @@ function mkFixtureInstalledRoot({ mcpServers = { membrane: { type: "stdio", comm
   writeFileSync(join(root, "plugin.json"), JSON.stringify({ name: "membrane" }, null, 2));
   writeFileSync(join(root, "release.json"), JSON.stringify({ product: "membrane" }, null, 2));
   mkdirSync(join(root, "mcp"), { recursive: true });
-  writeFileSync(join(root, "mcp/install.mjs"), forbiddenInMcpDir ? forbiddenInMcpDir : "// clean installed surface\n");
+  writeFileSync(join(root, "mcp/native-runtime.json"), forbiddenInMcpDir ? forbiddenInMcpDir : "{\"runtime\":\"native\"}\n");
   return root;
 }
 

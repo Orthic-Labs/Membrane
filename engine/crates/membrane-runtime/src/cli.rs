@@ -8,11 +8,10 @@ use membrane_blueprint::{BlueprintRequest, CancellationToken, Operation};
 use serde::{Deserialize, Serialize};
 use std::io::{BufRead, Read, Write};
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Barrier};
 #[cfg(unix)]
 use std::process::{Command, Stdio};
-#[cfg(unix)]
-use std::time::Instant;
-use std::time::{Duration, UNIX_EPOCH};
+use std::time::{Duration, Instant, UNIX_EPOCH};
 
 const MAX_SAFE_PACKET_CHAR_BUDGET: u64 = 9_007_199_254_740_991;
 const SMOKE_ISOLATION_EXPECTED: usize = 355;
@@ -358,9 +357,14 @@ fn deployed_runtime_from_exe(exe: &Path) -> Option<DeployedRuntime> {
     if let Ok(runtime) = crate::service::runtime_from_exe(exe) {
         if runtime.origin == "installed" {
             return Some(DeployedRuntime {
-                port: runtime.port, db: runtime.db, token_file: runtime.token,
-                ort: runtime.ort, hf_home: runtime.hf_home,
-                semantic_adjudicator_trust: runtime.workspace_root.join("tools/lib/memory/adapt-semantic-adjudicator-trust.json"),
+                port: runtime.port,
+                db: runtime.db,
+                token_file: runtime.token,
+                ort: runtime.ort,
+                hf_home: runtime.hf_home,
+                semantic_adjudicator_trust: runtime
+                    .workspace_root
+                    .join("tools/lib/memory/adapt-semantic-adjudicator-trust.json"),
             });
         }
     }
@@ -410,14 +414,29 @@ fn run_health(timeout_seconds: u64) -> Result<(), String> {
         .ok_or_else(|| "installed runtime unavailable".to_string())?;
     let token = std::fs::read_to_string(&runtime.token)
         .map_err(|error| format!("read installed health token: {error}"))?
-        .trim().to_owned();
-    if token.is_empty() { return Err("installed health token is empty".into()); }
-    let response = crate::installed_health::probe_installed(runtime.port, &token, Duration::from_secs(timeout_seconds), &runtime.token)
-        .map_err(|error| format!("installed health probe failed: {error}"))?;
+        .trim()
+        .to_owned();
+    if token.is_empty() {
+        return Err("installed health token is empty".into());
+    }
+    let response = crate::installed_health::probe_installed(
+        runtime.port,
+        &token,
+        Duration::from_secs(timeout_seconds),
+        &runtime.token,
+    )
+    .map_err(|error| format!("installed health probe failed: {error}"))?;
     let body = String::from_utf8(response.body)
         .map_err(|_| "installed health returned non-UTF-8 JSON".to_string())?;
     println!("{body}");
-    if response.status == 200 { Ok(()) } else { Err(format!("installed health returned HTTP {}", response.status)) }
+    if response.status == 200 {
+        Ok(())
+    } else {
+        Err(format!(
+            "installed health returned HTTP {}",
+            response.status
+        ))
+    }
 }
 
 fn apply_deployed_runtime_defaults(runtime: &DeployedRuntime) {
@@ -572,10 +591,14 @@ enum PushCmd {
     /// Explicit local retention change; restore never renews a lease.
     Lease {
         anchor: String,
-        #[arg(long)] expected_expiry: Option<u64>,
-        #[arg(long, conflicts_with="invalidate")] renew_ms: Option<u64>,
-        #[arg(long)] invalidate: bool,
-        #[arg(long)] spill_dir: Option<PathBuf>,
+        #[arg(long)]
+        expected_expiry: Option<u64>,
+        #[arg(long, conflicts_with = "invalidate")]
+        renew_ms: Option<u64>,
+        #[arg(long)]
+        invalidate: bool,
+        #[arg(long)]
+        spill_dir: Option<PathBuf>,
     },
     /// Shared reversible preparation for an already-executed tool result.
     Prepare {
@@ -833,6 +856,10 @@ enum Cmd {
         #[command(subcommand)]
         command: HygieneCmd,
     },
+    Qualification {
+        #[command(subcommand)]
+        command: QualificationCmd,
+    },
     /// Explain one memory's content-free lifecycle, provenance, and use metadata.
     Explain { id: String },
     /// BM07: durably record one supports/contradicts/derived_from evidence edge between two
@@ -860,7 +887,10 @@ enum Cmd {
         scope: String,
         #[arg(long, default_value = "episode summary")]
         summary: String,
-        #[arg(long = "final-reason", default_value = "no rejected alternative outranked this summary")]
+        #[arg(
+            long = "final-reason",
+            default_value = "no rejected alternative outranked this summary"
+        )]
         final_reason: String,
         /// One or more CANDIDATE_ID=REASON pairs for alternatives Adapt considered and rejected.
         #[arg(long = "rejected", value_name = "CANDIDATE_ID=REASON")]
@@ -894,6 +924,8 @@ enum Cmd {
         /// Include expired rows for audit only; superseded and non-active rows remain excluded.
         #[arg(long)]
         include_expired: bool,
+        #[arg(long, value_enum, default_value = "hybrid")]
+        arm: RetrievalArmArg,
     },
     /// Evaluation-only batch recall. Reads JSONL queries and emits ranked IDs without logging.
     Replay {
@@ -1941,7 +1973,10 @@ fn service_api_token() -> Result<Option<String>, String> {
 fn allows_direct_fallback(kind: std::io::ErrorKind) -> bool {
     // Used only for connect failure, before a stream or request bytes exist.
     // Windows loopback can time out when the resident service is stopped.
-    matches!(kind, std::io::ErrorKind::ConnectionRefused | std::io::ErrorKind::TimedOut)
+    matches!(
+        kind,
+        std::io::ErrorKind::ConnectionRefused | std::io::ErrorKind::TimedOut
+    )
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -2727,7 +2762,10 @@ fn run_put_retry_policy(
             Ok(ServicePostOutcome::Response(response))
                 if response.authenticated && retryable_service_status(response.status) =>
             {
-                return Err("commit_unknown: authenticated resident mutation status is ambiguous".to_string());
+                return Err(
+                    "commit_unknown: authenticated resident mutation status is ambiguous"
+                        .to_string(),
+                );
             }
             Ok(ServicePostOutcome::Response(response))
                 if retryable_service_status(response.status) && attempt == 0 =>
@@ -2754,9 +2792,7 @@ fn run_put_retry_policy(
                     response.status, response.body
                 ));
             }
-            Err(error)
-                if error.starts_with("commit_unknown:") =>
-            {
+            Err(error) if error.starts_with("commit_unknown:") => {
                 return Err(error);
             }
             Err(_) if attempt == 0 => sleep(DEFAULT_RETRY_DELAY),
@@ -2937,7 +2973,8 @@ fn try_service_post_at_port_with_token(
     let body_bytes = body.as_bytes();
     let mut canonical_auth = None;
     let headers = if canonical {
-        let token = api_token.ok_or_else(|| "canonical loopback auth requires token".to_string())?;
+        let token =
+            api_token.ok_or_else(|| "canonical loopback auth requires token".to_string())?;
         let identity = discover_loopback_identity(port)?;
         let signer = membrane_client::LoopbackAuthSigner::from_hex_token(token)
             .map_err(|error| format!("canonical loopback token invalid: {error}"))?;
@@ -2946,14 +2983,27 @@ fn try_service_post_at_port_with_token(
         let expiry = membrane_client::LoopbackAuthSigner::bounded_expiry(unix_seconds_now(), 10);
         use sha2::Digest as _;
         let request = membrane_client::LoopbackRequestFields {
-            method: "POST".into(), target: path.into(), host: "127.0.0.1".into(),
-            content_type: "application/json".into(), body_sha256: sha2::Sha256::digest(body_bytes).into(),
-            identity: identity.clone(), nonce, expiry_unix_secs: expiry,
+            method: "POST".into(),
+            target: path.into(),
+            host: "127.0.0.1".into(),
+            content_type: "application/json".into(),
+            body_sha256: sha2::Sha256::digest(body_bytes).into(),
+            identity: identity.clone(),
+            nonce,
+            expiry_unix_secs: expiry,
         };
         let headers = membrane_client::build_loopback_request_headers(
-            &signer, &identity, "POST", path, "127.0.0.1", "application/json", body_bytes,
-            nonce, expiry,
-        ).map_err(|error| format!("canonical loopback request signing failed: {error}"))?;
+            &signer,
+            &identity,
+            "POST",
+            path,
+            "127.0.0.1",
+            "application/json",
+            body_bytes,
+            nonce,
+            expiry,
+        )
+        .map_err(|error| format!("canonical loopback request signing failed: {error}"))?;
         canonical_auth = Some((signer, identity, request));
         headers
     } else {
@@ -2963,27 +3013,48 @@ fn try_service_post_at_port_with_token(
             ("Content-Length".to_string(), body_bytes.len().to_string()),
             ("Connection".to_string(), "close".to_string()),
         ];
-        if let Some(token) = api_token { headers.push(("Authorization".to_string(), format!("Bearer {token}"))); }
-        if let Some(key) = idempotency_key { headers.push(("Idempotency-Key".to_string(), key.to_string())); }
+        if let Some(token) = api_token {
+            headers.push(("Authorization".to_string(), format!("Bearer {token}")));
+        }
+        if let Some(key) = idempotency_key {
+            headers.push(("Idempotency-Key".to_string(), key.to_string()));
+        }
         headers
     };
     let mut req = format!("POST {path} HTTP/1.1\r\n");
-    for (name, value) in headers { req.push_str(&format!("{name}: {value}\r\n")); }
+    for (name, value) in headers {
+        req.push_str(&format!("{name}: {value}\r\n"));
+    }
     req.push_str(&format!("\r\n{body}"));
-    s.write_all(req.as_bytes())
-        .map_err(|e| if canonical {
-            format!("commit_unknown: canonical loopback request write ambiguous after mutation: {e}")
+    s.write_all(req.as_bytes()).map_err(|e| {
+        if canonical {
+            format!(
+                "commit_unknown: canonical loopback request write ambiguous after mutation: {e}"
+            )
         } else {
             format!("write to resident service failed: {e}")
-        })?;
-    let mut response = parse_http_response(&mut s).map_err(|e| if canonical {
-        format!("commit_unknown: resident service response ambiguous after request: {e}")
-    } else { e })?;
+        }
+    })?;
+    let mut response = parse_http_response(&mut s).map_err(|e| {
+        if canonical {
+            format!("commit_unknown: resident service response ambiguous after request: {e}")
+        } else {
+            e
+        }
+    })?;
     if let Some((signer, identity, request)) = canonical_auth {
         membrane_client::verify_loopback_response_headers(
-            &signer, &response.headers, &request, response.status, &response.body_bytes,
-            &identity, unix_seconds_now(),
-        ).map_err(|error| format!("commit_unknown: canonical loopback response verification failed: {error}"))?;
+            &signer,
+            &response.headers,
+            &request,
+            response.status,
+            &response.body_bytes,
+            &identity,
+            unix_seconds_now(),
+        )
+        .map_err(|error| {
+            format!("commit_unknown: canonical loopback response verification failed: {error}")
+        })?;
         response.authenticated = true;
     }
     Ok(ServicePostOutcome::Response(response))
@@ -3001,31 +3072,53 @@ fn installed_runtime_authority() -> bool {
 }
 
 fn unix_seconds_now() -> u64 {
-    std::time::SystemTime::now().duration_since(UNIX_EPOCH)
-        .map(|duration| duration.as_secs()).unwrap_or(0)
+    std::time::SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_secs())
+        .unwrap_or(0)
 }
 
-fn discover_loopback_identity(port: u16) -> Result<membrane_client::LoopbackIdentityFields, String> {
+fn discover_loopback_identity(
+    port: u16,
+) -> Result<membrane_client::LoopbackIdentityFields, String> {
     let mut stream = std::net::TcpStream::connect_timeout(
-        &std::net::SocketAddr::from(([127, 0, 0, 1], port)), std::time::Duration::from_millis(400),
-    ).map_err(|error| format!("connect for loopback identity discovery failed: {error}"))?;
-    stream.set_read_timeout(Some(std::time::Duration::from_secs(5)))
+        &std::net::SocketAddr::from(([127, 0, 0, 1], port)),
+        std::time::Duration::from_millis(400),
+    )
+    .map_err(|error| format!("connect for loopback identity discovery failed: {error}"))?;
+    stream
+        .set_read_timeout(Some(std::time::Duration::from_secs(5)))
         .map_err(|error| format!("set livez read timeout failed: {error}"))?;
-    stream.set_write_timeout(Some(std::time::Duration::from_secs(5)))
+    stream
+        .set_write_timeout(Some(std::time::Duration::from_secs(5)))
         .map_err(|error| format!("set livez write timeout failed: {error}"))?;
-    stream.write_all(b"GET /livez HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n")
+    stream
+        .write_all(b"GET /livez HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n")
         .map_err(|error| format!("write livez discovery failed: {error}"))?;
     let response = parse_http_response(&mut stream)?;
-    if response.status != 200 { return Err(format!("livez identity discovery returned HTTP {}", response.status)); }
+    if response.status != 200 {
+        return Err(format!(
+            "livez identity discovery returned HTTP {}",
+            response.status
+        ));
+    }
     let value: serde_json::Value = serde_json::from_slice(&response.body_bytes)
         .map_err(|error| format!("livez identity response invalid: {error}"))?;
-    let text = |name: &str| value.get(name).and_then(serde_json::Value::as_str)
-        .filter(|field| !field.trim().is_empty()).map(str::to_owned)
-        .ok_or_else(|| format!("livez identity missing {name}"));
+    let text = |name: &str| {
+        value
+            .get(name)
+            .and_then(serde_json::Value::as_str)
+            .filter(|field| !field.trim().is_empty())
+            .map(str::to_owned)
+            .ok_or_else(|| format!("livez identity missing {name}"))
+    };
     Ok(membrane_client::LoopbackIdentityFields {
-        installation_id: text("installationId")?, cortex_store_id: text("cortexStoreId")?,
+        installation_id: text("installationId")?,
+        cortex_store_id: text("cortexStoreId")?,
         release_generation: text("releaseGeneration")?,
-        startup_generation: value.get("startupGeneration").and_then(serde_json::Value::as_u64)
+        startup_generation: value
+            .get("startupGeneration")
+            .and_then(serde_json::Value::as_u64)
             .ok_or_else(|| "livez identity missing startupGeneration".to_string())?,
         stable_install_root: text("stableInstallRoot")?,
     })
@@ -3201,6 +3294,7 @@ fn command_requires_db(command: &Cmd) -> bool {
             | Cmd::Adapt { .. }
             | Cmd::Pull { .. }
             | Cmd::Push { .. }
+            | Cmd::Qualification { .. }
     )
 }
 
@@ -3925,27 +4019,64 @@ fn select_push_representation(
 }
 
 fn publish_cli_push_original(original: &[u8], rendered: &str) -> Result<(), String> {
-    if original == rendered.as_bytes() { return Ok(()); }
+    if original == rendered.as_bytes() {
+        return Ok(());
+    }
     let store = crate::push::recovery::RecoveryStore::configured();
     let scope = crate::push::recovery::RecoveryScope::local().map_err(|e| e.to_string())?;
-    let reference = store.publish(&scope, original, 7*24*60*60*1000, crate::push::recovery::now_ms()).map_err(|e| e.to_string())?;
-    eprintln!("[push-recovery] {}", serde_json::to_string(&reference).map_err(|e| e.to_string())?);
+    let reference = store
+        .publish(
+            &scope,
+            original,
+            7 * 24 * 60 * 60 * 1000,
+            crate::push::recovery::now_ms(),
+        )
+        .map_err(|e| e.to_string())?;
+    eprintln!(
+        "[push-recovery] {}",
+        serde_json::to_string(&reference).map_err(|e| e.to_string())?
+    );
     Ok(())
 }
 
 fn run_push(command: PushCmd) -> Result<(), String> {
     match command {
-        PushCmd::Lease { anchor, expected_expiry, renew_ms, invalidate, spill_dir } => {
-            let store = crate::push::recovery::RecoveryStore::at(spill_dir.unwrap_or_else(crate::push::recovery::default_directory));
+        PushCmd::Lease {
+            anchor,
+            expected_expiry,
+            renew_ms,
+            invalidate,
+            spill_dir,
+        } => {
+            let store = crate::push::recovery::RecoveryStore::at(
+                spill_dir.unwrap_or_else(crate::push::recovery::default_directory),
+            );
             let scope = crate::push::recovery::RecoveryScope::local().map_err(|e| e.to_string())?;
             if invalidate {
-                store.invalidate(&scope, &anchor).map_err(|e| e.to_string())?;
-                println!("{}", serde_json::json!({"anchor":anchor,"state":"invalidated"}));
+                store
+                    .invalidate(&scope, &anchor)
+                    .map_err(|e| e.to_string())?;
+                println!(
+                    "{}",
+                    serde_json::json!({"anchor":anchor,"state":"invalidated"})
+                );
             } else {
                 let ttl = renew_ms.ok_or("--renew-ms or --invalidate is required")?;
-                let expected = expected_expiry.ok_or("--expected-expiry is required for renewal")?;
-                let reference = store.renew(&scope, &anchor, expected, ttl, crate::push::recovery::now_ms()).map_err(|e| e.to_string())?;
-                println!("{}", serde_json::to_string(&reference).map_err(|e| e.to_string())?);
+                let expected =
+                    expected_expiry.ok_or("--expected-expiry is required for renewal")?;
+                let reference = store
+                    .renew(
+                        &scope,
+                        &anchor,
+                        expected,
+                        ttl,
+                        crate::push::recovery::now_ms(),
+                    )
+                    .map_err(|e| e.to_string())?;
+                println!(
+                    "{}",
+                    serde_json::to_string(&reference).map_err(|e| e.to_string())?
+                );
             }
             Ok(())
         }
@@ -3955,17 +4086,29 @@ fn run_push(command: PushCmd) -> Result<(), String> {
                 Some(path) => Box::new(std::fs::File::open(path).map_err(|e| e.to_string())?),
                 None => Box::new(std::io::stdin()),
             };
-            reader.by_ref().take((crate::push::recovery::MAX_ARTIFACT_BYTES + 1) as u64).read_to_end(&mut bytes).map_err(|e| e.to_string())?;
-            if bytes.len() > crate::push::recovery::MAX_ARTIFACT_BYTES { return Err("push_input_limit".into()); }
-            let mut request: crate::push::delivery::PrepareRequest = serde_json::from_slice(&bytes).map_err(|e| e.to_string())?;
+            reader
+                .by_ref()
+                .take((crate::push::recovery::MAX_ARTIFACT_BYTES + 1) as u64)
+                .read_to_end(&mut bytes)
+                .map_err(|e| e.to_string())?;
+            if bytes.len() > crate::push::recovery::MAX_ARTIFACT_BYTES {
+                return Err("push_input_limit".into());
+            }
+            let mut request: crate::push::delivery::PrepareRequest =
+                serde_json::from_slice(&bytes).map_err(|e| e.to_string())?;
             let store = crate::push::recovery::RecoveryStore::configured();
             let scope = crate::push::recovery::RecoveryScope::local().map_err(|e| e.to_string())?;
             // The same installed executable exposes restore; no model-supplied
             // resolver claim is accepted as proof on the local CLI seam.
-            let probe = crate::push::delivery::resolver_probe(&store, &scope).map_err(|e| e.to_string())?;
+            let probe =
+                crate::push::delivery::resolver_probe(&store, &scope).map_err(|e| e.to_string())?;
             request.resolver_token = probe["resolverToken"].as_str().map(str::to_owned);
-            let result = crate::push::delivery::prepare(&store, &scope, request).map_err(|e| e.to_string())?;
-            println!("{}", serde_json::to_string(&result).map_err(|e| e.to_string())?);
+            let result = crate::push::delivery::prepare(&store, &scope, request)
+                .map_err(|e| e.to_string())?;
+            println!(
+                "{}",
+                serde_json::to_string(&result).map_err(|e| e.to_string())?
+            );
             Ok(())
         }
         PushCmd::Skel {
@@ -4035,12 +4178,15 @@ fn run_push(command: PushCmd) -> Result<(), String> {
                     })?;
                 }
                 None => {
-                    std::io::stdin().take((crate::push::recovery::MAX_ARTIFACT_BYTES+1) as u64)
+                    std::io::stdin()
+                        .take((crate::push::recovery::MAX_ARTIFACT_BYTES + 1) as u64)
                         .read_to_string(&mut input)
                         .map_err(|error| error.to_string())?;
                 }
             }
-            if input.len() > crate::push::recovery::MAX_ARTIFACT_BYTES { return Err("push_input_limit".into()); }
+            if input.len() > crate::push::recovery::MAX_ARTIFACT_BYTES {
+                return Err("push_input_limit".into());
+            }
             let (out, meta) = if let Some(budget) = budget {
                 let result =
                     crate::push::compress::compress_to_budget_with_options(&input, budget, no_onnx);
@@ -4119,29 +4265,49 @@ fn run_push(command: PushCmd) -> Result<(), String> {
             shell,
             cmd,
         } => {
-            let directory = spill_dir.map(PathBuf::from).unwrap_or_else(crate::push::recovery::default_directory);
+            let directory = spill_dir
+                .map(PathBuf::from)
+                .unwrap_or_else(crate::push::recovery::default_directory);
             let result = if shell {
-                if cmd.len() != 1 { return Err("--shell requires exactly one explicitly quoted command string".into()); }
+                if cmd.len() != 1 {
+                    return Err(
+                        "--shell requires exactly one explicitly quoted command string".into(),
+                    );
+                }
                 crate::push::runc::run_capped(&cmd[0], head, tail, &directory)
             } else {
                 let (program, arguments) = cmd.split_first().ok_or("command required")?;
-                let adapter = if program.eq_ignore_ascii_case("git") || program.eq_ignore_ascii_case("git.exe") {
+                let adapter = if program.eq_ignore_ascii_case("git")
+                    || program.eq_ignore_ascii_case("git.exe")
+                {
                     crate::push::runc::CommandAdapter::Git
-                } else { crate::push::runc::CommandAdapter::RepositoryTestRunner };
-                crate::push::runc::run_adapter_capped(adapter, &crate::push::recovery::workspace_root(),
-                    std::ffi::OsStr::new(program), &arguments.iter().map(std::ffi::OsString::from).collect::<Vec<_>>(),
-                    head, tail, &directory).map_err(|e| e.to_string())
+                } else {
+                    crate::push::runc::CommandAdapter::RepositoryTestRunner
+                };
+                crate::push::runc::run_adapter_capped(
+                    adapter,
+                    &crate::push::recovery::workspace_root(),
+                    std::ffi::OsStr::new(program),
+                    &arguments
+                        .iter()
+                        .map(std::ffi::OsString::from)
+                        .collect::<Vec<_>>(),
+                    head,
+                    tail,
+                    &directory,
+                )
+                .map_err(|e| e.to_string())
             }
-                .map_err(|error| {
-                    crate::push::telemetry::record(
-                        "runc",
-                        0,
-                        0,
-                        Some("status=error;kind=spawn"),
-                        opportunity.as_deref(),
-                    );
-                    error
-                })?;
+            .map_err(|error| {
+                crate::push::telemetry::record(
+                    "runc",
+                    0,
+                    0,
+                    Some("status=error;kind=spawn"),
+                    opportunity.as_deref(),
+                );
+                error
+            })?;
             let before = result
                 .spill_path
                 .as_deref()
@@ -4169,7 +4335,9 @@ fn run_push(command: PushCmd) -> Result<(), String> {
                     serde_json::to_string(marker).map_err(|error| error.to_string())?
                 );
             }
-            if !result.anchor.is_empty() { println!("[anchor] {}", result.anchor); }
+            if !result.anchor.is_empty() {
+                println!("[anchor] {}", result.anchor);
+            }
             if let Some(path) = result.spill_path {
                 eprintln!("runc: exit={} full={}", result.exit_code, path.display());
             } else {
@@ -4177,15 +4345,34 @@ fn run_push(command: PushCmd) -> Result<(), String> {
             }
             std::process::exit(result.exit_code);
         }
-        PushCmd::Restore { anchor, spill_dir, selector, max_bytes } => {
-            let store = crate::push::recovery::RecoveryStore::at(spill_dir.unwrap_or_else(crate::push::recovery::default_directory));
+        PushCmd::Restore {
+            anchor,
+            spill_dir,
+            selector,
+            max_bytes,
+        } => {
+            let store = crate::push::recovery::RecoveryStore::at(
+                spill_dir.unwrap_or_else(crate::push::recovery::default_directory),
+            );
             let scope = crate::push::recovery::RecoveryScope::local().map_err(|e| e.to_string())?;
             let selector = match selector {
-                Some(raw) => serde_json::from_str(&raw).map_err(|e| format!("invalid selector: {e}"))?,
+                Some(raw) => {
+                    serde_json::from_str(&raw).map_err(|e| format!("invalid selector: {e}"))?
+                }
                 None => crate::push::recovery::Selector::Whole,
             };
-            let resolved = store.resolve(&scope, &anchor, &selector, max_bytes, crate::push::recovery::now_ms()).map_err(|e| e.to_string())?;
-            std::io::stdout().write_all(&resolved.bytes().map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
+            let resolved = store
+                .resolve(
+                    &scope,
+                    &anchor,
+                    &selector,
+                    max_bytes,
+                    crate::push::recovery::now_ms(),
+                )
+                .map_err(|e| e.to_string())?;
+            std::io::stdout()
+                .write_all(&resolved.bytes().map_err(|e| e.to_string())?)
+                .map_err(|e| e.to_string())?;
             Ok(())
         }
     }
@@ -4265,12 +4452,612 @@ fn run_main() -> Result<(), String> {
     run_main_with_argv(std::env::args().collect())
 }
 
+fn run_retrieval_qualification(
+    arm: RetrievalArmArg,
+    corpus: &Path,
+    expected_sha256: &str,
+) -> Result<serde_json::Value, String> {
+    use sha2::Digest as _;
+    let bytes = std::fs::read(corpus).map_err(|e| format!("read retrieval corpus: {e}"))?;
+    let value: serde_json::Value =
+        serde_json::from_slice(&bytes).map_err(|e| format!("parse retrieval corpus: {e}"))?;
+    let corpus_id = value
+        .get("corpusId")
+        .or_else(|| value.get("corpus_id"))
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| "retrieval corpus missing corpusId".to_string())?;
+    if value.get("pinned").and_then(serde_json::Value::as_bool) != Some(true)
+        || value
+            .get("synthetic")
+            .and_then(serde_json::Value::as_bool)
+            == Some(true)
+        || value
+            .get("fixture")
+            .and_then(serde_json::Value::as_bool)
+            == Some(true)
+        || value
+            .get("provenance")
+            .and_then(|provenance| provenance.get("kind"))
+            .and_then(serde_json::Value::as_str)
+            != Some("source-grounded")
+    {
+        return Err(
+            "retrieval corpus must be pinned, source-grounded and neither synthetic nor fixture"
+                .into(),
+        );
+    }
+    let actual = hex::encode(sha2::Sha256::digest(&bytes));
+    if expected_sha256.trim().is_empty() {
+        return Err("retrieval corpus requires external --corpus-sha256".into());
+    }
+    if !expected_sha256.eq_ignore_ascii_case(&actual) {
+        return Err("retrieval corpus external SHA-256 mismatch".into());
+    }
+    let arm_name = match arm {
+        RetrievalArmArg::LexicalOnly => "lexical-only",
+        RetrievalArmArg::VectorOnly => "vector-only",
+        RetrievalArmArg::Hybrid => "hybrid",
+    };
+    // Qualification must exercise Cortex's production admission, embedder and
+    // search paths.  It must not construct a test registry or accept caller
+    // supplied vectors, since either would allow an optimized fixture to pass
+    // without proving installed runtime behavior.
+    let startup_started = std::time::Instant::now();
+    let store = MemoryStore::new();
+    let startup_ms = startup_started.elapsed().as_secs_f64() * 1000.0;
+    let entries = value
+        .get("entries")
+        .or_else(|| value.get("items"))
+        .and_then(serde_json::Value::as_array)
+        .ok_or("retrieval corpus missing entries")?;
+    if entries.is_empty() {
+        return Err("retrieval corpus entries empty".into());
+    }
+    let workspace_root = std::env::var_os("WORKSPACE_ROOT")
+        .map(PathBuf::from)
+        .or_else(|| std::env::current_dir().ok())
+        .ok_or("retrieval corpus source root unavailable")?;
+    let mut source_digests = std::collections::BTreeMap::<String, String>::new();
+    for raw in entries {
+        let id = raw
+            .get("id")
+            .and_then(serde_json::Value::as_str)
+            .ok_or("corpus entry missing id")?;
+        let content = raw
+            .get("content")
+            .and_then(serde_json::Value::as_str)
+            .ok_or("corpus entry missing content")?;
+        let source_path = raw
+            .get("sourcePath")
+            .or_else(|| raw.get("source_path"))
+            .and_then(serde_json::Value::as_str)
+            .filter(|path| !path.trim().is_empty())
+            .ok_or("corpus entry missing sourcePath")?;
+        let declared_source_sha = raw
+            .get("sourceSha256")
+            .or_else(|| raw.get("source_sha256"))
+            .and_then(serde_json::Value::as_str)
+            .filter(|sha| !sha.trim().is_empty())
+            .ok_or("corpus entry missing sourceSha256")?;
+        if !declared_source_sha.bytes().all(|byte| byte.is_ascii_hexdigit())
+            || declared_source_sha.len() != 64
+        {
+            return Err(format!("corpus entry {id:?} has invalid sourceSha256"));
+        }
+        let source = PathBuf::from(source_path);
+        if source.is_absolute()
+            || source
+                .components()
+                .any(|component| matches!(component, std::path::Component::ParentDir))
+        {
+            return Err(format!("corpus source path is not workspace-relative: {source_path:?}"));
+        }
+        let source = workspace_root.join(source);
+        let source_bytes = std::fs::read(&source)
+            .map_err(|error| format!("read corpus source {source_path:?}: {error}"))?;
+        let source_sha = hex::encode(sha2::Sha256::digest(&source_bytes));
+        if !declared_source_sha.eq_ignore_ascii_case(&source_sha) {
+            return Err(format!(
+                "corpus source digest mismatch for {source_path:?}: expected {declared_source_sha}, got {source_sha}"
+            ));
+        }
+        if let Some(previous) = source_digests.insert(source_path.to_owned(), source_sha.clone()) {
+            if previous != source_sha {
+                return Err(format!("corpus source digest changed for {source_path:?}"));
+            }
+        }
+        let lines = raw
+            .get("sourceLines")
+            .or_else(|| raw.get("source_lines"))
+            .and_then(serde_json::Value::as_object)
+            .ok_or("corpus entry missing sourceLines")?;
+        let start = lines
+            .get("start")
+            .and_then(serde_json::Value::as_u64)
+            .filter(|line| *line > 0)
+            .ok_or("corpus sourceLines.start must be positive")? as usize;
+        let end = lines
+            .get("end")
+            .and_then(serde_json::Value::as_u64)
+            .filter(|line| *line >= start as u64)
+            .ok_or("corpus sourceLines.end must be >= start")? as usize;
+        let excerpt = raw
+            .get("sourceExcerpt")
+            .or_else(|| raw.get("source_excerpt"))
+            .and_then(serde_json::Value::as_str)
+            .ok_or("corpus entry missing sourceExcerpt")?;
+        let source_text = String::from_utf8(source_bytes)
+            .map_err(|_| format!("corpus source {source_path:?} is not UTF-8"))?;
+        let source_lines = source_text.lines().collect::<Vec<_>>();
+        let extracted = source_lines
+            .get(start - 1..end)
+            .ok_or_else(|| format!("corpus source span out of bounds for {source_path:?}"))?
+            .join("\n");
+        if extracted != excerpt || excerpt != content {
+            return Err(format!(
+                "corpus entry {id:?} content does not exactly match sourceExcerpt/source span"
+            ));
+        }
+        let scope = raw
+            .get("scope")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("opt02");
+        let prefix = format!("{scope}/");
+        let name = id
+            .strip_prefix(&prefix)
+            .filter(|name| !name.is_empty())
+            .ok_or_else(|| format!("corpus entry {id:?} must use scope/name identity"))?;
+        let admitted = store
+            .try_put(name, content, scope, cortex_core::MemoryTier::Semantic)
+            .map_err(|error| format!("admit corpus entry {id:?}: {error}"))?;
+        if admitted != id {
+            return Err(format!("Cortex admission changed corpus id {id:?} to {admitted:?}"));
+        }
+    }
+    let cases = value
+        .get("cases")
+        .and_then(serde_json::Value::as_array)
+        .ok_or("retrieval corpus missing cases")?;
+    if cases.is_empty() {
+        return Err("retrieval corpus cases empty".into());
+    }
+    let started = std::time::Instant::now();
+    let mut matched = 0usize;
+    let mut ranked = 0usize;
+    let mut expected_total = 0usize;
+    // Per-category scores are measured from returned IDs, not copied from
+    // aggregate recall or caller-supplied receipts.
+    let mut category_scores = std::collections::BTreeMap::<String, (usize, usize)>::new();
+    for case in cases {
+        let query = case
+            .get("query")
+            .and_then(serde_json::Value::as_str)
+            .ok_or("retrieval case missing query")?;
+        let expected = case
+            .get("expectedIds")
+            .or_else(|| case.get("expected_ids"))
+            .and_then(serde_json::Value::as_array)
+            .ok_or("retrieval case missing expectedIds")?;
+        let ids: Vec<_> = expected
+            .iter()
+            .filter_map(serde_json::Value::as_str)
+            .collect();
+        let hits = store.search_with_arm(query, ids.len().max(1), arm.into());
+        let hit_ids: Vec<_> = hits.iter().map(|entry| entry.id.as_str()).collect();
+        matched += ids.iter().filter(|id| hit_ids.contains(id)).count();
+        ranked += usize::from(ids.first().is_some_and(|id| hit_ids.first() == Some(id)));
+        let category = case
+            .get("category")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("uncategorized")
+            .to_owned();
+        let category_matches = ids.iter().filter(|id| hit_ids.contains(id)).count();
+        let score = category_scores.entry(category).or_default();
+        score.0 += category_matches;
+        score.1 += ids.len();
+        expected_total += ids.len();
+    }
+    let elapsed = started.elapsed().as_secs_f64() * 1000.0;
+    let cases_n = cases.len() as f64;
+    let total = expected_total.max(1) as f64;
+    let category_metric = |name: &str| {
+        category_scores
+            .get(name)
+            .map(|(matched, total)| *matched as f64 / (*total).max(1) as f64)
+            .unwrap_or(0.0)
+    };
+    let thresholds = value.get("thresholds").cloned().unwrap_or_else(|| serde_json::json!({}));
+    let threshold = |name: &str, fallback: f64| {
+        thresholds
+            .get(name)
+            .and_then(serde_json::Value::as_f64)
+            .unwrap_or(fallback)
+    };
+    let recall = matched as f64 / total;
+    let ranking = ranked as f64 / cases_n;
+    let temporal = category_metric("temporal");
+    let paraphrase = category_metric("paraphrase");
+    let preference = category_metric("preference");
+    let contradiction = category_metric("contradiction");
+    let metrics = serde_json::json!({"recall":recall,"ranking":ranking,"temporal":temporal,"paraphrase":paraphrase,"preference":preference,"contradiction":contradiction,"latency":elapsed/cases_n,"startup":startup_ms,"storeInitializationMs":startup_ms,"rss":process_working_set_bytes()});
+    let passed = corpus_id == "cortex-matched-corpus-v1"
+        && recall >= threshold("recall", 0.75)
+        && ranking >= threshold("ranking", 0.50)
+        && temporal >= threshold("temporal", 0.50)
+        && paraphrase >= threshold("paraphrase", 0.50)
+        && preference >= threshold("preference", 0.50)
+        && contradiction >= threshold("contradiction", 0.50)
+        && ["temporal", "paraphrase", "preference", "contradiction"]
+            .iter()
+            .all(|category| category_scores.contains_key(*category))
+        && installed_qualification_runtime();
+    Ok(serde_json::json!({
+        "schema": "membrane.retrieval-qualification.v1",
+        "status": if passed { "passed" } else { "failed" },
+        "terminal": true,
+        "runtimeOrigin": if installed_qualification_runtime() { "installed" } else { "uninstalled" },
+        "pass": passed,
+        "arm": arm_name,
+        "corpus": { "id": corpus_id, "sha256": expected_sha256, "actualSha256": actual, "pinned": true },
+        "metrics": metrics,
+        "measurement": { "nativeRetrieverProbeMs": elapsed }
+    }))
+}
+
+fn process_working_set_bytes() -> u64 {
+    #[cfg(windows)]
+    {
+        #[repr(C)]
+        struct Counters {
+            cb: u32,
+            page_fault_count: u32,
+            peak_ws: usize,
+            ws: usize,
+            peak_pf: usize,
+            pf: usize,
+            peak_pp: usize,
+            pp: usize,
+            quota: usize,
+            peak_quota: usize,
+            quota_nf: usize,
+            pagefile: usize,
+            peak_pagefile: usize,
+            private: usize,
+        }
+        #[link(name = "psapi")]
+        extern "system" {
+            fn GetCurrentProcess() -> *mut std::ffi::c_void;
+            fn GetProcessMemoryInfo(h: *mut std::ffi::c_void, c: *mut Counters, size: u32) -> i32;
+        }
+        unsafe {
+            let mut c = std::mem::zeroed::<Counters>();
+            c.cb = std::mem::size_of::<Counters>() as u32;
+            if GetProcessMemoryInfo(GetCurrentProcess(), &mut c, c.cb) != 0 {
+                return c.ws as u64;
+            }
+        }
+    }
+    #[cfg(unix)]
+    {
+        if let Ok(raw) = std::fs::read_to_string("/proc/self/status") {
+            if let Some(line) = raw.lines().find(|line| line.starts_with("VmRSS:")) {
+                return line
+                    .split_whitespace()
+                    .nth(1)
+                    .and_then(|v| v.parse::<u64>().ok())
+                    .unwrap_or(0)
+                    * 1024;
+            }
+        }
+    }
+    0
+}
+
+fn run_blueprint_lifecycle_qualification(scenario: &str) -> Result<serde_json::Value, String> {
+    let root = tempfile::tempdir()
+        .map_err(|error| format!("create Blueprint lifecycle qualification root: {error}"))?;
+    let service = membrane_blueprint::service::BlueprintService::resident(
+        membrane_blueprint::NativeBlueprintOperation,
+        root.path(),
+    );
+    let result = membrane_blueprint::service::qualify_lifecycle_scenario(&service, scenario)
+        .map_err(|e| e.to_string())?;
+    serde_json::to_value(result).map_err(|e| e.to_string())
+}
+
+fn run_fair_service_qualification() -> Result<serde_json::Value, String> {
+    run_lc03_service_scenario("fair-service")
+}
+
+fn lc03_fixture_root(name: &str) -> Result<PathBuf, String> {
+    let root = std::env::temp_dir().join(format!(
+        "membrane-lc03-{name}-{}-{}",
+        std::process::id(),
+        crate::time::now_millis()
+    ));
+    std::fs::create_dir_all(root.join("src")).map_err(|e| format!("create LC-03 fixture: {e}"))?;
+    std::fs::write(root.join("src/main.rs"), "fn main() { println!(\"lc03\"); }\n")
+        .map_err(|e| format!("write LC-03 fixture: {e}"))?;
+    Ok(root)
+}
+
+fn lc03_service(name: &str) -> Result<(Arc<membrane_blueprint::service::BlueprintService>, PathBuf), String> {
+    let root = lc03_fixture_root(name)?;
+    let service = Arc::new(membrane_blueprint::service::BlueprintService::from_operation(
+        membrane_blueprint::NativeBlueprintOperation,
+        membrane_blueprint::service::ServiceConfig::new(root.clone()).without_watcher(),
+    ));
+    service
+        .acquire_holder(membrane_blueprint::service::HolderKind::Hub)
+        .map_err(|e| format!("acquire LC-03 holder: {e}"))?;
+    let mut build = BlueprintRequest::new(
+        format!("lc03-build-{}", crate::time::now_millis()),
+        Operation::Build,
+        root.to_string_lossy(),
+    );
+    build.deadline_ms = membrane_blueprint::model::MAX_BUILD_DEADLINE_MS;
+    let response = service.dispatch_request(build, CancellationToken::new());
+    if !response.ok {
+        let error = response.error.map(|e| e.to_string()).unwrap_or_else(|| "initial fixture build failed".into());
+        let _ = service.release_holder(membrane_blueprint::service::HolderKind::Hub);
+        let _ = std::fs::remove_dir_all(&root);
+        return Err(error);
+    }
+    // Status is a real read of published state and clears single-flight cache,
+    // ensuring dedup evidence below measures exactly one new execution.
+    let status = BlueprintRequest::new(
+        format!("lc03-status-{}", crate::time::now_millis()),
+        Operation::Status,
+        root.to_string_lossy(),
+    );
+    let status_response = service.dispatch_request(status, CancellationToken::new());
+    if !status_response.ok {
+        let _ = service.release_holder(membrane_blueprint::service::HolderKind::Hub);
+        let _ = std::fs::remove_dir_all(&root);
+        return Err("fixture build published no readable generation".into());
+    }
+    Ok((service, root))
+}
+
+fn run_lc03_service_scenario(name: &str) -> Result<serde_json::Value, String> {
+    let (service, root) = lc03_service(name)?;
+    let root_str = root.to_string_lossy().into_owned();
+    let result = match name {
+        "fair-service" => {
+            let barrier = Arc::new(Barrier::new(3));
+            let responses = std::thread::scope(|scope| {
+                let mut workers = Vec::new();
+                for scope_id in ["scope-a", "scope-b"] {
+                    let barrier = Arc::clone(&barrier);
+                    let service = Arc::clone(&service);
+                    let root_str = root_str.clone();
+                    workers.push(scope.spawn(move || {
+                        let mut request = BlueprintRequest::new(
+                            format!("lc03-fair-{scope_id}"),
+                            Operation::Status,
+                            root_str,
+                        );
+                        request.input["scopeId"] = serde_json::json!(scope_id);
+                        request.deadline_ms = membrane_blueprint::model::MAX_DEADLINE_MS;
+                        barrier.wait();
+                        let started = Instant::now();
+                        let response = service.dispatch_request(request, CancellationToken::new());
+                        (scope_id, started.elapsed().as_millis() as u64, response)
+                    }));
+                }
+                barrier.wait();
+                workers.into_iter().map(|worker| worker.join().map_err(|_| "LC-03 fair worker panicked".to_string())).collect::<Result<Vec<_>, _>>()
+            })?;
+            let generations: Vec<String> = responses.iter().filter_map(|(_, _, response)| response.result.as_ref()?.get("generationId")?.as_str().map(str::to_owned)).collect();
+            let durations: Vec<u64> = responses.iter().map(|(_, duration, _)| *duration).collect();
+            let skew = durations.iter().max().copied().unwrap_or(0).saturating_sub(durations.iter().min().copied().unwrap_or(0));
+            let passed = responses.len() == 2 && responses.iter().all(|(_, _, response)| response.ok && response.request_id.is_some()) && generations.len() == 2 && generations[0] == generations[1] && skew <= 1_000;
+            serde_json::json!({"schema":"membrane.installed-lifecycle-scenario.v1","scenario":name,"status":if passed{"passed"}else{"failed"},"terminal":true,"observed":true,"fairnessBoundMs":1000,"maxCompletionSkewMs":skew,"sharedGeneration":generations.first(),"scopes":responses.iter().map(|(scope_id,duration,response)|serde_json::json!({"scopeId":scope_id,"requestId":response.request_id,"ok":response.ok,"durationMs":duration})).collect::<Vec<_>>()})
+        }
+        "deadline-cancellation" => {
+            let barrier = Arc::new(Barrier::new(3));
+            let responses = std::thread::scope(|scope| {
+                let cancel_barrier = Arc::clone(&barrier);
+                let cancel_service = Arc::clone(&service);
+                let cancel_root = root_str.clone();
+                let cancelled = scope.spawn(move || {
+                    let token = CancellationToken::new();
+                    token.cancel();
+                    let mut request = BlueprintRequest::new("lc03-deadline-cancelled", Operation::Status, cancel_root);
+                    request.deadline_ms = membrane_blueprint::model::MIN_DEADLINE_MS;
+                    cancel_barrier.wait();
+                    cancel_service.dispatch_request(request, token)
+                });
+                let survivor_barrier = Arc::clone(&barrier);
+                let survivor_service = Arc::clone(&service);
+                let survivor_root = root_str.clone();
+                let survivor = scope.spawn(move || {
+                    let mut request = BlueprintRequest::new("lc03-deadline-survivor", Operation::Status, survivor_root);
+                    request.deadline_ms = membrane_blueprint::model::MAX_DEADLINE_MS;
+                    survivor_barrier.wait();
+                    survivor_service.dispatch_request(request, CancellationToken::new())
+                });
+                barrier.wait();
+                Ok::<_, String>((cancelled.join().map_err(|_| "LC-03 cancelled worker panicked".to_string())?, survivor.join().map_err(|_| "LC-03 survivor worker panicked".to_string())?))
+            })?;
+            let (cancelled, survivor) = responses;
+            let error_code = cancelled.error.as_ref().map(|error| error.code.clone());
+            let passed = !cancelled.ok && error_code.as_deref() == Some("request_cancelled") && survivor.ok && survivor.request_id.is_some();
+            serde_json::json!({"schema":"membrane.installed-lifecycle-scenario.v1","scenario":name,"status":if passed{"passed"}else{"failed"},"terminal":true,"observed":true,"cancelled":{"ok":cancelled.ok,"errorCode":error_code,"requestId":cancelled.request_id},"survivor":{"ok":survivor.ok,"requestId":survivor.request_id,"generationId":survivor.result.as_ref().and_then(|v|v.get("generationId"))},"deadlineMs":membrane_blueprint::model::MIN_DEADLINE_MS})
+        }
+        "scope-isolation" => {
+            let store = MemoryStore::new();
+            let left = store.try_put("left", "scope-isolation token", "scope-left", cortex_core::MemoryTier::Semantic);
+            let right = store.try_put("right", "scope-isolation token", "scope-right", cortex_core::MemoryTier::Semantic);
+            let hits = store.recall_scored_with_arm("scope-isolation token", 10, &["scope-left".into()], cortex_core::retriever::RetrievalArm::LexicalOnly);
+            let leaked = hits.iter().any(|(entry, _)| entry.scope_id != "scope-left" || entry.id == "scope-right/right");
+            let left_id = left.as_ref().ok().cloned();
+            let right_id = right.as_ref().ok().cloned();
+            let passed = left.is_ok() && right.is_ok() && !leaked && hits.iter().any(|(entry, _)| entry.id == "scope-left/left");
+            serde_json::json!({"schema":"membrane.installed-lifecycle-scenario.v1","scenario":name,"status":if passed{"passed"}else{"failed"},"terminal":true,"observed":true,"requestedScope":"scope-left","admitted":{"left":left_id,"right":right_id},"visibleIds":hits.iter().map(|(entry,_)|entry.id.clone()).collect::<Vec<_>>(),"visibleScopes":hits.iter().map(|(entry,_)|entry.scope_id.clone()).collect::<Vec<_>>(),"crossScopeLeak":leaked})
+        }
+        "deduplicated-work" => {
+            let barrier = Arc::new(Barrier::new(3));
+            let before = service.dedup_execution_count();
+            let responses = std::thread::scope(|scope| {
+                let mut workers = Vec::new();
+                for request_id in ["lc03-dedup-a", "lc03-dedup-b"] {
+                    let barrier = Arc::clone(&barrier);
+                    let service = Arc::clone(&service);
+                    let root_str = root_str.clone();
+                    workers.push(scope.spawn(move || {
+                        let request = BlueprintRequest::new(request_id, Operation::Build, root_str);
+                        barrier.wait();
+                        service.dispatch_request(request, CancellationToken::new())
+                    }));
+                }
+                barrier.wait();
+                workers.into_iter().map(|worker| worker.join().map_err(|_| "LC-03 dedup worker panicked".to_string())).collect::<Result<Vec<_>, _>>()
+            })?;
+            let executions = service.dedup_execution_count().saturating_sub(before);
+            let generations: Vec<String> = responses.iter().filter_map(|response| response.result.as_ref()?.get("generationId")?.as_str().map(str::to_owned)).collect();
+            let passed = responses.len() == 2 && responses.iter().all(|response| response.ok) && executions == 1 && generations.len() == 2 && generations[0] == generations[1];
+            serde_json::json!({"schema":"membrane.installed-lifecycle-scenario.v1","scenario":name,"status":if passed{"passed"}else{"failed"},"terminal":true,"observed":true,"executionCount":executions,"sharedGeneration":generations.first(),"requestIds":responses.iter().filter_map(|response|response.request_id.clone()).collect::<Vec<_>>()})
+        }
+        _ => return Err(format!("unknown LC-03 scenario: {name}")),
+    };
+    let release = service.release_holder(membrane_blueprint::service::HolderKind::Hub);
+    let _ = std::fs::remove_dir_all(&root);
+    release.map_err(|e| format!("release LC-03 holder: {e}"))?;
+    Ok(result)
+}
+
+fn installed_qualification_identity() -> Option<serde_json::Value> {
+    use sha2::Digest as _;
+    let Ok(exe) = std::env::current_exe() else {
+        return None;
+    };
+    let Some(current) = exe.parent() else {
+        return None;
+    };
+    let Ok(manifest) = std::fs::read(current.join("release.json")) else {
+        return None;
+    };
+    let Ok(value) = serde_json::from_slice::<serde_json::Value>(&manifest) else {
+        return None;
+    };
+    let exe_hash = std::fs::read(&exe).ok().map(|bytes| {
+        use sha2::Digest as _;
+        hex::encode(sha2::Sha256::digest(bytes))
+    });
+    let manifest_hash = value.get("files").and_then(|files| {
+        files
+            .as_object()
+            .and_then(|map| map.get("membrane.exe").and_then(serde_json::Value::as_str))
+            .or_else(|| {
+                files.as_array().and_then(|array| {
+                    array.iter().find_map(|entry| {
+                        let path = entry.get("path").and_then(serde_json::Value::as_str)?;
+                        let hash = entry.get("sha256").and_then(serde_json::Value::as_str)?;
+                        (path.replace('\\', "/").ends_with("/membrane.exe")
+                            || path.eq_ignore_ascii_case("membrane.exe"))
+                        .then_some(hash)
+                    })
+                })
+            })
+    });
+    let Some(local_app_data) = std::env::var_os("LOCALAPPDATA") else {
+        return None;
+    };
+    let stable_current = PathBuf::from(local_app_data)
+        .join("Orthic Labs")
+        .join("Membrane")
+        .join("current");
+    let stable_canonical = std::fs::canonicalize(&stable_current).ok()?;
+    let current_canonical = std::fs::canonicalize(current).ok()?;
+    let manifest_hash = manifest_hash?;
+    let exe_hash = exe_hash?;
+    let source_revision = crate::release_identity::source_commit()?.to_owned();
+    let source_tree_sha256 = crate::release_identity::source_tree_sha256()?.to_owned();
+    if source_revision.trim().is_empty()
+        || source_revision == "unknown"
+        || source_tree_sha256.len() != 64
+        || !source_tree_sha256.chars().all(|ch| ch.is_ascii_hexdigit())
+    {
+        return None;
+    }
+    if stable_canonical != current_canonical
+        || !exe_hash.eq_ignore_ascii_case(manifest_hash)
+        || value
+            .get("version")
+            .or_else(|| value.get("productVersion"))
+            .and_then(serde_json::Value::as_str)
+            .is_none()
+    {
+        return None;
+    }
+    Some(serde_json::json!({
+        "root": stable_current,
+        "canonicalRoot": current_canonical,
+        "executable": exe,
+        "executableSha256": exe_hash,
+        "releaseManifestSha256": hex::encode(sha2::Sha256::digest(&manifest)),
+        "releaseGeneration": value.get("releaseGeneration").or_else(|| value.get("generation")),
+        "version": value.get("version").or_else(|| value.get("productVersion")),
+        "target": crate::release_identity::target_triple(),
+        "sourceRevision": source_revision,
+        "sourceTreeSha256": source_tree_sha256,
+        "verified": true
+    }))
+}
+
+fn installed_qualification_runtime() -> bool {
+    installed_qualification_identity().is_some()
+}
+
+#[derive(Subcommand)]
+enum QualificationCmd {
+    /// Run one installed, native Cortex qualification control.
+    Cortex { case_id: String },
+    /// Run deterministic installed lifecycle qualification probes.
+    Lifecycle { probe: String },
+    /// Run one row-specific native Blueprint provider qualification probe.
+    Blueprint { row: String },
+    /// Run one row-specific native Ledger qualification probe.
+    Ledger { case_id: String },
+    /// Run one row-specific native Push qualification control.
+    Push { row: String },
+    /// Run one row-specific native Adapt qualification probe.
+    Adapt { row: String },
+    Retrieval {
+        #[arg(long, value_enum)]
+        arm: RetrievalArmArg,
+        #[arg(long)]
+        corpus: PathBuf,
+        #[arg(long = "corpus-sha256")]
+        corpus_sha256: String,
+    },
+}
+
+#[derive(Clone, Copy, Debug, clap::ValueEnum)]
+enum RetrievalArmArg {
+    LexicalOnly,
+    VectorOnly,
+    Hybrid,
+}
+
+impl From<RetrievalArmArg> for cortex_core::retriever::RetrievalArm {
+    fn from(value: RetrievalArmArg) -> Self {
+        match value {
+            RetrievalArmArg::LexicalOnly => Self::LexicalOnly,
+            RetrievalArmArg::VectorOnly => Self::VectorOnly,
+            RetrievalArmArg::Hybrid => Self::Hybrid,
+        }
+    }
+}
+
 /// Parse the legacy `blueprint update` facade vocabulary into the native
 /// Operation::Update request. The general one-shot parser intentionally keeps
 /// a smaller operation vocabulary; update's local artifact path needs these
 /// additional fields (`artifactName`, `appDir`, `priorDir`, & `publicKey`).
 fn run_native_blueprint_update(args: &[String]) -> Result<(), String> {
-    let mut root = std::env::current_dir().map_err(|error| format!("resolve repository root: {error}"))?;
+    let mut root =
+        std::env::current_dir().map_err(|error| format!("resolve repository root: {error}"))?;
     let mut input = serde_json::json!({});
     let mut subcommand: Option<String> = None;
     let mut index = 1; // args[0] == "update"
@@ -4330,7 +5117,9 @@ fn run_native_blueprint_update(args: &[String]) -> Result<(), String> {
             "--dry-run" => input["dryRun"] = true.into(),
             "--json" => {}
             option if option.starts_with("--") => {
-                return Err(format!("unsupported native Blueprint update option: {option}"));
+                return Err(format!(
+                    "unsupported native Blueprint update option: {option}"
+                ));
             }
             value => {
                 return Err(format!("unsupported Blueprint update argument: {value}"));
@@ -4353,7 +5142,11 @@ fn run_native_blueprint_update(args: &[String]) -> Result<(), String> {
     }
 
     let mut request = BlueprintRequest::new(
-        format!("blueprint-update-cli-{}-{}", std::process::id(), crate::time::now_millis()),
+        format!(
+            "blueprint-update-cli-{}-{}",
+            std::process::id(),
+            crate::time::now_millis()
+        ),
         Operation::Update,
         root.to_string_lossy(),
     );
@@ -4361,8 +5154,14 @@ fn run_native_blueprint_update(args: &[String]) -> Result<(), String> {
     request.deadline_ms = membrane_blueprint::model::MAX_DEADLINE_MS;
     let response = crate::blueprint_one_shot::dispatch_native(request, CancellationToken::new());
     if response.ok {
-        let result = response.result.ok_or_else(|| "native Blueprint update response missing result".to_string())?;
-        println!("{}", serde_json::to_string(&result).map_err(|error| format!("encode Blueprint update response: {error}"))?);
+        let result = response
+            .result
+            .ok_or_else(|| "native Blueprint update response missing result".to_string())?;
+        println!(
+            "{}",
+            serde_json::to_string(&result)
+                .map_err(|error| format!("encode Blueprint update response: {error}"))?
+        );
         Ok(())
     } else {
         let error = response
@@ -4389,6 +5188,211 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
     }
     if let Cmd::Health { timeout_seconds } = &cli.cmd {
         return run_health(*timeout_seconds);
+    }
+    if let Cmd::Qualification { command } = &cli.cmd {
+        match command {
+            QualificationCmd::Cortex { case_id } => {
+                let normalized = case_id.trim().to_ascii_uppercase().replace('_', "-");
+                let raw = if normalized
+                    .strip_prefix("CTX-")
+                    .and_then(|number| number.parse::<u16>().ok())
+                    .is_some_and(|number| number <= 17)
+                {
+                    crate::cortex_qualification_core::run(&normalized)
+                } else {
+                    crate::cortex_qualification_lifecycle::run(&normalized)
+                }
+                .map_err(|error| format!("Cortex qualification {normalized} failed: {error}"))?;
+                let installed = installed_qualification_runtime();
+                let passed = raw.get("status").and_then(serde_json::Value::as_str) == Some("passed") && installed;
+                let value = serde_json::json!({
+                    "schema": "membrane.installed-cortex-qualification.v1",
+                    "caseId": normalized,
+                    "status": if passed { "passed" } else { "failed" },
+                    "runtimeOrigin": if installed { "installed" } else { "uninstalled" },
+                    "installedIdentity": installed_qualification_identity().unwrap_or(serde_json::Value::Null),
+                    "evidence": raw,
+                });
+                println!("{}", serde_json::to_string(&value).map_err(|e| e.to_string())?);
+                if !passed {
+                    return Err(format!("Cortex qualification {normalized} failed"));
+                }
+                return Ok(());
+            }
+            QualificationCmd::Lifecycle { probe } => {
+                let raw = match probe.as_str() {
+                    "tombstone" => Ok(MemoryStore::qualification_tombstone()),
+                    "credential-race" | "lease-incarnation" | "reordered-response"
+                    | "lost-response" | "clock-rewind" | "replay-bound" => {
+                        Ok(membrane_client::residency::qualification_lifecycle(probe))
+                    }
+                    "hub-only"
+                    | "coderight-only"
+                    | "both"
+                    | "holder-crash"
+                    | "holder-exit"
+                    | "final-holder-shutdown"
+                    | "concurrent-acquire-renew-release"
+                    | "drain-acquire-race"
+                    | "restart-during-acquire"
+                    | "stale-fencing"
+                    | "survivor-continuity" => {
+                        Ok(membrane_client::residency::qualification_lifecycle(probe))
+                    }
+                    "deadline-cancellation" | "scope-isolation" | "deduplicated-work" => {
+                        run_lc03_service_scenario(probe)
+                    }
+                    "mid-build-refresh" | "watcher-disabled-refresh" => {
+                        run_blueprint_lifecycle_qualification(probe)
+                    }
+                    "fair-service" => run_fair_service_qualification(),
+                    _ => Ok(
+                        serde_json::json!({"status":"unsupported", "reason":"unknown lifecycle qualification scenario"}),
+                    ),
+                }?;
+                let passed = raw
+                    .get("status")
+                    .and_then(serde_json::Value::as_str)
+                    .is_some_and(|s| s == "pass" || s == "passed");
+                let mut value = serde_json::Map::new();
+                value.insert(
+                    "schema".into(),
+                    serde_json::json!("membrane.installed-lifecycle-scenario.v1"),
+                );
+                value.insert("scenario".into(), serde_json::json!(probe));
+                value.insert(
+                    "status".into(),
+                    serde_json::json!(if passed { "passed" } else { "failed" }),
+                );
+                value.insert("terminal".into(), serde_json::json!(true));
+                let installed = installed_qualification_runtime();
+                value.insert(
+                    "installedIdentity".into(),
+                    installed_qualification_identity().unwrap_or(serde_json::Value::Null),
+                );
+                value.insert(
+                    "runtimeOrigin".into(),
+                    serde_json::json!(if installed {
+                        "installed"
+                    } else {
+                        "uninstalled"
+                    }),
+                );
+                if !installed {
+                    value.insert("status".into(), serde_json::json!("failed"));
+                    value.insert("evidence".into(), serde_json::json!({"reason":"executable is not installer-owned stable current"}));
+                }
+                value.insert("evidence".into(), raw);
+                println!("{}", serde_json::Value::Object(value));
+                if !passed || !installed {
+                    return Err(format!("qualification lifecycle scenario failed: {probe}"));
+                }
+                return Ok(());
+            }
+            QualificationCmd::Blueprint { row } => {
+                let raw = if matches!(row.as_str(), "BPT-002" | "BPT-003" | "BPT-004" | "BPT-005" | "BPT-006" | "BPT-007" | "BPT-008" | "BPT-009" | "BPT-010" | "BPT-011" | "BPT-012" | "BPT-013" | "BPT-014" | "BPT-015" | "BPT-016") {
+                    crate::blueprint_provider_qualification::run(row)
+                } else {
+                    crate::blueprint_security_qualification::run(row)
+                }
+                .map_err(|error| format!("Blueprint qualification {row} failed: {error}"))?;
+                let installed = installed_qualification_runtime();
+                let passed = raw.get("status").and_then(serde_json::Value::as_str) == Some("passed") && installed;
+                let value = serde_json::json!({
+                    "schema": "membrane.installed-blueprint-qualification.v1",
+                    "row": row,
+                    "status": if passed { "passed" } else { "failed" },
+                    "runtimeOrigin": if installed { "installed" } else { "uninstalled" },
+                    "installedIdentity": installed_qualification_identity().unwrap_or(serde_json::Value::Null),
+                    "evidence": raw,
+                });
+                println!("{}", serde_json::to_string(&value).map_err(|e| e.to_string())?);
+                if !passed { return Err(format!("Blueprint qualification row failed: {row}")); }
+                return Ok(());
+            }
+            QualificationCmd::Ledger { case_id } => {
+                let raw = crate::ledger::qualification_core::run(case_id)
+                    .or_else(|_| crate::ledger::qualification_lifecycle::run(case_id))
+                    .map_err(|error| format!("Ledger qualification {case_id} failed: {error}"))?;
+                let installed_identity = installed_qualification_identity();
+                let native_passed = raw.get("status").and_then(serde_json::Value::as_str) == Some("passed");
+                let passed = native_passed && installed_identity.is_some();
+                let value = serde_json::json!({
+                    "schema": "membrane.installed-ledger-qualification.v1",
+                    "caseId": case_id,
+                    "status": if passed { "passed" } else { "failed" },
+                    "runtimeOrigin": if installed_identity.is_some() { "installed" } else { "uninstalled" },
+                    "installedIdentity": installed_identity.unwrap_or(serde_json::Value::Null),
+                    "evidence": raw,
+                });
+                println!("{}", serde_json::to_string(&value).map_err(|e| e.to_string())?);
+                if !passed { return Err(format!("Ledger qualification row failed: {case_id}")); }
+                return Ok(());
+            }
+            QualificationCmd::Push { row } => {
+                let raw = crate::push::qualification_core::run(row)
+                    .or_else(|_| crate::push::qualification_lifecycle::run(row))
+                    .map_err(|error| format!("Push qualification {row} failed: {error}"))?;
+                let installed = installed_qualification_runtime();
+                let passed = raw.get("status").and_then(serde_json::Value::as_str) == Some("passed") && installed;
+                let value = serde_json::json!({
+                    "schema": "membrane.installed-push-qualification.v1",
+                    "row": row,
+                    "status": if passed { "passed" } else { "failed" },
+                    "runtimeOrigin": if installed { "installed" } else { "uninstalled" },
+                    "installedIdentity": installed_qualification_identity().unwrap_or(serde_json::Value::Null),
+                    "evidence": raw,
+                });
+                println!("{}", serde_json::to_string(&value).map_err(|e| e.to_string())?);
+                if !passed { return Err(format!("Push qualification row failed: {row}")); }
+                return Ok(());
+            }
+            QualificationCmd::Adapt { row } => {
+                let lifecycle = [
+                    "ADP-011", "ADP-012", "ADP-015", "ADP-016", "ADP-019", "ADP-020",
+                    "ADP-022", "ADP-023", "ADP-024", "ADP-025", "ADP-030", "ADP-031",
+                    "ADP-033", "ADP-034", "ADP-035", "ADP-036", "ADP-040", "ADP-041",
+                ];
+                let efficiency = (43..=64).map(|number| format!("ADP-{number:03}"));
+                let raw = if lifecycle.contains(&row.as_str()) {
+                    crate::adapt_lifecycle_qualification::run(row)
+                } else if efficiency.clone().any(|candidate| candidate == row.as_str()) {
+                    crate::adapt_efficiency_qualification::run(row)
+                } else if matches!(row.as_str(), "ADP-042" | "ADP-072" | "ADP-074" | "ADP-075") {
+                    crate::adapt_admin_qualification::run(row)
+                } else {
+                    Err(format!("unknown Adapt qualification row: {row}"))
+                }.map_err(|error| format!("Adapt qualification {row} failed: {error}"))?;
+                let installed = installed_qualification_runtime();
+                let passed = raw.get("status").and_then(serde_json::Value::as_str) == Some("passed") && installed;
+                let value = serde_json::json!({
+                    "schema": "membrane.installed-adapt-qualification.v1",
+                    "row": row,
+                    "status": if passed { "passed" } else { "failed" },
+                    "runtimeOrigin": if installed { "installed" } else { "uninstalled" },
+                    "installedIdentity": installed_qualification_identity().unwrap_or(serde_json::Value::Null),
+                    "evidence": raw,
+                });
+                println!("{}", serde_json::to_string(&value).map_err(|e| e.to_string())?);
+                if !passed { return Err(format!("Adapt qualification row failed: {row}")); }
+                return Ok(());
+            }
+            QualificationCmd::Retrieval {
+                arm,
+                corpus,
+                corpus_sha256,
+            } => {
+                let value = run_retrieval_qualification(*arm, corpus, corpus_sha256)?;
+                println!(
+                    "{}",
+                    serde_json::to_string(&value).map_err(|e| e.to_string())?
+                );
+                if value.get("status").and_then(serde_json::Value::as_str) != Some("passed") {
+                    return Err("retrieval qualification failed".into());
+                }
+                return Ok(());
+            }
+        }
     }
     if let Cmd::Blueprint { args } = &cli.cmd {
         if args.first().map(String::as_str) == Some("update") {
@@ -4450,7 +5454,15 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
             .or(dev_fallback_db.as_deref()),
     )?;
     match cli.cmd {
-        Cmd::BuildInfo | Cmd::Health { .. } | Cmd::ExplicitCall | Cmd::ResidentHolder { .. } | Cmd::Blueprint { .. } | Cmd::Installation { .. } | Cmd::Ledger { .. } | Cmd::Adapt { .. } => {
+        Cmd::BuildInfo
+        | Cmd::Health { .. }
+        | Cmd::ExplicitCall
+        | Cmd::ResidentHolder { .. }
+        | Cmd::Blueprint { .. }
+        | Cmd::Installation { .. }
+        | Cmd::Ledger { .. }
+        | Cmd::Adapt { .. }
+        | Cmd::Qualification { .. } => {
             unreachable!("handled before database resolution")
         }
         Cmd::Checkpoint { command } => {
@@ -4634,10 +5646,7 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
                     })
                 })
                 .collect();
-            println!(
-                "{}",
-                serde_json::json!({ "id": id, "relations": rows })
-            );
+            println!("{}", serde_json::json!({ "id": id, "relations": rows }));
         }
         Cmd::EpisodePropose {
             id,
@@ -4774,6 +5783,7 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
             scope,
             as_of_ms,
             include_expired,
+            arm,
         } => {
             let store = open(&db)?;
             // normalize_scope: CLI parity with serve (a lowercase-drive --scope must not
@@ -4783,13 +5793,23 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
                 .as_deref()
                 .map(|s| crate::scope_chain(s, &store.scopes()))
                 .unwrap_or_default();
-            let hits = store.recall_scored_at(
-                &query,
-                k,
-                &chain,
-                as_of_ms.unwrap_or_else(|| crate::time::now_millis() as i64),
-                include_expired,
-            );
+            let arm_name = match arm {
+                RetrievalArmArg::LexicalOnly => "lexical-only",
+                RetrievalArmArg::VectorOnly => "vector-only",
+                RetrievalArmArg::Hybrid => "hybrid",
+            };
+            let hits = if matches!(arm, RetrievalArmArg::Hybrid) {
+                store.recall_scored_at(
+                    &query,
+                    k,
+                    &chain,
+                    as_of_ms.unwrap_or_else(|| crate::time::now_millis() as i64),
+                    include_expired,
+                )
+            } else {
+                store.recall_scored_with_arm(&query, k, &chain, arm.into())
+            };
+            println!("{{\"retrieval_arm\":\"{}\"}}", arm_name);
             if hits.is_empty()
                 && store.last_recall_status().as_deref() == Some("insufficient_confidence")
             {
@@ -5454,7 +6474,11 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
                 serde_json::to_string(&page.completeness).map_err(|error| error.to_string())?
             );
         }
-        Cmd::DrainBackgroundProposals { repository, path, limit } => {
+        Cmd::DrainBackgroundProposals {
+            repository,
+            path,
+            limit,
+        } => {
             let store = open(&db)?;
             let receipt = crate::cortex_lifecycle::drain_background_proposals(
                 &store,
@@ -5498,7 +6522,10 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
             let backup = store.backup_cortex()?;
             let bytes = serde_json::to_vec_pretty(&backup).map_err(|error| error.to_string())?;
             std::fs::write(&output, bytes).map_err(|error| error.to_string())?;
-            println!("{}", serde_json::json!({"backed_up": backup.memories.len() + backup.quarantined.len(), "output": output}));
+            println!(
+                "{}",
+                serde_json::json!({"backed_up": backup.memories.len() + backup.quarantined.len(), "output": output})
+            );
         }
         Cmd::Restore { input } => {
             let store = open(&db)?;
@@ -5506,7 +6533,10 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
             let backup: crate::store::CortexBackupV1 =
                 serde_json::from_str(&raw).map_err(|error| error.to_string())?;
             let restored = store.restore_cortex(&backup)?;
-            println!("{}", serde_json::json!({"restored": restored, "input": input}));
+            println!(
+                "{}",
+                serde_json::json!({"restored": restored, "input": input})
+            );
         }
         Cmd::ExportMd { dir } => {
             let store = open(&db)?;
@@ -5632,22 +6662,32 @@ mod tests {
 
     #[test]
     fn ledger_activation_cli_is_owner_scoped_and_rejects_retired_receipt_flag() {
-        assert!(super::Cli::try_parse_from([
-            "membrane", "ledger", "activate", "ledger_fts"
-        ]).is_err());
+        assert!(
+            super::Cli::try_parse_from(["membrane", "ledger", "activate", "ledger_fts"]).is_err()
+        );
         for mode in ["legacy_scan", "shadow", "ledger_fts"] {
             let parsed = super::Cli::try_parse_from([
-                "membrane", "ledger", "activate", "--repo", "C:/repo", mode
-            ]).expect("owner-scoped ledger activation parses");
+                "membrane", "ledger", "activate", "--repo", "C:/repo", mode,
+            ])
+            .expect("owner-scoped ledger activation parses");
             assert!(matches!(
                 parsed.cmd,
-                super::Cmd::Ledger { command: super::LedgerCmd::Activate { .. } }
+                super::Cmd::Ledger {
+                    command: super::LedgerCmd::Activate { .. }
+                }
             ));
         }
         assert!(super::Cli::try_parse_from([
-            "membrane", "ledger", "activate", "--repo", "C:/repo", "ledger_fts",
-            "--receipt", "qualification.json"
-        ]).is_err());
+            "membrane",
+            "ledger",
+            "activate",
+            "--repo",
+            "C:/repo",
+            "ledger_fts",
+            "--receipt",
+            "qualification.json"
+        ])
+        .is_err());
     }
 
     #[test]
@@ -7595,7 +8635,10 @@ mod tests {
         .unwrap();
         let mut expected = service_response(503, "busy", Some(super::MAX_RETRY_AFTER));
         if let super::ServicePostOutcome::Response(response) = &mut expected {
-            response.headers = vec![("retry-after".into(), "30".into()), ("connection".into(), "close".into())];
+            response.headers = vec![
+                ("retry-after".into(), "30".into()),
+                ("connection".into(), "close".into()),
+            ];
         }
         assert_eq!(outcome, expected);
         let request = server.join().unwrap();
@@ -7625,14 +8668,16 @@ mod tests {
             "signed-key",
             |_| {
                 attempts.set(attempts.get() + 1);
-                Ok(super::ServicePostOutcome::Response(super::ServiceResponse {
-                    status: 503,
-                    retry_after: None,
-                    body: "busy".into(),
-                    body_bytes: b"busy".to_vec(),
-                    headers: Vec::new(),
-                    authenticated: true,
-                }))
+                Ok(super::ServicePostOutcome::Response(
+                    super::ServiceResponse {
+                        status: 503,
+                        retry_after: None,
+                        body: "busy".into(),
+                        body_bytes: b"busy".to_vec(),
+                        headers: Vec::new(),
+                        authenticated: true,
+                    },
+                ))
             },
             |_| panic!("authenticated ambiguous mutation must not retry"),
         );
@@ -7649,10 +8694,15 @@ mod tests {
 
     #[test]
     fn parser_retains_raw_body_and_response_headers_for_proof() {
-        let raw = b"HTTP/1.1 200 OK\r\nX-Membrane-Proof: proof\r\nContent-Length: 9\r\n\r\n {\"x\":1} ";
-        let response = super::parse_http_response(&mut std::io::Cursor::new(raw.as_slice())).unwrap();
+        let raw =
+            b"HTTP/1.1 200 OK\r\nX-Membrane-Proof: proof\r\nContent-Length: 9\r\n\r\n {\"x\":1} ";
+        let response =
+            super::parse_http_response(&mut std::io::Cursor::new(raw.as_slice())).unwrap();
         assert_eq!(response.body_bytes, b" {\"x\":1} ");
-        assert!(response.headers.iter().any(|(name, value)| name == "x-membrane-proof" && value == "proof"));
+        assert!(response
+            .headers
+            .iter()
+            .any(|(name, value)| name == "x-membrane-proof" && value == "proof"));
     }
 
     #[test]
@@ -7738,7 +8788,11 @@ mod tests {
 
         // erase: reaches the parser/handler rather than being rejected by the allowlist.
         assert_reached_parser(super::run_cortex_durable_cli_from(&[
-            "membrane", "--db", &db, "erase", "missing-id",
+            "membrane",
+            "--db",
+            &db,
+            "erase",
+            "missing-id",
         ]));
 
         // backup: also exercised with `--db=` to confirm both forms stay parseable.
@@ -7786,7 +8840,12 @@ mod tests {
         // "ledger" is a real Membrane subcommand but not on the Cortex durable axis; the
         // allowlist guard must still reject it before the parser ever sees it.
         let error = super::run_cortex_durable_cli_from(&[
-            "membrane", "--db", &db, "ledger", "activate", "ledger_fts",
+            "membrane",
+            "--db",
+            &db,
+            "ledger",
+            "activate",
+            "ledger_fts",
         ])
         .unwrap_err();
         assert!(error.contains("unsupported command"));
@@ -7954,6 +9013,117 @@ mod ctx017_relation_vocabulary_tests {
         assert_eq!(
             cortex_store::memdb::CANONICAL_RELATIONS,
             cortex_core::CANONICAL_RELATIONS
+        );
+    }
+}
+
+#[cfg(test)]
+mod qualification_cli_tests {
+    use super::*;
+
+    #[test]
+    fn cortex_contract_parses_normalized_case_id() {
+        let parsed = Cli::try_parse_from(["membrane", "qualification", "cortex", "CTX-018"])
+            .unwrap();
+        assert!(matches!(
+            parsed.cmd,
+            Cmd::Qualification {
+                command: QualificationCmd::Cortex { case_id }
+            } if case_id == "CTX-018"
+        ));
+    }
+
+    #[test]
+    fn lifecycle_contract_is_terminal_and_exactly_named() {
+        let parsed =
+            Cli::try_parse_from(["membrane", "qualification", "lifecycle", "credential-race"])
+                .unwrap();
+        assert!(matches!(
+            parsed.cmd,
+            Cmd::Qualification {
+                command: QualificationCmd::Lifecycle { .. }
+            }
+        ));
+    }
+
+    #[test]
+    fn blueprint_provider_qualification_row_parses() {
+        let parsed = Cli::try_parse_from(["membrane", "qualification", "blueprint", "BPT-006"])
+            .unwrap();
+        assert!(matches!(
+            parsed.cmd,
+            Cmd::Qualification {
+                command: QualificationCmd::Blueprint { ref row }
+            } if row == "BPT-006"
+        ));
+    }
+
+    #[test]
+    fn ledger_qualification_contract_parses_case_id() {
+        let parsed = Cli::try_parse_from(["membrane", "qualification", "ledger", "LDG-031"])
+            .unwrap();
+        assert!(matches!(
+            parsed.cmd,
+            Cmd::Qualification {
+                command: QualificationCmd::Ledger { case_id }
+            } if case_id == "LDG-031"
+        ));
+    }
+
+    #[test]
+    fn retrieval_contract_parses_each_arm() {
+        let corpus = "scripts/qualification/corpus/cortex-matched-corpus-v1.json";
+        let corpus_sha256 = "9876f263d8c37f123a6c8dc61e4bccba2b1b0e8ccfef37bbd6ae565830846435";
+        for arm in ["lexical-only", "vector-only", "hybrid"] {
+            let parsed = Cli::try_parse_from([
+                "membrane",
+                "qualification",
+                "retrieval",
+                "--arm",
+                arm,
+                "--corpus",
+                corpus,
+                "--corpus-sha256",
+                corpus_sha256,
+            ])
+            .unwrap();
+            match parsed.cmd {
+                Cmd::Qualification {
+                    command:
+                        QualificationCmd::Retrieval {
+                            arm: parsed_arm,
+                            corpus: parsed_corpus,
+                            corpus_sha256: parsed_corpus_sha256,
+                        },
+                } => {
+                    assert_eq!(parsed_corpus, PathBuf::from(corpus));
+                    assert_eq!(parsed_corpus_sha256, corpus_sha256);
+                    match (arm, parsed_arm) {
+                        ("lexical-only", RetrievalArmArg::LexicalOnly)
+                        | ("vector-only", RetrievalArmArg::VectorOnly)
+                        | ("hybrid", RetrievalArmArg::Hybrid) => {}
+                        _ => panic!("retrieval arm was not preserved by CLI parsing"),
+                    }
+                }
+                _ => panic!("retrieval qualification command did not parse"),
+            }
+        }
+    }
+
+    #[test]
+    fn blueprint_lifecycle_dispatch_uses_native_service_contract() {
+        let result = super::run_blueprint_lifecycle_qualification("both").unwrap();
+        assert_eq!(
+            result.get("schema").and_then(serde_json::Value::as_str),
+            Some("membrane.installed-lifecycle-scenario.v1")
+        );
+        assert_eq!(
+            result.get("scenario").and_then(serde_json::Value::as_str),
+            Some("both")
+        );
+        assert_eq!(
+            result.get("terminal").and_then(serde_json::Value::as_bool),
+            Some(true)
         );
     }
 }

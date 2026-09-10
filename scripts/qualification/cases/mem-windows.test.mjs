@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { BM09, BM11, CASES, extractDescriptorBlocks, probeBM09Installed, probeBM11Installed } from "./mem-windows.mjs";
+import { BM09, BM11, CASES, extractDescriptorBlocks, probeBM09Installed, probeBM11Installed, installedBinding, probeInstalledMembraneRow } from "./mem-windows.mjs";
 
 const GOOD_HOOK_SOURCE = `
 pub fn hook_injection_point_descriptors() -> [HookInjectionPointDescriptorV1; 8] {
@@ -208,4 +209,73 @@ test("MEM registry coverage: every windows-acceptance mem-windows row has a name
   ];
   for (const id of ids) assert.equal(typeof CASES[id], "function", `${id} missing`);
   assert.equal(new Set(ids.map((id) => CASES[id])).size, ids.length);
+});
+
+function installedFixture() {
+  const root = mkdtempSync(join(tmpdir(), "membrane-installed-binding-"));
+  const exe = join(root, "membrane.exe");
+  writeFileSync(exe, "native-test-binary");
+  const digest = createHash("sha256").update("native-test-binary").digest("hex");
+  const generation = `sha256:${"a".repeat(64)}`;
+  writeFileSync(join(root, "release.json"), JSON.stringify({ releaseGeneration: generation, files: { "membrane.exe": digest } }));
+  const spawnSync = (_file, args, options = {}) => {
+    if (args.join(" ") === "cli build-info") return { status: 0, stdout: JSON.stringify({ target: "x86_64-pc-windows-msvc", release_generation: generation, membrane_source_commit: "b".repeat(40) }), stderr: "" };
+    const requests = String(options.input ?? "");
+    if (requests.includes('"tools/call"')) return { status: 0, stdout: JSON.stringify({ id: 1, result: { serverInfo: { name: "membrane" }, protocolVersion: "2025-03-26" } }) + "\n" + JSON.stringify({ id: 2, result: { isError: true, structuredContent: { result: { code: "repository_scope_chain_denied" } } } }), stderr: "" };
+    const lines = [
+      { id: 1, result: { serverInfo: { name: "membrane" }, protocolVersion: "2025-03-26" } },
+      { id: 2, result: { tools: [{ name: "membrane_context", description: "Federate bounded context through planner", inputSchema: { required: ["caller", "repository"] } }] } },
+      { id: 3, result: { resources: [{ name: "resources-index" }, { name: "installation-manifest" }, { name: "lease-status" }, { name: "operation-registry" }] } },
+      { id: 4, result: { prompts: [{ name: "recap" }, { name: "plan" }, { name: "summarize" }, { name: "checkpoint" }] } },
+    ];
+    return { status: 0, stdout: lines.map((line) => JSON.stringify(line)).join("\n"), stderr: "" };
+  };
+  return { root, exe, spawnSync, generation, digest };
+}
+
+test("MEM installed binding requires release manifest/hash/generation/target agreement", () => {
+  const fixture = installedFixture();
+  try {
+    const binding = installedBinding({ installedRoot: fixture.root, allowNonCanonicalRoot: true, spawnSync: fixture.spawnSync });
+    assert.equal(binding.ok, true, JSON.stringify(binding));
+    writeFileSync(join(fixture.root, "release.json"), JSON.stringify({ releaseGeneration: fixture.generation, files: { "membrane.exe": "0".repeat(64) } }));
+    assert.equal(installedBinding({ installedRoot: fixture.root, allowNonCanonicalRoot: true, spawnSync: fixture.spawnSync }).ok, false);
+  } finally { rmSync(fixture.root, { recursive: true, force: true }); }
+});
+
+test("MEM installed binding rejects non-canonical checkout paths", () => {
+  const fixture = installedFixture();
+  try {
+    const binding = installedBinding({ installedRoot: fixture.root, spawnSync: fixture.spawnSync });
+    assert.equal(binding.ok, false);
+    assert.equal(binding.reason, "installed_root_not_canonical_current");
+  } finally { rmSync(fixture.root, { recursive: true, force: true }); }
+});
+
+test("MEM installed binding rejects a build from a different source revision", () => {
+  const fixture = installedFixture();
+  try {
+    const binding = installedBinding({ installedRoot: fixture.root, allowNonCanonicalRoot: true, row: { qualifiedSourceRevision: "c".repeat(40) }, spawnSync: fixture.spawnSync });
+    assert.equal(binding.ok, false);
+    assert.equal(binding.checks.sourceMatches, false);
+  } finally { rmSync(fixture.root, { recursive: true, force: true }); }
+});
+
+test("MEM installed row probe binds native MCP discovery to one installed identity", () => {
+  const fixture = installedFixture();
+  try {
+    const result = probeInstalledMembraneRow("MEM_013", { installedRoot: fixture.root, allowNonCanonicalRoot: true, spawnSync: fixture.spawnSync });
+    assert.equal(result.pass, true, JSON.stringify(result));
+    assert.equal(result.evidenceKind, "installed");
+    assert.equal(result.binding.checks.hashMatches, true);
+  } finally { rmSync(fixture.root, { recursive: true, force: true }); }
+});
+
+test("MEM-004 installed probe requires typed denial for an unenrolled caller", () => {
+  const fixture = installedFixture();
+  try {
+    const result = probeInstalledMembraneRow("MEM_004", { installedRoot: fixture.root, allowNonCanonicalRoot: true, workspaceRoot: fixture.root, spawnSync: fixture.spawnSync });
+    assert.equal(result.pass, true, JSON.stringify(result));
+    assert.equal(result.findings[0].code, "repository_scope_chain_denied");
+  } finally { rmSync(fixture.root, { recursive: true, force: true }); }
 });

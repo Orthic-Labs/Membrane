@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import * as cases from "./mem-lifecycle-windows.mjs";
@@ -37,6 +37,28 @@ test("every required LC case export exists, is callable, and passes against the 
     assert.equal(result.kind, "structural");
     assert.equal(result.pass, true, `${id} unexpectedly failed against the live tree: ${result.reason}`);
   }
+});
+
+test("installed LC verdict requires complete scenarios, identity, terminal and native evidence", () => {
+  const root = makeFixtureRoot();
+  const receipt = join(root, "lifecycle.json");
+  const scenarios = Object.entries({
+    "LC-01": ["hub-only", "coderight-only", "both", "holder-crash", "holder-exit", "final-holder-shutdown", "concurrent-acquire-renew-release", "drain-acquire-race", "restart-during-acquire", "stale-fencing", "survivor-continuity"],
+    "LC-02": ["idle-refresh", "mid-build-refresh", "watcher-disabled-refresh", "hub-off-refresh"],
+    "LC-03": ["fair-service", "deadline-cancellation", "scope-isolation", "deduplicated-work"],
+    "LC-04": ["hub-off-explicit", "hub-background", "coderight-adopt", "provision-missing", "reject-corrupt", "reject-denied", "reject-unverifiable", "reject-development-checkout"],
+    "LC-05": ["credential-race", "lease-incarnation", "tombstone", "reordered-response", "lost-response", "clock-rewind", "replay-bound"],
+    "LC-06": ["canonical-roots", "health-probe", "startup-lock", "atomic-promotion", "hook-containment"],
+  }).flatMap(([lane, ids]) => ids.map((id) => ({ id, lane, status: "passed", reason: "observed", actions: [{ command: "C:/installed/current/membrane.exe", exitCode: 0, stdout: JSON.stringify({ schema: "membrane.installed-lifecycle-scenario.v1", runtimeOrigin: "installed", installedIdentity: { verified: true }, evidence: { expectedControllerState: { during: "running", after: "stopped" }, watcherActivity: { during: "resident", after: "drained" } } }), stderr: "", durationMs: 1, terminal: true, nativeEvidence: true }], processTreeBefore: [], processTreeDuring: [], processTreeAfter: [] })));
+  writeFileSync(receipt, JSON.stringify({ schema: "membrane.windows-lifecycle-observation.v1", platform: "windows", installed: true, generatedAt: new Date().toISOString(), processTree: [], buildIdentity: { root: "C:/installed/current", generation: "0.1.24", membraneSha256: "a".repeat(64) }, scenarios }), "utf8");
+  try {
+    const result = cases.LC_05({ row: {}, lifecycleObservationPath: receipt });
+    assert.equal(result.status, "passed");
+    const broken = JSON.parse(readFileSync(receipt, "utf8"));
+    broken.scenarios.find((s) => s.lane === "LC-05").actions[0].nativeEvidence = false;
+    writeFileSync(receipt, JSON.stringify(broken), "utf8");
+    assert.equal(cases.LC_05({ row: {}, lifecycleObservationPath: receipt }).pass, false);
+  } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
 test("every LC negative-control export exists, is callable, and passes (no forbidden pattern) against the live repository", () => {

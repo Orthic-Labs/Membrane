@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://membrane/schemas/observable-event.v1.schema.json",
   "title": "ObservableEventV1",
-  "description": "MBR-501: the normalized cross-agent observable event envelope. Every Membrane client (Claude, Codex, Cursor, Windsurf, generic MCP, the CLI, the Hub, and the federation gateway) emits this exact shape so the Hub, CLI, and federation gateway consume one normalized schema. Canonical Rust source of truth: engine/crates/membrane-protocol/src/observable_event.rs (ObservableEventV1). The TypeScript twin is mcp/observable-events.mjs.",
+  "description": "MBR-501: the normalized cross-agent observable event envelope. Every Membrane client (Claude, Codex, Cursor, Windsurf, generic MCP, the CLI, the Hub, and the federation gateway) emits this exact shape so the Hub, CLI, and federation gateway consume one normalized schema. Canonical Rust source of truth: engine/crates/membrane-protocol/src/observable_event.rs (ObservableEventV1). Retired TypeScript implementation is historical provenance only.",
   "type": "object",
   "additionalProperties": false,
   "required": [

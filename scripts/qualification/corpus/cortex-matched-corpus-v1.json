@@ -1,0 +1,92 @@
+{
+  "schema": "membrane.retrieval-corpus.v1",
+  "corpusId": "cortex-matched-corpus-v1",
+  "pinned": true,
+  "synthetic": false,
+  "fixture": false,
+  "provenance": {
+    "kind": "source-grounded",
+    "reviewed": false,
+    "authority": "canonical Membrane architecture and product documentation",
+    "note": "Entries are exact source excerpts; source digests and spans are verified by native qualification."
+  },
+  "thresholds": {
+    "recall": 1.0,
+    "ranking": 0.75,
+    "temporal": 1.0,
+    "paraphrase": 1.0,
+    "preference": 1.0,
+    "contradiction": 1.0
+  },
+  "entries": [
+    {
+      "id": "opt02/lifecycle",
+      "scope": "opt02",
+      "content": "**Lifecycle corrections (2026-09-07 & 2026-09-08):** [Explicit execution & resident lifecycle](execution-lifecycle-boundary.md) supersedes daemon-only, tray-off refusal & Hub-only residency statements throughout this document. Explicit operations remain available with Hub off through bounded installed execution; background work and auto-refresh require an active Hub or CodeRight daemon holder. Hub or CodeRight daemon holds one installed Membrane controller for full background services; only final holder loss drains them. CodeRight requires installer-owned Membrane, installs it when absent, & never consumes development runtime.",
+      "sourcePath": "docs/architecture/membrane.md",
+      "sourceSha256": "22cf81469f01dfa00b11c8c62e79c5f67d03a20d18be432c9a8c47babb5d227c",
+      "sourceLines": {"start": 24, "end": 24},
+      "sourceExcerpt": "**Lifecycle corrections (2026-09-07 & 2026-09-08):** [Explicit execution & resident lifecycle](execution-lifecycle-boundary.md) supersedes daemon-only, tray-off refusal & Hub-only residency statements throughout this document. Explicit operations remain available with Hub off through bounded installed execution; background work and auto-refresh require an active Hub or CodeRight daemon holder. Hub or CodeRight daemon holds one installed Membrane controller for full background services; only final holder loss drains them. CodeRight requires installer-owned Membrane, installs it when absent, & never consumes development runtime."
+    },
+    {
+      "id": "opt02/blueprint-current",
+      "scope": "opt02",
+      "content": "Blueprint exists to answer a coding agent's most important repository questions with **current, source-anchored, provenance-preserving evidence** without forcing the agent to rediscover the codebase through repeated Glob/Grep/Read traversal.",
+      "sourcePath": "docs/architecture/subsystems/blueprint.md",
+      "sourceSha256": "598180a81371e989c0edeb0c352e70e2da9283155c4d1077f36f37d993a73656",
+      "sourceLines": {"start": 11, "end": 11},
+      "sourceExcerpt": "Blueprint exists to answer a coding agent's most important repository questions with **current, source-anchored, provenance-preserving evidence** without forcing the agent to rediscover the codebase through repeated Glob/Grep/Read traversal."
+    },
+    {
+      "id": "opt02/blueprint-contract",
+      "scope": "opt02",
+      "content": "> **The watcher makes the evidence current. The freshness gate proves it. The semantic stack makes it precise. The agent integration makes it discoverable. The MCP/CLI make it useful.**",
+      "sourcePath": "docs/architecture/subsystems/blueprint.md",
+      "sourceSha256": "598180a81371e989c0edeb0c352e70e2da9283155c4d1077f36f37d993a73656",
+      "sourceLines": {"start": 15, "end": 15},
+      "sourceExcerpt": "> **The watcher makes the evidence current. The freshness gate proves it. The semantic stack makes it precise. The agent integration makes it discoverable. The MCP/CLI make it useful.**"
+    },
+    {
+      "id": "opt02/cortex",
+      "scope": "opt02",
+      "content": "| **Cortex** | Owns governed durable-memory admission, lifecycle, and retrieval; it is not a resident service authority. |",
+      "sourcePath": "docs/product/README.md",
+      "sourceSha256": "7704d3953c8e891f5077c186e93ae27e037d5f7daf836d64e110fa4fc8e31ca4",
+      "sourceLines": {"start": 57, "end": 57},
+      "sourceExcerpt": "| **Cortex** | Owns governed durable-memory admission, lifecycle, and retrieval; it is not a resident service authority. |"
+    },
+    {
+      "id": "opt02/adapt",
+      "scope": "opt02",
+      "content": "| **Adapt** | Mines experience into governed proposals and never writes durable truth directly. |",
+      "sourcePath": "docs/product/README.md",
+      "sourceSha256": "7704d3953c8e891f5077c186e93ae27e037d5f7daf836d64e110fa4fc8e31ca4",
+      "sourceLines": {"start": 60, "end": 60},
+      "sourceExcerpt": "| **Adapt** | Mines experience into governed proposals and never writes durable truth directly. |"
+    },
+    {
+      "id": "opt02/pull",
+      "scope": "opt02",
+      "content": "| **Pull** | Retrieves, admits, fuses, and publishes task-relevant evidence. |",
+      "sourcePath": "docs/product/README.md",
+      "sourceSha256": "7704d3953c8e891f5077c186e93ae27e037d5f7daf836d64e110fa4fc8e31ca4",
+      "sourceLines": {"start": 55, "end": 55},
+      "sourceExcerpt": "| **Pull** | Retrieves, admits, fuses, and publishes task-relevant evidence. |"
+    },
+    {
+      "id": "opt02/ledger",
+      "scope": "opt02",
+      "content": "| **Ledger** | Navigates indexed document sections with hash-bound references. |",
+      "sourcePath": "docs/product/README.md",
+      "sourceSha256": "7704d3953c8e891f5077c186e93ae27e037d5f7daf836d64e110fa4fc8e31ca4",
+      "sourceLines": {"start": 59, "end": 59},
+      "sourceExcerpt": "| **Ledger** | Navigates indexed document sections with hash-bound references. |"
+    }
+  ],
+  "cases": [
+    {"id": "opt02-temporal", "category": "temporal", "query": "current installed execution and resident lifecycle holder changes", "expectedIds": ["opt02/lifecycle"]},
+    {"id": "opt02-paraphrase", "category": "paraphrase", "query": "source anchored repository answers with preserved provenance", "expectedIds": ["opt02/blueprint-current"]},
+    {"id": "opt02-preference", "category": "preference", "query": "behavioral learning produces governed proposals without direct durable writes", "expectedIds": ["opt02/adapt"]},
+    {"id": "opt02-contradiction", "category": "contradiction", "query": "durable memory retrieval is not resident service authority", "expectedIds": ["opt02/cortex"]}
+  ]
+}

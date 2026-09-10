@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://membrane/schemas/scope-grant.v1.schema.json",
   "title": "ScopeGrantV1",
-  "description": "MBR-101: the bounded, Ed25519-signed authority to read exact source ranges for one task. Canonical Rust source of truth: engine/crates/membrane-protocol/src/types.rs (ScopeGrantV1). Field names and enum values match mcp/scope-grant-v1.mjs.",
+  "description": "MBR-101: the bounded, Ed25519-signed authority to read exact source ranges for one task. Canonical Rust source of truth: engine/crates/membrane-protocol/src/types.rs (ScopeGrantV1). Field names & enum values preserve retired MCP wire compatibility.",
   "type": "object",
   "additionalProperties": false,
   "required": [

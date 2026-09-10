@@ -7,10 +7,10 @@
 //! admission.
 //!
 //! Task-authority contract under test (two deliberate defaults): the DIRECT
-//! path (`authorize`, mcp/server.mjs effectiveAuthorityFor lines 192-201)
+//! path (`authorize`, historically mirrored by the retired MCP server)
 //! falls back to the caller's persisted level when no task grant travels on
 //! the envelope, while the FAN-OUT primitive (`can_reach_target`,
-//! mcp/authorization.mjs authorizeTarget line 52) clamps an absent grant to
+//! the former authorizeTarget path) clamps an absent grant to
 //! read-only. The tests pin both defaults so neither can silently regress
 //! into the other.
 //!
@@ -235,7 +235,7 @@ fn cross_root_without_explicit_child_grant_is_denied_at_cross_root_denial() {
 
 #[test]
 fn mutating_action_without_task_grant_is_permitted_on_direct_path() {
-    // DIRECT-path contract (mcp/server.mjs effectiveAuthorityFor, lines
+    // DIRECT-path contract (historically mirrored by the retired MCP server,
     // 192-201: "an absent grant never cold-caps legitimate same-root work
     // below the caller's persisted level"): a write-trusted caller performing
     // a mutating action with NO task grant on the envelope is PERMITTED. This
@@ -262,8 +262,8 @@ fn mutating_action_without_task_grant_is_permitted_on_direct_path() {
 
 #[test]
 fn can_reach_target_mutating_action_without_task_grant_is_denied() {
-    // FAN-OUT clamp contract (mcp/authorization.mjs authorizeTarget, line 52:
-    // `taskGrantLevel || "read-only"`, reached from mcp/server.mjs line ~817):
+    // FAN-OUT clamp contract:
+    // `taskGrantLevel || "read-only"`):
     // the workspace fan-out primitive denies mutating actions with no task
     // grant even when the caller's persisted level is write-trusted, and
     // returns None on any denial (the fan-out renders that target as a typed
@@ -338,7 +338,7 @@ fn read_action_succeeds_for_enrolled_self_consistent_caller() {
     );
     let decision = authorize(&request).expect("enrolled self-consistent read must pass");
     // DIRECT-path fallback is visible in the authorized outcome
-    // (mcp/server.mjs effectiveAuthorityFor, lines 192-201): no task grant on
+    // (historically mirrored by the retired MCP server): no task grant on
     // the envelope means the caller's persisted write-trusted level IS the
     // task authority — the task slot does NOT cold-cap to read-only. The
     // effective level is bounded by the installation ceiling

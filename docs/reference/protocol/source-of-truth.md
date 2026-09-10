@@ -25,7 +25,8 @@ The shapes are defined once, in Rust, in
 JSON casing are modelled faithfully on how the shapes are produced and consumed
 today:
 
-- `ScopeGrantV1` mirrors `mcp/scope-grant-v1.mjs` (`mintScopeGrantV1`).
+- `ScopeGrantV1` is implemented by native MCP scope-grant authority in
+  `engine/crates/membrane-mcp/src/scope_grant.rs`.
 - The candidate-set / packet / receipt shapes mirror the admission planner in
   `cortex-core::planner` (which itself mirrors the versioned contract schema).
 - `KnowledgeEmissionV1` mirrors the `membrane_knowledge_propose` body persisted
@@ -68,7 +69,7 @@ shared canonical instances. Both sides read the **same** files and assert the
 
 Cross-language agreement reduces to one deterministic serialization, defined in
 `src/canonical.rs` (`canonicalize`) and mirrored in `bindings/protocol.mjs` (and
-pre-existing in `mcp/scope-grant-v1.mjs`):
+pre-existing in native scope-grant implementation):
 
 1. Object keys sorted lexicographically.
 2. No insignificant whitespace.

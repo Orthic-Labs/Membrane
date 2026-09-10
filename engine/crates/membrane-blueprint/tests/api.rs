@@ -22,7 +22,17 @@ fn request_serialization_is_protocol_v1_and_deterministic() {
 
 #[test]
 fn operation_parser_preserves_manual_surface() {
-    for (wire, expected) in [("build", Operation::Build), ("status", Operation::Status), ("documentTruth", Operation::DocumentTruth), ("phase2_plan", Operation::Phase2Plan), ("db_status", Operation::DbStatus), ("freshness_barrier", Operation::FreshnessBarrier), ("findings.get", Operation::FindingsGet)] {
+    for (wire, expected) in [
+        ("build", Operation::Build), ("status", Operation::Status),
+        ("documentTruth", Operation::DocumentTruth), ("phase2_plan", Operation::Phase2Plan),
+        ("db_status", Operation::DbStatus), ("freshness_barrier", Operation::FreshnessBarrier),
+        ("findings.get", Operation::FindingsGet),
+        ("findings.explain", Operation::FindingsExplain),
+        ("findings.evidence_pack", Operation::FindingsEvidencePack),
+        ("findings.baseline.capture", Operation::FindingsBaselineCapture),
+        ("findings.baseline.list", Operation::FindingsBaselineList),
+        ("findings.sarif", Operation::FindingsSarif),
+    ] {
         assert_eq!(Operation::parse(wire), Some(expected));
         assert_eq!(expected.as_str(), wire);
     }

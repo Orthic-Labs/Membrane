@@ -17,15 +17,15 @@ sharing sensitive details. Do not test against another user's installation.
 ## Security surface
 
 - Authorization is monotone: installation, caller, target, child, task, and
-  operation levels intersect in [`mcp/authorization.mjs`](../mcp/authorization.mjs);
+  operation levels intersect in [`engine/crates/membrane-mcp/src/authorization.rs`](../engine/crates/membrane-mcp/src/authorization.rs);
   adversarial zero-admission coverage is documented in
   [`docs/reference/security/adversarial-authorization-suite.md`](../docs/reference/security/adversarial-authorization-suite.md).
 - Scope grants are short-lived Ed25519 signatures with canonical signing bytes;
-  implementation and tamper tests are [`mcp/scope-grant-v1.mjs`](../mcp/scope-grant-v1.mjs)
-  & [`mcp/scope-grant-v1.test.mjs`](../mcp/scope-grant-v1.test.mjs).
+  implementation and tamper tests are in [`engine/crates/membrane-mcp/src/scope_grant.rs`](../engine/crates/membrane-mcp/src/scope_grant.rs)
+  & the native MCP test suite.
 - Provenance is local metadata only. Recorded fields, exclusions, storage, and
   wipe semantics are in [`docs/product/legal/runtime-privacy.md`](../docs/product/legal/runtime-privacy.md) & the adapter
-  ([`mcp/adapters/provenance/index.mjs`](../mcp/adapters/provenance/index.mjs)).
+  ([`engine/crates/membrane-runtime/src/provenance.rs`](../engine/crates/membrane-runtime/src/provenance.rs)).
 - Release trust is contract-level until signed artifacts and clean-host receipts
   exist; see [`docs/reference/security/signing-update-trust.md`](../docs/reference/security/signing-update-trust.md).
 

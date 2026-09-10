@@ -1,1 +1,0 @@
-export const MAX_PUSH_REQUEST_BYTES = 8 * 1024 * 1024;

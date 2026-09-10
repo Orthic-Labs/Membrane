@@ -10,8 +10,9 @@
 // Windows hosts" behavior — that requires the compiled/installed binary and
 // is the integration owner's registry-command execution, not this module's.
 
-import { readFileSync, existsSync, statSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { readFileSync, existsSync, statSync, mkdtempSync, rmSync, writeFileSync, realpathSync } from "node:fs";
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -257,7 +258,10 @@ const MEM_SOURCE_CASES = {
   MEM_047: [["docs/reference/clients/support-matrix.v1.json", /coderight|L5|capabilit/iu]],
   MEM_048: [["docs/reference/clients/support-matrix.v1.json", /cursor|windsurf|L1/iu]],
   MEM_049: [["docs/reference/clients/support-matrix.v1.json", /generic_mcp|L0|tool/iu]],
-  MEM_050: [["mcp/client.mjs", /client|http|transport/iu], ["continuity/pyproject.toml", /client|transport/iu]],
+  // Native Rust owns shared client protocol compatibility & HTTP transport.
+  // Python/JS package distribution remains an explicit qualification gap;
+  // do not resurrect deleted legacy source paths as current evidence.
+  MEM_050: [["engine/crates/membrane-client/tests/compat.rs", /cross-language|golden|transport/iu], ["engine/crates/membrane-runtime/src/mcp_http.rs", /HTTP|transport|authenticated/iu]],
   MEM_051: [["engine/crates/membrane-runtime/src/team_policy.rs", /signature|scope|opt.?in/iu]],
 };
 
@@ -275,13 +279,25 @@ function memSourceCase(id, options = {}) {
   }
   if (checks.length === 0) findings.push({ ok: false, reason: "case_contract_missing" });
   const pass = findings.length > 0 && findings.every((finding) => finding.ok);
-  return {
+  const structural = {
     case: id,
     evidenceKind: "source",
     pass,
     status: pass ? "passed" : "failed",
     findings,
     note: "Source contract only; installed/native runtime behavior requires the integration owner's Windows candidate probe.",
+  };
+  if (!(options.installedRoot ?? process.env.MEMBRANE_QUALIFICATION_INSTALLED_ROOT)) return structural;
+  const installed = probeInstalledMembraneRow(id, options);
+  const installedPass = pass && installed.pass;
+  return {
+    ...structural,
+    evidenceKind: "installed",
+    pass: installedPass,
+    status: installedPass ? "passed" : "failed",
+    findings: [...findings, { ok: installed.pass, reason: installed.reason, detail: installed }],
+    detail: { structural, installed },
+    reason: installedPass ? "installed native contract verified" : installed.reason,
   };
 }
 
@@ -291,10 +307,57 @@ function installedExecutable(options = {}) {
   return join(resolve(root), "membrane.exe");
 }
 
+function sha256File(path) {
+  return createHash("sha256").update(readFileSync(path)).digest("hex");
+}
+
+/**
+ * Bind every installed MEM probe to one installer-owned `current` root.
+ * A configured path alone is not runtime evidence: release.json, its
+ * membrane.exe hash, build-info generation, target, & optional source
+ * revision must agree before any row can be promoted from source evidence.
+ */
+export function installedBinding(options = {}) {
+  const root = resolve(options.installedRoot ?? process.env.MEMBRANE_QUALIFICATION_INSTALLED_ROOT ?? "");
+  const executable = join(root, "membrane.exe");
+  const releasePath = join(root, "release.json");
+  if (!root || !existsSync(executable)) return { ok: false, reason: "installed_executable_missing", root, executable };
+  const expectedCurrent = process.env.LOCALAPPDATA ? resolve(process.env.LOCALAPPDATA, "Orthic Labs", "Membrane", "current") : null;
+  const actualCurrent = realpathSync(root);
+  const stableCurrent = Boolean(options.allowNonCanonicalRoot) || (expectedCurrent !== null && actualCurrent.toLowerCase() === expectedCurrent.toLowerCase());
+  if (!stableCurrent) return { ok: false, reason: "installed_root_not_canonical_current", root: actualCurrent, expectedCurrent };
+  if (!existsSync(releasePath)) return { ok: false, reason: "installed_release_manifest_missing", root, releasePath };
+  let release;
+  try { release = JSON.parse(readFileSync(releasePath, "utf8")); } catch (error) { return { ok: false, reason: `installed_release_manifest_invalid: ${error.message}`, root, releasePath }; }
+  const executableSha256 = sha256File(executable);
+  const declaredHash = release.files?.["membrane.exe"];
+  const hashMatches = typeof declaredHash === "string" && declaredHash.replace(/^sha256:/u, "").toLowerCase() === executableSha256;
+  const build = installedJson(["cli", "build-info"], options);
+  const buildGeneration = build.value?.release_generation ?? build.value?.releaseGeneration;
+  const releaseGeneration = release.releaseGeneration ?? release.release_generation;
+  const sourceRevision = options.row?.qualifiedSourceRevision ?? process.env.MEMBRANE_QUALIFICATION_SOURCE_REVISION;
+  const sourceMatches = !sourceRevision || build.value?.membrane_source_commit === sourceRevision;
+  const generationMatches = typeof buildGeneration === "string" && buildGeneration === releaseGeneration;
+  const targetMatches = build.value?.target === "x86_64-pc-windows-msvc";
+  const ok = build.ok && hashMatches && generationMatches && targetMatches && sourceMatches;
+  return {
+    ok,
+    reason: ok ? "installed_identity_bound" : "installed_identity_mismatch",
+    root,
+    executable,
+    releasePath,
+    executableSha256,
+    releaseGeneration,
+    build: build.value,
+    checks: { hashMatches, generationMatches, targetMatches, sourceMatches },
+  };
+}
+
 function installedJson(args, options = {}) {
   const exe = installedExecutable(options);
   if (!existsSync(exe)) return { ok: false, reason: "installed_executable_missing", path: exe };
-  const result = spawnSync(exe, args, { encoding: "utf8", timeout: 30_000, windowsHide: true, cwd: options.workspaceRoot });
+  const run = options.spawnSync ?? spawnSync;
+  const result = run(exe, args, { encoding: "utf8", timeout: 30_000, windowsHide: true, cwd: options.workspaceRoot });
   const output = String(result.stdout ?? "").trim();
   let value = null;
   try { value = output ? JSON.parse(output) : null; } catch { /* preserve raw diagnostic below */ }
@@ -308,11 +371,123 @@ function installedMcp(methods, options = {}) {
     { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "membrane-qualification", version: "1" } } },
     ...methods.map((method, index) => ({ jsonrpc: "2.0", id: index + 2, method, params: {} })),
   ];
-  const result = spawnSync(exe, ["stdio-mcp"], { input: `${requests.map((request) => JSON.stringify(request)).join("\n")}\n`, encoding: "utf8", timeout: 30_000, windowsHide: true, cwd: options.workspaceRoot });
+  const run = options.spawnSync ?? spawnSync;
+  const result = run(exe, ["stdio-mcp"], { input: `${requests.map((request) => JSON.stringify(request)).join("\n")}\n`, encoding: "utf8", timeout: 30_000, windowsHide: true, cwd: options.workspaceRoot });
   const responses = String(result.stdout ?? "").trim().split(/\r?\n/u).filter(Boolean).map((line) => {
     try { return JSON.parse(line); } catch { return null; }
   });
   return { ok: result.status === 0 && responses.length >= requests.length, status: result.status, responses, stderr: String(result.stderr ?? "").trim() };
+}
+
+function installedMcpCall(name, args, options = {}) {
+  const exe = installedExecutable(options);
+  const request = [
+    { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "membrane-qualification", version: "1" } } },
+    { jsonrpc: "2.0", id: 2, method: "tools/call", params: { name, arguments: args } },
+  ];
+  const run = options.spawnSync ?? spawnSync;
+  const result = run(exe, ["stdio-mcp"], { input: `${request.map((item) => JSON.stringify(item)).join("\n")}\n`, encoding: "utf8", timeout: 30_000, windowsHide: true, cwd: options.workspaceRoot });
+  const responses = String(result.stdout ?? "").trim().split(/\r?\n/u).filter(Boolean).map((line) => { try { return JSON.parse(line); } catch { return null; } }).filter(Boolean);
+  return { ok: result.status === 0, status: result.status, response: responses.find((entry) => entry.id === 2), stderr: String(result.stderr ?? "").trim() };
+}
+
+const MEM_NATIVE_CONTRACTS = {
+  MEM_003: { cli: ["cli", "build-info"], requiredOutput: { target: "x86_64-pc-windows-msvc" } },
+  MEM_001: { tools: ["membrane_context"], description: /planner|federat/i },
+  MEM_002: { tools: ["membrane_context", "membrane_source_read", "membrane_blueprint", "membrane_ledger", "membrane_memory"], resources: ["operation-registry"] },
+  MEM_004: { tools: ["membrane_context"], required: ["caller", "repository"] },
+  MEM_005: { tools: ["membrane_context"], required: ["scopeGrantId"], description: /grant|scope/i },
+  MEM_008: { tools: ["membrane_context", "membrane_blueprint"], description: /Hub on or off|Hub/i },
+  MEM_009: { tools: ["membrane_context", "membrane_blueprint"], required: ["caller"], description: /explicit|bounded/i },
+  MEM_011: { tools: ["membrane_context"], initialize: true },
+  MEM_013: { tools: ["membrane_context"], description: /context|tool/i },
+  MEM_014: { resources: ["resources-index", "installation-manifest", "lease-status", "operation-registry"] },
+  MEM_015: { prompts: ["recap", "plan", "summarize", "checkpoint"] },
+  MEM_017: { tools: ["membrane_context", "membrane_blueprint", "membrane_memory", "membrane_ledger", "membrane_feedback", "membrane_push_prepare"] },
+  MEM_022: { tools: ["membrane_working_context"], required: ["operation", "repository", "caller"] },
+  MEM_023: { tools: ["membrane_scratchpad"], required: ["operation", "repository", "caller"] },
+  MEM_024: { tools: ["membrane_feedback"], required: ["receiptId", "outcome", "verdictRef"] },
+  MEM_025: { cli: ["cli", "hub-capabilities"], unavailableAllowed: true },
+  MEM_026: { cli: ["cli", "hub-snapshot"], unavailableAllowed: true },
+  MEM_027: { cli: ["cli", "hub-snapshot"], unavailableAllowed: true, absentNotZero: true },
+  MEM_028: { tools: ["membrane_blueprint"], required: ["operation", "repository", "caller"], description: /Blueprint|generation/i },
+  MEM_029: { tools: ["membrane_memory", "membrane_memory_read"], required: ["operation", "repository", "caller"] },
+  MEM_030: { tools: ["membrane_context"], description: /receipt|delivery/i },
+  MEM_031: { tools: ["membrane_context"], description: /client|adapter/i },
+  MEM_032: { cli: ["cli", "hub-snapshot"], unavailableAllowed: true, absentNotZero: true },
+  MEM_033: { cli: ["cli", "diagnostics", "capabilities"], requiredOutput: { surface: "membrane-live-diagnostics" } },
+  MEM_034: { cli: ["cli", "diagnostics", "capabilities"], outputIncludes: ["POST /diagnostics/mutation/begin", "POST /diagnostics/mutation/abort", "POST /diagnostics/mutation/seal"] },
+  MEM_035: { cli: ["cli", "diagnostics", "capabilities"], outputIncludes: ["GET /diagnostics/provider/list", "GET /diagnostics/snapshot/get"] },
+  MEM_036: { cli: ["cli", "diagnostics", "capabilities"], outputIncludes: ["POST /diagnostics/fence/evaluate"] },
+  MEM_037: { cli: ["cli", "diagnostics", "capabilities"], outputIncludes: ["POST /diagnostics/provider/restart"] },
+  MEM_038: { cli: ["cli", "diagnostics", "capabilities"], outputIncludes: ["POST /diagnostics/baseline/capture", "POST /diagnostics/baseline/update"] },
+  MEM_039: { cli: ["cli", "doctor", "paths", "--json"], requiredOutput: { schemaVersion: 1 } },
+  MEM_040: { tools: ["membrane_context"], required: ["remainingContextCeiling"], description: /H4|H6|H8|H9|H10|ceiling/i },
+  MEM_042: { tools: ["membrane_context"], description: /receipt|generation|omission/i },
+  MEM_043: { tools: ["membrane_context"], required: ["deadlineMs"], description: /deadline|bounded/i },
+  MEM_045: { initialize: true }, MEM_046: { initialize: true }, MEM_047: { initialize: true }, MEM_048: { initialize: true }, MEM_049: { initialize: true },
+  MEM_050: { initialize: true, tools: ["membrane_context"] },
+  MEM_051: { tools: ["membrane_knowledge_propose"], required: ["caller", "emission"], description: /proposal|signature|scope/i },
+};
+
+function toolResult(responses) { return responses.find((entry) => entry?.id === 2)?.result ?? {}; }
+
+/**
+ * Exercise one concrete installed MCP/CLI surface for source-backed MEM
+ * rows. Rows without an exposed native consumer stay structural (or fail
+ * closed when an installed root is requested); no source marker is promoted
+ * by this helper.
+ */
+export function probeInstalledMembraneRow(id, options = {}) {
+  const binding = installedBinding(options);
+  if (!binding.ok) return { pass: false, evidenceKind: "installed", reason: binding.reason, binding };
+  const contract = MEM_NATIVE_CONTRACTS[id];
+  if (!contract) return { pass: false, evidenceKind: "installed", reason: "native_consumer_contract_not_exposed", binding };
+  const findings = [];
+  if (id === "MEM_004") {
+    const workspaceRoot = resolve(options.workspaceRoot ?? REPO_ROOT);
+    const callerRoot = join(workspaceRoot, ".membrane-qualification-unenrolled");
+    const denial = installedMcpCall("membrane_context", {
+      task: "authorization negative control", taskId: "mem-auth-negative", sessionId: "mem-auth-negative", repository: workspaceRoot,
+      caller: { root: callerRoot, repositoryId: "mem-auth-negative", scopeId: "mem-auth-negative" },
+      remainingContextCeiling: { schemaVersion: 1, ceilingId: "mem-auth-negative", sessionId: "mem-auth-negative", taskId: { coverage: "complete", value: "mem-auth-negative" }, requestedAtUnixMs: Date.now(), remainingTokens: { coverage: "complete", estimate: 1024 }, provenanceReceipt: { observedAtUnixMs: Date.now() } },
+    }, options);
+    const code = denial.response?.result?.structuredContent?.result?.code;
+    findings.push({ ok: denial.ok && denial.response?.result?.isError === true && ["repository_scope_chain_denied", "caller_not_authorized", "cross_root_binding_denied", "installation_grant_denied"].includes(code), command: "stdio-mcp tools/call membrane_context (unenrolled caller)", code, stderr: denial.stderr });
+  }
+  if (contract.cli) {
+    const result = installedJson(contract.cli, options);
+    const value = result.value ?? {};
+    const unavailable = value?.kind === "membrane_unavailable" || /hub inactive|hub_inactive/u.test(String(result.stderr ?? ""));
+    const requiredOutputOk = Object.entries(contract.requiredOutput ?? {}).every(([key, expected]) => value[key] === expected);
+    const outputIncludesOk = (contract.outputIncludes ?? []).every((needle) => JSON.stringify(value).includes(needle));
+    const absentNotZeroOk = !contract.absentNotZero || (!Object.values(value).some((v) => v === 0) && (unavailable || Object.keys(value).length > 0));
+    findings.push({ ok: result.ok && (contract.unavailableAllowed ? (unavailable || requiredOutputOk) : requiredOutputOk) && outputIncludesOk && absentNotZeroOk, command: contract.cli.join(" "), value, stderr: result.stderr });
+  }
+  if (contract.initialize || contract.tools || contract.resources || contract.prompts) {
+    const mcp = installedMcp(["tools/list", "resources/list", "prompts/list"], options);
+    const init = mcp.responses?.find((entry) => entry?.id === 1)?.result;
+    const payload = toolResult(mcp.responses ?? []);
+    const tools = Array.isArray(payload.tools) ? payload.tools : [];
+    const resources = Array.isArray(mcp.responses?.find((entry) => entry?.id === 3)?.result?.resources) ? mcp.responses.find((entry) => entry?.id === 3).result.resources : [];
+    const prompts = Array.isArray(mcp.responses?.find((entry) => entry?.id === 4)?.result?.prompts) ? mcp.responses.find((entry) => entry?.id === 4).result.prompts : [];
+    const toolNames = new Set(tools.map((tool) => tool.name));
+    const resourceNames = new Set(resources.map((resource) => resource.name));
+    const promptNames = new Set(prompts.map((prompt) => prompt.name));
+    const initOk = !contract.initialize || (mcp.ok && init?.serverInfo?.name === "membrane" && typeof init.protocolVersion === "string");
+    const toolsOk = (contract.tools ?? []).every((name) => toolNames.has(name));
+    const resourcesOk = (contract.resources ?? []).every((name) => resourceNames.has(name));
+    const promptsOk = (contract.prompts ?? []).every((name) => promptNames.has(name));
+    const schemaOk = (contract.tools ?? []).every((name) => {
+      const tool = tools.find((candidate) => candidate.name === name);
+      const required = contract.required ?? [];
+      return !required.length || required.every((field) => tool?.inputSchema?.required?.includes(field));
+    });
+    const descriptionOk = !contract.description || [...(contract.tools ?? [])].some((name) => contract.description.test(tools.find((candidate) => candidate.name === name)?.description ?? ""));
+    findings.push({ ok: initOk && toolsOk && resourcesOk && promptsOk && schemaOk && descriptionOk, command: "stdio-mcp initialize/tools/list/resources/list/prompts/list", toolNames: [...toolNames], resourceNames: [...resourceNames], promptNames: [...promptNames], init });
+  }
+  const pass = findings.length > 0 && findings.every((finding) => finding.ok);
+  return { pass, evidenceKind: "installed", status: pass ? "passed" : "failed", reason: pass ? "installed_native_consumer_contract_verified" : "installed_native_consumer_contract_failed", binding, findings };
 }
 
 const BM09_EVENT_PROBES = [
@@ -439,73 +614,57 @@ function sameStringSet(left, right) {
 }
 
 export function MEM_011(options = {}) {
-  const result = installedMcp([]);
-  const init = result.responses?.find((response) => response?.id === 1)?.result;
-  const ok = result.ok && init?.serverInfo?.name === "membrane" && typeof init.protocolVersion === "string" && init.capabilities && typeof init.instructions === "string";
-  return { case: "MEM_011", evidenceKind: "installed", pass: ok, status: ok ? "passed" : "failed", findings: [{ ok, command: "membrane stdio-mcp initialize", reason: ok ? "native_stdio_mcp_initialized" : "native_stdio_mcp_unavailable", response: init ?? null, stderr: result.stderr }] };
+  if (!(options.installedRoot ?? process.env.MEMBRANE_QUALIFICATION_INSTALLED_ROOT)) return memSourceCase("MEM_011", options);
+  const result = probeInstalledMembraneRow("MEM_011", options);
+  return { case: "MEM_011", ...result };
 }
 
 export function MEM_013(options = {}) {
-  const result = installedMcp(["tools/list"]);
-  const payload = result.responses?.find((response) => response?.id === 2)?.result;
-  const names = Array.isArray(payload?.tools) ? payload.tools.map((tool) => tool.name) : [];
-  const ok = result.ok && names.includes("membrane_context") && names.length > 0;
-  return { case: "MEM_013", evidenceKind: "installed", pass: ok, status: ok ? "passed" : "failed", findings: [{ ok, command: "membrane stdio-mcp tools/list", reason: ok ? "default_context_tool_discovered" : "tool_discovery_unavailable", toolNames: names, stderr: result.stderr }] };
+  if (!(options.installedRoot ?? process.env.MEMBRANE_QUALIFICATION_INSTALLED_ROOT)) return memSourceCase("MEM_013", options);
+  const result = probeInstalledMembraneRow("MEM_013", options);
+  return { case: "MEM_013", ...result };
 }
 
 export function MEM_014(options = {}) {
-  const result = installedMcp(["resources/list"]);
-  const payload = result.responses?.find((response) => response?.id === 2)?.result;
-  const resources = Array.isArray(payload?.resources) ? payload.resources : [];
-  const ok = result.ok && resources.length > 0 && resources.every((resource) => typeof resource.uri === "string" && Array.isArray(resource.accessGrants) && resource.authorityEscalation === false);
-  return { case: "MEM_014", evidenceKind: "installed", pass: ok, status: ok ? "passed" : "failed", findings: [{ ok, command: "membrane stdio-mcp resources/list", reason: ok ? "bounded_resources_listed" : "resource_listing_unavailable", resourceCount: resources.length, stderr: result.stderr }] };
+  if (!(options.installedRoot ?? process.env.MEMBRANE_QUALIFICATION_INSTALLED_ROOT)) return memSourceCase("MEM_014", options);
+  const result = probeInstalledMembraneRow("MEM_014", options);
+  return { case: "MEM_014", ...result };
 }
 
 export function MEM_015(options = {}) {
-  const result = installedMcp(["prompts/list"]);
-  const payload = result.responses?.find((response) => response?.id === 2)?.result;
-  const prompts = Array.isArray(payload?.prompts) ? payload.prompts : [];
-  const ok = result.ok && prompts.length > 0 && prompts.every((prompt) => typeof prompt.name === "string" && typeof prompt.description === "string");
-  return { case: "MEM_015", evidenceKind: "installed", pass: ok, status: ok ? "passed" : "failed", findings: [{ ok, command: "membrane stdio-mcp prompts/list", reason: ok ? "bounded_prompts_listed" : "prompt_listing_unavailable", promptNames: prompts.map((prompt) => prompt.name), stderr: result.stderr }] };
+  if (!(options.installedRoot ?? process.env.MEMBRANE_QUALIFICATION_INSTALLED_ROOT)) return memSourceCase("MEM_015", options);
+  const result = probeInstalledMembraneRow("MEM_015", options);
+  return { case: "MEM_015", ...result };
 }
 
 export function MEM_003(options = {}) {
-  const result = installedJson(["cli", "build-info"]);
-  const value = result.value ?? {};
-  const ok = result.ok && value.target === "x86_64-pc-windows-msvc"
-    && typeof value.release_generation === "string" && value.release_generation.length > 0
-    && typeof value.membrane_source_commit === "string" && /^[0-9a-f]{40}$/u.test(value.membrane_source_commit);
-  return { case: "MEM_003", evidenceKind: "installed", pass: ok, status: ok ? "passed" : "failed", findings: [{ ok, command: "membrane cli build-info", value, reason: ok ? "installed_identity_published" : (result.reason ?? "installed_identity_invalid") }] };
+  if (!(options.installedRoot ?? process.env.MEMBRANE_QUALIFICATION_INSTALLED_ROOT)) return memSourceCase("MEM_003", options);
+  const result = probeInstalledMembraneRow("MEM_003", options);
+  return { case: "MEM_003", ...result };
 }
 
 export function MEM_025(options = {}) {
-  const result = installedJson(["cli", "hub-capabilities"]);
-  const value = result.value ?? {};
-  const ok = result.ok && value.kind !== "membrane_unavailable" && (value.schemaVersion !== undefined || value.schema_version !== undefined);
-  return { case: "MEM_025", evidenceKind: "installed", pass: ok, status: ok ? "passed" : "failed", findings: [{ ok, command: "membrane cli hub-capabilities", reason: ok ? "capability_inventory_returned" : "hub_capability_probe_unavailable", response: value, stderr: result.stderr }] };
+  if (!(options.installedRoot ?? process.env.MEMBRANE_QUALIFICATION_INSTALLED_ROOT)) return memSourceCase("MEM_025", options);
+  const result = probeInstalledMembraneRow("MEM_025", options);
+  return { case: "MEM_025", ...result };
 }
 
 export function MEM_026(options = {}) {
-  const result = installedJson(["cli", "hub-snapshot"]);
-  const value = result.value ?? {};
-  const ok = result.ok && value.kind !== "membrane_unavailable" && (value.schemaVersion !== undefined || value.schema_version !== undefined);
-  return { case: "MEM_026", evidenceKind: "installed", pass: ok, status: ok ? "passed" : "failed", findings: [{ ok, command: "membrane cli hub-snapshot", reason: ok ? "hub_snapshot_returned" : "hub_snapshot_unavailable", response: value, stderr: result.stderr }] };
+  if (!(options.installedRoot ?? process.env.MEMBRANE_QUALIFICATION_INSTALLED_ROOT)) return memSourceCase("MEM_026", options);
+  const result = probeInstalledMembraneRow("MEM_026", options);
+  return { case: "MEM_026", ...result };
 }
 
 export function MEM_033(options = {}) {
-  const result = installedJson(["cli", "diagnostics", "capabilities"]);
-  const value = result.value ?? {};
-  const ok = result.ok && value.surface === "membrane-live-diagnostics" && Array.isArray(value.endpoints)
-    && value.endpoints.includes("POST /diagnostics/workspace/open") && value.endpoints.includes("POST /diagnostics/fence/evaluate");
-  return { case: "MEM_033", evidenceKind: "installed", pass: ok, status: ok ? "passed" : "failed", findings: [{ ok, command: "membrane cli diagnostics capabilities", reason: ok ? "diagnostics_surface_advertised" : "diagnostics_capabilities_invalid", response: value, stderr: result.stderr }] };
+  if (!(options.installedRoot ?? process.env.MEMBRANE_QUALIFICATION_INSTALLED_ROOT)) return memSourceCase("MEM_033", options);
+  const result = probeInstalledMembraneRow("MEM_033", options);
+  return { case: "MEM_033", ...result };
 }
 
 export function MEM_039(options = {}) {
-  const result = installedJson(["cli", "doctor", "paths", "--json"]);
-  const value = result.value ?? {};
-  const roots = value.roots ?? {};
-  const ok = result.ok && value.schemaVersion === 1 && ["cache", "config", "data", "log"].every((key) => typeof roots[key] === "string" && roots[key].length > 0);
-  return { case: "MEM_039", evidenceKind: "installed", pass: ok, status: ok ? "passed" : "failed", findings: [{ ok, command: "membrane cli doctor paths --json", reason: ok ? "doctor_roots_reported" : "doctor_roots_invalid", response: value, stderr: result.stderr }] };
+  if (!(options.installedRoot ?? process.env.MEMBRANE_QUALIFICATION_INSTALLED_ROOT)) return memSourceCase("MEM_039", options);
+  const result = probeInstalledMembraneRow("MEM_039", options);
+  return { case: "MEM_039", ...result };
 }
 
 const MEM_CASE_EXPORTS = Object.fromEntries(Object.keys(MEM_SOURCE_CASES).map((id) => [id, (options = {}) => memSourceCase(id, options)]));

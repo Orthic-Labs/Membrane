@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 // MBR-1001 — Self-verifying test for the docs/link gate.
 //
-// Book mode disallows adding suites under mcp/, so the checker's tests run as
-// this directly runnable script. It proves both directions of the contract:
+// Book mode disallows adding suites under retired subsystem paths, so the
+// checker's tests run as this directly runnable script. It proves both
+// directions of the contract:
 // the pure evaluators accept a consistent fixture and FAIL on deliberately
 // broken ones (missing doc, stale doc, broken README link, wrong tool count).
 //

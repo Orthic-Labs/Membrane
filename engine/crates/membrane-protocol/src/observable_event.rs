@@ -8,8 +8,8 @@
 //! the fields — the same self-referential pattern `canonical_digest_of` uses
 //! for the other protocol shapes.
 //!
-//! The TypeScript twin lives in `mcp/observable-events.mjs`; both sides must
-//! agree byte-for-byte over the canonical digest. The golden fixture is
+//! Native Rust owns this contract; a retired TypeScript twin is historical
+//! provenance only. The golden fixture is
 //! `schemas/registry/observable-event.v1.golden.json`; the JSON Schema is
 //! `schemas/observable-event.v1.schema.json`. The `SHAPES` const in
 //! `lib.rs` exposes this shape next to the five existing protocol shapes.

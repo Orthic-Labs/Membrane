@@ -10,7 +10,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { runCase, runGroup, cases, BM12, probeInstalled } from './ldg-windows.mjs';
+import { runCase, runGroup, cases, BM12, LDG_003, probeInstalled } from './ldg-windows.mjs';
 import * as registryExports from './ldg-windows.mjs';
 
 const INSTALLED_CASE_IDS = [
@@ -43,6 +43,21 @@ test('installed Ledger probe fails closed when stable CLI is unreachable', () =>
   const result = probeInstalled({ cliPath: 'membrane-binary-that-does-not-exist-xyz' });
   assert.equal(result.status, 'blocked');
   assert.equal(result.evidenceKind, 'installed');
+});
+
+test('positive installed LDG-003 binds native outline to installer identity and source revision', { skip: !process.env.MEMBRANE_QUALIFICATION_SOURCE_REVISION }, () => {
+  const outcome = LDG_003({
+    cliPath: process.env.MEMBRANE_CLI_PATH || 'membrane',
+    workspaceRoot: process.cwd(),
+    sourceRevision: process.env.MEMBRANE_QUALIFICATION_SOURCE_REVISION,
+  });
+  assert.equal(outcome.status, 'passed', outcome.reason);
+  assert.equal(outcome.evidenceKind, 'installed');
+  assert.equal(outcome.detail.identity.sourceRevision, process.env.MEMBRANE_QUALIFICATION_SOURCE_REVISION);
+  assert.match(outcome.detail.identity.executableSha256, /^[0-9a-f]{64}$/);
+  assert.match(outcome.detail.identity.sourceTreeSha256, /^(?:sha256:)?[0-9a-f]{64}$/);
+  assert.equal(outcome.detail.native.caseId, 'LDG-003');
+  assert.ok(outcome.detail.native.detail.nodeKinds.includes('list_item'));
 });
 
 test('BM12 case definition is present and declares its two required negative controls', () => {

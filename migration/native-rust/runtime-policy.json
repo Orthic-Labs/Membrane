@@ -38,10 +38,9 @@
   "exceptions": [],
   "deletedSelectors": [
     "blueprint/",
-    "mcp/server.mjs",
-    "mcp/host/"
+    "mcp/"
   ],
-  "deletedSelectorsNote": "Native parity is complete for the retired Blueprint tree and legacy MCP server/host paths. These selectors fail closed if any deleted source path reappears.",
+  "deletedSelectorsNote": "Native parity is complete for the retired Blueprint tree and legacy MCP JavaScript tree. These selectors fail closed if any deleted source path reappears.",
   "cutoverFlags": [
     {
       "id": "adapt-native-cutover",
@@ -221,117 +220,6 @@
       "parity_fixture": "migration/native-rust/fixtures/",
       "deletion_or_exclusion_proof": "engine/federation executable Python was deleted; only declarative fixtures remain, hidden selectors are rejected, and native membrane-runtime Pull owns production",
       "notes": "Deleted N7 shadow runtime; release inventory must keep engine/federation absent."
-    },
-    {
-      "id": "mcp-tests",
-      "pattern": "^mcp/.*\\.test\\.mjs$",
-      "groupBy": "all",
-      "runtime": "node",
-      "kind": "test-suite",
-      "product_surface": "MCP",
-      "production_reachable": false,
-      "packaged": false,
-      "target_disposition": "dev-only",
-      "exception": null,
-      "deletion_or_exclusion_proof": "test-only; excluded from package payload (verify at SBOM gate)",
-      "notes": ""
-    },
-    {
-      "id": "mcp-host-fixtures",
-      "pattern": "^mcp/host/fixtures/",
-      "groupBy": "all",
-      "runtime": "node",
-      "kind": "fixture",
-      "product_surface": "MCP",
-      "production_reachable": false,
-      "packaged": false,
-      "target_disposition": "dev-only",
-      "exception": null,
-      "deletion_or_exclusion_proof": "fixture-only; excluded from package payload",
-      "notes": ""
-    },
-    {
-      "id": "mcp-hooks",
-      "pattern": "^mcp/hooks/",
-      "groupBy": "all",
-      "runtime": "node",
-      "kind": "retired-hook-reference",
-      "product_surface": "MCP",
-      "production_reachable": false,
-      "packaged": false,
-      "target_disposition": "dev-only",
-      "exception": null,
-      "deletion_or_exclusion_proof": "root package has no bin entry; signed Hub inventory excludes mcp/hooks; native Hub diagnostics owns installed enforcement",
-      "notes": "Retained only for differential source tests after native diagnostics cutover."
-    },
-    {
-      "id": "mcp-host-adapters",
-      "pattern": "^mcp/host/",
-      "groupBy": "all",
-      "runtime": "node",
-      "kind": "host-adapter",
-      "product_surface": "MCP",
-      "production_reachable": false,
-      "packaged": false,
-      "target_disposition": "dev-only",
-      "exception": null,
-      "deletion_or_exclusion_proof": "Hub runtime inventory and right-release inputs exclude mcp/host; native MCP executor owns production host operations",
-      "notes": "Retained only as conformance fixtures."
-    },
-    {
-      "id": "mcp-native-bootstrap",
-      "pattern": "^mcp/membrane-mcp-native\\.mjs$",
-      "groupBy": "single",
-      "runtime": "node",
-      "kind": "native-binary-bootstrap",
-      "product_surface": "MCP",
-      "production_reachable": false,
-      "packaged": false,
-      "target_disposition": "dev-only",
-      "exception": null,
-      "deletion_or_exclusion_proof": "dev bootstrap is absent from mcp.json, package bins, Hub inventory, and release inputs",
-      "notes": "Dev-only stdio-MCP bootstrap that spawns engine/target/debug/membrane; invocation-graph.json shows no installed entrypoint reaches it. Never ship or advertise."
-    },
-    {
-      "id": "mcp-decision-points-lib",
-      "pattern": "^mcp/decision-points-lib\\.cjs$",
-      "runtime": "node",
-      "kind": "source-module",
-      "groupBy": "single",
-      "production_reachable": false,
-      "packaged": false,
-      "target_disposition": "dev-only",
-      "owner": "N6 MCP/renderer native cutover packet",
-      "deletion_or_exclusion_proof": "test-only decision reference; native renderer is compiled into membrane-mcp and release inventory excludes mcp source",
-      "notes": "Reachability authority (invocation-graph.json) shows no production importer: only mcp/decision-points.mjs (itself test-only) requires it. Demoted from the mcp-server-core production rule during N0 reconciliation."
-    },
-    {
-      "id": "mcp-server-core",
-      "pattern": "^mcp/(server|context-renderer-lib|decision-points-lib)\\.(mjs|cjs)$",
-      "groupBy": "single",
-      "runtime": "node",
-      "kind": "retired-mcp-reference",
-      "product_surface": "MCP/Push",
-      "production_reachable": false,
-      "packaged": false,
-      "target_disposition": "dev-only",
-      "exception": null,
-      "deletion_or_exclusion_proof": "mcp.json launches membrane stdio-mcp; Hub runtime inventory and right-release inputs exclude Node MCP source",
-      "notes": "Retained for native conformance comparisons only."
-    },
-    {
-      "id": "mcp-rest",
-      "pattern": "^mcp/",
-      "groupBy": "all",
-      "runtime": "node",
-      "kind": "mcp-conformance-source",
-      "product_surface": "MCP",
-      "production_reachable": false,
-      "packaged": false,
-      "target_disposition": "dev-only",
-      "exception": null,
-      "deletion_or_exclusion_proof": "native host config, package metadata, Hub inventory, and release inputs contain no mcp Node source",
-      "notes": "Retained only as tests, schemas, and differential reference."
     },
     {
       "id": "install-tests",
@@ -596,14 +484,28 @@
       "pattern": "^blueprint/",
       "groupBy": "dir:2",
       "runtime": "node",
-      "kind": "external-component-development",
+      "kind": "retired-component-tombstone",
       "product_surface": "Blueprint/dev",
       "production_reachable": false,
       "packaged": false,
-      "target_disposition": "dev-only",
+      "target_disposition": "delete",
       "exception": null,
-      "deletion_or_exclusion_proof": "Blueprint tests, evals, fixtures, examples, release tooling, and action scripts are excluded from installed runtime",
-      "notes": "Development-only Blueprint executables remain repository fixtures/tooling."
+      "deletion_or_exclusion_proof": "Blueprint tree was deleted after native parity; selector remains only to fail closed if any retired source reappears",
+      "notes": "No current Blueprint source or package payload exists; native membrane-blueprint owns production."
+    },
+    {
+      "id": "mcp-runtime-tombstone",
+      "pattern": "^mcp/",
+      "groupBy": "dir:2",
+      "runtime": "node",
+      "kind": "retired-component-tombstone",
+      "product_surface": "MCP",
+      "production_reachable": false,
+      "packaged": false,
+      "target_disposition": "delete",
+      "exception": null,
+      "deletion_or_exclusion_proof": "Legacy MCP JavaScript tree was deleted after native membrane-mcp cutover; selector remains only to fail closed if any retired source reappears",
+      "notes": "No current MCP JavaScript source or package payload exists; engine/crates/membrane-mcp owns production."
     },
     {
       "id": "tests-root",
@@ -699,11 +601,8 @@
       "production_reachable": false,
       "packaged": false,
       "target_disposition": "dev-only",
-      "owner": "N6 MCP/renderer native cutover packet",
       "exception": null,
-      "parity_fixture": "migration/native-rust/fixtures/mcp-conformance.v1.json",
-      "deletion_or_exclusion_proof": "Node batch reference is excluded from signed Hub; membrane-mcp registry and Rust conformance fixture own production behavior",
-      "notes": "Retained as differential reference only."
+      "deletion_or_exclusion_proof": "Registry code is development-only and excluded from signed Hub runtime."
     },
     {
       "id": "schemas-registry-code",
@@ -743,7 +642,7 @@
       "packaged": true,
       "target_disposition": "declarative-data",
       "exception": null,
-      "notes": "server.json describes the npm native-runtime bootstrap; package.json bin points at the Node hook entry classified under mcp-hooks."
+      "notes": "server.json describes the native-runtime bootstrap; package metadata is declarative and release inputs select native executables."
     },
     {
       "id": "root-benchmarks-skills",

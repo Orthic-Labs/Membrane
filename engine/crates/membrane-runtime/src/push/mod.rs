@@ -32,3 +32,8 @@ pub mod api;
 pub mod packet_selection;
 
 pub mod egress;
+// Native qualification controls execute the same production Push owners used
+// by CLI, MCP, and resident paths. They are bounded evidence probes, never a
+// second implementation or policy planner.
+pub(crate) mod qualification_core;
+pub(crate) mod qualification_lifecycle;

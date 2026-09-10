@@ -6,7 +6,7 @@
 // reproduce the SAME canonical bytes and `sha256:` digests the Rust tests pin.
 //
 // Canonical-byte contract (mirrors engine/crates/membrane-protocol/src/canonical.rs
-// and the pre-existing `canonical()` in mcp/scope-grant-v1.mjs):
+// and the retired MCP canonical implementation):
 //   1. Object keys sorted lexicographically (by UTF-16 code unit, which matches
 //      Rust's byte/code-point order for the ASCII keys the contract uses).
 //   2. No insignificant whitespace.

@@ -9,8 +9,7 @@ enforces via `node scripts/qualification/run-adversarial.mjs --all`.
 ## Threat model
 
 Membrane is a context-federation control plane. Admission decisions are made by
-`mcp/authorization.mjs` (monotone effective-authority intersection, MBR-002) and
-`mcp/scope-grant-v1.mjs` (Ed25519-signed, short-lived scope grants, MBR-003).
+`engine/crates/membrane-runtime/src/authorization.rs` (monotone effective-authority intersection, MBR-002) and native scope-grant schema `engine/crates/membrane-protocol/assets/schemas/scope-grant.v1.schema.json` (Ed25519-signed, short-lived scope grants, MBR-003).
 The adversary we model is any caller — human, agent, or injected content — that
 tries to reach a repository or operation it is not authorized for.
 
@@ -60,6 +59,6 @@ with a fixed clock (`FIXED_NOW`); Ed25519 key material is generated per run via
 ## Scope
 
 The suite exercises the **real** authorization modules read-only via absolute
-file URL. It does not modify `mcp/authorization.mjs` or `mcp/scope-grant-v1.mjs`
+file URL. It does not modify native authorization or scope-grant sources
 (outside this task's allowlist); it asserts their decisions against the fixture
 battery.

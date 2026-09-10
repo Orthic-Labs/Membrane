@@ -10,7 +10,7 @@ import { generateKeyPairSync } from "node:crypto";
 // Fixed clock — determinism anchor.
 export const FIXED_NOW = Date.parse("2026-08-04T00:00:00.000Z");
 
-// Authority vocabulary (mirrors mcp/authorization.mjs LEVEL_RANK / READ_ACTIONS).
+// Authority vocabulary used by native authorization contract fixtures.
 export const LEVELS = Object.freeze(["read-only", "write-proposed", "write-trusted", "admin"]);
 
 export const READ_ACTIONS = Object.freeze([
@@ -26,7 +26,7 @@ export const WRITE_ACTIONS = Object.freeze([
 export function makeBinding(repositoryId, level, extra = {}) {
   return { repository_id: repositoryId, grant_policy: { level }, ...extra };
 }
-// Scope-grant inputs (mirrors mcp/scope-grant-v1.mjs). Key material is created
+// Scope-grant inputs for native protocol fixtures. Key material is created
 // per run; `trusted` is the signer the validator trusts, `forged` is attacker.
 export function makeScopeGrantWorld() {
   const trusted = generateKeyPairSync("ed25519").privateKey;

@@ -771,7 +771,10 @@ fn derived_producer_kind(metadata: &MemoryRecordMetadata) -> Option<&'static str
 /// 2. a derived producer (Dream consolidation / curation) — the record was
 ///    synthesized from other records by a known pipeline;
 /// 3. otherwise `original` — a direct authored write with no parent.
-fn classify_derivation(metadata: &MemoryRecordMetadata, lifecycle: &MemoryLifecycleInputV1) -> String {
+fn classify_derivation(
+    metadata: &MemoryRecordMetadata,
+    lifecycle: &MemoryLifecycleInputV1,
+) -> String {
     if let Some(parent) = lifecycle.supersedes.as_deref() {
         return serde_json::json!({ "kind": "supersession", "supersedes": parent }).to_string();
     }
@@ -3032,7 +3035,9 @@ impl MemoryStore {
         }
         // "wikilink" is never in `CANONICAL_RELATIONS`: this recall lane's resolved hits stay
         // structural-diagnostic, never evidence, no matter how many nodes resolve.
-        debug_assert!(seed_ids.iter().all(|sid| graph.canonical_neighbors(sid).is_empty()));
+        debug_assert!(seed_ids
+            .iter()
+            .all(|sid| graph.canonical_neighbors(sid).is_empty()));
         out
     }
 
@@ -3610,7 +3615,9 @@ impl MemoryStore {
                 |row| row.get(0),
             )
             .map_err(|e| {
-                self.persist_error(format!("quarantine restore derivation read failed for {id}: {e}"))
+                self.persist_error(format!(
+                    "quarantine restore derivation read failed for {id}: {e}"
+                ))
             })?;
         let promoted_derivation = serde_json::json!({
             "kind": "promoted_from_quarantine",
@@ -4197,9 +4204,9 @@ impl MemoryStore {
             return Err(format!("{relation} cannot reference self"));
         }
         let mut conn = self.db.lock();
-        let tx = conn
-            .transaction()
-            .map_err(|error| self.persist_error(format!("evidence relation transaction failed: {error}")))?;
+        let tx = conn.transaction().map_err(|error| {
+            self.persist_error(format!("evidence relation transaction failed: {error}"))
+        })?;
         let source_scope: Option<String> = tx
             .query_row(
                 "SELECT scope_id FROM memories WHERE id=?1",
@@ -4241,8 +4248,9 @@ impl MemoryStore {
             },
         )
         .map_err(|rejection| format!("{relation} relation rejected: {}", rejection.code()))?;
-        tx.commit()
-            .map_err(|error| self.persist_error(format!("evidence relation commit failed: {error}")))?;
+        tx.commit().map_err(|error| {
+            self.persist_error(format!("evidence relation commit failed: {error}"))
+        })?;
         drop(conn);
         self.clear_last_persist_error();
         Ok(())
@@ -4355,7 +4363,12 @@ impl MemoryStore {
                 created_at: crate::time::now_iso(),
             },
         )
-        .map_err(|rejection| format!("lifecycle supersedes relation rejected: {}", rejection.code()))?;
+        .map_err(|rejection| {
+            format!(
+                "lifecycle supersedes relation rejected: {}",
+                rejection.code()
+            )
+        })?;
         tx.execute(
             "INSERT INTO memory_event_log (ts, event_kind, memory_id, surface, scope_id, quantity, meta, event_uid, installation_id, client, artifact_id, identity_status) VALUES (?1, 'superseded', ?2, ?3, ?4, 1, ?5, ?6, ?7, ?8, ?9, 'observed')",
             rusqlite::params![crate::time::now_iso(), subject_id, context.surface, replacement.scope_id, meta, event_id, self.operation_attribution.installation_id, context.surface, stable_artifact_id(subject_id)],
@@ -5210,8 +5223,13 @@ impl MemoryStore {
     pub fn evidence_relations_from(
         &self,
         id: &str,
-    ) -> Result<Vec<(cortex_core::RelationCategory, cortex_store::memdb::StoredRelation)>, String>
-    {
+    ) -> Result<
+        Vec<(
+            cortex_core::RelationCategory,
+            cortex_store::memdb::StoredRelation,
+        )>,
+        String,
+    > {
         Ok(self
             .db
             .traversable_relations_from(id)?
@@ -5505,6 +5523,135 @@ impl MemoryStore {
             .into_iter()
             .cloned()
             .collect()
+    }
+
+    /// Explicit retrieval arm for native qualification/replay.  This is a
+    /// read-only projection through the production Cortex retriever.
+    pub fn search_with_arm(
+        &self,
+        query: &str,
+        limit: usize,
+        arm: cortex_core::retriever::RetrievalArm,
+    ) -> Vec<MemoryEntry> {
+        let qvec = self.embed_query_cached(query);
+        let registry = self.registry.read().unwrap_or_else(|e| e.into_inner());
+        cortex_core::MemoryRetriever::retrieve_with_arm(&registry, arm, query, Some(&qvec), limit)
+            .into_iter()
+            .cloned()
+            .collect()
+    }
+
+    pub fn recall_scored_with_arm(
+        &self,
+        query: &str,
+        limit: usize,
+        scopes: &[String],
+        arm: cortex_core::retriever::RetrievalArm,
+    ) -> Vec<(MemoryEntry, f32)> {
+        let qvec = self.embed_query_cached(query);
+        let registry = self.registry.read().unwrap_or_else(|e| e.into_inner());
+        let eligible =
+            (!scopes.is_empty()).then_some(scopes.iter().map(String::as_str).collect::<Vec<_>>());
+        cortex_core::MemoryRetriever::retrieve_with_arm(&registry, arm, query, Some(&qvec), limit)
+            .into_iter()
+            .filter(|entry| {
+                eligible
+                    .as_ref()
+                    .is_none_or(|scopes| scopes.contains(&entry.scope_id.as_str()))
+            })
+            .map(|entry| {
+                let score = entry
+                    .embedding
+                    .as_deref()
+                    .map(|v| cortex_core::cosine(v, &qvec))
+                    .unwrap_or(0.0);
+                (entry.clone(), score)
+            })
+            .collect()
+    }
+
+    /// Deterministic tombstone qualification against isolated in-memory state.
+    pub fn qualification_tombstone() -> serde_json::Value {
+        let store = Self::new();
+        let id = store.put(
+            "qualification-tombstone",
+            "tombstone probe",
+            "global",
+            MemoryTier::Semantic,
+        );
+        let deleted = store.delete(&id);
+        let eligible = store.recall_eligible_ids_at(crate::time::now_millis() as i64, false);
+        serde_json::json!({
+            "probe": "tombstone",
+            "status": if deleted && !eligible.contains(&id) { "pass" } else { "fail" },
+            "deleted": deleted,
+            "eligible_after_delete": eligible.contains(&id),
+        })
+    }
+
+    pub fn qualification_lc03(name: &str) -> serde_json::Value {
+        let store = Self::new();
+        match name {
+            "deadline-cancellation" => {
+                let token = CancellationToken::new();
+                token.cancel();
+                let (hits, _, completeness) = store.recall_scored_detailed_timed_cancellable(
+                    "qualification",
+                    5,
+                    &[],
+                    false,
+                    &token,
+                );
+                serde_json::json!({"probe":name,"status":if hits.is_empty() && completeness.causes.iter().any(|cause|cause=="cancelled") {"pass"} else {"fail"},"cancelled":hits.is_empty(),"causes":completeness.causes})
+            }
+            "scope-isolation" => {
+                let left = store
+                    .try_put(
+                        "left",
+                        "scope-isolation token",
+                        "scope-left",
+                        MemoryTier::Semantic,
+                    )
+                    .is_ok();
+                let right = store
+                    .try_put(
+                        "right",
+                        "scope-isolation token",
+                        "scope-right",
+                        MemoryTier::Semantic,
+                    )
+                    .is_ok();
+                let hits = store.recall_scored_with_arm(
+                    "scope-isolation token",
+                    10,
+                    &["scope-left".into()],
+                    cortex_core::retriever::RetrievalArm::LexicalOnly,
+                );
+                serde_json::json!({"probe":name,"status":if left&&right&&hits.iter().all(|(entry,_)|entry.scope_id=="scope-left")&&hits.iter().any(|(entry,_)|entry.id=="scope-left/left") {"pass"} else {"fail"},"visibleScopes":hits.iter().map(|(entry,_)|entry.scope_id.clone()).collect::<Vec<_>>()})
+            }
+            "deduplicated-work" => {
+                let first = store
+                    .try_put(
+                        "dedup",
+                        "same production work",
+                        "dedup-scope",
+                        MemoryTier::Semantic,
+                    )
+                    .ok();
+                let second = store
+                    .try_put(
+                        "dedup-copy",
+                        "same production work",
+                        "dedup-scope",
+                        MemoryTier::Semantic,
+                    )
+                    .ok();
+                serde_json::json!({"probe":name,"status":if first.is_some()&&second.as_ref()==first.as_ref(){"pass"}else{"fail"},"firstId":first,"secondId":second,"deduplicated":first.is_some()&&second.as_ref()==first.as_ref()})
+            }
+            _ => {
+                serde_json::json!({"probe":name,"status":"unsupported","reason":"not an LC03 store scenario"})
+            }
+        }
     }
 
     /// Return the content-free status of the most recent recall operation.
@@ -8206,30 +8353,27 @@ impl MemoryStore {
             if !self.writes_enabled {
                 return Err(MemoryBatchError::Persist(
                     self.embedder_issue.clone().unwrap_or_else(|| {
-                        "memory writes disabled because the configured embedder is unavailable".into()
+                        "memory writes disabled because the configured embedder is unavailable"
+                            .into()
                     }),
                 ));
             }
             // All-rejected manifests still consume a durable batch identity. This
             // keeps an identical replay idempotent, while binding any changed
             // adjudication to a conflict even when no memory rows are written.
-            let request_sha256 = membrane_adapt::canonical::sha256_canonical(
-                &serde_json::json!({
-                    "batch_id": &manifest.batch_id,
-                    "manifest_sha256": &manifest.manifest_sha256,
-                    "canonical_pool_sha256": &manifest.canonical_pool_sha256,
-                }),
-            );
+            let request_sha256 = membrane_adapt::canonical::sha256_canonical(&serde_json::json!({
+                "batch_id": &manifest.batch_id,
+                "manifest_sha256": &manifest.manifest_sha256,
+                "canonical_pool_sha256": &manifest.canonical_pool_sha256,
+            }));
             let updated_at = crate::time::now_iso();
             let mut conn = self.db.lock();
             let tx = conn
                 .transaction_with_behavior(TransactionBehavior::Immediate)
                 .map_err(|e| MemoryBatchError::Persist(e.to_string()))?;
-            if let Some(receipt) = Self::replay_memory_batch_on(
-                &tx,
-                &manifest.batch_id,
-                &request_sha256,
-            )? {
+            if let Some(receipt) =
+                Self::replay_memory_batch_on(&tx, &manifest.batch_id, &request_sha256)?
+            {
                 return Ok(receipt);
             }
             let current = self
@@ -9092,11 +9236,9 @@ impl MemoryStore {
                         .map_err(|e| {
                             self.persist_error(format!("memory admission event failed: {e}"))
                         })?;
-                        persist_admission_receipt(
-                            &AdmissionDispositionV1::UpdateMetadataOnly {
-                                existing_id: hit.existing_id.clone(),
-                            },
-                        )?;
+                        persist_admission_receipt(&AdmissionDispositionV1::UpdateMetadataOnly {
+                            existing_id: hit.existing_id.clone(),
+                        })?;
                         tx.commit().map_err(|e| {
                             self.persist_error(format!("memory commit failed: {e}"))
                         })?;
@@ -9461,9 +9603,7 @@ impl MemoryStore {
                     })
                     .and_then(|rows| rows.collect())
             })
-            .map_err(|e| {
-                self.persist_error(format!("fts5 rebuild source query failed: {e}"))
-            })?
+            .map_err(|e| self.persist_error(format!("fts5 rebuild source query failed: {e}")))?
         };
         let count = documents.len();
         let conn = self.db.lock();
@@ -9553,7 +9693,9 @@ impl MemoryStore {
                               WHERE m.id = links.dst_slug OR m.id LIKE '%/' || links.dst_slug)",
             rusqlite::params![id, leaf_slug],
         )
-        .map_err(|e| self.persist_error(format!("hard erase inbound links failed for {id}: {e}")))?;
+        .map_err(|e| {
+            self.persist_error(format!("hard erase inbound links failed for {id}: {e}"))
+        })?;
         tx.execute("DELETE FROM deletions WHERE id = ?1", rusqlite::params![id])
             .map_err(|e| {
                 self.persist_error(format!("hard erase tombstone failed for {id}: {e}"))
@@ -9678,13 +9820,15 @@ impl MemoryStore {
             .prepare("SELECT memory_id, scope_id, content_hash, suppressed, decision_hash FROM cortex_recall_suppression_v1 ORDER BY memory_id")
             .map_err(|e| format!("backup suppression read failed: {e}"))?;
         let rows = statement
-            .query_map([], |row| Ok(CortexBackupSuppressionV1 {
-                memory_id: row.get(0)?,
-                scope_id: row.get(1)?,
-                content_hash: row.get(2)?,
-                suppressed: row.get::<_, i64>(3)? != 0,
-                decision_hash: row.get(4)?,
-            }))
+            .query_map([], |row| {
+                Ok(CortexBackupSuppressionV1 {
+                    memory_id: row.get(0)?,
+                    scope_id: row.get(1)?,
+                    content_hash: row.get(2)?,
+                    suppressed: row.get::<_, i64>(3)? != 0,
+                    decision_hash: row.get(4)?,
+                })
+            })
             .map_err(|e| format!("backup suppression read failed: {e}"))?
             .collect::<Result<Vec<_>, _>>()
             .map_err(|e| format!("backup suppression read failed: {e}"))?;
@@ -10073,9 +10217,7 @@ impl MemoryStore {
             influence_class: Some("reference".into()),
             ..Default::default()
         };
-        let tier = if payload.get("kind").and_then(serde_json::Value::as_str)
-            == Some("episodic")
-        {
+        let tier = if payload.get("kind").and_then(serde_json::Value::as_str) == Some("episodic") {
             MemoryTier::Episodic
         } else {
             MemoryTier::Semantic
@@ -10357,9 +10499,7 @@ impl MemoryStore {
             .map(str::trim)
             .filter(|value| !value.is_empty());
         if memory_id.is_none() && scope_id.is_none() {
-            return Err(
-                "lifecycle review signal must target a memory id or a scope".to_owned(),
-            );
+            return Err("lifecycle review signal must target a memory id or a scope".to_owned());
         }
         if signal.observed_at_ms < 0 {
             return Err("lifecycle review signal observed_at_ms must be non-negative".to_owned());
@@ -10519,11 +10659,15 @@ impl MemoryStore {
                 })
             })
             .map_err(|error| {
-                self.persist_error(format!("review-due version-change scan query failed: {error}"))
+                self.persist_error(format!(
+                    "review-due version-change scan query failed: {error}"
+                ))
             })?
             .collect::<rusqlite::Result<Vec<_>>>()
             .map_err(|error| {
-                self.persist_error(format!("review-due version-change scan decode failed: {error}"))
+                self.persist_error(format!(
+                    "review-due version-change scan decode failed: {error}"
+                ))
             })?;
         drop(version_statement);
         for row in version_rows {
@@ -10559,11 +10703,15 @@ impl MemoryStore {
                 })
             })
             .map_err(|error| {
-                self.persist_error(format!("review-due outcome-change scan query failed: {error}"))
+                self.persist_error(format!(
+                    "review-due outcome-change scan query failed: {error}"
+                ))
             })?
             .collect::<rusqlite::Result<Vec<_>>>()
             .map_err(|error| {
-                self.persist_error(format!("review-due outcome-change scan decode failed: {error}"))
+                self.persist_error(format!(
+                    "review-due outcome-change scan decode failed: {error}"
+                ))
             })?;
         drop(outcome_statement);
         for row in outcome_rows {
@@ -10612,7 +10760,9 @@ impl MemoryStore {
                 })
             })
             .map_err(|error| {
-                self.persist_error(format!("review-due external-signal scan query failed: {error}"))
+                self.persist_error(format!(
+                    "review-due external-signal scan query failed: {error}"
+                ))
             })?
             .collect::<rusqlite::Result<Vec<_>>>()
             .map_err(|error| {
@@ -10681,11 +10831,11 @@ impl MemoryStore {
                  WHERE NOT EXISTS (SELECT 1 FROM cortex_recall_suppression_v1 s
                    WHERE s.memory_id=memories.id AND s.suppressed=1)",
             )
-                .and_then(|mut st| {
-                    st.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))
-                        .and_then(|rows| rows.collect())
-                })
-                .map_err(|e| self.persist_error(format!("reindex row load failed: {e}")))?
+            .and_then(|mut st| {
+                st.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))
+                    .and_then(|rows| rows.collect())
+            })
+            .map_err(|e| self.persist_error(format!("reindex row load failed: {e}")))?
         };
         let model = self.embedder.model_id();
         let (mut n, mut skipped) = (0usize, 0usize);
@@ -11453,11 +11603,20 @@ fn cortex_backup_digest(
                 row.expires_at_ms,
                 row.review_after_ms,
             ] {
-                hash_opt_len_prefixed(&mut hasher, field.map(|v| v.to_le_bytes()).as_ref().map(|b| b.as_slice()));
+                hash_opt_len_prefixed(
+                    &mut hasher,
+                    field
+                        .map(|v| v.to_le_bytes())
+                        .as_ref()
+                        .map(|b| b.as_slice()),
+                );
             }
             hash_opt_len_prefixed(
                 &mut hasher,
-                row.confidence.map(|v| v.to_bits().to_le_bytes()).as_ref().map(|b| b.as_slice()),
+                row.confidence
+                    .map(|v| v.to_bits().to_le_bytes())
+                    .as_ref()
+                    .map(|b| b.as_slice()),
             );
             // CTX-004: sealed, never appended outside the digest — a
             // `sensitivity` an attacker could edit without breaking the seal
@@ -12793,9 +12952,7 @@ mod tests {
             "no inbound edge may reference the erased slug: {remaining:?}"
         );
         assert!(
-            remaining
-                .iter()
-                .any(|(_, dst)| dst == "survivor-target"),
+            remaining.iter().any(|(_, dst)| dst == "survivor-target"),
             "edges resolving to the survivor must stay: {remaining:?}"
         );
         let event_count: i64 = store
@@ -12827,7 +12984,10 @@ mod tests {
                 .is_none(),
             "registry entry must be evicted"
         );
-        assert!(!store.hard_erase(&target).unwrap(), "second erase finds nothing");
+        assert!(
+            !store.hard_erase(&target).unwrap(),
+            "second erase finds nothing"
+        );
     }
 
     /// CTX-025/026/036 plus CTX-041: an erase → reindex → restore cycle keeps
@@ -12898,16 +13058,25 @@ mod tests {
                 .unwrap()
                 .flatten()
         };
-        assert_eq!(model_of(&keeper), Some(store.embedder.model_id().to_owned()));
+        assert_eq!(
+            model_of(&keeper),
+            Some(store.embedder.model_id().to_owned())
+        );
         assert_eq!(
             model_of(&suppressed_id),
             Some("stale-model".to_owned()),
             "suppressed rows stay skipped by reindex"
         );
 
-        assert_eq!(erase_test_payload_count(&store, "CYCLE-VICTIM-needle-9d1"), 0);
+        assert_eq!(
+            erase_test_payload_count(&store, "CYCLE-VICTIM-needle-9d1"),
+            0
+        );
         assert_eq!(erase_test_fts_count(&store, &victim), 0);
-        assert_eq!(erase_test_payload_count(&store, "CYCLE-KEEPER-needle-3b7"), 1);
+        assert_eq!(
+            erase_test_payload_count(&store, "CYCLE-KEEPER-needle-3b7"),
+            1
+        );
         assert_eq!(
             erase_test_payload_count(&store, "CYCLE-SUPPRESSED-needle-5e2"),
             1,
@@ -12922,7 +13091,10 @@ mod tests {
                 |row| row.get(0),
             )
             .unwrap();
-        assert_eq!(inbound, 0, "erase must clear inbound edges to the victim slug");
+        assert_eq!(
+            inbound, 0,
+            "erase must clear inbound edges to the victim slug"
+        );
 
         let backup = store.backup_cortex().unwrap();
         assert!(!backup.memories.iter().any(|row| row.id == victim));
@@ -12941,8 +13113,14 @@ mod tests {
             "restoring a post-erase backup must not resurrect the payload"
         );
         assert_eq!(erase_test_fts_count(&store, &victim), 0);
-        assert_eq!(erase_test_payload_count(&store, "CYCLE-KEEPER-needle-3b7"), 1);
-        assert_eq!(erase_test_payload_count(&store, "CYCLE-SUPPRESSED-needle-5e2"), 1);
+        assert_eq!(
+            erase_test_payload_count(&store, "CYCLE-KEEPER-needle-3b7"),
+            1
+        );
+        assert_eq!(
+            erase_test_payload_count(&store, "CYCLE-SUPPRESSED-needle-5e2"),
+            1
+        );
         let suppression_after: i64 = store
             .db
             .lock()
@@ -13014,7 +13192,11 @@ mod tests {
             before.schema_version, CORTEX_BACKUP_SCHEMA_VERSION,
             "a fresh backup is written in the current envelope format"
         );
-        assert_eq!(before.relations.len(), 1, "relations are inside the envelope");
+        assert_eq!(
+            before.relations.len(),
+            1,
+            "relations are inside the envelope"
+        );
         let restored = store.restore_cortex(&before).unwrap();
         assert_eq!(restored, before.memories.len() + before.quarantined.len());
 
@@ -13114,7 +13296,12 @@ mod tests {
         // Produce a genuinely `restricted` quarantine row through the governed
         // production path rather than by hand-inserting one.
         store
-            .try_put("suspect", "a record about to be quarantined", "global", MemoryTier::Semantic)
+            .try_put(
+                "suspect",
+                "a record about to be quarantined",
+                "global",
+                MemoryTier::Semantic,
+            )
             .unwrap();
         let actor = VerifiedMemoryActor::from_execution_context(
             "reviewer",
@@ -13186,7 +13373,12 @@ mod tests {
     fn backup_digest_seals_sensitivity_and_relations() {
         let store = MemoryStore::new();
         store
-            .try_put("sealed", "a record whose classification is sealed", "global", MemoryTier::Semantic)
+            .try_put(
+                "sealed",
+                "a record whose classification is sealed",
+                "global",
+                MemoryTier::Semantic,
+            )
             .unwrap();
         store
             .db
@@ -13240,14 +13432,23 @@ mod tests {
     fn legacy_v1_backup_envelope_restores_with_explicit_unavailable_legacy() {
         let store = MemoryStore::new();
         store
-            .try_put("legacy-row", "a payload captured by a pre-CTX-004 backup", "global", MemoryTier::Semantic)
+            .try_put(
+                "legacy-row",
+                "a payload captured by a pre-CTX-004 backup",
+                "global",
+                MemoryTier::Semantic,
+            )
             .unwrap();
         let mut legacy = store.backup_cortex().unwrap();
         // Shape a genuine v1 envelope: no relations, no CTX-004 fields, and a
         // digest computed over the v1 field set.
         legacy.schema_version = CORTEX_BACKUP_SCHEMA_VERSION_LEGACY_V1.to_owned();
         legacy.relations.clear();
-        for row in legacy.memories.iter_mut().chain(legacy.quarantined.iter_mut()) {
+        for row in legacy
+            .memories
+            .iter_mut()
+            .chain(legacy.quarantined.iter_mut())
+        {
             row.sensitivity = backup_unavailable_legacy();
             row.derivation = backup_unavailable_legacy();
         }
@@ -13260,7 +13461,9 @@ mod tests {
             &legacy.relations,
         );
 
-        store.restore_cortex(&legacy).expect("a v1 envelope must still restore");
+        store
+            .restore_cortex(&legacy)
+            .expect("a v1 envelope must still restore");
         let (sensitivity, derivation): (String, String) = store
             .db
             .lock()
@@ -14251,7 +14454,11 @@ mod tests {
 
         // Simulate a store whose projection is unavailable (predates CTX-011, or was
         // lost) without touching canonical `memories` or the in-memory registry.
-        store.db.lock().execute_batch("DROP TABLE cortex_fts5").unwrap();
+        store
+            .db
+            .lock()
+            .execute_batch("DROP TABLE cortex_fts5")
+            .unwrap();
 
         let hits = store.recall_scored("alpha beta gamma marker", 5, &[]);
         assert!(
@@ -14283,7 +14490,10 @@ mod tests {
             .unwrap();
 
         let hits = store.fts5_lexical_hits("anything", 10);
-        assert!(hits.is_none(), "a corrupt table must still degrade gracefully");
+        assert!(
+            hits.is_none(),
+            "a corrupt table must still degrade gracefully"
+        );
         let mode = store
             .last_recall_lexical_mode()
             .expect("degradation reason must be recorded");
@@ -16476,15 +16686,14 @@ mod tests {
         assert_eq!(page.items[0].lifecycle_state, "active");
         // Surfacing review-due rewrites nothing: the row keeps its authority
         // and stays recall-eligible through the normal production seam.
-        let stored: String = m
-            .db
-            .lock()
-            .query_row(
-                "SELECT authority FROM memories WHERE id=?1",
-                rusqlite::params![&due],
-                |row| row.get(0),
-            )
-            .unwrap();
+        let stored: String =
+            m.db.lock()
+                .query_row(
+                    "SELECT authority FROM memories WHERE id=?1",
+                    rusqlite::params![&due],
+                    |row| row.get(0),
+                )
+                .unwrap();
         assert_eq!(stored, "A2");
         assert!(m
             .recall_scored("review clock", 10, &["scope".into()])
@@ -16549,15 +16758,14 @@ mod tests {
 
         // Enqueuing performs no mutation: authority and lifecycle state are untouched,
         // and the row stays recall-eligible.
-        let (authority, state): (String, String) = m
-            .db
-            .lock()
-            .query_row(
-                "SELECT authority, lifecycle_state FROM memories WHERE id=?1",
-                rusqlite::params![&id],
-                |row| Ok((row.get(0)?, row.get(1)?)),
-            )
-            .unwrap();
+        let (authority, state): (String, String) =
+            m.db.lock()
+                .query_row(
+                    "SELECT authority, lifecycle_state FROM memories WHERE id=?1",
+                    rusqlite::params![&id],
+                    |row| Ok((row.get(0)?, row.get(1)?)),
+                )
+                .unwrap();
         assert_eq!(authority, "A2");
         assert_eq!(state, "active");
     }
@@ -16580,15 +16788,14 @@ mod tests {
             )
             .unwrap();
         let content_sha256 = {
-            let content: String = m
-                .db
-                .lock()
-                .query_row(
-                    "SELECT content FROM memories WHERE id=?1",
-                    rusqlite::params![&id],
-                    |row| row.get(0),
-                )
-                .unwrap();
+            let content: String =
+                m.db.lock()
+                    .query_row(
+                        "SELECT content FROM memories WHERE id=?1",
+                        rusqlite::params![&id],
+                        |row| row.get(0),
+                    )
+                    .unwrap();
             content_hash(&content)
         };
         m.record_feedback(&FeedbackRecord {
@@ -16603,22 +16810,20 @@ mod tests {
         .unwrap();
 
         let page = m.lifecycle_reviews_due(Some("scope"), now, 100).unwrap();
-        let hit = page
-            .items
-            .iter()
-            .find(|item| item.memory_id == id)
-            .expect("a verified contradicted outcome must enqueue the still-active row for review");
+        let hit =
+            page.items.iter().find(|item| item.memory_id == id).expect(
+                "a verified contradicted outcome must enqueue the still-active row for review",
+            );
         assert_eq!(hit.reason, "outcome_contradicted");
 
-        let (authority, state): (String, String) = m
-            .db
-            .lock()
-            .query_row(
-                "SELECT authority, lifecycle_state FROM memories WHERE id=?1",
-                rusqlite::params![&id],
-                |row| Ok((row.get(0)?, row.get(1)?)),
-            )
-            .unwrap();
+        let (authority, state): (String, String) =
+            m.db.lock()
+                .query_row(
+                    "SELECT authority, lifecycle_state FROM memories WHERE id=?1",
+                    rusqlite::params![&id],
+                    |row| Ok((row.get(0)?, row.get(1)?)),
+                )
+                .unwrap();
         assert_eq!(authority, "A2");
         assert_eq!(state, "active");
     }
@@ -16715,14 +16920,25 @@ mod tests {
     /// present in the still-open process's cache.
     #[test]
     fn evidence_relation_survives_process_restart() {
-        let path = std::env::temp_dir().join(format!("cr-mem-relation-restart-{}.db", std::process::id()));
+        let path =
+            std::env::temp_dir().join(format!("cr-mem-relation-restart-{}.db", std::process::id()));
         let _ = std::fs::remove_file(&path);
         let source_id: String;
         let target_id: String;
         {
             let m = MemoryStore::open(MemDb::open(&path).unwrap());
-            source_id = m.put("relation-source", "source content", "global", MemoryTier::Semantic);
-            target_id = m.put("relation-target", "target content", "global", MemoryTier::Semantic);
+            source_id = m.put(
+                "relation-source",
+                "source content",
+                "global",
+                MemoryTier::Semantic,
+            );
+            target_id = m.put(
+                "relation-target",
+                "target content",
+                "global",
+                MemoryTier::Semantic,
+            );
             m.record_evidence_relation(&source_id, &target_id, "supports", "test-producer")
                 .expect("relation records against two persisted memories in one scope");
         }
@@ -16738,7 +16954,10 @@ mod tests {
         assert_eq!(stored.edge.source_id, source_id);
         assert_eq!(stored.edge.target_id, target_id);
         assert_eq!(stored.edge.relation, "supports");
-        assert!(stored.traversable(), "a freshly recorded edge has no diagnostic");
+        assert!(
+            stored.traversable(),
+            "a freshly recorded edge has no diagnostic"
+        );
         let _ = std::fs::remove_file(&path);
     }
 
@@ -16768,7 +16987,12 @@ mod tests {
     fn ctx004_new_admission_binds_explicit_sensitivity_and_derivation() {
         let store = MemoryStore::new();
         let id = store
-            .try_put("fresh", "a freshly authored record", "global", MemoryTier::Semantic)
+            .try_put(
+                "fresh",
+                "a freshly authored record",
+                "global",
+                MemoryTier::Semantic,
+            )
             .unwrap();
         let (sensitivity, derivation): (String, String) = store
             .db
@@ -16791,7 +17015,12 @@ mod tests {
     fn ctx004_superseding_record_binds_parent_as_derivation() {
         let store = MemoryStore::new();
         store
-            .try_put("parent", "the record being replaced", "global", MemoryTier::Semantic)
+            .try_put(
+                "parent",
+                "the record being replaced",
+                "global",
+                MemoryTier::Semantic,
+            )
             .unwrap();
         let context = MemoryEventContext::new("loopback");
         let replacement = store
@@ -16853,7 +17082,12 @@ mod tests {
             .unwrap();
         // An unrelated later admission must not touch the legacy row.
         store
-            .try_put("later", "an unrelated later record", "global", MemoryTier::Semantic)
+            .try_put(
+                "later",
+                "an unrelated later record",
+                "global",
+                MemoryTier::Semantic,
+            )
             .unwrap();
         let (sensitivity, derivation): (String, String) = store
             .db
@@ -16874,7 +17108,12 @@ mod tests {
     fn ctx004_quarantined_row_is_bound_to_restricted_sensitivity() {
         let store = MemoryStore::new();
         store
-            .try_put("suspect", "a record about to be quarantined", "global", MemoryTier::Semantic)
+            .try_put(
+                "suspect",
+                "a record about to be quarantined",
+                "global",
+                MemoryTier::Semantic,
+            )
             .unwrap();
         let actor = VerifiedMemoryActor::from_execution_context(
             "reviewer",
@@ -16911,7 +17150,11 @@ mod tests {
 
     /// `_label` names the signal in the test only. The delivery key is derived
     /// from the signal's own identity, so tests never hand one in.
-    fn ctx010_signal(_label: &str, memory_id: Option<&str>, scope: Option<&str>) -> LifecycleReviewSignalV1 {
+    fn ctx010_signal(
+        _label: &str,
+        memory_id: Option<&str>,
+        scope: Option<&str>,
+    ) -> LifecycleReviewSignalV1 {
         LifecycleReviewSignalV1 {
             origin_subsystem: "ledger".into(),
             memory_id: memory_id.map(str::to_owned),
@@ -16931,16 +17174,23 @@ mod tests {
     fn ctx010_signal_idempotency_is_derived_from_signal_identity() {
         let store = MemoryStore::new();
         let id = store
-            .try_put("derived-key", "a record with redelivered signals", "global", MemoryTier::Semantic)
+            .try_put(
+                "derived-key",
+                "a record with redelivered signals",
+                "global",
+                MemoryTier::Semantic,
+            )
             .unwrap();
         let signal = ctx010_signal("first-delivery", Some(&id), None);
         let count = || -> i64 {
             store
                 .db
                 .lock()
-                .query_row("SELECT COUNT(*) FROM cortex_lifecycle_review_signals_v1", [], |row| {
-                    row.get(0)
-                })
+                .query_row(
+                    "SELECT COUNT(*) FROM cortex_lifecycle_review_signals_v1",
+                    [],
+                    |row| row.get(0),
+                )
                 .unwrap()
         };
 
@@ -16974,16 +17224,24 @@ mod tests {
         // Different signals must never collide, on any axis of identity.
         let mut different_reason = signal.clone();
         different_reason.reason = "source document deleted".into();
-        assert!(store.record_lifecycle_review_signal(&different_reason).unwrap());
+        assert!(store
+            .record_lifecycle_review_signal(&different_reason)
+            .unwrap());
         let mut different_time = signal.clone();
         different_time.observed_at_ms = 2_000;
-        assert!(store.record_lifecycle_review_signal(&different_time).unwrap());
+        assert!(store
+            .record_lifecycle_review_signal(&different_time)
+            .unwrap());
         let mut different_origin = signal.clone();
         different_origin.origin_subsystem = "blueprint".into();
-        assert!(store.record_lifecycle_review_signal(&different_origin).unwrap());
+        assert!(store
+            .record_lifecycle_review_signal(&different_origin)
+            .unwrap());
         let mut different_target = signal.clone();
         different_target.memory_id = Some("global/somewhere-else".into());
-        assert!(store.record_lifecycle_review_signal(&different_target).unwrap());
+        assert!(store
+            .record_lifecycle_review_signal(&different_target)
+            .unwrap());
         let mut scope_target = signal.clone();
         scope_target.memory_id = None;
         scope_target.scope_id = Some("global".into());
@@ -17022,11 +17280,22 @@ mod tests {
     fn ctx010_external_signal_enqueues_review() {
         let store = MemoryStore::new();
         let id = store
-            .try_put("doc-backed", "a record backed by a ledger document", "global", MemoryTier::Semantic)
+            .try_put(
+                "doc-backed",
+                "a record backed by a ledger document",
+                "global",
+                MemoryTier::Semantic,
+            )
             .unwrap();
         // No trigger fires before the signal is recorded.
-        assert!(store.lifecycle_reviews_due(None, 10_000, 10).unwrap().items.is_empty());
-        assert!(store.record_lifecycle_review_signal(&ctx010_signal("ledger-1", Some(&id), None)).unwrap());
+        assert!(store
+            .lifecycle_reviews_due(None, 10_000, 10)
+            .unwrap()
+            .items
+            .is_empty());
+        assert!(store
+            .record_lifecycle_review_signal(&ctx010_signal("ledger-1", Some(&id), None))
+            .unwrap());
         let due = store.lifecycle_reviews_due(None, 10_000, 10).unwrap();
         let row = due
             .items
@@ -17038,7 +17307,12 @@ mod tests {
         // active records too.
         let other = MemoryStore::new();
         let scoped = other
-            .try_put("scoped", "a record in an re-anchored scope", "global", MemoryTier::Semantic)
+            .try_put(
+                "scoped",
+                "a record in an re-anchored scope",
+                "global",
+                MemoryTier::Semantic,
+            )
             .unwrap();
         let mut blueprint = ctx010_signal("blueprint-1", None, Some("global"));
         blueprint.origin_subsystem = "blueprint".into();
@@ -17062,10 +17336,19 @@ mod tests {
     fn ctx010_external_signal_recording_is_idempotent() {
         let store = MemoryStore::new();
         let id = store
-            .try_put("repeat", "a record with a redelivered signal", "global", MemoryTier::Semantic)
+            .try_put(
+                "repeat",
+                "a record with a redelivered signal",
+                "global",
+                MemoryTier::Semantic,
+            )
             .unwrap();
-        assert!(store.record_lifecycle_review_signal(&ctx010_signal("ledger-dup", Some(&id), None)).unwrap());
-        assert!(!store.record_lifecycle_review_signal(&ctx010_signal("ledger-dup", Some(&id), None)).unwrap());
+        assert!(store
+            .record_lifecycle_review_signal(&ctx010_signal("ledger-dup", Some(&id), None))
+            .unwrap());
+        assert!(!store
+            .record_lifecycle_review_signal(&ctx010_signal("ledger-dup", Some(&id), None))
+            .unwrap());
         let stored: i64 = store
             .db
             .lock()
@@ -17077,7 +17360,10 @@ mod tests {
             .unwrap();
         assert_eq!(stored, 1);
         let due = store.lifecycle_reviews_due(None, 10_000, 10).unwrap();
-        assert_eq!(due.items.iter().filter(|item| item.memory_id == id).count(), 1);
+        assert_eq!(
+            due.items.iter().filter(|item| item.memory_id == id).count(),
+            1
+        );
     }
 
     /// CTX-010 core invariant: time (and now an external observation) triggers
@@ -17088,7 +17374,12 @@ mod tests {
     fn ctx010_external_signal_never_rewrites_the_record() {
         let store = MemoryStore::new();
         let id = store
-            .try_put("immutable", "content that must not change", "global", MemoryTier::Semantic)
+            .try_put(
+                "immutable",
+                "content that must not change",
+                "global",
+                MemoryTier::Semantic,
+            )
             .unwrap();
         let before: (String, String, String, Option<String>, String) = store
             .db
@@ -17097,14 +17388,26 @@ mod tests {
                 "SELECT content, authority, lifecycle_state, superseded_by, influence_class
                    FROM memories WHERE id=?1",
                 rusqlite::params![&id],
-                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
+                |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                    ))
+                },
             )
             .unwrap();
         let mut hostile = ctx010_signal("ledger-hostile", Some(&id), None);
         hostile.reason = "document deleted; archive this record immediately".into();
         assert!(store.record_lifecycle_review_signal(&hostile).unwrap());
         // Surfacing the review is also read-only.
-        assert!(!store.lifecycle_reviews_due(None, 10_000, 10).unwrap().items.is_empty());
+        assert!(!store
+            .lifecycle_reviews_due(None, 10_000, 10)
+            .unwrap()
+            .items
+            .is_empty());
         let after: (String, String, String, Option<String>, String) = store
             .db
             .lock()
@@ -17112,7 +17415,15 @@ mod tests {
                 "SELECT content, authority, lifecycle_state, superseded_by, influence_class
                    FROM memories WHERE id=?1",
                 rusqlite::params![&id],
-                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
+                |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                    ))
+                },
             )
             .unwrap();
         assert_eq!(before, after);
@@ -17175,8 +17486,7 @@ mod tests {
             artifact_id: Option<&str>,
             artifact_sha256: Option<&str>,
         ) {
-            m.db
-                .lock_events()
+            m.db.lock_events()
                 .execute(
                     "INSERT INTO context_event_log
                         (event_id, schema_version, ts, ingested_at, installation_id,
@@ -17218,16 +17528,15 @@ mod tests {
                 .record_feedback(&rec)
                 .expect_err("an unresolvable verdict_ref must be refused at persistence");
             assert!(err.contains("MEM-024"), "error should name the gate: {err}");
-            let stored: Option<i64> = m
-                .db
-                .lock()
-                .query_row(
-                    "SELECT verified FROM context_feedback WHERE candidate_id='mem-a'",
-                    [],
-                    |row| row.get(0),
-                )
-                .optional()
-                .unwrap();
+            let stored: Option<i64> =
+                m.db.lock()
+                    .query_row(
+                        "SELECT verified FROM context_feedback WHERE candidate_id='mem-a'",
+                        [],
+                        |row| row.get(0),
+                    )
+                    .optional()
+                    .unwrap();
             assert!(
                 stored.is_none(),
                 "a rejected cited-verdict row must not be persisted at all"
@@ -17238,25 +17547,18 @@ mod tests {
         fn resolvable_verdict_ref_ranks() {
             let m = MemoryStore::new();
             let canonical_trace = opaque_correlation_token("trace-b", "trace");
-            insert_verdict_event(
-                &m,
-                "verdict-1",
-                &canonical_trace,
-                None,
-                Some("sha-b"),
-            );
+            insert_verdict_event(&m, "verdict-1", &canonical_trace, None, Some("sha-b"));
             let rec = cited("trace-b", "mem-b", "sha-b", "verdict-1");
             m.record_feedback(&rec)
                 .expect("a verdict naming this candidate's sha on the same trace must resolve");
-            let verified: i64 = m
-                .db
-                .lock()
-                .query_row(
-                    "SELECT verified FROM context_feedback WHERE candidate_id='mem-b'",
-                    [],
-                    |row| row.get(0),
-                )
-                .unwrap();
+            let verified: i64 =
+                m.db.lock()
+                    .query_row(
+                        "SELECT verified FROM context_feedback WHERE candidate_id='mem-b'",
+                        [],
+                        |row| row.get(0),
+                    )
+                    .unwrap();
             assert_eq!(verified, 1, "a resolved cited-verdict row must rank");
         }
 
@@ -17273,15 +17575,14 @@ mod tests {
                 scope_id: "global".into(),
             };
             m.record_feedback(&rec).unwrap();
-            let verified: i64 = m
-                .db
-                .lock()
-                .query_row(
-                    "SELECT verified FROM context_feedback WHERE candidate_id='mem-c'",
-                    [],
-                    |row| row.get(0),
-                )
-                .unwrap();
+            let verified: i64 =
+                m.db.lock()
+                    .query_row(
+                        "SELECT verified FROM context_feedback WHERE candidate_id='mem-c'",
+                        [],
+                        |row| row.get(0),
+                    )
+                    .unwrap();
             assert_eq!(verified, 0, "advisory feedback must never rank");
         }
 
@@ -17301,15 +17602,14 @@ mod tests {
             let first = cited("trace-d", "mem-d1", "dup-sha", "verdict-shared");
             m.record_feedback(&first)
                 .expect("the first candidate to cite a resolvable verdict must rank");
-            let verified1: i64 = m
-                .db
-                .lock()
-                .query_row(
-                    "SELECT verified FROM context_feedback WHERE candidate_id='mem-d1'",
-                    [],
-                    |row| row.get(0),
-                )
-                .unwrap();
+            let verified1: i64 =
+                m.db.lock()
+                    .query_row(
+                        "SELECT verified FROM context_feedback WHERE candidate_id='mem-d1'",
+                        [],
+                        |row| row.get(0),
+                    )
+                    .unwrap();
             assert_eq!(verified1, 1);
 
             // A second, distinct candidate replaying the SAME receipt identity must not also
@@ -17319,16 +17619,15 @@ mod tests {
                 .record_feedback(&second)
                 .expect_err("a verdict already consumed by another candidate must not be reused");
             assert!(err.contains("MEM-024"), "error should name the gate: {err}");
-            let stored2: Option<i64> = m
-                .db
-                .lock()
-                .query_row(
-                    "SELECT verified FROM context_feedback WHERE candidate_id='mem-d2'",
-                    [],
-                    |row| row.get(0),
-                )
-                .optional()
-                .unwrap();
+            let stored2: Option<i64> =
+                m.db.lock()
+                    .query_row(
+                        "SELECT verified FROM context_feedback WHERE candidate_id='mem-d2'",
+                        [],
+                        |row| row.get(0),
+                    )
+                    .optional()
+                    .unwrap();
             assert!(stored2.is_none(), "the replayed row must not be persisted");
         }
     }

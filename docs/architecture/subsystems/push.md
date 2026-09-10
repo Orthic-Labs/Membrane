@@ -22,6 +22,10 @@ Post-merge implementation receipt: `docs/provenance/foundation/2026-09-05-push-p
 **Scope:** 24 retained atom IDs plus five introduced requirements, PSH-025–PSH-029: **29 committed Push capabilities** in the supplied revision.
 **Change status:** final proposed implementation specification and revised capability ledger; no repository branch, installed binary, setting or remote file was changed. No implementation or release qualification is claimed.
 
+All JavaScript MCP/client paths cited below are historical evidence from the
+audited revision only; those paths are deleted from current Membrane. Current
+runtime authority is native Rust MCP/runtime code and installed `membrane.exe`.
+
 > **Verdict: Push is a real implementation, and native MCP can reach its packet-reduction path. It is not yet a consistently wired, safely recoverable, general-purpose tool-output layer. Fix the delivery and recovery contracts before expanding the compressor catalogue.**
 
 The distinction matters. “There is a Push module,” “an agent can invoke one path,” “every relevant tool output passes through it,” and “every reduction can be safely recovered” are four different claims. The source supports the first, conditionally supports the second, and does not establish the last two.

@@ -27,8 +27,8 @@ For the running platform it:
    by delegating to `scripts/run-platform-scenarios.mjs`, which drives a real
    client CLI, real providers, real delivery, and a real outcome/feedback
    write against the live event-log database.
-4. Aggregates a real benchmark over the resulting traces via
-   `mcp/e2e-benchmark.mjs`.
+4. Aggregates a real benchmark over resulting traces through native runtime
+   benchmark commands.
 5. Archives a per-platform `receipt.json` plus one archive file per scenario
    trace, in the exact shape `scripts/qualification/verify-mbr801-evidence.mjs`
    requires: signed/installed proof, real client/model/host identity, all ten

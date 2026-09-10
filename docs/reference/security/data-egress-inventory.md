@@ -14,8 +14,11 @@
 - Provenance adapter invokes only read-only `git` commands and opens no
   network socket ([`runtime-privacy.md`](../../product/legal/runtime-privacy.md)); this is source evidence,
   not a network-monitoring receipt.
-- MCP client and federation use loopback HTTP (`127.0.0.1`) as declared by
-  [`mcp/client.mjs`](../../../mcp/client.mjs) and [`mcp/installation-binding.mjs`](../../../mcp/installation-binding.mjs).
+- MCP stdio & federation use installed native executable and authenticated
+  loopback HTTP (`127.0.0.1`) as declared by
+  [`engine/crates/membrane-runtime/src/mcp_http.rs`](../../../engine/crates/membrane-runtime/src/mcp_http.rs),
+  [`engine/crates/membrane-runtime/src/serve.rs`](../../../engine/crates/membrane-runtime/src/serve.rs),
+  & [`engine/crates/membrane/src/modes.rs`](../../../engine/crates/membrane/src/modes.rs).
 - Release tooling may contact Apple notarization or Azure signing services;
   those are build-time integrations, not context-data destinations
   ([`docs/reference/release/platform-acceptance.md`](../release/platform-acceptance.md)).

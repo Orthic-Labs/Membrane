@@ -25,6 +25,8 @@ test("every required PUL case export exists and is callable against the live rep
     const result = cases[exportName]();
     assert.equal(result.id, id);
     assert.equal(result.kind, "structural");
+    assert.equal(result.evidenceKind, "source");
+    assert.equal(result.status, "passed");
     assert.ok(Array.isArray(result.evidence) || typeof result.evidence === "object");
   }
 });

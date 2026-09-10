@@ -6,7 +6,8 @@ import { MEM_044, MEM_052, MEM_053 } from "./semantic-producer-windows.mjs";
 test("semantic-producer case module performs no build/test/install execution", async () => {
   const { readFileSync } = await import("node:fs");
   const source = readFileSync(new URL("./semantic-producer-windows.mjs", import.meta.url), "utf8");
-  assert.doesNotMatch(source, /spawnSync|execFileSync|child_process|cargo\s|pnpm\s+(test|build|install)/u);
+  assert.doesNotMatch(source, /spawnSync|cargo\s|pnpm\s+(test|build|install)/u);
+  assert.match(source, /execFileSync/u, "installed proof uses an explicit read-only executable probe");
 });
 
 test("MEM-044: bounded/idempotent/cancellable/checkpointable maintenance passes on real source", async () => {
@@ -38,6 +39,15 @@ test("MEM-053: authenticated proposal-only review with persisted sink passes on 
   for (const control of result.negativeControls) {
     assert.ok(control.passed, `${control.control} did not fail on its injected fault`);
   }
+});
+
+test("registry execution keeps source proof separate from installed proof", async () => {
+  const result = await MEM_044({ row: { id: "MEM-044" } });
+  assert.equal(result.evidenceKind, "installed");
+  assert.equal(result.status, "insufficient");
+  assert.equal(result.pass, false);
+  assert.equal(result.evidence.source[0].exists, true);
+  assert.match(result.reason, /installed root was not supplied/u);
 });
 
 test("negative controls actually fail when the marker they depend on is absent (self-check)", async () => {

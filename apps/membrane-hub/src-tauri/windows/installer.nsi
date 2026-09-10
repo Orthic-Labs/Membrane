@@ -165,11 +165,14 @@ FunctionEnd
 
 ; Installer upgrades can encounter payloads from the pre-native layout at the
 ; product root or below older version trees. Remove only the exact retired
-; Blueprint runtime subtree; never recurse through a reparse point.
-Function RemoveRetiredBlueprintRuntimeAt
+; Blueprint/MCP runtime subtrees; never recurse through a reparse point.
+Function RemoveRetiredRuntimeAt
   Exch $R9
   StrCpy $R0 0
-  ${If} ${FileExists} "$R9\*.*"
+  ; Check the directory itself so empty stale trees are removed too. Query its
+  ; reparse metadata before any recursive operation: RMDir is safe for the
+  ; reparse root, while RMDir /r is reserved for ordinary directories.
+  ${If} ${FileExists} "$R9"
     nsExec::ExecToStack /TIMEOUT=30000 '"$SYSDIR\fsutil.exe" reparsepoint query "$R9"'
     Pop $1
     Pop $3
@@ -185,25 +188,38 @@ Function RemoveRetiredBlueprintRuntimeAt
   Pop $R9
 FunctionEnd
 
-Function RemoveRetiredBlueprintRuntimes
+Function RemoveRetiredRuntimeTrees
   StrCpy $R0 0
-  ; Root-level runtime is from the retired installer projection.
+  ; Root-level trees are from retired installer projections.
   Push "$INSTDIR\runtime\blueprint"
-  Call RemoveRetiredBlueprintRuntimeAt
+  Call RemoveRetiredRuntimeAt
   ${If} $R0 <> 0
     Return
   ${EndIf}
-  ; Preserve valid older versions for rollback, but scrub retired Blueprint
-  ; payloads from every version so NCL scans cannot observe an interpreter.
+  Push "$INSTDIR\mcp"
+  Call RemoveRetiredRuntimeAt
+  ${If} $R0 <> 0
+    Return
+  ${EndIf}
+  ; Preserve valid older versions for rollback, but scrub retired Blueprint &
+  ; MCP payloads from every version so NCL scans cannot observe dead JS.
   FindFirst $0 $1 "$INSTDIR\versions\*"
   ${IfNot} ${Errors}
     version_scan:
       ${If} $1 == ""
         Goto version_scan_done
       ${EndIf}
-      ${If} ${FileExists} "$INSTDIR\versions\$1\runtime\blueprint\*.*"
+      ${If} ${FileExists} "$INSTDIR\versions\$1\runtime\blueprint"
         Push "$INSTDIR\versions\$1\runtime\blueprint"
-        Call RemoveRetiredBlueprintRuntimeAt
+        Call RemoveRetiredRuntimeAt
+        ${If} $R0 <> 0
+          FindClose $0
+          Return
+        ${EndIf}
+      ${EndIf}
+      ${If} ${FileExists} "$INSTDIR\versions\$1\mcp"
+        Push "$INSTDIR\versions\$1\mcp"
+        Call RemoveRetiredRuntimeAt
         ${If} $R0 <> 0
           FindClose $0
           Return
@@ -363,12 +379,12 @@ Section Install
   ${Log} "stop-running-product ok"
 
   ; 1. Remove the exact retired Blueprint payload before a same-version overlay.
-  StrCpy $InstallStep "remove-retired-blueprint-runtime"
-  Call RemoveRetiredBlueprintRuntimes
+  StrCpy $InstallStep "remove-retired-runtime-trees"
+  Call RemoveRetiredRuntimeTrees
   ${If} $R0 <> 0
     Goto install_failed
   ${EndIf}
-  ${Log} "remove-retired-blueprint-runtime ok"
+  ${Log} "remove-retired-runtime-trees ok"
 
   ; 2. Extract the release straight into place. The bundler's resource entries
   ;    are already rooted at versions\<version>\..., so with $OUTDIR at the
@@ -400,11 +416,11 @@ Section Install
     Goto install_failed
   ${EndIf}
   ; Native package must not carry the retired Blueprint Node tree or launchers.
-  ${If} ${FileExists} "$INSTDIR\versions\${VERSION}\runtime\blueprint\lib\node.exe"
+  ${If} ${FileExists} "$INSTDIR\versions\${VERSION}\runtime\blueprint"
     StrCpy $R0 1
     Goto install_failed
   ${EndIf}
-  ${If} ${FileExists} "$INSTDIR\versions\${VERSION}\runtime\blueprint\bin\blueprint.cmd"
+  ${If} ${FileExists} "$INSTDIR\versions\${VERSION}\mcp"
     StrCpy $R0 1
     Goto install_failed
   ${EndIf}

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { existsSync, readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import * as psh from "./psh-windows.mjs";
 
 const EXPECTED_IDS = Array.from({ length: 29 }, (_, i) => `PSH_${String(i + 1).padStart(3, "0")}`);
@@ -55,23 +56,26 @@ test("runAll() runs every case and keys results by registry id", async () => {
   }
 });
 
-test("insufficient_implementation outcomes cite the canonicalImplementationRow gap, never a bare pass", async () => {
-  // Rows PSH-005, PSH-008 through PSH-010, PSH-013 through PSH-017, PSH-019,
-  // PSH-023, PSH-025 through PSH-027 are PARTIAL/ADAPT/ORIGINAL in the frozen
-  // windows-r5 registry (not DELIVERED). Their positive assertion must be
-  // withheld with a cited gap rather than fabricated.
-  const mustBeInsufficientEvenWithNoCliDependency = [
-    "PSH_016", "PSH_017", "PSH_019", "PSH_023", "PSH_025", "PSH_026", "PSH_027",
-  ];
-  for (const id of mustBeInsufficientEvenWithNoCliDependency) {
-    const result = await psh.CASES[id]({});
-    if (id === "PSH_025" && result.status === "failed") {
-      assert.match(result.detail, /enrollment|fixture|native/i);
-      continue;
-    }
-    assert.equal(result.status, "insufficient_implementation", `${id} must report insufficient_implementation`);
-    assert.ok(result.gap && result.gap.length > 0, `${id} must cite a specific implementation gap`);
+test("probeInstalled rejects non-installer paths instead of manufacturing installed identity", () => {
+  const result = psh.probeInstalled({ cliPath: process.execPath });
+  assert.equal(result.evidenceKind, "installed");
+  assert.notEqual(result.status, "passed", "development/runtime executable must never qualify as installed");
+  assert.match(String(result.reason || ""), /installed|status|current|release/i);
+});
+
+test("probeInstalled exposes stable-current release identity when installed root is usable", () => {
+  const cliPath = "C:/Users/adrds/AppData/Local/Orthic Labs/Membrane/current/membrane.exe";
+  if (!existsSync(cliPath)) return;
+  const result = psh.probeInstalled({ cliPath });
+  if (result.status !== "passed") {
+    assert.equal(result.evidenceKind, "installed");
+    assert.match(String(result.reason || ""), /installed|release|identity|current|status/i);
+    return;
   }
+  assert.equal(result.evidenceKind, "installed");
+  assert.match(result.detail.identity.root, /[\\/]current$/iu);
+  assert.equal(typeof result.detail.identity.version, "string");
+  assert.match(result.detail.identity.releaseGeneration, /^sha256:[0-9a-f]{64}$/iu);
 });
 
 test("PSH-022 (DELIVERED: strict mr://anchor/ syntax) fails closed on every malformed negative control", async () => {
@@ -117,21 +121,47 @@ test("DELIVERED PSH rows pass through the installed native CLI with semantic con
   }
 });
 
-test("installed run keeps every non-DELIVERED PSH row explicitly open with its gap, except PSH-001 real fixture acceptance", async () => {
+test("installed native Push rows use row-specific assertions & fail closed when Push surface is absent", async (t) => {
   const cliPath = "C:/Users/adrds/AppData/Local/Orthic Labs/Membrane/current/membrane.exe";
-  assert.ok(existsSync(cliPath), "stable installed membrane CLI must be present");
-  const delivered = new Set(["PSH_001", "PSH_004", "PSH_012", "PSH_022"]);
-  for (const id of EXPECTED_IDS) {
+  if (!existsSync(cliPath)) return t.skip("stable installed membrane CLI is not present");
+  const identity = psh.probeInstalled({ cliPath });
+  if (identity.status !== "passed") return t.skip(`stable installed identity is not usable: ${identity.reason}`);
+
+  const nativeRows = [
+    "PSH_005", "PSH_008", "PSH_009", "PSH_010", "PSH_013", "PSH_016", "PSH_017",
+    "PSH_019", "PSH_026", "PSH_027",
+  ];
+  const failureMarkers = /native|resolver|surface|receipt|prepare|telemetry|MCP|Push/iu;
+  for (const id of nativeRows) {
     const result = await psh.CASES[id]({ cliPath });
-    if (delivered.has(id)) {
-      assert.equal(result.status, "passed", id);
-    } else {
-      if (id === "PSH_025" && result.status === "failed") {
-        assert.match(result.detail, /enrollment|fixture|native/i);
-      } else {
-        assert.equal(result.status, "insufficient_implementation", id);
-        assert.match(result.gap, new RegExp(`PSH-I${id.slice(4)}`));
-      }
-    }
+    assert.equal(result.id, id.replace("_", "-"));
+    assert.equal(result.group, "PSH");
+    assert.equal(result.evidenceKind, "installed");
+    assert.notEqual(result.status, "insufficient_implementation", `${id} must execute installed native probe, not permanent source-only insufficiency`);
+    assert.ok(["passed", "failed", "blocked"].includes(result.status), `${id} returned invalid status ${result.status}`);
+    if (result.status === "failed") assert.match(`${result.detail || ""} ${result.reason || ""}`, failureMarkers, `${id} failure must identify row-specific native condition`);
+  }
+
+  // Missing Push tools are an installed-runtime failure, never an
+  // insufficient/source-only outcome. PSH-005 is first-row representative
+  // for this surface contract & keeps this negative control bounded.
+  const listed = spawnSync(cliPath, ["stdio-mcp"], {
+    encoding: "utf8",
+    windowsHide: true,
+    timeout: 15_000,
+    input: `${JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "psh-test", version: "1" } } })}\n${JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/list", params: {} })}\n`,
+  });
+  const responses = String(listed.stdout || "").split(/\r?\n/u).filter(Boolean).flatMap((line) => {
+    try { return [JSON.parse(line)]; } catch { return []; }
+  });
+  const tools = responses.find((response) => response.id === 2)?.result?.tools;
+  const pushSurfaceAvailable = Array.isArray(tools) && tools.some((tool) => tool.name === "membrane_push_prepare") && tools.some((tool) => tool.name === "membrane_push_resolve");
+  const firstPushRow = await psh.CASES.PSH_005({ cliPath });
+  assert.equal(firstPushRow.evidenceKind, "installed");
+  if (!pushSurfaceAvailable) {
+    assert.equal(firstPushRow.status, "failed");
+    assert.match(`${firstPushRow.detail || ""} ${firstPushRow.reason || ""}`, /native Push|resolver|surface/iu);
+  } else {
+    assert.notEqual(firstPushRow.status, "insufficient_implementation");
   }
 });

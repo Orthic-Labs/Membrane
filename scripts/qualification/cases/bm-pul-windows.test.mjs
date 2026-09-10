@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { BM01, validateBM01Observations, validateBM02Scenario, validateBM08Admission, validateBM10Journey, collectBM10JourneyStates, validateCandidate, validateSourceDigest, extractTypedCancellationCode } from "./bm-pul-windows.mjs";
+import { BM01, validateBM01Observations, validateBM02Scenario, validateBM08Admission, validateBM10Journey, validateBM10ControlOutput, collectBM10JourneyStates, validateCandidate, validateSourceDigest, extractTypedCancellationCode } from "./bm-pul-windows.mjs";
 
 const HASH = `sha256:${"0".repeat(64)}`;
 const clone = (value) => structuredClone(value);
@@ -75,6 +75,13 @@ test("BM10 aggregates states across independent maps with stable evidence IDs", 
   first.requirementEvidenceMap.journeys = [first.requirementEvidenceMap.journeys[0]];
   second.requirementEvidenceMap.journeys = [second.requirementEvidenceMap.journeys[0], second.requirementEvidenceMap.journeys[1]];
   assert.deepEqual(collectBM10JourneyStates([first, second]), ["DISCOVERED_REJECTED", "NOT_DISCOVERED"]);
+});
+test("BM10 rejects installed control output whose journey state mismatches control expectation", () => {
+  const output = bm10Fixture();
+  output.requirementEvidenceMap.journeys = [output.requirementEvidenceMap.journeys[1]];
+  assert.deepEqual(validateBM10ControlOutput(output, { id: "rejected", expectedState: "DISCOVERED_REJECTED" }), ["DISCOVERED_REJECTED"]);
+  output.requirementEvidenceMap.journeys[0].state = "NOT_DISCOVERED";
+  assert.throws(() => validateBM10ControlOutput(output, { id: "rejected", expectedState: "DISCOVERED_REJECTED" }), /expected journey state DISCOVERED_REJECTED/);
 });
 test("BM10 still rejects duplicate evidence IDs within one map", () => {
   const fixture = bm10Fixture(); fixture.requirementEvidenceMap.journeys = [fixture.requirementEvidenceMap.journeys[0], clone(fixture.requirementEvidenceMap.journeys[0])];
