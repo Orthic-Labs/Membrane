@@ -687,7 +687,8 @@ function nativeSourceCheck(id, requirement, relPath, markers, note, context) {
 // Architecture response also carries generation metadata (`freshnessReceipt`),
 // which is not an orientation section and has its own schema.
 export function orientationSections(result) {
-  return Object.entries(result).filter(([key, value]) => !["schemaVersion", "generationId", "state", "task", "resolution", "freshness", "freshnessReceipt", "omissions"].includes(key) && value && typeof value === "object");
+  const sectionNames = new Set(["alternatives", "anchors", "callees", "callers", "component", "config", "derivedConstraints", "governingClaims", "impact", "owner", "sourceSignature", "tests"]);
+  return Object.entries(result).filter(([key, value]) => sectionNames.has(key) && value && typeof value === "object");
 }
 
 export function BM03(context) {

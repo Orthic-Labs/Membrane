@@ -375,6 +375,11 @@ pub(crate) fn native_route_response_with_deadline(
                 .extensions
                 .insert("consumerCapabilities".to_owned(), capabilities);
         }
+        if let Some(requirement_facts) = value.get("requirementFacts").cloned() {
+            request
+                .extensions
+                .insert("requirementFacts".to_owned(), requirement_facts);
+        }
         if let Some(temporal_query) = temporal_query.clone() {
             request.extensions.insert(
                 "cortexTemporalQuery".to_owned(),
@@ -515,6 +520,11 @@ pub(crate) fn native_route_response_with_deadline(
             fields.insert("federationMetrics".to_owned(), serde_json::json!(native_metrics));
             fields.insert("emptyEvidenceSummary".to_owned(), serde_json::json!({
                 "candidateCount": candidate_count, "omissions": reasons, "elided": total.saturating_sub(16),
+            }));
+            fields.insert("budgetReduction".to_owned(), serde_json::json!({
+                "misleadingFragmentRetained": false,
+                "omissionReasons": packet_omissions,
+                "droppedCandidateCount": candidate_count,
             }));
             merge_native_receipts(fields, native_receipts);
             let final_map = fields.get("requirementEvidenceMap").cloned();
@@ -1328,6 +1338,16 @@ pub fn native_response_to_ccs(
                 if let Some(cancellation) = attributes.get("cancellation").and_then(Value::as_str) {
                     if let Ok(parsed) = cancellation.parse::<bool>() {
                         attributes.insert("cancellation".to_owned(), Value::Bool(parsed));
+                    }
+                }
+                if let Some(candidate_count) = attributes.get("candidateCount").and_then(Value::as_str) {
+                    if let Ok(parsed) = candidate_count.parse::<u64>() {
+                        attributes.insert("candidateCount".to_owned(), Value::Number(parsed.into()));
+                    }
+                }
+                if let Some(errors) = attributes.get("errors").and_then(Value::as_str) {
+                    if let Ok(parsed @ Value::Array(_)) = serde_json::from_str::<Value>(errors) {
+                        attributes.insert("errors".to_owned(), parsed);
                     }
                 }
             }

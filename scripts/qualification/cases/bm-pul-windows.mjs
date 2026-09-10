@@ -9,7 +9,7 @@ import { join, resolve } from "node:path";
 
 const JOURNEY_STATES = new Set(["NOT_DISCOVERED", "DISCOVERED_ACCEPTED", "DISCOVERED_REJECTED", "DISCOVERED_BUDGET_DROPPED", "STALE", "ADAPTER_DROPPED", "EXECUTION_FAILURE"]);
 const REQUIRED_JOURNEY_STATES = ["NOT_DISCOVERED", "DISCOVERED_REJECTED", "DISCOVERED_BUDGET_DROPPED", "STALE", "ADAPTER_DROPPED", "EXECUTION_FAILURE"];
-const DIMENSIONS = new Set(["RepositoryTruth", "CurrentState", "Policy", "History", "Diagnostics", "DurableKnowledge"]);
+const DIMENSIONS = new Set(["repository_truth", "current_state", "policy", "history", "diagnostics", "durable_knowledge"]);
 const DISPOSITIONS = new Set(["allow", "continue", "block", "noop"]);
 const nonEmpty = (value) => typeof value === "string" && value.trim().length > 0;
 const isObject = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
@@ -227,7 +227,7 @@ export function BM10() { return actual("BM10", (path) => {
     { id: "timeout", task: "exact_probe", request: { maxWaitMs: 1 } },
     { id: "unresolved_dynamic", task: "exact_probe", request: { anchors: ["dynamic://bm10/unresolved"] } },
     { id: "rejected", task: "same_name", request: {} },
-    { id: "not_discovered", task: "exact_probe", request: { requirementFacts: [{ dimension: "CurrentState", required: true, ruleId: "bm10_missing_target", exactTarget: "does_not_exist.rs" }] } },
+    { id: "not_discovered", task: "exact_probe", request: { requirementFacts: [{ dimension: "current_state", required: true, ruleId: "bm10_missing_target", exactTarget: "does_not_exist.rs" }] } },
   ];
   const outputs = [path.packet];
   for (const control of controls) {

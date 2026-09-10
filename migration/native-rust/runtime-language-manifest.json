@@ -1,7 +1,7 @@
 {
  "schemaVersion": 1,
  "artifact": "membrane.runtime-language-manifest",
- "generatedAt": "2026-09-10T15:18:31.062Z",
+ "generatedAt": "2026-09-10T15:45:55.735Z",
  "enforcementMode": "sealed",
  "policyDigest": "9d70956ed53ce0f1e6a71be5d4649f5ea86153f295402e5a81347e8f2817eeca",
  "totals": {
@@ -1332,7 +1332,7 @@
     "engine/crates/membrane-runtime/tests/session_projection.rs",
     "engine/crates/membrane-runtime/tests/windows_acl_isolation.rs"
    ],
-   "content_digest": "9d7c56f99182174f9fe0251c51f86e14965e3fd5f63521c6c777975a96098012"
+   "content_digest": "5ccdcc21159877c27e0d1fa44bcad04a105fb1782d1f4b0b9b63d8c931dd7b90"
   },
   {
    "id": "engine-production-crates-engine/crates/membrane-transcript",
@@ -1852,7 +1852,7 @@
     "scripts/tools/productization/generate-support-matrix.test.mjs",
     "scripts/tools/productization/render-docs.mjs"
    ],
-   "content_digest": "9a493f1c2e1903bf818e09d1c55a46662e810bbfe58aa0be885d01b263d1fec5"
+   "content_digest": "1ce446d457b614d1532bcad05ba5d288971bb2faf8aa4f9cb3f3ab0499fe500e"
   },
   {
    "id": "surface-extraction-tool-surface-extraction-tool",
