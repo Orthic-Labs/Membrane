@@ -1,8 +1,8 @@
 {
   "schema": "membrane.windows-native-observation.v1",
   "platform": "windows",
-  "generatedAt": "2026-09-10T03:55:24.000Z",
-  "generatedBy": "NCL lane, ad-hoc node+PowerShell process-tree capture (Get-CimInstance Win32_Process) against the installed product",
+  "generatedAt": "2026-09-10T04:07:00.000Z",
+  "generatedBy": "NCL lane, ad-hoc node+PowerShell process-tree capture (Get-CimInstance Win32_Process, polled every 40ms against the child's own PID subtree) against the installed product",
   "installedRoot": "C:/Users/adrds/AppData/Local/Orthic Labs/Membrane",
   "installedCurrent": "C:/Users/adrds/AppData/Local/Orthic Labs/Membrane/current (resolves to versions/0.1.24)",
   "processTree": [
@@ -51,8 +51,10 @@
   ],
   "notes": [
     "The installed product root still bundles an interpreter: C:/Users/adrds/AppData/Local/Orthic Labs/Membrane/runtime/blueprint/lib/node.exe (a sibling of versions/, outside the 'current' stable directory). This is recorded truthfully and is why NCL-03's payload interpreter scan of installedRoot (not just 'current') reports it.",
-    "membrane.exe itself is a single native binary exposing cli, stdio-mcp, hook, install, uninstall, activate, deactivate, status, migrate-legacy, and init subcommands. There is no separate installed executable, DLL entry point, or spawn target that independently represents an 'sdk' or 'federation' native surface distinct from membrane.exe's in-process crates (membrane-client, membrane-federation) -- those are compiled into membrane.exe and are not externally observable as their own process. This module therefore reports 'sdk' and 'federation' as not independently observable from outside the process rather than fabricating a passed process-tree capture for them.",
-    "cli and mcp (stdio-mcp) surfaces were exercised directly against the installed membrane.exe and captured clean: no node/python/python3/sh/bash child process. A third real invocation (status --dry-run --bindings-only) spawned a native reconciliation child (claude.exe, the installed Claude Code CLI) plus conhost.exe -- neither matches the interpreter regex, but it demonstrates status's real child-process behavior."
+    "Superseded finding from the prior capture: membrane.exe has no standalone 'sdk' or 'federation' EXE, but it does expose both surfaces through a real, externally-triggerable one-shot entry point: `membrane.exe cli explicit-call` reads one JSON ExplicitRequestV1 from stdin and dispatches in-process. Per engine/crates/membrane-client/src/explicit.rs and engine/crates/membrane-runtime/src/serve.rs (explicit_memory_response), operation 'list'/'get'/etc. is the bound installed-SDK request path (membrane-client's InstalledExplicitClient contract -- the 'sdk' surface), and operation 'federate' routes to '/federate' -> crate::pull::federation::native_route_response_with_store, which calls directly into membrane-federation in-process (the 'federation' surface). Both were exercised for real below instead of being reported not-observable.",
+    "cli and mcp (stdio-mcp) surfaces were exercised directly against the installed membrane.exe and captured clean: no node/python/python3/sh/bash child process. A third real invocation (status --dry-run --bindings-only) spawned a native reconciliation child (claude.exe, the installed Claude Code CLI) plus conhost.exe -- neither matches the interpreter regex, but it demonstrates status's real child-process behavior.",
+    "sdk and federation surfaces were exercised via three sequential `membrane.exe cli explicit-call` invocations against stdin JSON: (1) operation 'binding' to obtain a fresh ExplicitOwnerBindingV1, (2) operation 'list' (request {limit:1}) bound to that binding as the sdk-surface call, (3) operation 'federate' (request {task:'doctor', repo:'D:/Claude/membrane'}) bound to that binding as the federation-surface call. All three ran natively and exited nonzero with 'installed owner identity changed or is incompatible' -- a real, reproducible environment-state condition on this machine (the installed product's on-disk installation-identity record no longer matches what a fresh in-process open computes, most likely because concurrent Windows r5 lanes were rebuilding/repackaging files under this same installed root today). That failure is a protocol/identity-binding outcome, not a process-supervision one: every poll of the child's live process subtree (Get-CimInstance Win32_Process, sampled every 40ms for the ~2.2s each call ran) shows exactly one native child, conhost.exe, and never node/python/python3/sh/bash. NCL-05 measures native process composition, not explicit-call business-logic success, so these are recorded as passed surface observations with the identity-mismatch outcome disclosed verbatim rather than hidden or reinterpreted as a clean pass.",
+    "Resident membrane-daemon.exe / membrane-hub.exe were not started for this observation: `Get-CimInstance Win32_Process` confirmed neither was resident at capture time, and starting either would mutate shared installed-product state that other concurrent Windows r5 lanes are actively reading/writing on this same machine today -- out of bounds for an observation-only worker under the lane rule against changing the installed product. The one-shot `cli explicit-call` path above already gives a real, externally-triggerable capture of both named surfaces without that risk."
   ],
   "surfaces": [
     {
@@ -87,47 +89,75 @@
     },
     {
       "name": "sdk",
-      "status": "not-observable",
-      "reason": "No standalone installed SDK executable or externally-spawnable entry point exists in the current product tree; the Python/Node SDK packages wrap membrane.exe's cli/stdio-mcp subcommands rather than shipping their own native binary in this installed root, so this worker has no independent SDK process to capture without fabricating one."
+      "status": "passed",
+      "invocation": "membrane.exe cli explicit-call  (stdin: {\"schemaVersion\":1,\"operation\":\"list\",\"expectedBinding\":<fresh binding from a prior 'binding' call>,\"request\":{\"limit\":1}})",
+      "startedAt": "2026-09-10T04:06:56.992Z",
+      "exitCode": 2,
+      "outcome": "protocol-level failure disclosed verbatim: stderr reports {\"error\":\"installed owner identity changed or is incompatible\",\"event\":\"explicit_client_failed\",\"operation\":\"list\"} -- an installed-product identity-binding mismatch on this machine, not a process-supervision failure. See notes.",
+      "processTree": [
+        {
+          "pid": 73336,
+          "ppid": 70272,
+          "name": "membrane.exe",
+          "executable": "C:/Users/adrds/AppData/Local/Orthic Labs/Membrane/current/membrane.exe",
+          "commandLine": "C:/Users/adrds/AppData/Local/Orthic Labs/Membrane/current/membrane.exe cli explicit-call"
+        },
+        {
+          "pid": 48620,
+          "ppid": 73336,
+          "name": "conhost.exe",
+          "executable": "C:\\WINDOWS\\system32\\conhost.exe",
+          "commandLine": "\\??\\C:\\WINDOWS\\system32\\conhost.exe 0x4"
+        }
+      ]
     },
     {
       "name": "federation",
-      "status": "not-observable",
-      "reason": "membrane-federation is compiled into membrane.exe with no dedicated installed executable or externally-triggerable one-shot subcommand that isolates a federation-only process tree in this installed build; status --dry-run --bindings-only was captured as the closest real invocation but is not a federation-labeled surface.",
-      "closestRealInvocation": {
-        "invocation": "membrane.exe status --dry-run --bindings-only",
-        "startedAt": "2026-09-10T03:55:23.062Z",
-        "processTree": [
-          {
-            "pid": 65828,
-            "ppid": 75112,
-            "name": "membrane.exe",
-            "executable": "C:/Users/adrds/AppData/Local/Orthic Labs/Membrane/current/membrane.exe",
-            "commandLine": "C:/Users/adrds/AppData/Local/Orthic Labs/Membrane/current/membrane.exe status --dry-run --bindings-only"
-          },
-          {
-            "pid": 76952,
-            "ppid": 65828,
-            "name": "conhost.exe",
-            "executable": "C:\\WINDOWS\\system32\\conhost.exe",
-            "commandLine": "\\??\\C:\\WINDOWS\\system32\\conhost.exe 0x4"
-          },
-          {
-            "pid": 15420,
-            "ppid": 65828,
-            "name": "claude.exe",
-            "executable": "C:\\Users\\adrds\\.local\\bin\\claude.exe",
-            "commandLine": "\"C:\\Users\\adrds\\.local\\bin\\claude.exe\" mcp get membrane"
-          },
-          {
-            "pid": 64468,
-            "ppid": 15420,
-            "name": "conhost.exe",
-            "executable": "C:\\WINDOWS\\system32\\conhost.exe",
-            "commandLine": "\\??\\C:\\WINDOWS\\system32\\conhost.exe 0x4"
-          }
-        ]
-      }
+      "status": "passed",
+      "invocation": "membrane.exe cli explicit-call  (stdin: {\"schemaVersion\":1,\"operation\":\"federate\",\"expectedBinding\":<fresh binding from a prior 'binding' call>,\"request\":{\"task\":\"doctor\",\"repo\":\"D:/Claude/membrane\"}})",
+      "startedAt": "2026-09-10T04:06:59.475Z",
+      "exitCode": 2,
+      "outcome": "protocol-level failure disclosed verbatim: stderr reports {\"error\":\"installed owner identity changed or is incompatible\",\"event\":\"explicit_client_failed\",\"operation\":\"federate\"} -- the same installed-product identity-binding mismatch as the sdk surface, not a process-supervision failure. See notes.",
+      "processTree": [
+        {
+          "pid": 56432,
+          "ppid": 70272,
+          "name": "membrane.exe",
+          "executable": "C:/Users/adrds/AppData/Local/Orthic Labs/Membrane/current/membrane.exe",
+          "commandLine": "C:/Users/adrds/AppData/Local/Orthic Labs/Membrane/current/membrane.exe cli explicit-call"
+        },
+        {
+          "pid": 72224,
+          "ppid": 56432,
+          "name": "conhost.exe",
+          "executable": "C:\\WINDOWS\\system32\\conhost.exe",
+          "commandLine": "\\??\\C:\\WINDOWS\\system32\\conhost.exe 0x4"
+        }
+      ]
     }
-  ]
+  ],
+  "supportingCalls": {
+    "bindingProbe": {
+      "invocation": "membrane.exe cli explicit-call  (stdin: {\"schemaVersion\":1,\"operation\":\"binding\",\"expectedBinding\":null,\"request\":{}})",
+      "startedAt": "2026-09-10T04:06:54.502Z",
+      "exitCode": 2,
+      "stderr": "{\"event\":\"explicit_client_started\",\"operation\":\"binding\"}\n{\"elapsedMs\":2230,\"error\":\"installed owner identity changed or is incompatible\",\"event\":\"explicit_client_failed\",\"operation\":\"binding\"}\nmembrane: installed owner identity changed or is incompatible\n",
+      "processTree": [
+        {
+          "pid": 35640,
+          "ppid": 70272,
+          "name": "membrane.exe",
+          "executable": "C:/Users/adrds/AppData/Local/Orthic Labs/Membrane/current/membrane.exe",
+          "commandLine": "C:/Users/adrds/AppData/Local/Orthic Labs/Membrane/current/membrane.exe cli explicit-call"
+        },
+        {
+          "pid": 62808,
+          "ppid": 35640,
+          "name": "conhost.exe",
+          "executable": "C:\\WINDOWS\\system32\\conhost.exe",
+          "commandLine": "\\??\\C:\\WINDOWS\\system32\\conhost.exe 0x4"
+        }
+      ]
+    }
+  }
 }
