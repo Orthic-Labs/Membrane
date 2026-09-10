@@ -51,8 +51,13 @@ export const REPO_ROOT = resolve(HERE, "../../../");
 const INTERPRETED_EXTENSIONS = [".py", ".mjs", ".cjs", ".js", ".ts", ".sh", ".ps1", ".cmd", ".bat"];
 
 function installedRoot(context) {
-  return (context && context.installedRoot) || process.env.MEMBRANE_INSTALLED_ROOT ||
+  const configured = (context && context.installedRoot) || process.env.MEMBRANE_INSTALLED_ROOT ||
+    process.env.MEMBRANE_QUALIFICATION_INSTALLED_ROOT ||
     join(process.env.LOCALAPPDATA || "", "Orthic Labs", "Membrane");
+  // Qualification commonly supplies stable `current` as its installed root for
+  // executable probes. NCL-03 payload proof covers product-root residue too, so
+  // normalize that input to its parent before scanning.
+  return configured.replace(/[\\/]current$/i, "");
 }
 
 function installedExecutables(root) {
@@ -294,6 +299,17 @@ export function NCL_02(context) {
   const clusters = rows.filter((r) => r.action === "delete-after-parity");
   const withDestinationOwner = clusters.filter((r) => r.nativeDestinationOwner);
   const withoutDestinationOwner = clusters.filter((r) => !r.nativeDestinationOwner);
+
+  // Once every delete-after-parity row has been removed or converted to its
+  // terminal disposition, there are no parity clusters left to qualify.
+  if (clusters.length === 0) {
+    return {
+      status: "passed",
+      evidenceKind: "source",
+      detail: { clusterCount: 0, withDestinationOwner: 0, withoutDestinationOwner: [] },
+      reason: "NCL-02: interpreter-dispositions.json contains no delete-after-parity rows; parity-before-delete has no remaining clusters",
+    };
+  }
 
   // Vacuous-test detection is out of scope for a source-only check (it requires reading
   // and semantically evaluating another lane's Rust test bodies for assertion-free

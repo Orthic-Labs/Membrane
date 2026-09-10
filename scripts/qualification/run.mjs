@@ -310,6 +310,12 @@ export function selectGroupCases(cases, group) {
   return selected;
 }
 
+// Rows explicitly deferred until parity is established are still discovered
+// & executed when their group is run, but cannot block required closure.
+export function isRequiredCase(row) {
+  return row?.state !== "OPTIONAL_AFTER_PARITY";
+}
+
 const defaultImportCaseModule = (caseSourceRoot) => (specifier) => import(pathToFileURL(resolve(caseSourceRoot, specifier)).href);
 
 // Runs exactly one registry case to a terminal (never skipped) result: a case
@@ -381,7 +387,9 @@ export async function runRegistryQualification(options = {}) {
   if (!nonEmptyString(evidencePath)) throw new Error("--evidence is required");
 
   const { cases } = loadCaseRegistry(caseRegistryPath);
-  const discovered = selectGroupCases(cases, group).map((row) => row.id);
+  const selected = selectGroupCases(cases, group);
+  const discovered = selected.map((row) => row.id);
+  const requiredIds = selected.filter(isRequiredCase).map((row) => row.id);
   const byId = new Map(cases.map((row) => [row.id, row]));
 
   const executed = [];
@@ -404,8 +412,10 @@ export async function runRegistryQualification(options = {}) {
   for (const result of results) {
     if (result.evidenceKind) evidenceKindCounts[result.evidenceKind] = (evidenceKindCounts[result.evidenceKind] ?? 0) + 1;
   }
-  const failed = results.filter((result) => result.status !== "passed");
-  const functionalFailed = results.filter((result) => result.functionalStatus !== "passed");
+  const requiredSet = new Set(requiredIds);
+  const requiredResults = results.filter((result) => requiredSet.has(result.id));
+  const failed = requiredResults.filter((result) => result.status !== "passed");
+  const functionalFailed = requiredResults.filter((result) => result.functionalStatus !== "passed");
 
   const summary = {
     schema: "membrane.registry-qualification.v1",
@@ -417,7 +427,9 @@ export async function runRegistryQualification(options = {}) {
     caseSourceRoot,
     evidencePath,
     generatedAt: now(),
-    requiredIds: discovered,
+    discoveredIds: discovered,
+    requiredIds,
+    optionalIds: discovered.filter((id) => !requiredSet.has(id)),
     executedIds: executed,
     terminalIds: terminal,
     results,

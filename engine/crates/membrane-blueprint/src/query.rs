@@ -138,12 +138,12 @@ fn resolve(generation: &GraphGeneration, raw: &str, limits: Limits, context: &Re
         let limited: Vec<_> = matches.into_iter().take(limits.seeds.max(1)).collect();
         let candidates: Vec<Value> = limited.iter().map(|n| node_value(n)).collect();
         if ambiguous {
-            return Ok((String::new(), json!({"state":"ambiguous","resolutionTier":tier,"requested":query,"candidates":candidates,"candidateCount":candidates.len(),"ambiguous":true,"omissions":[omission("same_tier_ambiguity",Some(total_matches.saturating_sub(limits.seeds)))]})));
+            return Ok((String::new(), json!({"state":"ambiguous","resolutionTier":tier,"requested":query,"resolved":Value::Null,"candidates":candidates,"candidateCount":candidates.len(),"ambiguous":true,"omissions":[omission("same_tier_ambiguity",Some(total_matches.saturating_sub(limits.seeds)))]})));
         }
         let state = if tier == "fuzzy" { "low_confidence" } else { "resolved" };
         return Ok((if state == "resolved" { limited[0].id.clone() } else { String::new() }, json!({"state":state,"resolutionTier":tier,"requested":query,"resolved":if state == "resolved" { node_value(limited[0]) } else { Value::Null },"candidates":candidates,"candidateCount":1,"ambiguous":false,"omissions":if state == "low_confidence" { vec![omission("low_confidence_resolution",None)] } else { vec![] }})));
     }
-    Ok((String::new(), json!({"state":"unresolved","resolutionTier":"unresolved","requested":query,"candidates":[],"candidateCount":0,"ambiguous":false,"omissions":[omission("no_match",None)]})))
+    Ok((String::new(), json!({"state":"unresolved","resolutionTier":"unresolved","requested":query,"resolved":Value::Null,"candidates":[],"candidateCount":0,"ambiguous":false,"omissions":[omission("no_match",None)]})))
 }
 
 fn adjacent<'a>(generation: &'a GraphGeneration, root: &str, direction: &str, limits: Limits, context: &RequestContext) -> Result<(BTreeSet<String>, Vec<&'a GraphEdge>, BTreeMap<String, usize>, Vec<Value>), BlueprintError> {

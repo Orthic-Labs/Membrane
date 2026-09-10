@@ -169,10 +169,6 @@ if (!buildInfo.release_generation || buildInfo.release_generation.endsWith("unkn
     }
   }
 }
-// The installer path stops here: it needs the payload tree and the identity
-// guarantees above, not the archive and release evidence.
-if (payloadOnly) process.exit(0);
-
 const manifest = {
   schemaVersion: 1,
   product: "membrane",
@@ -188,6 +184,11 @@ const manifest = {
   ),
 };
 writeFileSync(join(payload, "release.json"), `${JSON.stringify(manifest, null, 2)}\n`);
+
+// The installer path stops here: it needs the payload tree and the identity
+// guarantees above, not the archive and release evidence. Keep release.json
+// in that tree so same-version repairs replace stale installed identity too.
+if (payloadOnly) process.exit(0);
 
 const archived = createPortableArchive({ sourceDir: payload, outputPath: archive });
 const fileEvidence = [{ name: archiveName, sha256: archived.sha256, size: archived.size }];

@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import test from 'node:test';
 import { runRegistryQualification } from '../run.mjs';
-import { PKG_01, PKG_02, PKG_03, PKG_04, PKG_05, parseControllerProbeFailure, queryInstalledControllerIdentity } from './pkg-windows.mjs';
+import { PKG_01, PKG_02, PKG_03, PKG_04, PKG_05, controllerIdentityFromHealth, parseControllerProbeFailure, queryInstalledControllerIdentity } from './pkg-windows.mjs';
 
 const workspaceRoot = resolve(new URL('../../../', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1'));
 
@@ -89,6 +89,43 @@ test('PKG_02: passes on matched windows-x86_64 unsigned identities', async () =>
     const result = await PKG_02({ row: { candidateManifestPath: candidatePath, installedManifestPath: installedPath }, workspaceRoot });
     assert.equal(result.status, 'passed');
     assert.equal(result.evidenceKind, 'installed');
+  } finally {
+    rmSync(scratch, { recursive: true, force: true });
+  }
+});
+
+test('PKG_02: prefers installed current/release.json over a stale root release manifest', async () => {
+  const scratch = mkdtempSync(join(tmpdir(), 'pkg02-portable-'));
+  try {
+    const current = join(scratch, 'current');
+    mkdirSync(current);
+    const generation = 'd'.repeat(64);
+    const candidatePath = join(scratch, 'candidate.json');
+    const stalePath = join(scratch, 'release-manifest.json');
+    writeFileSync(candidatePath, JSON.stringify({
+      schema: 'membrane.release-evidence.v1',
+      release: { target: 'windows-x86_64', generation, artifact_sha256: 'a'.repeat(64) },
+      signing: { status: 'unsigned' },
+    }));
+    writeFileSync(join(current, 'release.json'), JSON.stringify({
+      schemaVersion: 1,
+      product: 'membrane',
+      version: '0.1.24',
+      os: 'windows',
+      arch: 'x64',
+      releaseGeneration: `sha256:${generation}`,
+      agentPlugins: {},
+      files: {},
+    }));
+    writeFileSync(stalePath, JSON.stringify({
+      kind: 'rightkit-direct-release-manifest',
+      sourceCommit: KNOWN_INSTALLED_SOURCE_COMMIT,
+      assets: [{ target: 'windows-x86_64', sha256: 'b'.repeat(64) }],
+    }));
+    const result = await PKG_02({ row: { installedRoot: scratch, installedManifestPath: stalePath, candidateManifestPath: candidatePath }, workspaceRoot });
+    assert.equal(result.status, 'passed');
+    assert.equal(result.detail.adapted, true);
+    assert.equal(result.detail.generation, generation);
   } finally {
     rmSync(scratch, { recursive: true, force: true });
   }
@@ -194,6 +231,34 @@ test('PKG_03: fails when the controller reports a different identity than instal
   }
 });
 
+test('PKG_03: binds running identity to installed current/release.json instead of a stale configured manifest', async () => {
+  const scratch = mkdtempSync(join(tmpdir(), 'pkg03-portable-'));
+  try {
+    const current = join(scratch, 'current');
+    mkdirSync(current);
+    const generation = 'a'.repeat(64);
+    const stalePath = join(scratch, 'release-manifest.json');
+    const controllerPath = join(scratch, 'controller.json');
+    writeFileSync(join(current, 'release.json'), JSON.stringify({
+      schemaVersion: 1,
+      product: 'membrane',
+      version: '0.1.24',
+      os: 'windows',
+      arch: 'x64',
+      releaseGeneration: `sha256:${generation}`,
+      agentPlugins: {},
+      files: {},
+    }));
+    writeFileSync(stalePath, JSON.stringify({ release: { generation: 'sha256:stale' } }));
+    writeFileSync(controllerPath, JSON.stringify({ releaseGeneration: `sha256:${generation}`, sourceRoot: 'C:/Program Files/Membrane/current' }));
+    const result = await PKG_03({ row: { installedRoot: scratch, installedManifestPath: stalePath, controllerIdentityPath: controllerPath, disableSelfStart: true }, workspaceRoot });
+    assert.equal(result.status, 'passed');
+    assert.equal(result.detail.releaseGeneration, generation);
+  } finally {
+    rmSync(scratch, { recursive: true, force: true });
+  }
+});
+
 test('PKG_03: fails when the controller fell back to the development checkout', async () => {
   const scratch = mkdtempSync(join(tmpdir(), 'pkg03-fallback-'));
   try {
@@ -237,6 +302,24 @@ test('parseControllerProbeFailure: extracts the typed blueprint-watcher reason f
   assert.match(parsed.blueprintWatcherDetail, /deadline_exceeded/);
   assert.deepEqual(parsed.dailyAnalysis, { status: 'unavailable', reason: 'missing_output' });
   assert.equal(parsed.ok, false);
+});
+
+test('controllerIdentityFromHealth: extracts controller identity from parseable degraded health JSON', () => {
+  const health = {
+    ok: false,
+    releaseGeneration: `sha256:${'e'.repeat(64)}`,
+    sourceRoot: 'C:/Program Files/Membrane/current',
+    blueprintWatcher: { watcherState: 'watcher_unavailable' },
+  };
+  const identity = controllerIdentityFromHealth(health);
+  assert.equal(identity.releaseGeneration, health.releaseGeneration);
+  assert.equal(identity.sourceRoot, health.sourceRoot);
+  assert.equal(identity.raw, health);
+});
+
+test('controllerIdentityFromHealth: rejects health JSON without release identity', () => {
+  assert.equal(controllerIdentityFromHealth({ ok: false }), null);
+  assert.equal(controllerIdentityFromHealth(null), null);
 });
 
 test('parseControllerProbeFailure: never throws and degrades to null fields on unparseable stdout', () => {
@@ -364,6 +447,33 @@ test('registry runner closes unsigned functional qualification only on runtime e
     assert.equal(summary.status, 'passed');
     assert.equal(summary.functionalStatus, 'passed');
     assert.equal(summary.unsignedFunctional, true);
+  } finally {
+    rmSync(scratch, { recursive: true, force: true });
+  }
+});
+
+test('registry runner does not let OPTIONAL_AFTER_PARITY rows block required group closure', async () => {
+  const scratch = mkdtempSync(join(tmpdir(), 'registry-optional-boundary-'));
+  try {
+    const registryPath = join(scratch, 'registry.json');
+    const evidencePath = join(scratch, 'evidence.json');
+    writeFileSync(registryPath, JSON.stringify({ cases: [
+      { id: 'EX-1', group: 'EX', state: 'REQUIRED_WINDOWS', caseFile: 'fixture.mjs', caseExport: 'REQUIRED_PASS' },
+      { id: 'OPT-1', group: 'EX', state: 'OPTIONAL_AFTER_PARITY', caseFile: 'fixture.mjs', caseExport: 'OPTIONAL_DEFERRED' },
+    ] }));
+    const summary = await runRegistryQualification({
+      platform: 'windows', profile: 'internal-unsigned', caseRegistryPath: registryPath,
+      group: 'EX', evidencePath, workspaceRoot,
+      importCaseModule: async () => ({
+        REQUIRED_PASS: () => ({ status: 'passed', evidenceKind: 'installed' }),
+        OPTIONAL_DEFERRED: () => ({ status: 'insufficient', evidenceKind: 'source', reason: 'OPTIONAL_AFTER_PARITY' }),
+      }),
+    });
+    assert.equal(summary.status, 'passed');
+    assert.deepEqual(summary.discoveredIds, ['EX-1', 'OPT-1']);
+    assert.deepEqual(summary.requiredIds, ['EX-1']);
+    assert.deepEqual(summary.optionalIds, ['OPT-1']);
+    assert.equal(summary.results.find((result) => result.id === 'OPT-1').status, 'failed');
   } finally {
     rmSync(scratch, { recursive: true, force: true });
   }

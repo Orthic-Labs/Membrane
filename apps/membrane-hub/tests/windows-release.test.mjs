@@ -96,6 +96,9 @@ test("Windows release is signed, sealed & stays local", () => {
   assert.match(nsisTemplate, /Abort "Membrane installation failed at \$InstallStep/);
   assert.doesNotMatch(nsisTemplate, /File "\$\{MAINBINARYSRCPATH\}"/);
   assert.match(nsisTemplate, /membrane\.exe.*deactivate --install-root/);
+  assert.match(nsisTemplate, /Function RemoveRetiredBlueprintRuntimeAt/);
+  assert.match(nsisTemplate, /FindFirst \$0 \$1 "\$INSTDIR\\versions\\\*"/);
+  assert.match(nsisTemplate, /Push "\$INSTDIR\\runtime\\blueprint"/);
   assert.match(trayStartup, /RUN_VALUE_NAME: &str = "Membrane"/);
   assert.match(trayStartup, /LEGACY_RUN_VALUE_NAME: &str = "Membrane Tray"/);
   assert.match(trayInstance, /MembraneTrayOpenDashboardV1/);

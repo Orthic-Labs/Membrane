@@ -1519,6 +1519,8 @@ pub fn envelope_from_ccs(stdout: &str, input: EnvelopeInput) -> Result<Value, St
     let source_response_projection = raw_value.get("sourceResponse").cloned();
     let final_admission_projection = raw_value.get("finalAdmission").cloned();
     let admission_comparison_projection = raw_value.get("admissionComparison").cloned();
+    let contradiction_pairs_projection = raw_value.get("contradictionPairs").cloned();
+    let ambiguity_disposition_projection = raw_value.get("ambiguityDisposition").cloned();
     let provider_diagnostics_projection = raw_value.get("providerDiagnostics").cloned();
     let provider_outputs_projection = raw_value.get("providerOutputs").cloned();
     let journey_projection = raw_value.get("requirementEvidenceMap").cloned();
@@ -1576,6 +1578,12 @@ pub fn envelope_from_ccs(stdout: &str, input: EnvelopeInput) -> Result<Value, St
     }
     if let Some(value) = admission_comparison_projection {
         payload["admissionComparison"] = value;
+    }
+    if let Some(value) = contradiction_pairs_projection {
+        payload["contradictionPairs"] = value;
+    }
+    if let Some(value) = ambiguity_disposition_projection {
+        payload["ambiguityDisposition"] = value;
     }
     if let Some(value) = provider_diagnostics_projection {
         payload["providerDiagnostics"] = value;

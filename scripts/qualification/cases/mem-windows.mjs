@@ -10,8 +10,9 @@
 // Windows hosts" behavior — that requires the compiled/installed binary and
 // is the integration owner's registry-command execution, not this module's.
 
-import { readFileSync, existsSync, statSync } from "node:fs";
+import { readFileSync, existsSync, statSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
+import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -119,13 +120,26 @@ export function BM09(options = {}) {
 
   const missingPoints = findings.filter((f) => !f.ok);
   const pass = missingPoints.length === 0 && byName.size === REQUIRED_INJECTION_POINTS.length;
-  return {
+  const structural = {
     case: "BM09",
     evidenceKind: "source",
     pass,
     status: pass ? "passed" : "failed",
     findings,
     note: "Structural/static: proves descriptors exist and are complete. Live available->intact->discoverable->effective proof requires the installed registry-command run by the integration owner.",
+  };
+
+  if (!(options.installedRoot ?? process.env.MEMBRANE_QUALIFICATION_INSTALLED_ROOT)) return structural;
+  const installed = probeBM09Installed(options);
+  const installedPass = structural.pass && installed.pass;
+  return {
+    ...structural,
+    evidenceKind: "installed",
+    pass: installedPass,
+    status: installedPass ? "passed" : "failed",
+    findings: [...findings, { ok: installed.pass, reason: installed.reason, detail: installed.detail }],
+    detail: { structural, installed },
+    reason: installedPass ? "native installed HookHost probes passed for every descriptor delivery point" : installed.reason,
   };
 }
 
@@ -146,12 +160,8 @@ export function BM11(options = {}) {
     return { case: "BM11", evidenceKind: "source", pass: false, status: "failed", findings: [{ ok: false, reason: "corpus_files_missing" }] };
   }
 
-  const parseJsonl = (path) => readFileSync(path, "utf8").split(/\r?\n/u).filter((line) => line.trim().length > 0).map((line, lineNumber) => {
-    try { return JSON.parse(line); } catch { throw new Error(`${path}:${lineNumber + 1}: invalid JSON`); }
-  });
-
-  const tasks = parseJsonl(tasksPath);
-  const evidence = parseJsonl(evidencePath);
+  const tasks = readJsonlRecords(tasksPath);
+  const evidence = readJsonlRecords(evidencePath);
   const findings = [];
 
   if (tasks.length === 0) findings.push({ ok: false, reason: "no_tasks" });
@@ -174,7 +184,7 @@ export function BM11(options = {}) {
   }
 
   const pass = findings.length === 0;
-  return {
+  const structural = {
     case: "BM11",
     evidenceKind: "source",
     pass,
@@ -183,6 +193,25 @@ export function BM11(options = {}) {
     taskCount: tasks.length,
     note: "Minimum baseline per acceptance row; statistical/category expansion is sequenced later and not required at this checkpoint. This is a fixture-corpus attestation (structural/static), not a measured task-outcome.",
   };
+
+  if (!(options.installedRoot ?? process.env.MEMBRANE_QUALIFICATION_INSTALLED_ROOT)) return structural;
+  const installed = probeBM11Installed({ ...options, corpusDir });
+  const installedPass = structural.pass && installed.pass;
+  return {
+    ...structural,
+    evidenceKind: "installed",
+    pass: installedPass,
+    status: installedPass ? "passed" : "failed",
+    findings: [...findings, { ok: installed.pass, reason: installed.reason, detail: installed.detail }],
+    detail: { structural, installed },
+    reason: installedPass ? "native installed replay processed every baseline task with a validated baseline envelope" : installed.reason,
+  };
+}
+
+function readJsonlRecords(path) {
+  return readFileSync(path, "utf8").split(/\r?\n/u).filter((line) => line.trim().length > 0).map((line, lineNumber) => {
+    try { return JSON.parse(line); } catch { throw new Error(`${path}:${lineNumber + 1}: invalid JSON`); }
+  });
 }
 
 // MEM rows which use this module are source-bound checks. Each row keeps its
@@ -256,30 +285,157 @@ function memSourceCase(id, options = {}) {
   };
 }
 
-const INSTALLED_ROOT = process.env.MEMBRANE_QUALIFICATION_INSTALLED_ROOT
-  ?? "C:/Users/adrds/AppData/Local/Orthic Labs/Membrane/current";
-const INSTALLED_EXE = join(INSTALLED_ROOT, "membrane.exe");
+function installedExecutable(options = {}) {
+  const root = options.installedRoot ?? process.env.MEMBRANE_QUALIFICATION_INSTALLED_ROOT
+    ?? "C:/Users/adrds/AppData/Local/Orthic Labs/Membrane/current";
+  return join(resolve(root), "membrane.exe");
+}
 
-function installedJson(args) {
-  if (!existsSync(INSTALLED_EXE)) return { ok: false, reason: "installed_executable_missing", path: INSTALLED_EXE };
-  const result = spawnSync(INSTALLED_EXE, args, { encoding: "utf8", timeout: 30_000, windowsHide: true });
+function installedJson(args, options = {}) {
+  const exe = installedExecutable(options);
+  if (!existsSync(exe)) return { ok: false, reason: "installed_executable_missing", path: exe };
+  const result = spawnSync(exe, args, { encoding: "utf8", timeout: 30_000, windowsHide: true, cwd: options.workspaceRoot });
   const output = String(result.stdout ?? "").trim();
   let value = null;
   try { value = output ? JSON.parse(output) : null; } catch { /* preserve raw diagnostic below */ }
-  return { ok: result.status === 0 && value !== null, status: result.status, value, stderr: String(result.stderr ?? "").trim() };
+  return { ok: result.status === 0 && value !== null, status: result.status, value, stderr: String(result.stderr ?? "").trim(), stdout: output };
 }
 
-function installedMcp(methods) {
-  if (!existsSync(INSTALLED_EXE)) return { ok: false, reason: "installed_executable_missing", path: INSTALLED_EXE };
+function installedMcp(methods, options = {}) {
+  const exe = installedExecutable(options);
+  if (!existsSync(exe)) return { ok: false, reason: "installed_executable_missing", path: exe };
   const requests = [
     { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "membrane-qualification", version: "1" } } },
     ...methods.map((method, index) => ({ jsonrpc: "2.0", id: index + 2, method, params: {} })),
   ];
-  const result = spawnSync(INSTALLED_EXE, ["stdio-mcp"], { input: `${requests.map((request) => JSON.stringify(request)).join("\n")}\n`, encoding: "utf8", timeout: 30_000, windowsHide: true });
+  const result = spawnSync(exe, ["stdio-mcp"], { input: `${requests.map((request) => JSON.stringify(request)).join("\n")}\n`, encoding: "utf8", timeout: 30_000, windowsHide: true, cwd: options.workspaceRoot });
   const responses = String(result.stdout ?? "").trim().split(/\r?\n/u).filter(Boolean).map((line) => {
     try { return JSON.parse(line); } catch { return null; }
   });
   return { ok: result.status === 0 && responses.length >= requests.length, status: result.status, responses, stderr: String(result.stderr ?? "").trim() };
+}
+
+const BM09_EVENT_PROBES = [
+  { point: "session_start", event: "SessionStart", modules: ["membrane.cortex-status", "membrane.memory-rearm"] },
+  { point: "user_prompt", event: "UserPromptSubmit", modules: ["membrane.memory-recall"] },
+  { point: "pre_tool", event: "PreToolUse", modules: ["membrane.memory-bump", "membrane.diagnostics-fence", "membrane.memory-conflict"] },
+  { point: "post_edit", event: "PostToolUse", modules: ["membrane.memory-ingest", "membrane.diagnostics-observe"] },
+  { point: "post_tool", event: "PostToolUse", modules: ["membrane.tool-observer", "membrane.diagnostics-observe"] },
+  { point: "pre_compaction", event: "PreCompact", modules: ["membrane.memory-pre-compact"] },
+  { point: "resume", event: "SessionStart", modules: ["membrane.memory-rearm"] },
+];
+
+function hookPayload(probe, workspaceRoot) {
+  const payload = {
+    hook_event_name: probe.event,
+    session_id: "membrane-bm09-session",
+    thread_id: "membrane-bm09-session",
+    cwd: workspaceRoot,
+    source: probe.point === "resume" ? "resume" : "qualification",
+  };
+  if (probe.point === "user_prompt") payload.prompt = "qualification probe";
+  if (probe.point === "pre_tool") {
+    payload.tool_name = "Bash";
+    payload.tool_input = { command: "git status --short" };
+  }
+  if (probe.point === "post_edit") {
+    payload.tool_name = "Edit";
+    payload.tool_input = { file_path: join(workspaceRoot, "README.md"), new_string: "qualification" };
+    payload.tool_response = { ok: true };
+  }
+  if (probe.point === "post_tool") {
+    payload.tool_name = "Bash";
+    payload.tool_input = { command: "git status --short" };
+    payload.tool_response = { ok: true };
+  }
+  return payload;
+}
+
+function runHookProbe(exe, probe, workspaceRoot) {
+  const result = spawnSync(exe, ["hook"], {
+    input: `${JSON.stringify(hookPayload(probe, workspaceRoot))}\n`, encoding: "utf8",
+    timeout: 30_000, windowsHide: true, cwd: workspaceRoot,
+  });
+  if (result.error || result.status !== 0) return { ok: false, point: probe.point, reason: `hook process failed: ${result.error?.message || result.status}` };
+  let response;
+  try { response = JSON.parse(String(result.stdout || "").trim()); } catch { return { ok: false, point: probe.point, reason: "hook returned non-JSON output" }; }
+  const dispatch = response.membraneHook;
+  const output = response.hookSpecificOutput;
+  const results = Array.isArray(dispatch?.results) ? dispatch.results : [];
+  const ids = new Set(results.map((entry) => entry?.id));
+  const modulesPresent = probe.modules.every((id) => ids.has(id));
+  const outputsValid = results.every((entry) => entry?.status === "ok" && entry.output?.schemaVersion === 1 && entry.output.kind === "membrane.hook.status" && typeof entry.output.reason === "string");
+  const ok = dispatch?.schemaVersion === 1 && dispatch.event === probe.event && dispatch.status === "ok"
+    && output?.hookEventName === probe.event && results.length === 16 && modulesPresent && outputsValid;
+  return { ok, point: probe.point, event: probe.event, moduleCount: results.length, modules: probe.modules, reason: ok ? "native_hook_dispatch_validated" : "native_hook_dispatch_invalid", response };
+}
+
+function runExplicitPullProbe(exe, workspaceRoot) {
+  const requests = [
+    { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "membrane-qualification", version: "1" } } },
+    { jsonrpc: "2.0", id: 2, method: "tools/list", params: {} },
+    { jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "membrane_context", arguments: {} } },
+  ];
+  const result = spawnSync(exe, ["stdio-mcp"], {
+    input: `${requests.map((request) => JSON.stringify(request)).join("\n")}\n`, encoding: "utf8",
+    timeout: 30_000, windowsHide: true, cwd: workspaceRoot,
+  });
+  const responses = String(result.stdout ?? "").trim().split(/\r?\n/u).filter(Boolean).map((line) => {
+    try { return JSON.parse(line); } catch { return null; }
+  }).filter(Boolean);
+  const init = responses.find((entry) => entry.id === 1)?.result;
+  const tools = responses.find((entry) => entry.id === 2)?.result?.tools;
+  const call = responses.find((entry) => entry.id === 3)?.result?.structuredContent;
+  const ok = result.status === 0 && init?.serverInfo?.name === "membrane" && Array.isArray(tools)
+    && tools.some((tool) => tool.name === "membrane_context")
+    && call?.operation === "membrane_context" && call.result?.kind === "error" && call.result.code === "context_envelope_invalid";
+  return { ok, reason: ok ? "native_explicit_pull_discovered_and_rejected_invalid_envelope" : "native_explicit_pull_probe_invalid", toolCount: Array.isArray(tools) ? tools.length : 0, response: { init, call }, stderr: String(result.stderr ?? "").trim() };
+}
+
+export function probeBM09Installed(options = {}) {
+  const exe = installedExecutable(options);
+  const workspaceRoot = resolve(options.workspaceRoot ?? REPO_ROOT);
+  if (!existsSync(exe)) return { pass: false, reason: "installed_executable_missing", detail: { path: exe } };
+  const build = installedJson(["cli", "build-info"], { ...options, workspaceRoot });
+  if (!build.ok || build.value?.target !== "x86_64-pc-windows-msvc") return { pass: false, reason: "installed_build_identity_invalid", detail: { build } };
+  const hooks = BM09_EVENT_PROBES.map((probe) => runHookProbe(exe, probe, workspaceRoot));
+  const explicitPull = runExplicitPullProbe(exe, workspaceRoot);
+  const pass = hooks.every((probe) => probe.ok) && explicitPull.ok;
+  return { pass, reason: pass ? "available_intact_discoverable_effective" : "installed_hook_or_explicit_pull_probe_failed", detail: { executable: exe, build: build.value, hooks, explicitPull } };
+}
+
+export function probeBM11Installed(options = {}) {
+  const corpusDir = options.corpusDir ?? CORPUS_DIR;
+  const exe = installedExecutable(options);
+  const workspaceRoot = resolve(options.workspaceRoot ?? REPO_ROOT);
+  if (!existsSync(exe)) return { pass: false, reason: "installed_executable_missing", detail: { path: exe } };
+  let tasks;
+  try { tasks = readJsonlRecords(join(corpusDir, "tasks.jsonl")); } catch (error) { return { pass: false, reason: `corpus_task_read_failed: ${error.message}` }; }
+  const temp = mkdtempSync(join(tmpdir(), "membrane-bm11-replay-"));
+  const input = join(temp, "replay.jsonl");
+  try {
+    writeFileSync(input, `${tasks.map((task) => JSON.stringify({ row_id: task.taskId, query: task.prompt, scope: "global" })).join("\n")}\n`, "utf8");
+    const replay = spawnSync(exe, ["cli", "replay", "--input", input, "-k", "20"], {
+      encoding: "utf8", timeout: 60_000, windowsHide: true, cwd: workspaceRoot,
+      env: { ...process.env, ...(options.env ?? {}), WORKSPACE_ROOT: undefined },
+    });
+    const rows = String(replay.stdout ?? "").trim().split(/\r?\n/u).filter(Boolean).map((line) => {
+      try { return JSON.parse(line); } catch { return null; }
+    });
+    const expectedIds = tasks.map((task) => task.taskId);
+    const rowIds = rows.map((row) => row?.row_id);
+    const replayPass = replay.status === 0 && rows.length === expectedIds.length
+      && sameStringSet(rowIds, expectedIds) && rows.every((row) => Array.isArray(row?.ranked_ids));
+    const baseline = installedJson(["cli", "baseline", "--scope", "global", "-k", "20"], { ...options, workspaceRoot });
+    const baselinePass = baseline.ok && baseline.value?.schemaVersion === 1 && baseline.value.mode === "baseline"
+      && baseline.value.task === "__cortex_baseline_projection__" && Array.isArray(baseline.value.candidates) && Array.isArray(baseline.value.omissions);
+    const pass = replayPass && baselinePass;
+    return { pass, reason: pass ? "installed replay processed complete corpus & baseline projection" : "installed replay or baseline projection failed", detail: { executable: exe, taskCount: tasks.length, replay: { status: replay.status, rows }, baseline: baseline.value, stderr: String(replay.stderr ?? "").trim() } };
+  } finally { rmSync(temp, { recursive: true, force: true }); }
+}
+
+function sameStringSet(left, right) {
+  return left.length === right.length && new Set(left).size === left.length && left.every((value) => right.includes(value));
 }
 
 export function MEM_011(options = {}) {

@@ -73,6 +73,7 @@ test("portable payload is signed, hashed & includes activation plus Agent Plugin
   assert.match(packager, /createPortableArchive/);
   assert.match(packager, /materializeCycloneDxSbom/);
   assert.match(packager, /materializeInTotoSlsaProvenance/);
+  assert.ok(packager.indexOf('writeFileSync(join(payload, "release.json"') < packager.indexOf('if (payloadOnly) process.exit(0)'), "payload-only tree includes current release identity");
   for (const name of ["mcp/install.mjs", "mcp/project-registry.mjs", "mcp/installation-binding.mjs", "mcp/repository-catalog.mjs", "mcp/blueprint-readiness.mjs"]) {
     assert.doesNotMatch(packager, new RegExp(name.replaceAll("/", "\\/")));
     assert.doesNotMatch(candidateBuild, new RegExp(name.replaceAll("/", "\\/")));

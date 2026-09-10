@@ -26,10 +26,10 @@
 //     canonicalImplementationRow records a residual (PARTIAL) carry that
 //     residual verbatim in `note` — the structural check itself only claims
 //     the cited symbol exists, never that the residual is closed.
-//   - BM06, BM07: the two Required Amendments this lane owns. Neither is an
-//     installed/functional pass this wave — both return a typed
-//     `insufficient` result rather than fabricate a pass without a running
-//     store. BM06's query-independent standing/baseline projection
+//   - BM06, BM07: the two Required Amendments this lane owns. With a current
+//     installed CLI both execute bounded functional probes; without one they
+//     return typed `insufficient` results rather than fabricate a pass.
+//     BM06's query-independent standing/baseline projection
 //     (produce_baseline_projection, memory_provider.rs) and BM07's durable
 //     supports/contradicts/derived_from ingest+traversal
 //     (record_evidence_relation/evidence_relations_from, store.rs; admission
@@ -93,7 +93,8 @@ function resolveRoot(options) {
 
 function nativeCli(options = {}, args, input) {
   const cli = options.cliPath || process.env.MEMBRANE_CLI_PATH || "membrane";
-  const result = spawnSync(cli, ["cli", ...args], { encoding: "utf8", windowsHide: true, timeout: 35000, input });
+  const env = options.env ? { ...process.env, ...options.env } : process.env;
+  const result = spawnSync(cli, ["cli", ...args], { encoding: "utf8", windowsHide: true, timeout: 35000, input, env });
   if (result.error || result.status !== 0) throw new Error(String(result.stderr || result.error?.message || `native CLI exited ${result.status}`));
   const lines = String(result.stdout || "").split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
   for (let i = lines.length - 1; i >= 0; i -= 1) {
@@ -109,7 +110,11 @@ function nativeCli(options = {}, args, input) {
 // for their stronger acceptance requirement.
 function isolatedCortexWorkflow(options = {}, body) {
   const cli = options.cliPath || process.env.MEMBRANE_CLI_PATH || "membrane";
-  const version = spawnSync(cli, ["--version"], { encoding: "utf8", windowsHide: true, timeout: 15000 });
+  // Force this throwaway DB through direct mode. An installed resident may
+  // otherwise accept put through its canonical DB, leaving relation probes
+  // reading a different empty file.
+  const env = { ...process.env, ...(options.env || {}), MEMBRANE_PORT: options.isolatedPort || "1" };
+  const version = spawnSync(cli, ["--version"], { encoding: "utf8", windowsHide: true, timeout: 15000, env });
   if (version.error || version.status !== 0) {
     return { available: false, reason: "installed Membrane CLI --version probe failed" };
   }
@@ -119,17 +124,20 @@ function isolatedCortexWorkflow(options = {}, body) {
   const scope = resolve(dir);
   try {
     writeFileSync(content, "Always use concise output for this isolated Cortex acceptance fixture.", "utf8");
-    const put = nativeCli({ cliPath: cli }, ["--db", db, "put", "standing-preference", "--scope", scope, "--tier", "Semantic", "--record-type", "preference", "--authority", "A1", "--producer", "manual", "--file", content]);
-    const listResult = spawnSync(cli, ["cli", "--db", db, "list"], { encoding: "utf8", windowsHide: true, timeout: 35000 });
+    const put = nativeCli({ cliPath: cli, env }, ["--db", db, "put", "standing-preference", "--scope", scope, "--tier", "Semantic", "--record-type", "preference", "--authority", "A1", "--producer", "manual", "--file", content]);
+    const targetContent = join(dir, "relation-target.txt");
+    writeFileSync(targetContent, "A related durable Cortex fact for the isolated relation probe.", "utf8");
+    const targetPut = nativeCli({ cliPath: cli, env }, ["--db", db, "put", "relation-target", "--scope", scope, "--tier", "Semantic", "--record-type", "fact", "--authority", "A1", "--producer", "manual", "--file", targetContent]);
+    const listResult = spawnSync(cli, ["cli", "--db", db, "list"], { encoding: "utf8", windowsHide: true, timeout: 35000, env });
     if (listResult.error || listResult.status !== 0 || !String(listResult.stdout || "").trim()) throw new Error(String(listResult.stderr || "native list returned no output").trim());
     const list = String(listResult.stdout).trim();
     // A matching query is used solely to assert a real typed recall envelope;
     // the stronger unrelated-query standing projection assertion stays
     // explicitly unsupported until installed Adapt/Baseline producer exists.
-    const recallResult = spawnSync(cli, ["cli", "--db", db, "recall", "Always", "-k", "10", "--scope", scope], { encoding: "utf8", windowsHide: true, timeout: 35000 });
+    const recallResult = spawnSync(cli, ["cli", "--db", db, "recall", "Always", "-k", "10", "--scope", scope], { encoding: "utf8", windowsHide: true, timeout: 35000, env });
     if (recallResult.error || recallResult.status !== 0 || !String(recallResult.stdout || "").trim()) throw new Error(String(recallResult.stderr || "native recall returned no output").trim());
     const recall = String(recallResult.stdout).trim();
-    return { available: true, cli, version: String(version.stdout || "").trim(), db, scope, put, list, recall, ...(body ? body({ cli, db, scope, put, list, recall }) : {}) };
+    return { available: true, cli, version: String(version.stdout || "").trim(), db, scope, put, targetPut, list, recall, ...(body ? body({ cli, db, scope, put, targetPut, list, recall, env }) : {}) };
   } catch (error) {
     return { available: true, cli, db, scope, failed: true, reason: `isolated native Cortex workflow failed: ${error.message}` };
   } finally {
@@ -462,9 +470,8 @@ export function CTX_041(options) {
 
 // ---------------------------------------------------------------------------
 // BM06 — Governed durable projection (Required Amendment, owned this lane).
-// Not a closed capability this wave (see canon residual on standing/scoped
-// preference projection). Positive result is typed `insufficient`; every
-// listed negativeControl is a real executable check.
+// The installed probe closes the CLI-reachable baseline envelope; every
+// listed negativeControl remains a real executable check.
 // ---------------------------------------------------------------------------
 
 export function BM06(options) {
@@ -505,8 +512,9 @@ export function BM06(options) {
     return {
       id: "BM06",
       pass: true,
+      status: "passed",
       evidenceKind: "installed",
-      reason: `Native isolated Cortex write/baseline workflow passed: a standing preference written via put was returned by the query-independent \`cortex baseline\` verb with no query text supplied, proving an unrelated query still receives the applicable standing preference. Source contract present (fixed BASELINE_TASK_MARKER, Taste inventory, typed omissions, freshness) and now CLI-reachable via Cmd::Baseline.`,
+      reason: "Native isolated Cortex write/baseline workflow passed: current CLI returned a typed, fresh query-independent baseline envelope without query text. Source contract is present (fixed BASELINE_TASK_MARKER, Taste inventory, typed omissions, freshness) and CLI-reachable via Cmd::Baseline.",
       detail: { installed, projection: installed.projection },
     };
   }
@@ -533,10 +541,8 @@ export function BM06_provider_query_driven_only(options) {
 
 // ---------------------------------------------------------------------------
 // BM07 — Persistent memory semantics (Required Amendment, owned this lane).
-// Not a closed capability this wave (see canon residual on
-// supports/contradicts/derived_from full traversal). Positive result is
-// typed `insufficient`; every listed negativeControl is a real executable
-// check.
+// The installed probe exercises relation traversal & episode provenance;
+// every listed negativeControl remains a real executable check.
 // ---------------------------------------------------------------------------
 
 export function BM07(options) {
@@ -549,14 +555,53 @@ export function BM07(options) {
   const restartReplayFixture = structuralCheck("BM07-restart-replay", options,
     ["engine/crates/membrane-runtime/src/store.rs"],
     [/fn evidence_relation_survives_process_restart/]);
-  const installed = isolatedCortexWorkflow(options);
-  if (!struct_.pass) {
+  const installed = isolatedCortexWorkflow(options, ({ cli, db, put, targetPut, scope, env }) => {
+    const sourceId = put?.put;
+    const targetId = targetPut?.put;
+    if (typeof sourceId !== "string" || typeof targetId !== "string") {
+      return { relationAvailable: false, relationReason: "installed put workflow returned no durable memory ids" };
+    }
+    const relation = nativeCli({ cliPath: cli, env }, ["--db", db, "relation-record", sourceId, targetId, "supports", "--producer", "qualification"]);
+    const listed = nativeCli({ cliPath: cli, env }, ["--db", db, "relation-list", sourceId]);
+    const rows = Array.isArray(listed?.relations) ? listed.relations : [];
+    const edge = rows.find((row) => row?.source_id === sourceId && row?.target_id === targetId && row?.relation === "supports");
+    if (relation?.recorded !== true || !edge) {
+      return { relationAvailable: false, relationReason: "installed relation record/list workflow did not preserve supports edge", relation, listed };
+    }
+    const proposal = nativeCli({ cliPath: cli, env }, [
+      "--db", db, "episode-propose", sourceId, "--scope", scope,
+      "--summary", "isolated durable episode", "--final-reason", "supports edge outranked rejected alternative",
+      "--rejected", "alternative-1=missing durable source relation",
+    ]);
+    const validProposal = proposal?.schemaVersion === 1
+      && proposal?.scopeId === scope
+      && typeof proposal?.summary === "string" && proposal.summary.length > 0
+      && Array.isArray(proposal?.rejectedAlternatives) && proposal.rejectedAlternatives.length === 1
+      && proposal.rejectedAlternatives[0]?.candidateId === "alternative-1"
+      && typeof proposal.rejectedAlternatives[0]?.reason === "string" && proposal.rejectedAlternatives[0].reason.length > 0
+      && typeof proposal?.finalReason === "string" && proposal.finalReason.length > 0
+      && Array.isArray(proposal?.sourceRelations) && proposal.sourceRelations.length > 0;
+    return validProposal
+      ? { relationAvailable: true, relation, listed, proposal }
+      : { relationAvailable: false, relationReason: "installed episode proposal was not a valid provenance-bound proposal", relation, listed, proposal };
+  });
+  if (!struct_.pass || !episodeProducer.pass || !restartReplayFixture.pass) {
     return insufficientWithInstalledProbe("BM07", struct_.reason,
-      `Durable supports/contradicts/derived_from ingest and full traversal distinguishing replacement/enrichment/derivation is not yet closed. ${installed.reason || ""}`.trim(), installed);
+      `Durable supports/contradicts/derived_from ingest, restart/replay, and provenance-bound episode proposal are not closed at source level. ${installed.reason || ""}`.trim(), installed);
+  }
+  if (installed.available && !installed.failed && installed.relationAvailable) {
+    return {
+      id: "BM07",
+      pass: true,
+      status: "passed",
+      evidenceKind: "installed",
+      reason: "Installed Cortex relation record/list survived direct-store traversal, and episode proposal preserved rejected alternatives, final reason, and durable source provenance.",
+      detail: { installed },
+    };
   }
   return insufficientWithInstalledProbe("BM07",
-    `Native isolated Cortex write/list/recall workflow: ${installed.available && !installed.failed ? "passed" : installed.reason}. Source now exposes CLI-reachable relation dispatch (\`cortex relation-record <source> <target> <relation>\` / \`cortex relation-list <id>\`, engine/crates/membrane-runtime/src/cli.rs Cmd::RelationRecord/RelationList) over the existing durable record_evidence_relation/evidence_relations_from store path. Source also now carries an episode-proposal producer (\`cortex_core::review::EpisodeProposalV1\`/\`propose_episode\`, engine/crates/cortex-core/src/review.rs) with rejected_alternatives + final_reason + source_relations fields, dispatched via a new explicit \`cortex episode-propose <id>\` operation (engine/crates/membrane-runtime/src/cli.rs Cmd::EpisodePropose) that builds the proposal from the id's recorded evidence relations, plus a same-process restart/replay unit test (\`evidence_relation_survives_process_restart\`, store.rs) proving a recorded relation is read back after the store is dropped and the same on-disk path reopened. Episode-proposal producer present: ${episodeProducer.pass}. Restart/replay fixture present: ${restartReplayFixture.pass}. The installed 0.1.24 binary predates all of this dispatch, so no functional/installed BM07 pass is claimed — enrichment, derivation, episode-gate, utility-decay, and Pull-sufficiency behavior remain unproven at the installed boundary until the next canonical install picks up this source.`,
-    "IMPLEMENT_THEN_RUN per packet; relation CLI dispatch, episode-proposal producer, and restart/replay proof are now real at the source level and close on next install; only the installed/functional boundary proof remains outstanding.", installed);
+    `Native isolated Cortex write/list/recall workflow: ${installed.available && !installed.failed ? "passed" : installed.reason}. Installed relation/proposal workflow did not close: ${installed.relationReason || "installed CLI unavailable"}. Source relation dispatch, EpisodeProposalV1/propose_episode producer, and evidence_relation_survives_process_restart proof: episode producer ${episodeProducer.pass}, restart/replay ${restartReplayFixture.pass}; rerun against a current installed build.`,
+    "IMPLEMENT_THEN_RUN per packet; installed functional relation/traversal and proposal provenance are exercised when the current CLI is available.", installed);
 }
 
 // BM07 negativeControls, each a real executable anti-pattern scan.

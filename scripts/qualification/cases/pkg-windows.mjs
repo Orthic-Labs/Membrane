@@ -32,6 +32,17 @@ const readJsonIfExists = (path) => {
     return null;
   }
 };
+function installedReleaseManifest({ installedRoot, configuredPath } = {}) {
+  const candidates = [];
+  if (nonEmptyString(installedRoot)) {
+    const root = resolve(installedRoot);
+    candidates.push(join(root, "current", "release.json"));
+    candidates.push(join(root, "release.json"));
+  }
+  if (nonEmptyString(configuredPath)) candidates.push(resolve(configuredPath));
+  const path = candidates.find((candidate) => existsSync(candidate)) ?? null;
+  return { path, value: path ? readJsonIfExists(path) : null };
+}
 
 // ---------------------------------------------------------------------------
 // PKG-01 — Registry runner contract
@@ -125,6 +136,7 @@ export function PKG_TEST_NO_EVIDENCE_KIND() {
 const FORBIDDEN_TARGET_PATTERN = /\b(mac|macos|darwin|ios|nsis-desktop|desktop)\b/i;
 const RIGHTKIT_DIRECT_KIND = "rightkit-direct-release-manifest";
 const ENGINE_SUBTREE = "engine";
+const normalizeGeneration = (value) => nonEmptyString(value) && value.startsWith("sha256:") ? value.slice("sha256:".length) : value;
 
 // The shipped installed release-manifest.json is schema
 // 'rightkit-direct-release-manifest' (assets[] carrying per-asset
@@ -169,6 +181,18 @@ function findPreferredAsset(assets, preferredTarget = "windows-x86_64") {
 // artifact_sha256 }, signing }) whether or not adaptation happened, so PKG_02's
 // comparison logic below never needs to branch on the source manifest's schema.
 function deriveInstalledReleaseEvidence(installed, workspaceRoot) {
+  if (installed?.product === "membrane" && installed?.schemaVersion === 1 && installed?.os === "windows" && installed?.arch === "x64" && nonEmptyString(installed.releaseGeneration)) {
+    return {
+      evidence: {
+        release: { target: "windows-x86_64", generation: normalizeGeneration(installed.releaseGeneration), artifact_sha256: null },
+        signing: { status: "unsigned" },
+      },
+      adapted: true,
+      skipArtifactComparison: true,
+      generationError: null,
+      sourceCommit: null,
+    };
+  }
   if (!installed || installed.kind !== RIGHTKIT_DIRECT_KIND) {
     return { evidence: installed, adapted: false, skipArtifactComparison: false, generationError: null, sourceCommit: null };
   }
@@ -207,9 +231,11 @@ function deriveInstalledReleaseEvidence(installed, workspaceRoot) {
 
 export async function PKG_02({ row, workspaceRoot }) {
   const candidateManifestPath = row?.candidateManifestPath ?? process.env.MEMBRANE_QUALIFICATION_CANDIDATE_MANIFEST;
-  const installedManifestPath = row?.installedManifestPath ?? process.env.MEMBRANE_QUALIFICATION_INSTALLED_MANIFEST;
+  const installedRoot = row?.installedRoot ?? process.env.MEMBRANE_QUALIFICATION_INSTALLED_ROOT;
+  const installedManifest = installedReleaseManifest({ installedRoot, configuredPath: row?.installedManifestPath ?? process.env.MEMBRANE_QUALIFICATION_INSTALLED_MANIFEST });
+  const installedManifestPath = installedManifest.path;
   const candidate = readJsonIfExists(candidateManifestPath);
-  const installedRaw = readJsonIfExists(installedManifestPath);
+  const installedRaw = installedManifest.value;
 
   if (!candidate || !installedRaw) {
     return {
@@ -239,8 +265,8 @@ export async function PKG_02({ row, workspaceRoot }) {
     return { status: "failed", evidenceKind: "installed", reason: `expected target windows-x86_64; candidate=${candidateTarget} installed=${installedTarget}` };
   }
 
-  const candidateGeneration = candidate.release?.generation ?? candidate.releaseGeneration ?? null;
-  const installedGeneration = installed.release?.generation ?? installed.releaseGeneration ?? null;
+  const candidateGeneration = normalizeGeneration(candidate.release?.generation ?? candidate.releaseGeneration ?? null);
+  const installedGeneration = normalizeGeneration(installed.release?.generation ?? installed.releaseGeneration ?? null);
   const candidateArtifact = candidate.release?.artifact_sha256 ?? candidate.artifact?.sha256 ?? null;
   const installedArtifact = installed.release?.artifact_sha256 ?? installed.artifact?.sha256 ?? null;
   if (!nonEmptyString(candidateGeneration) || candidateGeneration !== installedGeneration) {
@@ -327,6 +353,15 @@ export function parseControllerProbeFailure({ status = null, stdout = null, stde
   };
 }
 
+export function controllerIdentityFromHealth(health) {
+  if (!health || typeof health !== "object" || !nonEmptyString(health.releaseGeneration)) return null;
+  return {
+    releaseGeneration: health.releaseGeneration,
+    sourceRoot: health.sourceRoot ?? health.checkoutRoot ?? null,
+    raw: health,
+  };
+}
+
 export function queryInstalledControllerIdentity(installedRoot) {
   if (!nonEmptyString(installedRoot)) return null;
   const exe = join(resolve(installedRoot), "membrane.exe");
@@ -334,15 +369,24 @@ export function queryInstalledControllerIdentity(installedRoot) {
   try {
     const stdout = execFileSync(exe, ["cli", "health"], { cwd: resolve(installedRoot), encoding: "utf8", windowsHide: true, timeout: 10_000 });
     const health = JSON.parse(stdout);
-    return {
-      releaseGeneration: health.releaseGeneration ?? null,
-      sourceRoot: health.sourceRoot ?? health.checkoutRoot ?? null,
-      raw: health,
-    };
+    return controllerIdentityFromHealth(health);
   } catch (error) {
     const stdout = typeof error?.stdout === "string" ? error.stdout : error?.stdout?.toString?.("utf8");
     const stderr = typeof error?.stderr === "string" ? error.stderr : error?.stderr?.toString?.("utf8");
     lastControllerProbeFailureDetail = parseControllerProbeFailure({ status: error?.status ?? null, stdout, stderr });
+    // `cli health` returns a typed non-zero exit when an unrelated resident
+    // subsystem is degraded, but its JSON body still carries controller
+    // identity. Preserve that live identity for PKG-03 while retaining the
+    // failure detail for diagnostics.
+    if (nonEmptyString(stdout)) {
+      try {
+        const health = JSON.parse(stdout);
+        const identity = controllerIdentityFromHealth(health);
+        if (identity) return identity;
+      } catch {
+        // A non-JSON health response remains unavailable.
+      }
+    }
     return null;
   }
 }
@@ -396,13 +440,14 @@ function startInstalledHubResident(installedRoot, timeoutMs) {
 }
 
 export async function PKG_03({ row, workspaceRoot }) {
-  const installedManifestPath = row?.installedManifestPath ?? process.env.MEMBRANE_QUALIFICATION_INSTALLED_MANIFEST;
+  const installedRoot = row?.installedRoot ?? process.env.MEMBRANE_QUALIFICATION_INSTALLED_ROOT;
+  const installedManifest = installedReleaseManifest({ installedRoot, configuredPath: row?.installedManifestPath ?? process.env.MEMBRANE_QUALIFICATION_INSTALLED_MANIFEST });
+  const installedManifestPath = installedManifest.path;
   const controllerIdentityPath = row?.controllerIdentityPath ?? process.env.MEMBRANE_QUALIFICATION_CONTROLLER_IDENTITY;
-  const installedRaw = readJsonIfExists(installedManifestPath);
+  const installedRaw = installedManifest.value;
   const { evidence: installed, adapted, generationError, sourceCommit } = deriveInstalledReleaseEvidence(installedRaw, workspaceRoot);
   let controller = readJsonIfExists(controllerIdentityPath);
   let controllerSource = controllerIdentityPath ? "file" : null;
-  const installedRoot = row?.installedRoot ?? process.env.MEMBRANE_QUALIFICATION_INSTALLED_ROOT;
   let startedPid = null;
 
   try {
@@ -455,8 +500,8 @@ export async function PKG_03({ row, workspaceRoot }) {
       };
     }
 
-    const installedGeneration = installed.release?.generation ?? installed.releaseGeneration ?? null;
-    const reportedGeneration = controller.releaseGeneration ?? controller.release?.generation ?? null;
+    const installedGeneration = normalizeGeneration(installed.release?.generation ?? installed.releaseGeneration ?? null);
+    const reportedGeneration = normalizeGeneration(controller.releaseGeneration ?? controller.release?.generation ?? null);
     if (!nonEmptyString(reportedGeneration) || reportedGeneration !== installedGeneration) {
       return { status: "failed", evidenceKind: "host", reason: `running controller identity ${reportedGeneration} does not equal installed current ${installedGeneration}` };
     }

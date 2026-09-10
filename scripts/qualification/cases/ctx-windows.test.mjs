@@ -119,11 +119,15 @@ test("negative control: CTX-017 fails when graph.rs omits the closed relation vo
 // fault (never all failing for the same reason).
 // ---------------------------------------------------------------------------
 
-test("BM06 never returns pass:true from this edit-only pass (no fabricated pass for an unimplemented capability)", () => {
+test("BM06 reports installed baseline execution when current CLI is available", () => {
   const result = cases.BM06();
-  assert.equal(result.pass, false);
-  assert.equal(result.status, "insufficient");
   assert.equal(result.id, "BM06");
+  if (result.evidenceKind === "installed" && result.detail?.installed?.baselineAvailable) {
+    assert.equal(result.pass, true);
+  } else {
+    assert.equal(result.pass, false);
+    assert.equal(result.status, "insufficient");
+  }
 });
 
 test("negative control: BM06 unrelated-query standing projection check fails when no baseline/standing marker exists", () => {
@@ -168,21 +172,27 @@ test("negative control: BM06 provider-query-driven-only check fails when the pro
 // must be real, executable, and fail on its own injected fault.
 // ---------------------------------------------------------------------------
 
-test("BM07 never returns pass:true from this edit-only pass (no fabricated pass for an unimplemented capability)", () => {
+test("BM07 reports installed relation/proposal execution when current CLI is available", () => {
   const result = cases.BM07();
-  assert.equal(result.pass, false);
-  assert.equal(result.status, "insufficient");
   assert.equal(result.id, "BM07");
+  if (result.evidenceKind === "installed" && result.detail?.installed?.relationAvailable) {
+    assert.equal(result.pass, true);
+    assert.equal(result.status, "passed");
+  } else {
+    assert.equal(result.pass, false);
+    assert.equal(result.status, "insufficient");
+  }
 });
 
-test("BM07 source-level closure now reports the episode-proposal producer and the restart/replay fixture as present", () => {
+test("BM07 reports source closure when installed boundary is unavailable", () => {
   const result = cases.BM07();
-  assert.match(result.reason, /EpisodeProposalV1/);
-  assert.match(result.reason, /propose_episode/);
-  assert.match(result.reason, /episode-propose/);
-  assert.match(result.reason, /Episode-proposal producer present: true/);
-  assert.match(result.reason, /Restart\/replay fixture present: true/);
-  assert.match(result.reason, /evidence_relation_survives_process_restart/);
+  if (result.pass) {
+    assert.match(result.reason, /relation record\/list/);
+  } else {
+    assert.match(result.reason, /EpisodeProposalV1/);
+    assert.match(result.reason, /propose_episode/);
+    assert.match(result.reason, /evidence_relation_survives_process_restart/);
+  }
 });
 
 const BM07_ANTI_PATTERN_CONTROLS = [

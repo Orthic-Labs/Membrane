@@ -3,7 +3,7 @@ import test from "node:test";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { BM09, BM11, CASES, extractDescriptorBlocks } from "./mem-windows.mjs";
+import { BM09, BM11, CASES, extractDescriptorBlocks, probeBM09Installed, probeBM11Installed } from "./mem-windows.mjs";
 
 const GOOD_HOOK_SOURCE = `
 pub fn hook_injection_point_descriptors() -> [HookInjectionPointDescriptorV1; 8] {
@@ -179,6 +179,22 @@ test("BM11: the real fixture corpus at its frozen path passes structurally", () 
 test("BM09: the real membrane-protocol hook.rs source passes structurally", () => {
   const result = BM09();
   assert.equal(result.pass, true, JSON.stringify(result.findings));
+});
+
+test("BM09: configured installed probe is required and fails closed when binary is absent", () => {
+  const root = join(tmpdir(), "membrane-bm09-no-binary");
+  const result = BM09({ source: GOOD_HOOK_SOURCE, installedRoot: root });
+  assert.equal(result.evidenceKind, "installed");
+  assert.equal(result.pass, false);
+  assert.equal(probeBM09Installed({ installedRoot: root }).pass, false);
+});
+
+test("BM11: configured installed probe is required and fails closed when binary is absent", () => {
+  const root = join(tmpdir(), "membrane-bm11-no-binary");
+  const result = BM11({ installedRoot: root });
+  assert.equal(result.evidenceKind, "installed");
+  assert.equal(result.pass, false);
+  assert.equal(probeBM11Installed({ installedRoot: root }).pass, false);
 });
 
 test("MEM registry coverage: every windows-acceptance mem-windows row has a named export", () => {

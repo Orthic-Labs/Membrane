@@ -163,23 +163,59 @@ Function RunTray
   nsis_tauri_utils::RunAsUser "$INSTDIR\current\membrane-tray.exe" ""
 FunctionEnd
 
-; Same-version repair must not leave a retired Blueprint Node payload below the
-; exact candidate version tree. This helper never addresses $INSTDIR\current:
-; it first removes a reparse point non-recursively, otherwise removes only the
-; exact retired subtree. $R0 is the fail-closed status returned to Section Install.
-Function RemoveRetiredBlueprintRuntime
+; Installer upgrades can encounter payloads from the pre-native layout at the
+; product root or below older version trees. Remove only the exact retired
+; Blueprint runtime subtree; never recurse through a reparse point.
+Function RemoveRetiredBlueprintRuntimeAt
+  Exch $R9
   StrCpy $R0 0
-  ${If} ${FileExists} "$INSTDIR\versions\${VERSION}\runtime\blueprint\*.*"
-    ExecWait '"$SYSDIR\cmd.exe" /d /c fsutil reparsepoint query "$INSTDIR\versions\${VERSION}\runtime\blueprint" >nul 2>&1' $1
+  ${If} ${FileExists} "$R9\*.*"
+    nsExec::ExecToStack /TIMEOUT=30000 '"$SYSDIR\fsutil.exe" reparsepoint query "$R9"'
+    Pop $1
+    Pop $3
     ${If} $1 == 0
-      RMDir "$INSTDIR\versions\${VERSION}\runtime\blueprint"
+      RMDir "$R9"
     ${Else}
-      RMDir /r "$INSTDIR\versions\${VERSION}\runtime\blueprint"
+      RMDir /r "$R9"
     ${EndIf}
-    ${If} ${FileExists} "$INSTDIR\versions\${VERSION}\runtime\blueprint\*.*"
+    ${If} ${FileExists} "$R9\*.*"
       StrCpy $R0 1
-      Return
     ${EndIf}
+  ${EndIf}
+  Pop $R9
+FunctionEnd
+
+Function RemoveRetiredBlueprintRuntimes
+  StrCpy $R0 0
+  ; Root-level runtime is from the retired installer projection.
+  Push "$INSTDIR\runtime\blueprint"
+  Call RemoveRetiredBlueprintRuntimeAt
+  ${If} $R0 <> 0
+    Return
+  ${EndIf}
+  ; Preserve valid older versions for rollback, but scrub retired Blueprint
+  ; payloads from every version so NCL scans cannot observe an interpreter.
+  FindFirst $0 $1 "$INSTDIR\versions\*"
+  ${IfNot} ${Errors}
+    version_scan:
+      ${If} $1 == ""
+        Goto version_scan_done
+      ${EndIf}
+      ${If} ${FileExists} "$INSTDIR\versions\$1\runtime\blueprint\*.*"
+        Push "$INSTDIR\versions\$1\runtime\blueprint"
+        Call RemoveRetiredBlueprintRuntimeAt
+        ${If} $R0 <> 0
+          FindClose $0
+          Return
+        ${EndIf}
+      ${EndIf}
+      FindNext $0 $1
+      ${If} ${Errors}
+        Goto version_scan_done
+      ${EndIf}
+      Goto version_scan
+    version_scan_done:
+    FindClose $0
   ${EndIf}
 FunctionEnd
 
@@ -328,7 +364,7 @@ Section Install
 
   ; 1. Remove the exact retired Blueprint payload before a same-version overlay.
   StrCpy $InstallStep "remove-retired-blueprint-runtime"
-  Call RemoveRetiredBlueprintRuntime
+  Call RemoveRetiredBlueprintRuntimes
   ${If} $R0 <> 0
     Goto install_failed
   ${EndIf}

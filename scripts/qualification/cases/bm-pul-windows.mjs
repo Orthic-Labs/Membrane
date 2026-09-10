@@ -89,7 +89,32 @@ function basePath() {
 function actual(id, body) { let path; try { path = basePath(); return { status: "passed", evidenceKind: "installed", detail: { id, ...body(path) } }; } catch (error) { return { status: error.insufficient ? "insufficient" : "failed", evidenceKind: "installed", detail: { id }, reason: error.message }; } finally { if (path?.repo) rmSync(path.repo, { recursive: true, force: true }); } }
 function insufficient(message) { const error = new Error(message); error.insufficient = true; throw error; }
 function explicitRequest(path, control) {
-  return { task: control.task, repo: path.repo, taskId: `bm02-${control.id}`, maxTokens: 1024, client: "membrane-bm02", sessionId: `bm02-${control.id}`, ...control.request };
+  const taskId = `bm02-${control.id}`;
+  const sessionId = taskId;
+  const observedAtUnixMs = Date.now();
+  return {
+    task: control.task, repo: path.repo, taskId, maxTokens: 1024,
+    client: "membrane-bm02", sessionId,
+    // Resident/native federation enforces request-time H8. Keep this probe
+    // bound to same explicit task/session identities instead of treating a
+    // missing host observation as an implicit infinite budget.
+    remainingContextCeiling: {
+      schemaVersion: 1,
+      ceilingId: `bm02-h8:${sessionId}:${observedAtUnixMs}`,
+      sessionId,
+      taskId: { coverage: "complete", value: taskId },
+      requestedAtUnixMs: observedAtUnixMs,
+      remainingTokens: { basis: { id: "o200k_base", version: "1" }, estimate: { coverage: "complete", value: 100000 } },
+      provenanceReceipt: {
+        schemaVersion: 1,
+        receiptId: `bm02-h8:${sessionId}:${observedAtUnixMs}`,
+        source: "qualification-host",
+        observedAtUnixMs,
+        receiptDigest: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      },
+    },
+    ...control.request,
+  };
 }
 function explicitFederate(path, control) {
   const request = explicitRequest(path, control);

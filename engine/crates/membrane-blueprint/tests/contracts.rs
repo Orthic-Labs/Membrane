@@ -51,6 +51,13 @@ fn v1_contracts_preserve_wire_names_and_required_status_fields() {
 }
 
 #[test]
+fn orientation_sections_state_unknown_total_explicitly() {
+    let value = serde_json::to_value(OrientationSectionV1::not_evaluated("not_run")).unwrap();
+    assert!(value.get("totalKnownCount").is_some());
+    assert!(value["totalKnownCount"].is_null());
+}
+
+#[test]
 fn scope_grant_rejects_bad_signature_and_round_trips() {
     let grant = ScopeGrantV1 { task_id:"task-01".into(), repo_root:"/repo".into(), generation_id:None, receipt_id:"r".into(), paths:vec!["src/**".into()], issued_ms:1, ttl_ms:1, signature:"a".repeat(64) };
     assert!(grant.validate().is_ok());

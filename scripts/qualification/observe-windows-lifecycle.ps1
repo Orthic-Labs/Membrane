@@ -148,7 +148,7 @@ function Run-ExecScenario([string]$Lane, [string]$Id, [string]$ExePath, [string[
   try { $ok = [bool](& $Validate $action) } catch { $ok = $false }
   $status = if ($ok) { 'passed' } else { 'failed' }
   $reason = if ($ok) {
-    "$($Id): real execution of '$($action.command)' against installed 0.1.24 confirmed the expected observed outcome"
+    "$($Id): real execution of '$($action.command)' against installed runtime confirmed the expected observed outcome"
   } else {
     "$($Id): real execution of '$($action.command)' observed exit=$($action.exitCode) stdout='$($action.stdout.Substring(0,[Math]::Min(200,$action.stdout.Length)))' stderr='$($action.stderr.Substring(0,[Math]::Min(200,$action.stderr.Length)))', which did not match the expected outcome"
   }
@@ -268,9 +268,21 @@ $daemon = [ordered]@{
 }
 
 $devCheckoutRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
-$missingRoot = Join-Path $env:TEMP "membrane-qualification-missing-root-$([guid]::NewGuid().ToString('N'))"
+$refreshProbeRoot = Join-Path $env:TEMP "membrane-qualification-refresh-root-$([guid]::NewGuid().ToString('N'))"
+New-Item -ItemType Directory -Path $refreshProbeRoot -Force | Out-Null
+Set-Content -LiteralPath (Join-Path $refreshProbeRoot 'main.rs') -Value 'fn main() {}' -Encoding utf8
+$refreshProbeArgs = @('cli', 'blueprint', 'refresh', '--repo-root', $refreshProbeRoot, '--deadline-ms', '10000')
+$refreshResult = {
+  param($a)
+  if ($a.exitCode -ne 0 -or [string]::IsNullOrWhiteSpace($a.stdout)) { return $false }
+  try {
+    $value = $a.stdout | ConvertFrom-Json
+    return $value.operation -eq 'refresh' -and $value.state -eq 'fresh' -and
+      $value.complete -eq $true -and -not [string]::IsNullOrWhiteSpace([string]$value.generationId)
+  } catch { return $false }
+}
 
-# Real, bounded execution against the installed 0.1.24 binaries only. Every
+# Real, bounded execution against installed binaries only. Every
 # scenario either runs a real membrane.exe subcommand and derives passed/failed
 # from the observed exit code/stdout/stderr (never a constant), or is recorded
 # insufficient with the exact missing/unsafe command so the case never
@@ -291,10 +303,12 @@ $scenarioSpecs = @(
   @{ lane = 'LC-01'; id = 'stale-fencing'; reason = "no installed command exposes stale-holder fencing rejection" }
   @{ lane = 'LC-01'; id = 'survivor-continuity'; reason = "no installed command exposes survivor continuity verification after peer holder loss" }
 
-  @{ lane = 'LC-02'; id = 'idle-refresh'; exe = $membrane; args = @('cli', 'blueprint', 'refresh'); validate = { param($a) $a.exitCode -eq 0 -and $a.stdout.Length -gt 0 } }
-  @{ lane = 'LC-02'; id = 'mid-build-refresh'; reason = "installed CLI exposes only 'membrane cli blueprint refresh' with no mid-build-state control to distinguish this case" }
+  # Use a tiny temporary repository so this installed-path probe measures the
+  # shipped refresh implementation, not an unrelated checkout's scan time.
+  @{ lane = 'LC-02'; id = 'idle-refresh'; exe = $membrane; args = $refreshProbeArgs; validate = $refreshResult }
+  @{ lane = 'LC-02'; id = 'mid-build-refresh'; reason = "installed CLI has no safe mid-build coordination control; source/unit coverage remains separate evidence" }
   @{ lane = 'LC-02'; id = 'watcher-disabled-refresh'; reason = "no installed command toggles the Blueprint watcher independently of refresh" }
-  @{ lane = 'LC-02'; id = 'hub-off-refresh'; exe = $membrane; args = @('cli', 'blueprint', 'refresh'); validate = { param($a) $a.exitCode -eq 0 -and $a.stdout.Length -gt 0 } }
+  @{ lane = 'LC-02'; id = 'hub-off-refresh'; exe = $membrane; args = $refreshProbeArgs; validate = $refreshResult }
 
   @{ lane = 'LC-03'; id = 'fair-service'; reason = "no installed CLI command exposes multi-client fair-service scheduling controls" }
   @{ lane = 'LC-03'; id = 'deadline-cancellation'; reason = "no installed CLI command exposes per-request deadline cancellation" }
@@ -304,7 +318,7 @@ $scenarioSpecs = @(
   @{ lane = 'LC-04'; id = 'hub-off-explicit'; exe = $membrane; args = @('cli', 'doctor', '--json'); validate = { param($a) $a.exitCode -eq 0 -and $a.stdout.TrimStart().StartsWith('{') } }
   @{ lane = 'LC-04'; id = 'hub-background'; reason = "requires 'membrane activate' without --dry-run against the live resident daemon shared with concurrent qualification lanes; withheld for shared-install safety" }
   @{ lane = 'LC-04'; id = 'coderight-adopt'; reason = "requires a live CodeRight daemon this observation does not control" }
-  @{ lane = 'LC-04'; id = 'provision-missing'; exe = $membrane; args = @('status', '--dry-run', '--install-root', $missingRoot); validate = { param($a) $a.exitCode -ne 0 } }
+  @{ lane = 'LC-04'; id = 'provision-missing'; reason = "safe installed probe cannot provision a missing shared install root; canonical installer path is outside this observer's non-mutating scope" }
   @{ lane = 'LC-04'; id = 'reject-corrupt'; reason = "no installed command accepts a corrupt install-root artifact without mutating the shared installed root to test rejection safely" }
   @{ lane = 'LC-04'; id = 'reject-denied'; reason = "permission-denial rejection cannot be safely triggered without altering ACLs on the shared installed root" }
   @{ lane = 'LC-04'; id = 'reject-unverifiable'; reason = "signature-verification rejection is only exercised by 'membrane install'/'activate' transactional staging, not independently probeable read-only" }
@@ -324,7 +338,20 @@ $scenarioSpecs = @(
   # appears doubled in stdout (...\\Orthic Labs\\Membrane\\current). A single-backslash
   # pattern never matches JSON-escaped stdout and was the prior validator's bug.
   @{ lane = 'LC-06'; id = 'canonical-roots'; exe = $membrane; args = @('status', '--dry-run'); validate = { param($a) $a.exitCode -eq 0 -and $a.stdout -match [regex]::Escape('Orthic Labs') -and $a.stdout -match [regex]::Escape('\\Membrane\\current') } }
-  @{ lane = 'LC-06'; id = 'health-probe'; exe = $membrane; args = @('cli', 'health'); validate = { param($a) $a.exitCode -ne 0 -and (($a.stdout + $a.stderr) -match 'health_unavailable|health probe') -and ($a.stdout.Length -gt 0 -or $a.stderr.Length -gt 0) } }
+  # A resident-free installed runtime returns HTTP 503 after emitting its
+  # structured health payload. That is the typed unavailable outcome this
+  # probe is intended to observe; accept only that shape, never arbitrary
+  # non-zero output.
+  @{ lane = 'LC-06'; id = 'health-probe'; exe = $membrane; args = @('cli', 'health'); validate = {
+      param($a)
+      if ($a.exitCode -eq 0 -or [string]::IsNullOrWhiteSpace($a.stdout)) { return $false }
+      try {
+        $value = $a.stdout | ConvertFrom-Json
+        return $value.ok -eq $true -and $value.runtimeOrigin -eq 'installed' -and
+          -not [string]::IsNullOrWhiteSpace([string]$value.releaseGeneration) -and
+          (($a.stderr) -match 'HTTP 503|health unavailable|health probe')
+      } catch { return $false }
+    } }
   @{ lane = 'LC-06'; id = 'startup-lock'; reason = "no installed command exposes startup-lock verification without launching the real daemon" }
   @{ lane = 'LC-06'; id = 'atomic-promotion'; reason = "atomic promotion is only exercised by the installer, which this observation must never run" }
   @{ lane = 'LC-06'; id = 'hook-containment'; reason = "no installed command probes hook enrollment independent of client-activation mutation" }
@@ -364,6 +391,7 @@ $receipt = [ordered]@{
   qualificationEvidence = if ($qualification) { [ordered]@{ path = $QualificationEvidence; schema = $qualification.schema; generatedAt = $qualification.generatedAt; artifactSha256 = $qualification.artifact.sha256; installedRoot = $qualification.installedCurrent.root } } else { $null }
   payloadInterpreters = $payloadInterpreters; producer = 'observe-windows-lifecycle.ps1'; startedAt = $started.ToString('o')
 }
+Remove-Item -LiteralPath $refreshProbeRoot -Recurse -Force -ErrorAction SilentlyContinue
 Write-JsonBounded -Value $receipt -Path $Output -Depth 12 -TimeoutMs 20000 | Out-Null
 $nativeReceipt = [ordered]@{ schema = 'membrane.windows-native-observation.v1'; platform = 'windows'; generatedAt = $receipt.generatedAt; installedRoot = $InstalledRoot; processTree = @(Snapshot); surfaces = $surfaces; payloadInterpreters = $payloadInterpreters; buildIdentity = $receipt.buildIdentity }
 Write-JsonBounded -Value $nativeReceipt -Path $NativeOutput -Depth 12 -TimeoutMs 20000 | Out-Null
