@@ -123,6 +123,112 @@ fn refresh_falls_back_to_full_build_for_document_changes() {
 }
 
 #[test]
+fn refresh_falls_back_when_cross_file_resolution_or_framework_facts_are_in_scope() {
+    let incremental_root = tempdir().unwrap();
+    let full_root = tempdir().unwrap();
+    for root in [incremental_root.path(), full_root.path()] {
+        fs::write(root.join("helper.py"), "def helper():\n    return 1\n").unwrap();
+        fs::write(
+            root.join("caller.py"),
+            "from .helper import helper\nimport os\ndef caller():\n    return helper() + os.getenv(\"OLD\")\n",
+        )
+        .unwrap();
+    }
+    let operation = NativeBlueprintOperation;
+    for (id, root) in [("incremental-build", incremental_root.path()), ("full-build", full_root.path())] {
+        execute(&operation, &request(id, Operation::Build, root)).unwrap();
+    }
+    for root in [incremental_root.path(), full_root.path()] {
+        fs::write(
+            root.join("caller.py"),
+            "from .helper import helper\nimport os\ndef caller():\n    return helper() + os.getenv(\"NEW\")\n",
+        )
+        .unwrap();
+    }
+
+    let mut incremental = request("cross-file-refresh", Operation::Refresh, incremental_root.path());
+    incremental.input["sourceClock"] = Value::from(1u64);
+    incremental.input["eventKind"] = Value::String("modify".into());
+    incremental.input["paths"] = Value::Array(vec![Value::String("caller.py".into())]);
+    let incremental_result = execute(&operation, &incremental).unwrap();
+
+    let full_result = execute(&operation, &request("full-refresh", Operation::Refresh, full_root.path())).unwrap();
+    assert_ne!(incremental_result["refreshMode"], "incremental");
+    assert_ne!(full_result["refreshMode"], "incremental");
+
+    let load = |root: &std::path::Path| {
+        let path = root.join(".agent").join("graph").join("graph.db");
+        let connection = membrane_blueprint::store::open_store_read_only(&path).unwrap();
+        membrane_blueprint::store::load_generation(&connection).unwrap().unwrap()
+    };
+    let incremental_generation = load(incremental_root.path());
+    let full_generation = load(full_root.path());
+    let node_ids = |generation: &membrane_blueprint::store::Generation| {
+        generation
+            .nodes
+            .iter()
+            .filter_map(|node| node.get("id").and_then(Value::as_str).map(str::to_owned))
+            .collect::<std::collections::BTreeSet<_>>()
+    };
+    let edge_ids = |generation: &membrane_blueprint::store::Generation| {
+        generation
+            .edges
+            .iter()
+            .filter_map(|edge| edge.get("id").and_then(Value::as_str).map(str::to_owned))
+            .collect::<std::collections::BTreeSet<_>>()
+    };
+    assert_eq!(node_ids(&incremental_generation), node_ids(&full_generation));
+    assert_eq!(edge_ids(&incremental_generation), edge_ids(&full_generation));
+    assert!(
+        full_generation.edges.iter().any(|edge| {
+            edge.get("kind") == Some(&Value::String("IMPORTS".into()))
+                && edge.get("target").and_then(Value::as_str) == Some("file:helper.py")
+        }),
+        "full rebuild must retain resolved cross-file import edge"
+    );
+    assert!(
+        full_generation.nodes.iter().any(|node| {
+            node.get("id").and_then(Value::as_str).is_some_and(|id| id.contains("ConfigKey"))
+                && node.get("name").and_then(Value::as_str) == Some("NEW")
+        }),
+        "full rebuild must retain framework config fact for edited file"
+    );
+}
+
+#[test]
+fn refresh_falls_back_for_created_import_and_framework_facts() {
+    let root = tempdir().unwrap();
+    fs::write(root.path().join("helper.py"), "def helper():\n    return 1\n").unwrap();
+    fs::write(root.path().join("main.rs"), "fn entry() {}\n").unwrap();
+    let operation = NativeBlueprintOperation;
+    execute(&operation, &request("create-build", Operation::Build, root.path())).unwrap();
+    fs::write(
+        root.path().join("created.py"),
+        "from .helper import helper\nimport os\ndef created():\n    return helper() + os.getenv(\"NEW\")\n",
+    )
+    .unwrap();
+
+    let mut refresh = request("create-refresh", Operation::Refresh, root.path());
+    refresh.input["sourceClock"] = Value::from(1u64);
+    refresh.input["eventKind"] = Value::String("create".into());
+    refresh.input["paths"] = Value::Array(vec![Value::String("created.py".into())]);
+    let result = execute(&operation, &refresh).unwrap();
+    assert_ne!(result["refreshMode"], "incremental");
+
+    let path = root.path().join(".agent").join("graph").join("graph.db");
+    let connection = membrane_blueprint::store::open_store_read_only(&path).unwrap();
+    let generation = membrane_blueprint::store::load_generation(&connection).unwrap().unwrap();
+    assert!(generation.edges.iter().any(|edge| {
+        edge.get("kind") == Some(&Value::String("IMPORTS".into()))
+            && edge.get("target").and_then(Value::as_str) == Some("file:helper.py")
+    }));
+    assert!(generation.nodes.iter().any(|node| {
+        node.get("id").and_then(Value::as_str).is_some_and(|id| id.contains("ConfigKey"))
+            && node.get("name").and_then(Value::as_str) == Some("NEW")
+    }));
+}
+
+#[test]
 fn cancelled_build_does_not_publish_a_database() {
     let root = tempdir().unwrap();
     fs::write(root.path().join("main.rs"), "fn entry() {}\n").unwrap();

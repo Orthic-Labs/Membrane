@@ -219,6 +219,10 @@ fn incremental_refresh(
         })?;
     if scan.traversal_truncated || scan.file_limit_reached { return Ok(None); }
     if !only_path_changed(&current.0, &scan.files, &path, event_kind) { return Ok(None); }
+    // A one-file fact batch cannot re-resolve callers in other files or run
+    // repository-wide provider/framework passes. Keep those generations on
+    // the complete path; otherwise a successful delta would silently retain
+    // stale cross-file edges/provider facts.
     let facts = match event_kind {
         EventKind::Delete => None,
         _ => match graph::build_file_facts(root, &path, &context.cancellation) {
@@ -229,6 +233,13 @@ fn incremental_refresh(
         },
     };
     if !matches!(event_kind, EventKind::Delete) && facts.is_none() { return Ok(None); }
+    if !incremental_facts_are_local(
+        &current.0,
+        &path,
+        facts.as_ref(),
+        scan.files.iter().find(|file| file.path == path),
+        root,
+    ) { return Ok(None); }
 
     let observation = crate::git_source_observation::git_source_observation(&root.to_string_lossy());
     let source_clock = request.input.get("sourceClock").and_then(Value::as_u64).and_then(|clock| i64::try_from(clock).ok());
@@ -277,6 +288,71 @@ fn incremental_refresh(
         "eventKind": request.input.get("eventKind").cloned().unwrap_or(Value::Null),
         "sourceObservation": source_observation.unwrap_or(Value::Null),
     })).map(Some)
+}
+
+fn incremental_facts_are_local(
+    current: &GraphGeneration,
+    changed_path: &str,
+    facts: Option<&graph::FileFacts>,
+    changed_file: Option<&graph::FileRecord>,
+    root: &Path,
+) -> bool {
+    let node_paths = current.nodes.iter().filter_map(|node| {
+        Some((node.id.as_str(), node.path.as_deref()?))
+    }).collect::<std::collections::BTreeMap<_, _>>();
+    let path_for = |id: &str| node_paths.get(id).copied();
+    for edge in &current.edges {
+        let source_path = path_for(&edge.source);
+        let target_path = edge.target.as_deref().and_then(path_for);
+        if source_path.zip(target_path).is_some_and(|(source, target)| source != target)
+            && (source_path == Some(changed_path) || target_path == Some(changed_path))
+        {
+            return false;
+        }
+        for evidence in &edge.evidence {
+            if evidence.get("path").and_then(Value::as_str) != Some(changed_path) { continue; }
+            let provider = evidence.get("provider").and_then(Value::as_str).unwrap_or("");
+            if !matches!(provider, "" | "lexical" | "native-rust" | "tree-sitter") { return false; }
+        }
+    }
+    for node in &current.nodes {
+        for evidence in &node.evidence {
+            if evidence.get("path").and_then(Value::as_str) != Some(changed_path) { continue; }
+            let provider = evidence.get("provider").and_then(Value::as_str).unwrap_or("");
+            if !matches!(provider, "" | "lexical" | "native-rust" | "tree-sitter") { return false; }
+        }
+    }
+    if let Some(facts) = facts {
+        // The one-file builder deliberately does not run cross-file module
+        // resolution. Any new import/call therefore needs a complete pass,
+        // including an unresolved edge that could become resolvable globally.
+        if facts.edges.iter().any(|edge| matches!(edge.kind.as_str(), "IMPORTS" | "CALLS")) { return false; }
+        if let Some(file) = changed_file {
+            let files = [file.clone()];
+            let file_map = files.iter().map(|file| (file.path.clone(), file)).collect::<std::collections::BTreeMap<_, _>>();
+            let provider_context = crate::providers::ProviderContext { repo_root: root, files: &files, file_map: &file_map };
+            if crate::providers::registry().into_iter().any(|descriptor| {
+                let output = (descriptor.run)(&provider_context);
+                !output.nodes.is_empty() || !output.edges.is_empty()
+            }) { return false; }
+            let mut generation = GraphGeneration {
+                schema_version: graph::GRAPH_SCHEMA_VERSION,
+                provider: "native-rust".into(),
+                provider_version: graph::PROVIDER_VERSION.into(),
+                generation_id: String::new(),
+                source_hash: String::new(),
+                repo_root: root.to_string_lossy().into_owned(),
+                complete: true,
+                nodes: Vec::new(),
+                edges: Vec::new(),
+                files: Vec::new(),
+                truncation_reasons: Vec::new(),
+            };
+            crate::framework_intelligence::augment_graph_generation(&mut generation, &files);
+            if !generation.nodes.is_empty() || !generation.edges.is_empty() { return false; }
+        }
+    }
+    true
 }
 
 fn only_path_changed(current: &GraphGeneration, files: &[graph::FileRecord], path: &str, event_kind: EventKind) -> bool {
