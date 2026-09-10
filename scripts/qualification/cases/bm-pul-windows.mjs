@@ -199,6 +199,26 @@ export function validateBM10Journey(output) {
   return { journeyCount: journeys.length, states: [...states].sort(), expectedCount: expected.length };
 }
 
+// Each explicit control is an independent Pull request.  Canonical evidence
+// IDs may therefore recur across maps; only duplicate IDs within one map are
+// invalid.  Keep state coverage across requests separate from per-request
+// accounting validation.
+export function collectBM10JourneyStates(outputs) {
+  const states = new Set();
+  for (const output of outputs) {
+    const map = output?.requirementEvidenceMap;
+    if (!isObject(map) || !Array.isArray(map.journeys)) continue;
+    const ids = new Set();
+    for (const [index, journey] of map.journeys.entries()) {
+      const item = validateJourney(journey, `BM10.journeys[${index}]`);
+      if (ids.has(item.evidenceId)) throw new Error(`BM10 duplicate evidence ID ${item.evidenceId} within one Pull map`);
+      ids.add(item.evidenceId);
+      states.add(item.state);
+    }
+  }
+  return [...states].sort();
+}
+
 export function BM01() { return actual("BM01", (path) => { const exactId = path.candidates[0]?.id; if (!nonEmpty(exactId)) throw new Error("BM01 Recall omitted stable candidate ID"); const exact = invoke(path.exe, ["cli", "blueprint", "resolve", "--repo-root", path.repo, "--node", exactId], path.repo); const ambiguous = invoke(path.exe, ["cli", "blueprint", "resolve", "--repo-root", path.repo, "--node", "same_name"], path.repo); const unknown = invoke(path.exe, ["cli", "blueprint", "resolve", "--repo-root", path.repo, "--node", "does_not_exist"], path.repo); const cancellationCode = cancellation(path); return { releaseGeneration: path.generation, blueprintGeneration: path.blueprintGeneration, ...validateBM01Observations({ exact, ambiguous, unknown, cancellationCode }) }; }); }
 export function BM02() { return actual("BM02", (path) => {
   const controls = [
@@ -227,7 +247,7 @@ export function BM10() { return actual("BM10", (path) => {
     { id: "timeout", task: "exact_probe", request: { maxWaitMs: 1 } },
     { id: "unresolved_dynamic", task: "exact_probe", request: { anchors: ["dynamic://bm10/unresolved"] } },
     { id: "budget_dropped", task: "exact_probe", request: { packetCharBudget: 1, requirementFacts: [{ dimension: "repository_truth", required: true, ruleId: "bm10_budgeted_source", exactTarget: "lib.rs" }] } },
-    { id: "rejected", task: "exact_probe", request: { consumerCapabilities: { resolvers: ["bm10-unsupported-resolver"] }, requirementFacts: [{ dimension: "repository_truth", required: true, ruleId: "bm10_rejected_source", exactTarget: "lib.rs" }] } },
+    { id: "rejected", task: "exact_probe", request: { anchors: ["symbol:exact_probe"], requirementFacts: [{ dimension: "repository_truth", required: true, ruleId: "bm10_rejected_source" }] } },
     { id: "not_discovered", task: "exact_probe", request: { requirementFacts: [{ dimension: "current_state", required: true, ruleId: "bm10_missing_target", exactTarget: "does_not_exist.rs" }] } },
   ];
   const outputs = [path.packet];
@@ -235,25 +255,13 @@ export function BM10() { return actual("BM10", (path) => {
     try { outputs.push(explicitFederate(path, control).output); }
     catch (error) { insufficient(`BM10 installed transition control unavailable: ${control.id}; ${error.message}`); }
   }
-  const journeys = [];
-  const seen = new Set();
-  for (const output of outputs) {
-    const map = output?.requirementEvidenceMap;
-    if (!isObject(map) || !Array.isArray(map.journeys)) continue;
-    for (const journey of map.journeys) {
-      if (!isObject(journey) || !nonEmpty(journey.evidenceId)) continue;
-      if (seen.has(journey.evidenceId)) throw new Error(`BM10 native Pull duplicated CandidateJourneyV1 evidence ID ${journey.evidenceId}`);
-      seen.add(journey.evidenceId); journeys.push(journey);
-    }
-  }
-  if (!journeys.length) insufficient("BM10 installed Pull omitted CandidateJourneyV1 observations");
-  const states = new Set(journeys.map((journey) => journey.state));
-  for (const state of REQUIRED_JOURNEY_STATES) if (!states.has(state)) insufficient(`BM10 installed Pull did not expose real transition state ${state}`);
+  const states = collectBM10JourneyStates(outputs);
+  if (!states.length) insufficient("BM10 installed Pull omitted CandidateJourneyV1 observations");
+  for (const state of REQUIRED_JOURNEY_STATES) if (!states.includes(state)) insufficient(`BM10 installed Pull did not expose real transition state ${state}`);
   const native = outputs.find((output) => isObject(output?.requirementEvidenceMap) && Array.isArray(output.expectedEvidence) && Array.isArray(output.conversionReceipts) && Array.isArray(output.omissionReceipts) && Array.isArray(output.deliveryAttribution));
   if (!native) insufficient("BM10 installed Pull omitted native expected evidence, conversion/omission receipts or delivery attribution");
-  const requirementEvidenceMap = { ...native.requirementEvidenceMap, journeys };
-  const accounting = { requirementEvidenceMap, expectedEvidence: native.expectedEvidence, conversionReceipts: native.conversionReceipts, omissionReceipts: native.omissionReceipts, deliveryAttribution: native.deliveryAttribution };
-  return { releaseGeneration: path.generation, ...accounting, ...validateBM10Journey(accounting) };
+  const accounting = { requirementEvidenceMap: native.requirementEvidenceMap, expectedEvidence: native.expectedEvidence, conversionReceipts: native.conversionReceipts, omissionReceipts: native.omissionReceipts, deliveryAttribution: native.deliveryAttribution };
+  return { releaseGeneration: path.generation, ...accounting, ...validateBM10Journey(accounting), states };
 }); }
 export const BM_CASES = { BM01, BM02, BM08, BM10 };
 export default BM_CASES;

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { BM01, validateBM01Observations, validateBM02Scenario, validateBM08Admission, validateBM10Journey, validateCandidate, validateSourceDigest, extractTypedCancellationCode } from "./bm-pul-windows.mjs";
+import { BM01, validateBM01Observations, validateBM02Scenario, validateBM08Admission, validateBM10Journey, collectBM10JourneyStates, validateCandidate, validateSourceDigest, extractTypedCancellationCode } from "./bm-pul-windows.mjs";
 
 const HASH = `sha256:${"0".repeat(64)}`;
 const clone = (value) => structuredClone(value);
@@ -70,6 +70,16 @@ test("BM08 hostile omission/mutation controls fail", () => {
 
 function bm10Fixture() { const states = ["NOT_DISCOVERED", "DISCOVERED_REJECTED", "DISCOVERED_BUDGET_DROPPED", "STALE", "ADAPTER_DROPPED", "EXECUTION_FAILURE"]; const journeys = states.map((state, index) => ({ evidenceId: `evidence:${index}`, requirementBindingDigest: `binding-${index}`, dimension: "current_state", provider: "blueprint", sourceHash: HASH, representationDigest: HASH, acquired: true, eligible: true, admitted: state === "DISCOVERED_REJECTED" ? false : true, represented: false, fenced: false, emitted: false, retained: false, dropped: true, state })); return { requirementEvidenceMap: { schemaVersion: 1, taskId: "bm10", journeys, unsatisfied: ["current_state"] }, expectedEvidence: journeys.map((journey) => ({ evidenceId: journey.evidenceId, required: true })), conversionReceipts: journeys.map((journey, index) => ({ receiptId: `convert-${index}`, evidenceId: journey.evidenceId, reason: "converted" })), omissionReceipts: journeys.map((journey, index) => ({ receiptId: `omit-${index}`, evidenceId: journey.evidenceId, reason: "omitted" })), deliveryAttribution: journeys.map((journey) => ({ evidenceId: journey.evidenceId, emitted: false, hostIncluded: false, modelUsed: false, helped: false })) }; }
 test("BM10 accepts all typed CandidateJourneyV1 outcomes & accounting", () => { const result = validateBM10Journey(bm10Fixture()); assert.equal(result.states.length, 6); assert.equal(result.expectedCount, 6); });
+test("BM10 aggregates states across independent maps with stable evidence IDs", () => {
+  const first = bm10Fixture(); const second = clone(first);
+  first.requirementEvidenceMap.journeys = [first.requirementEvidenceMap.journeys[0]];
+  second.requirementEvidenceMap.journeys = [second.requirementEvidenceMap.journeys[0], second.requirementEvidenceMap.journeys[1]];
+  assert.deepEqual(collectBM10JourneyStates([first, second]), ["DISCOVERED_REJECTED", "NOT_DISCOVERED"]);
+});
+test("BM10 still rejects duplicate evidence IDs within one map", () => {
+  const fixture = bm10Fixture(); fixture.requirementEvidenceMap.journeys = [fixture.requirementEvidenceMap.journeys[0], clone(fixture.requirementEvidenceMap.journeys[0])];
+  assert.throws(() => collectBM10JourneyStates([fixture]), /within one Pull map/);
+});
 test("BM10 hostile state/ID/receipt/attribution controls fail", () => {
   for (const mutate of [
     (v) => { v.requirementEvidenceMap.journeys.pop(); },
