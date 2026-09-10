@@ -1,11 +1,11 @@
 {
  "schemaVersion": 1,
  "artifact": "membrane.runtime-language-manifest",
- "generatedAt": "2026-09-10T04:02:23.828Z",
+ "generatedAt": "2026-09-10T04:27:12.522Z",
  "enforcementMode": "migration",
  "policyDigest": "9ed83eea1679be03597df16a7f32bec1c2bfa56fd9005851c7d87a4da845d377",
  "totals": {
-  "files": 1402,
+  "files": 1405,
   "rows": 56,
   "byRuntime": {
    "python": 7,
@@ -1060,6 +1060,7 @@
     "engine/crates/membrane-blueprint/tests/migrations.rs",
     "engine/crates/membrane-blueprint/tests/native_engine.rs",
     "engine/crates/membrane-blueprint/tests/native_service.rs",
+    "engine/crates/membrane-blueprint/tests/parity_graph_core.rs",
     "engine/crates/membrane-blueprint/tests/phase2.rs",
     "engine/crates/membrane-blueprint/tests/query.rs",
     "engine/crates/membrane-blueprint/tests/schema_v20.rs",
@@ -1067,7 +1068,7 @@
     "engine/crates/membrane-blueprint/tests/service.rs",
     "engine/crates/membrane-blueprint/tests/watch.rs"
    ],
-   "content_digest": "6cd146d9764125b4c9046ab6031822c215d6e3fce2f9af3583ead8fc0991534b"
+   "content_digest": "55bfdda1fe7ed15eb274c585ebf2cdba9ec84bf4255f0f7c5c7730690ed916ad"
   },
   {
    "id": "engine-membrane-client-engine/crates/membrane-client",
@@ -1455,10 +1456,11 @@
     "engine/crates/membrane-mcp/src/resources.rs",
     "engine/crates/membrane-mcp/src/tools.rs",
     "engine/crates/membrane-mcp/tests/discovery_roundtrip.rs",
+    "engine/crates/membrane-mcp/tests/parity_mcp_blueprint_capability.rs",
     "engine/crates/membrane-mcp/tests/prompts.rs",
     "engine/crates/membrane-mcp/tests/resources.rs"
    ],
-   "content_digest": "cbaadad2e4175b1533b9ab2b4006ec35e175d95b8b73149ed8d846ad9bd78007"
+   "content_digest": "d1467e66204f93c406f509d958a7231a7f2141b14f5bdb1168e1d4cb728d257c"
   },
   {
    "id": "engine-production-crates-engine/crates/membrane-protocol",
@@ -1739,7 +1741,7 @@
     "engine/crates/membrane-runtime/tests/session_projection.rs",
     "engine/crates/membrane-runtime/tests/windows_acl_isolation.rs"
    ],
-   "content_digest": "0c85e2bc04c61ecbd47c2bd8fdbf00ba4bd543d6892e16b307684e2578a62344"
+   "content_digest": "36bf629be6cae1c8fb75d60a0ef245aec931d8358f736aee823a0bc29b7acce9"
   },
   {
    "id": "engine-production-crates-engine/crates/membrane-transcript",
@@ -2276,6 +2278,7 @@
     "scripts/qualification/cases/ctx-windows.mjs",
     "scripts/qualification/cases/ctx-windows.test.mjs",
     "scripts/qualification/cases/ex-windows.mjs",
+    "scripts/qualification/cases/ex-windows.test.mjs",
     "scripts/qualification/cases/ldg-windows.mjs",
     "scripts/qualification/cases/ldg-windows.test.mjs",
     "scripts/qualification/cases/mem-lifecycle-windows.mjs",
@@ -2338,7 +2341,7 @@
     "scripts/tools/productization/generate-support-matrix.test.mjs",
     "scripts/tools/productization/render-docs.mjs"
    ],
-   "content_digest": "b9dfd38cb925e91198026abb567b5de703e0901ee1d5de5bf95a1af55b31b3e6"
+   "content_digest": "42a73addcb70bddaa2cd3d7bb029cac6fa876ba5fee262cc318a0519b7d2f97f"
   },
   {
    "id": "surface-extraction-tool-surface-extraction-tool",
