@@ -108,8 +108,13 @@ fn build_with_recovery(packet: &ContextPacketV1, basis: membrane_protocol::host_
     let minimum = floor_tokens;
     let mut representations = Vec::new();
     for (id, tokens, content) in [("full",full_tokens,full),("reduced_1",reduced_tokens,reduced),("floor",floor_tokens,floor)] {
-        let resolver_paths = content["blocks"].as_array().unwrap().iter()
-            .filter_map(|b| b["resolver"].as_str().map(str::to_owned)).collect();
+        let mut resolver_paths = Vec::new();
+        for resolver in content["blocks"].as_array().unwrap().iter()
+            .filter_map(|block| block["resolver"].as_str()) {
+            if !resolver_paths.iter().any(|existing| existing == resolver) {
+                resolver_paths.push(resolver.to_owned());
+            }
+        }
         representations.push(PacketReductionRepresentationV1 {id:id.into(), tokens,
             parent_ref:format!("packet://{}", packet.trace_id), protected:protected.clone(),
             evidence_refs:all_ids.clone(), resolver_paths, minimum_viable_tokens:minimum,

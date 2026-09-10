@@ -96,6 +96,20 @@ fn selects_largest_membrane_representation_for_same_request() {
 }
 
 #[test]
+fn shared_resolver_paths_are_canonicalized_once() {
+    let mut packet = packet();
+    packet.blocks[1].resolver = packet.blocks[0].resolver.clone();
+    let plan = build_packet_reduction_plan(
+        &packet,
+        EstimatorBasisV1::new("o200k_base", "1"),
+    )
+    .expect("shared resolver mechanism is valid");
+    for representation in plan.representations {
+        assert_eq!(representation.resolver_paths, vec!["resolver://protected"]);
+    }
+}
+
+#[test]
 fn selected_content_is_complete_for_full_reduced_and_floor() {
     use membrane_runtime::push::{delivery, recovery, selection};
     let temp = tempfile::tempdir().unwrap();
