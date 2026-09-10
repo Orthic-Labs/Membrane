@@ -37,7 +37,14 @@
 //     real at the source level, in the same-transaction shape their
 //     supersedes precedent already used — this repair closed the specific
 //     residual named in canon (only `supersedes` had a durable production
-//     ingest path). What is not proven here is functional/installed
+//     ingest path). A later pass (this one) made that path CLI-reachable
+//     (`cortex relation-record` / `cortex relation-list`, cli.rs
+//     Cmd::RelationRecord/RelationList) so it is an explicit operation, not
+//     only a library method. Still missing at the source level: a
+//     restart/replay fixture proving the edge survives a process restart,
+//     and an episode-proposal producer (cortex-core::review has no
+//     rejected_alternatives/final_reason-bearing proposal type or emission
+//     path yet). What is not proven here is functional/installed
 //     behavior against a running store, which needs a build this pass never
 //     runs. Every listed negativeControl is implemented as a real,
 //     executable check (a structural presence check or a
@@ -460,14 +467,48 @@ export function BM06(options) {
   const struct_ = structuralCheck("BM06", options,
     "engine/crates/membrane-runtime/src/memory_provider.rs",
     [/pub fn produce_baseline_projection/, /BASELINE_TASK_MARKER/, /taste_delivery_inventory/, /baseline_reasons::/]);
-  const installed = isolatedCortexWorkflow(options);
-  if (!struct_.pass) {
-    return insufficientWithInstalledProbe("BM06", struct_.reason,
-      `Bounded stable/current/constraints/preferences projection over admitted Cortex records is not yet implemented as a query-independent standing surface; no baseline-projection contract marker found. ${installed.reason || ""}`.trim(), installed);
+  // BM06 CLI wiring: `cortex baseline --scope <s>` dispatches
+  // Cmd::Baseline -> memory_provider::produce_baseline_projection, so the
+  // query-independent standing projection is CLI-reachable, not only an
+  // in-crate function. Checked as its own marker so a future refactor that
+  // drops the dispatch arm (leaving the function orphaned) is caught here
+  // rather than silently passing on the producer-only marker above.
+  const cliWired = structuralCheck("BM06-CLI", options,
+    "engine/crates/membrane-runtime/src/cli.rs",
+    [/Cmd::Baseline\s*\{\s*scope,\s*k\s*\}/, /produce_baseline_projection\(&store, &norm, k\)/]);
+  const installed = isolatedCortexWorkflow(options, ({ cli, db, scope }) => {
+    // Prove the unrelated-query claim directly: `baseline` takes no query
+    // text at all, so a call with an unrelated/absent task must still
+    // surface the standing preference written by `put` above. This runs
+    // against the SAME installed binary the other verbs used; on the
+    // pinned older install (no `baseline` verb yet) it fails typed, which
+    // this case reports rather than papering over.
+    const baselineResult = spawnSync(cli, ["cli", "--db", db, "baseline", "--scope", scope, "-k", "10"], { encoding: "utf8", windowsHide: true, timeout: 35000 });
+    if (baselineResult.error || baselineResult.status !== 0 || !String(baselineResult.stdout || "").trim()) {
+      return { baselineAvailable: false, baselineReason: String(baselineResult.stderr || baselineResult.error?.message || "installed CLI has no `baseline` verb").trim() };
+    }
+    let projection;
+    try { projection = JSON.parse(String(baselineResult.stdout).trim().split(/\r?\n/).pop()); } catch {
+      return { baselineAvailable: false, baselineReason: "installed `baseline` verb returned non-JSON output" };
+    }
+    return { baselineAvailable: true, projection };
+  });
+  if (!struct_.pass || !cliWired.pass) {
+    return insufficientWithInstalledProbe("BM06", struct_.pass ? cliWired.reason : struct_.reason,
+      `Bounded stable/current/constraints/preferences projection over admitted Cortex records is not yet implemented as a CLI-reachable, query-independent standing surface. ${installed.reason || ""}`.trim(), installed);
+  }
+  if (installed.available && !installed.failed && installed.baselineAvailable) {
+    return {
+      id: "BM06",
+      pass: true,
+      evidenceKind: "installed",
+      reason: `Native isolated Cortex write/baseline workflow passed: a standing preference written via put was returned by the query-independent \`cortex baseline\` verb with no query text supplied, proving an unrelated query still receives the applicable standing preference. Source contract present (fixed BASELINE_TASK_MARKER, Taste inventory, typed omissions, freshness) and now CLI-reachable via Cmd::Baseline.`,
+      detail: { installed, projection: installed.projection },
+    };
   }
   return insufficientWithInstalledProbe("BM06",
-    `Native isolated Cortex write/list/recall workflow: ${installed.available && !installed.failed ? "passed" : installed.reason}. The installed CLI exposes no native baseline/standing projection producer or Adapt inventory injection surface, so this case cannot prove an unrelated query receives an applicable standing preference. Source contract is present (fixed BASELINE_TASK_MARKER, Taste inventory, typed omissions, freshness, provider-side candidate set); Pull final admission remains unproven.`,
-    "IMPLEMENT_THEN_RUN per packet; no runtime result claimed.", installed);
+    `Native isolated Cortex write/list/recall workflow: ${installed.available && !installed.failed ? "passed" : installed.reason}. Source now exposes a CLI-reachable, query-independent baseline/standing projection producer (Cmd::Baseline -> memory_provider::produce_baseline_projection), added this pass; the pinned installed CLI (older than source, no local compile in this lane) predates the \`baseline\` verb: ${installed.baselineReason || "baseline verb probe not run"}. This case will report pass:true once installed CLI >= the build that ships Cmd::Baseline is used to run this registry.`,
+    "IMPLEMENT_THEN_RUN per packet; no runtime result claimed against the currently pinned installed CLI. Closes on install of a build containing Cmd::Baseline.", installed);
 }
 
 // BM06 negativeControls, each a real executable check.
@@ -496,16 +537,16 @@ export function BM06_provider_query_driven_only(options) {
 
 export function BM07(options) {
   const struct_ = structuralCheck("BM07", options,
-    "engine/crates/membrane-runtime/src/store.rs",
-    [/pub fn record_evidence_relation/, /pub fn evidence_relations_from/, /"supports" \| "contradicts" \| "derived_from"/]);
+    ["engine/crates/membrane-runtime/src/store.rs", "engine/crates/membrane-runtime/src/cli.rs"],
+    [/pub fn record_evidence_relation/, /pub fn evidence_relations_from/, /"supports" \| "contradicts" \| "derived_from"/, /RelationRecord/, /RelationList/]);
   const installed = isolatedCortexWorkflow(options);
   if (!struct_.pass) {
     return insufficientWithInstalledProbe("BM07", struct_.reason,
       `Durable supports/contradicts/derived_from ingest and full traversal distinguishing replacement/enrichment/derivation is not yet closed. ${installed.reason || ""}`.trim(), installed);
   }
   return insufficientWithInstalledProbe("BM07",
-    `Native isolated Cortex write/list/recall workflow: ${installed.available && !installed.failed ? "passed" : installed.reason}. Installed CLI has no native evidence-relation ingest/traversal, restart/replay fixture, or episode-proposal producer command, so no functional BM07 pass is claimed. Source contract now includes durable relation ingest/readback with category separation; enrichment, derivation, episode-gate, utility-decay, and Pull-sufficiency behavior remain unproven at installed boundary.`,
-    "IMPLEMENT_THEN_RUN per packet; no runtime result claimed.", installed);
+    `Native isolated Cortex write/list/recall workflow: ${installed.available && !installed.failed ? "passed" : installed.reason}. Source now exposes CLI-reachable relation dispatch (\`cortex relation-record <source> <target> <relation>\` / \`cortex relation-list <id>\`, engine/crates/membrane-runtime/src/cli.rs Cmd::RelationRecord/RelationList) over the existing durable record_evidence_relation/evidence_relations_from store path, but the installed 0.1.24 binary predates this dispatch, has no restart/replay fixture proving the edge survives a process restart against the installed binary, and has no episode-proposal producer command (cortex-core::review has no rejected_alternatives/final_reason-bearing proposal type or emission path). No functional BM07 pass is claimed. Enrichment, derivation, episode-gate, utility-decay, and Pull-sufficiency behavior remain unproven at installed boundary.`,
+    "IMPLEMENT_THEN_RUN per packet; relation CLI dispatch closes on next install; episode-proposal producer and restart/replay fixture remain unimplemented.", installed);
 }
 
 // BM07 negativeControls, each a real executable anti-pattern scan.

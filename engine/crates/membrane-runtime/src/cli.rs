@@ -834,10 +834,36 @@ enum Cmd {
     },
     /// Explain one memory's content-free lifecycle, provenance, and use metadata.
     Explain { id: String },
+    /// BM07: durably record one supports/contradicts/derived_from evidence edge between two
+    /// already-persisted memories in the same scope (`MemoryStore::record_evidence_relation`).
+    /// This never retires a fact — use `put --supersedes` for replacement.
+    RelationRecord {
+        source_id: String,
+        target_id: String,
+        /// supports | contradicts | derived_from
+        relation: String,
+        #[arg(long, default_value = "manual")]
+        producer: String,
+    },
+    /// BM07: durable traversal of every canonical evidence relation sourced at ID, classified as
+    /// replacement/enrichment/derivation/observation (`MemoryStore::evidence_relations_from`).
+    /// Reads through the store directly, so this reflects state across process restart.
+    RelationList { id: String },
     /// Ingest every ~/.claude/projects/*/memory dir (+ global) under its scope.
     Migrate,
     /// Ingest every <WORKSPACE_ROOT>/*/.agent/okf bundle, scoped per repo.
     MigrateBlueprint,
+    /// BM06: print the bounded, query-independent stable/current/constraints/preferences
+    /// projection (`memory_provider::produce_baseline_projection`) for a scope as a v1
+    /// `ContextCandidateSet` JSON envelope. Unlike `recall`, this never depends on any
+    /// query text — an unrelated task must still receive the applicable standing
+    /// preference already admitted by Adapt/Taste.
+    Baseline {
+        #[arg(long, default_value = "global")]
+        scope: String,
+        #[arg(short, default_value_t = 20)]
+        k: usize,
+    },
     /// Recall against the store.
     Recall {
         query: String,
@@ -4439,6 +4465,45 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
             }
         },
         Cmd::Explain { id } => println!("{}", explain_memory(&db, &id)?),
+        Cmd::RelationRecord {
+            source_id,
+            target_id,
+            relation,
+            producer,
+        } => {
+            let store = open(&db)?;
+            store.record_evidence_relation(&source_id, &target_id, &relation, &producer)?;
+            println!(
+                "{}",
+                serde_json::json!({
+                    "source_id": source_id,
+                    "target_id": target_id,
+                    "relation": relation,
+                    "recorded": true
+                })
+            );
+        }
+        Cmd::RelationList { id } => {
+            let store = open(&db)?;
+            let relations = store.evidence_relations_from(&id)?;
+            let rows: Vec<serde_json::Value> = relations
+                .into_iter()
+                .map(|(category, stored)| {
+                    serde_json::json!({
+                        "category": format!("{category:?}"),
+                        "source_id": stored.edge.source_id,
+                        "target_id": stored.edge.target_id,
+                        "relation": stored.edge.relation,
+                        "provenance_producer": stored.edge.provenance_producer,
+                        "created_at": stored.edge.created_at,
+                    })
+                })
+                .collect();
+            println!(
+                "{}",
+                serde_json::json!({ "id": id, "relations": rows })
+            );
+        }
         Cmd::BackoutSchemaV11 => {
             let restored = crate::memdb::backout_v11_to_v10(&db).map_err(|e| e.to_string())?;
             println!(
@@ -4519,6 +4584,15 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
                 }
             }
             println!("{{\"migrated_blueprint\":{total}}}");
+        }
+        Cmd::Baseline { scope, k } => {
+            let store = open(&db)?;
+            let norm = normalize_scope(&scope);
+            let projection = crate::memory_provider::produce_baseline_projection(&store, &norm, k);
+            println!(
+                "{}",
+                serde_json::to_string(&projection).map_err(|error| error.to_string())?
+            );
         }
         Cmd::Recall {
             query,
