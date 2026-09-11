@@ -131,6 +131,55 @@ pub fn run_federate(
 ) -> Result<(), String> {
     // Kept for V1 CLI call compatibility; native execution never consults it.
     let _ = federation_script;
+    // Explicit one-shot federate is not latency-bound like an inline editor
+    // request: with the Hub off it must cold-build the Blueprint generation
+    // during freshness binding (measured ~28-40s on a real repo), then run
+    // providers. 2s (and even 30s) exhausted during owner binding, so give
+    // it a build-class budget. A resident Hub keeps freshness warm and
+    // returns far faster; this ceiling only bounds the cold one-shot.
+    let payload = run_federate_value(task, repo, max_tokens, packet_char_budget_override, packet_char_budget_model,
+        client, session, anchors, scope_grant_id, accepted_receipt_versions, 180_000, "explicit")?;
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&payload).map_err(|e| format!("serialize: {e}"))?
+    );
+    Ok(())
+}
+
+/// Ambient hook-mode federate: a latency-bound, fail-open caller (the per-prompt
+/// host hook) that runs under a configured attention cap rather than a
+/// host-observed remaining-context ceiling. No host produces that observation
+/// today; the field (hindsight coding-agents across 13 harnesses) recalls
+/// under a configured cap. This is the separately declared advisory policy the
+/// Push canon requires: the receipt names `budgetPolicy: configured_cap`, and
+/// strict host-observed H8 stays the contract for explicit `membrane_context`.
+pub fn hook_mode_federate(
+    task: &str,
+    repo: &Path,
+    max_tokens: usize,
+    client: &str,
+    session: &str,
+    deadline_ms: u64,
+) -> Result<Value, String> {
+    run_federate_value(task.to_owned(), repo.to_path_buf(), max_tokens, None, None, client.to_owned(),
+        Some(session.to_owned()), Vec::new(), None, Vec::new(), deadline_ms, "configured_cap")
+}
+
+#[allow(clippy::too_many_arguments)]
+fn run_federate_value(
+    task: String,
+    repo: PathBuf,
+    max_tokens: usize,
+    packet_char_budget_override: Option<usize>,
+    packet_char_budget_model: Option<String>,
+    client: String,
+    session: Option<String>,
+    anchors: Vec<String>,
+    scope_grant_id: Option<String>,
+    accepted_receipt_versions: Vec<u32>,
+    deadline_ms: u64,
+    budget_policy: &str,
+) -> Result<Value, String> {
     let root = repo
         .canonicalize()
         .map_err(|error| format!("resolve repository root: {error}"))?;
@@ -140,13 +189,7 @@ pub fn run_federate(
         &task,
         &root,
         max_tokens,
-        // Explicit one-shot federate is not latency-bound like an inline editor
-        // request: with the Hub off it must cold-build the Blueprint generation
-        // during freshness binding (measured ~28-40s on a real repo), then run
-        // providers. 2s (and even 30s) exhausted during owner binding, so give
-        // it a build-class budget. A resident Hub keeps freshness warm and
-        // returns far faster; this ceiling only bounds the cold one-shot.
-        180_000,
+        deadline_ms,
         release_generation,
         &client,
         &session_id,
@@ -232,12 +275,9 @@ pub fn run_federate(
         let final_map = fields.get("requirementEvidenceMap").cloned();
         let final_packet = fields.get("packet").cloned();
         merge_bm10_accounting(fields, provisional_requirement_map.as_ref(), final_map.as_ref(), final_packet.as_ref());
+        fields.insert("budgetPolicy".to_owned(), Value::String(budget_policy.to_owned()));
     }
-    println!(
-        "{}",
-        serde_json::to_string_pretty(&payload).map_err(|e| format!("serialize: {e}"))?
-    );
-    Ok(())
+    Ok(payload)
 }
 
 /// Resident `/federate` entrypoint. Production routes call this native path;

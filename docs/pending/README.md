@@ -374,6 +374,7 @@ Supporting files retain detail; only this generated file indexes pending state.
 | [Unified implementation & closure plan](MEMBRANE-UNIFIED-IMPLEMENTATION-PLAN.md) | All 340 committed rows across `MEM`, `PUL`, `PSH`, `CTX`, `BPT`, `LDG`, & `ADP`; lifecycle qualification tracked separately |
 | [Adapt harness efficiency](capabilities/adapt/harness-efficiency.md) | `ADP-036`, `ADP-038`, `ADP-040`, `ADP-043`–`ADP-071` |
 | [Blueprint findings lane](capabilities/blueprint/findings-lane.md) | `BPT-049`, `BPT-050`, `BPT-051`, `BPT-052`, `BPT-065`, `BPT-066`, `BPT-067` |
+| [Pull ambient injection loop](capabilities/pull/ambient-injection-loop.md) | Hook-host delivery of federated context (`PUL-001`, `PUL-002`, `PUL-004`, `PUL-012` wiring); installed-product blockers & acceptance path |
 | [Semantic context advisor](experiments/semantic-context-advisor.md) | `MEM-D003` |
 | [Membrane brand identity](design/membrane-brand-identity.md) | `MEM-D004` |
 | [Hub visual reference](design/hub/hub-mockup.html) | `MEM-D005` |

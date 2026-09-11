@@ -103,87 +103,35 @@ fn packet_text(packet: &Value) -> Option<String> {
     packet.get("content").and_then(Value::as_str).map(str::to_owned).filter(|value| !value.is_empty())
 }
 
-/// Host context window used to turn observed usage into a remaining ceiling.
-/// Claude Code does not send capacity in hook input, but its transcript
-/// records the API `usage` of every assistant turn, which is a genuine host
-/// observation.  The window size is host configuration, not a Membrane
-/// estimate: `MEMBRANE_HOST_CONTEXT_WINDOW_TOKENS` overrides the documented
-/// Claude default.
-const DEFAULT_HOST_CONTEXT_WINDOW_TOKENS: u64 = 200_000;
-const TRANSCRIPT_TAIL_BYTES: u64 = 2 * 1024 * 1024;
-
-fn unix_ms_now() -> u64 { std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis() as u64) }
-
-/// Derives an authentic H8 ceiling from the last main-chain assistant usage
-/// record in the Claude Code transcript.  Returns `None` when there is no
-/// transcript or no usage yet (a fresh session): the capability gap is then
-/// reported through `memory_unavailable`, never papered over with a guess.
-fn transcript_context_ceiling(input: &HookInputEnvelopeV1, session: &str, task_id: &str) -> Option<Value> {
-    let path = input.payload.get("transcript_path").and_then(Value::as_str).filter(|value| !value.trim().is_empty())?;
-    let mut file = fs::File::open(path).ok()?;
-    let len = file.metadata().ok()?.len();
-    if len > TRANSCRIPT_TAIL_BYTES { use std::io::Seek; file.seek(std::io::SeekFrom::Start(len - TRANSCRIPT_TAIL_BYTES)).ok()?; }
-    let mut tail = String::new();
-    file.read_to_string(&mut tail).ok()?;
-    let usage_line = tail.lines().rev().find(|line| {
-        line.contains("\"type\":\"assistant\"") && line.contains("\"usage\"")
-            && serde_json::from_str::<Value>(line).ok().is_some_and(|record| {
-                record.get("isSidechain").and_then(Value::as_bool) != Some(true)
-                    && record.get("sessionId").and_then(Value::as_str).map_or(true, |id| id == session)
-                    && record.pointer("/message/usage").is_some()
-            })
-    })?;
-    let record: Value = serde_json::from_str(usage_line).ok()?;
-    let usage = record.pointer("/message/usage")?;
-    let field = |name: &str| usage.get(name).and_then(Value::as_u64).unwrap_or(0);
-    let used = field("input_tokens") + field("cache_creation_input_tokens") + field("cache_read_input_tokens") + field("output_tokens");
-    let window = env::var("MEMBRANE_HOST_CONTEXT_WINDOW_TOKENS").ok().and_then(|value| value.parse::<u64>().ok()).filter(|value| *value > 0).unwrap_or(DEFAULT_HOST_CONTEXT_WINDOW_TOKENS);
-    let remaining = window.saturating_sub(used);
-    let observed_at = file.metadata().ok().and_then(|meta| meta.modified().ok()).and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok()).map_or_else(unix_ms_now, |d| (d.as_millis() as u64).max(1));
-    let receipt_digest = crate::digest::digest_str(usage_line);
-    let now = unix_ms_now();
-    Some(json!({
-        "schemaVersion": membrane_protocol::host_observation::REMAINING_CONTEXT_CEILING_SCHEMA_VERSION,
-        "ceilingId": format!("claude_code:{}", &receipt_digest[7..39]),
-        "sessionId": session,
-        "taskId": {"coverage": "complete", "value": task_id},
-        "requestedAtUnixMs": now,
-        "remainingTokens": {"basis": {"id": "anthropic_api_usage", "version": "1"}, "estimate": {"coverage": "complete", "value": remaining}},
-        "provenanceReceipt": {"schemaVersion": membrane_protocol::host_observation::HOST_OBSERVATION_PROVENANCE_SCHEMA_VERSION, "receiptId": path, "source": "claude_code", "observedAtUnixMs": observed_at, "receiptDigest": receipt_digest}
-    }))
-}
+/// Configured attention cap for ambient hook recall (see
+/// `pull::federation::hook_mode_federate`); `MEMBRANE_HOOK_RECALL_MAX_TOKENS`
+/// overrides the default.
+const DEFAULT_HOOK_RECALL_MAX_TOKENS: u64 = 1_024;
 
 pub(crate) fn resident_recall(input: &HookInputEnvelopeV1) -> Option<String> {
     let root = project_root(input);
     let task = input.payload.get("prompt").or_else(|| input.payload.get("user_prompt")).or_else(|| input.payload.get("task")).and_then(Value::as_str).unwrap_or("orient current task");
     let session = input.session_id.as_deref().unwrap_or("host-native");
     let client = input.payload.get("client").and_then(Value::as_str).unwrap_or("codex");
-    let mut body = json!({"task": task, "repo": root, "maxTokens": input.payload.get("max_tokens").and_then(Value::as_u64).unwrap_or(6420), "client": client, "session": session, "anchors": input.payload.get("anchors").and_then(Value::as_str).unwrap_or("")});
-    // The route binds H8 to the request task id; give the prompt a stable one.
-    let task_id = format!("prompt:{}", &crate::digest::digest_str(task)[7..39]);
-    body["taskId"] = json!(task_id);
-    // A host-supplied ceiling wins; otherwise derive one from the host's own
-    // transcript usage.  Without either, the H8 gate refuses and recall stays
-    // honestly unavailable.
-    match input.payload.get("remainingContextCeiling").filter(|value| !value.is_null()).cloned().or_else(|| transcript_context_ceiling(input, session, &task_id)) {
-        Some(ceiling) => body["remainingContextCeiling"] = ceiling,
-        None => return None,
-    }
+    let max_tokens = env::var("MEMBRANE_HOOK_RECALL_MAX_TOKENS").ok().and_then(|value| value.parse::<u64>().ok()).filter(|value| *value > 0)
+        .or_else(|| input.payload.get("max_tokens").and_then(Value::as_u64)).unwrap_or(DEFAULT_HOOK_RECALL_MAX_TOKENS) as usize;
     // Resident holder first: reuse warm services when an authenticated local
     // holder is reachable.  Failure here is not a verdict on Membrane.
     if let Some((port, token)) = resident_endpoint(&root) {
-        if let Some(response) = authenticated_json_at(port, "/federate", body.clone(), &token, RECALL_RESIDENT_BUDGET_MS) {
+        let body = json!({"task": task, "repo": root, "maxTokens": max_tokens, "client": client, "session": session, "budgetPolicy": "configured_cap", "maxWaitMs": RECALL_RESIDENT_BUDGET_MS});
+        if let Some(response) = authenticated_json_at(port, "/federate", body, &token, RECALL_RESIDENT_BUDGET_MS) {
             if let Some(text) = response.get("packet").and_then(packet_text) { return Some(text); }
         }
     }
-    // Bounded explicit one-shot federation in this process: same native route
-    // the resident serves, with the remaining module budget as its deadline.
-    body["maxWaitMs"] = json!(RECALL_ONE_SHOT_BUDGET_MS);
-    let (status, response) = crate::pull::federation::native_route_response(&body.to_string());
-    if env::var_os("MEMBRANE_HOOK_DEBUG").is_some() { eprintln!("membrane hook one-shot federate: status={status} body={}", &response[..response.len().min(600)]); }
-    if !(200..300).contains(&status) { return None; }
-    let response: Value = serde_json::from_str(&response).ok()?;
-    response.get("packet").and_then(packet_text)
+    // Bounded ambient federation in this process under the configured cap,
+    // with the remaining module budget as its deadline.
+    match crate::pull::federation::hook_mode_federate(task, &root, max_tokens, client, session, RECALL_ONE_SHOT_BUDGET_MS) {
+        Ok(response) => response.get("packet").and_then(packet_text),
+        Err(error) => {
+            if env::var_os("MEMBRANE_HOOK_DEBUG").is_some() { eprintln!("membrane hook federate: {}", &error[..error.len().min(400)]); }
+            None
+        }
+    }
 }
 
 pub(crate) fn fence(input: &HookInputEnvelopeV1, completion: bool, enforcement_enabled: bool) -> HookModuleOutputV1 {
@@ -466,30 +414,6 @@ fn response_body_ok(response: &Value) -> Option<&Value> { (response.get("status"
 mod tests {
     use super::*;
 
-    #[test]
-    fn transcript_ceiling_uses_last_main_chain_usage_and_binds_task() {
-        let dir = std::env::temp_dir().join(format!("membrane-hook-h8-{}", std::process::id()));
-        fs::create_dir_all(&dir).unwrap();
-        let path = dir.join("t.jsonl");
-        fs::write(&path, concat!(
-            "{\"type\":\"user\",\"sessionId\":\"s1\"}
-",
-            "{\"type\":\"assistant\",\"isSidechain\":false,\"sessionId\":\"s1\",\"message\":{\"usage\":{\"input_tokens\":10,\"cache_creation_input_tokens\":20,\"cache_read_input_tokens\":1000,\"output_tokens\":70}}}
-",
-            "{\"type\":\"assistant\",\"isSidechain\":true,\"sessionId\":\"s1\",\"message\":{\"usage\":{\"input_tokens\":1,\"cache_creation_input_tokens\":1,\"cache_read_input_tokens\":1,\"output_tokens\":1}}}
-",
-        )).unwrap();
-        let input = membrane_protocol::normalize_hook_payload(json!({"hook_event_name":"UserPromptSubmit","session_id":"s1","transcript_path":path.to_string_lossy(),"prompt":"x"})).unwrap();
-        let ceiling = transcript_context_ceiling(&input, "s1", "prompt:abc").expect("ceiling");
-        let parsed: membrane_protocol::host_observation::RemainingContextCeilingV1 = serde_json::from_value(ceiling.clone()).expect("typed ceiling");
-        parsed.validate().expect("valid");
-        assert_eq!(parsed.remaining_tokens.estimate.value, Some(DEFAULT_HOST_CONTEXT_WINDOW_TOKENS - 1100));
-        assert_eq!(parsed.task_id.value.as_deref(), Some("prompt:abc"));
-        assert_eq!(parsed.provenance_receipt.source, "claude_code");
-        let no_transcript = membrane_protocol::normalize_hook_payload(json!({"hook_event_name":"UserPromptSubmit","session_id":"s1","prompt":"x"})).unwrap();
-        assert!(transcript_context_ceiling(&no_transcript, "s1", "prompt:abc").is_none());
-        let _ = fs::remove_dir_all(dir);
-    }
 
     #[test]
     fn query_encoding_matches_encode_uri_component_safe_set() {
