@@ -124,6 +124,15 @@ fn engine(calls: Calls, with_candidate: bool) -> FederationEngine {
 }
 
 fn engine_with_freshness(calls: Calls, with_candidate: bool, freshness: Arc<dyn FreshnessSource>) -> FederationEngine {
+    engine_with_freshness_release(calls, with_candidate, freshness, FixtureRelease)
+}
+
+fn engine_with_freshness_release<R: ReleaseSource + Send + Sync + 'static>(
+    calls: Calls,
+    with_candidate: bool,
+    freshness: Arc<dyn FreshnessSource>,
+    release: R,
+) -> FederationEngine {
     let registrations = ProviderId::ALL
         .into_iter()
         .map(|id| {
@@ -157,7 +166,53 @@ fn engine_with_freshness(calls: Calls, with_candidate: bool, freshness: Arc<dyn 
         freshness: Some(freshness),
         ..SourceSet::default()
     };
-    FederationEngine::with_release_source(registry, config, sources, FixtureRelease).unwrap()
+    FederationEngine::with_release_source(registry, config, sources, release).unwrap()
+}
+
+/// A release source whose generation differs from what providers stamp — the
+/// real shape (Blueprint stamps its own xxh128 content generation, distinct
+/// from the release sha256).
+#[derive(Clone)]
+struct AltRelease;
+impl ReleaseSource for AltRelease {
+    fn current_release(
+        &self,
+    ) -> Result<ReleaseIdentity, membrane_federation::release::ReleaseError> {
+        Ok(ReleaseIdentity::new(
+            "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "alt-release",
+            None,
+        )
+        .unwrap())
+    }
+}
+
+/// Regression for the degrade-path generation discard: when freshness is
+/// unavailable the planner must NOT bind admission to the release generation.
+/// The provider stamps its own content generation (here `GENERATION`), distinct
+/// from the release generation (`AltRelease`); binding admission to the release
+/// generation rejects it as `generation_incoherent` and blanks the packet.
+#[tokio::test]
+async fn degraded_freshness_admits_provider_generation_not_release() {
+    let calls = Calls::default();
+    // The caller-observed release generation matches the release SOURCE
+    // (AltRelease), so release binding passes — but it deliberately DIFFERS from
+    // the generation the provider stamps (GENERATION). The point under test is
+    // admission on degrade: expected_generation must not be bound to the release
+    // generation, or the provider's own-generation candidate is rejected.
+    let mut req = request();
+    req.release_generation =
+        Some("sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".to_owned());
+    let response =
+        engine_with_freshness_release(calls, true, Arc::new(IncompleteFreshness), AltRelease)
+            .federate(&req, CancellationToken::new())
+            .await
+            .expect("degraded freshness must not fail the federation");
+    assert!(
+        !response.candidates.is_empty(),
+        "a provider's own-generation candidates must survive admission on degrade, \
+         not be rejected against the release generation: {response:?}"
+    );
 }
 
 struct DelayedFreshness {

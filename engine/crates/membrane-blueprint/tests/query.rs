@@ -110,6 +110,9 @@ fn incomplete_generation_serves_candidates_and_records_omission() {
         omissions.iter().any(|entry| entry["reason"] == "incomplete_generation"),
         "incompleteness must be recorded as an omission, got {omissions:?}"
     );
+    // The completeness signal must not contradict the omission: an incomplete
+    // generation is served as "partial", never "complete".
+    assert_ne!(result["state"], "complete", "incomplete generation must not report state=complete");
 }
 
 #[test]

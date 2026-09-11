@@ -302,11 +302,23 @@ impl FederationEngine {
         // The snapshot is what the providers are keyed to; the release
         // generation remains the fallback for a request that carries no
         // snapshot.
-        let expected_generation = freshness
-            .snapshot
-            .generation
-            .as_deref()
-            .or(normalized.release_generation.as_deref());
+        let expected_generation = if freshness_degraded.is_some() {
+            // Freshness could not be determined, so admission cannot be bound to
+            // any single generation. Falling back to the release generation here
+            // rejects every provider that stamps its own content generation
+            // (Blueprint's xxh128 vs the release sha256) as
+            // `generation_incoherent`, which blanks the packet on exactly the
+            // degraded path we are trying to serve. Leave it unconstrained so
+            // providers' own generations are admitted; the degradation is
+            // already recorded on the response (`freshnessDegraded`).
+            None
+        } else {
+            freshness
+                .snapshot
+                .generation
+                .as_deref()
+                .or(normalized.release_generation.as_deref())
+        };
 
         let provider_context = ProviderContext::new(
             normalized.request_id.clone(),

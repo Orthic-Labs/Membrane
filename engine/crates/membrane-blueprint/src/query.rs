@@ -610,12 +610,26 @@ fn note_incomplete_generation(result: &mut Value) {
         Some(Value::Array(list)) => list.push(entry.clone()),
         _ => { object.insert("omissions".into(), json!([entry.clone()])); }
     }
+    // An incomplete generation is never "complete" coverage. `candidate_set`
+    // computed state/coverage before this omission existed, so downgrade them
+    // here or the envelope would carry `incomplete_generation` alongside a
+    // contradictory `state`/`coverage` of "complete".
+    if object.get("state").and_then(Value::as_str) == Some("complete") {
+        object.insert("state".into(), json!("partial"));
+    }
     if let Some(set) = object.get_mut("candidateSet").and_then(Value::as_object_mut) {
         match set.get_mut("omissions") {
             Some(list) if already(list) => {}
             Some(Value::Array(list)) => list.push(entry),
             _ => { set.insert("omissions".into(), json!([entry])); }
         }
+        if set.get("state").and_then(Value::as_str) == Some("complete") {
+            set.insert("state".into(), json!("partial"));
+        }
+        if set.get("coverage").and_then(Value::as_str) == Some("complete") {
+            set.insert("coverage".into(), json!("partial"));
+        }
+        set.insert("truncated".into(), json!(true));
     }
 }
 
