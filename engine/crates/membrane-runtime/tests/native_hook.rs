@@ -66,6 +66,12 @@ fn native_hook_source_never_spawns_node_or_python() {
 }
 
 #[test]
+fn ambient_hook_budget_fits_codex_ten_second_timeout() {
+    assert!(HOOK_MODULE_DEADLINE_MS < 10_000);
+    assert!(HOOK_MODULE_DEADLINE_MS >= 8_000);
+}
+
+#[test]
 fn session_end_is_typed_without_invalid_host_projection() {
     let input = normalize_hook_payload(json!({"event":"SessionEnd", "session_id":"resume-1"})).unwrap();
     let response = project_hook_host_response(NativeHookRuntime::default().dispatch(&input));

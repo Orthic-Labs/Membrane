@@ -9,7 +9,10 @@ use serde_json::Value;
 use thiserror::Error;
 
 pub const HOOK_SCHEMA_VERSION: u32 = 1;
-pub const HOOK_MODULE_DEADLINE_MS: u64 = 3_000;
+/// Per-module wall budget. Codex allows a ten-second UserPromptSubmit hook;
+/// ambient retrieval reserves time for process startup plus bounded cold
+/// one-shot federation while retaining a hard outer kill/reap deadline.
+pub const HOOK_MODULE_DEADLINE_MS: u64 = 8_000;
 
 /// Every host event supported by shipped Membrane hooks.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -471,7 +474,7 @@ pub fn hook_injection_point_descriptors() -> [HookInjectionPointDescriptorV1; 8]
             output: "HookModuleOutputV1 status with additionalContext carrying recalled text when available.",
             when_to_use: "Every user prompt submission where a resident memory/federation endpoint is configured.",
             when_not_to_use: "Never when no resident API token is installed; skip rather than fabricate recall from an unauthenticated or absent source.",
-            cost_bound: "One federation call bounded by HOOK_MODULE_DEADLINE_MS (3000ms); no unbounded retrieval.",
+            cost_bound: "One federation call bounded by HOOK_MODULE_DEADLINE_MS (8000ms); no unbounded retrieval.",
             freshness_bound: "Recall reflects durable/document state as of the resident's current index generation, not a prior session snapshot.",
             effect_bound: "Read-only; no durable-state or workspace mutation.",
             budget: "One recall attempt per prompt submission.",

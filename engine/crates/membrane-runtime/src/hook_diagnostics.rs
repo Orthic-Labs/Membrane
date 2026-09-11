@@ -23,7 +23,7 @@ use sha2::{Digest, Sha256};
 const STATUS_DEADLINE_MS: u64 = 800;
 const WRITE_DEADLINE_MS: u64 = 1_200;
 // Must stay strictly above membrane_protocol::hook::HOOK_MODULE_DEADLINE_MS
-// (3_000ms). `bounded_git`'s own timeout only calls a plain `Child::kill()`
+// (8_000ms). `bounded_git`'s own timeout only calls a plain `Child::kill()`
 // with no job-object/process-group containment, so it cannot reap a
 // detached descendant holding the piped stdout open. If this inner bound
 // were shorter than (or equal to) the outer per-module deadline, the git
@@ -32,7 +32,7 @@ const WRITE_DEADLINE_MS: u64 = 1_200;
 // never fire for git-based fences -- leaving leaked descendants unreaped.
 // Keeping this bound longer lets the outer deadline win the race so the
 // Job-tree-wide reap in the outer path remains reachable in production.
-const GIT_DEADLINE_MS: u64 = 3_500;
+const GIT_DEADLINE_MS: u64 = 8_500;
 const GIT_OUTPUT_LIMIT_BYTES: usize = 2 * 1024 * 1024;
 const _GIT_DEADLINE_STAYS_BELOW_MODULE_DEADLINE_FOR_OUTER_REAP: () =
     assert!(GIT_DEADLINE_MS > HOOK_MODULE_DEADLINE_MS, "GIT_DEADLINE_MS must exceed HOOK_MODULE_DEADLINE_MS so the outer per-module timeout/reap path stays reachable for git-based fences");
