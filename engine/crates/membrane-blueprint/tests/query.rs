@@ -89,13 +89,27 @@ fn caps_and_ambiguity_are_receipted() {
 }
 
 #[test]
-fn incomplete_generation_is_suppressed_with_raw_seed() {
-    let mut request = BlueprintRequest::new("q", Operation::Recall, "/repo"); request.generation = Some("generation-query".into()); request.input["seed"] = json!("requested-seed");
+fn incomplete_generation_serves_candidates_and_records_omission() {
+    // An incomplete generation still holds valid indexed evidence. It must
+    // serve that evidence and record the incompleteness as an omission, NOT
+    // suppress every candidate -- suppressing here is what turned any oversized
+    // or binary file, or a truncated walk, into zero context system-wide. Only
+    // an explicit exact-generation mismatch (see stale test) fails closed.
+    let mut request = BlueprintRequest::new("q", Operation::Search, "/repo");
+    request.generation = Some("generation-query".into());
+    request.input["query"] = json!("run");
     let mut generation = generation(); generation.complete = false;
     let result = execute_query(&generation, &request, &context(&request)).unwrap();
-    assert_eq!(result["state"], "suppressed"); assert_eq!(result["requestedSeed"], "requested-seed"); assert_eq!(result["omissions"][0]["reason"], "incomplete_generation");
-    assert_eq!(result["candidateSet"]["state"], "suppressed");
-    assert!(result["candidateSet"]["candidates"].as_array().unwrap().is_empty());
+    assert_ne!(result["state"], "suppressed", "incomplete generation must not suppress every candidate");
+    assert!(
+        !result["candidates"].as_array().unwrap().is_empty(),
+        "the indexed candidates must still be served, got {result:?}"
+    );
+    let omissions = result["omissions"].as_array().unwrap();
+    assert!(
+        omissions.iter().any(|entry| entry["reason"] == "incomplete_generation"),
+        "incompleteness must be recorded as an omission, got {omissions:?}"
+    );
 }
 
 #[test]

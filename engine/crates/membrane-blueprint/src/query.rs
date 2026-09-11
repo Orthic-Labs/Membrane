@@ -595,12 +595,55 @@ fn search(generation: &GraphGeneration, request: &BlueprintRequest, context: &Re
     Ok(envelope(request, &generation.generation_id, "complete", Map::from_iter([("query".into(),json!(query)),("requestedQuery".into(),json!(query)),("candidates".into(),json!(found.iter().map(|n| node_value(n)).collect::<Vec<_>>())),("omissions".into(),json!(if omitted>0 {vec![omission("candidate_ceiling",Some(omitted))]} else {vec![]}))])))
 }
 
+/// Append `incomplete_generation` to an envelope's top-level and candidate-set
+/// omission lists, without disturbing anything else the operation produced.
+fn note_incomplete_generation(result: &mut Value) {
+    let Some(object) = result.as_object_mut() else { return };
+    let entry = omission("incomplete_generation", None);
+    let already = |list: &Value| {
+        list.as_array().is_some_and(|values| {
+            values.iter().any(|value| value.get("reason").and_then(Value::as_str) == Some("incomplete_generation"))
+        })
+    };
+    match object.get_mut("omissions") {
+        Some(list) if already(list) => {}
+        Some(Value::Array(list)) => list.push(entry.clone()),
+        _ => { object.insert("omissions".into(), json!([entry.clone()])); }
+    }
+    if let Some(set) = object.get_mut("candidateSet").and_then(Value::as_object_mut) {
+        match set.get_mut("omissions") {
+            Some(list) if already(list) => {}
+            Some(Value::Array(list)) => list.push(entry),
+            _ => { set.insert("omissions".into(), json!([entry])); }
+        }
+    }
+}
+
 pub fn execute_query(generation: &GraphGeneration, request: &BlueprintRequest, context: &RequestContext) -> Result<Value, BlueprintError> {
+    let mut result = execute_query_impl(generation, request, context)?;
+    // An incomplete generation still holds valid indexed evidence: it served
+    // it, rather than suppressing every candidate (which turned any oversized
+    // or binary file, or a truncated walk, into zero context across the whole
+    // system). The incompleteness is recorded as an omission, not fatal. A
+    // suppressed response (an explicit exact-generation mismatch) is left as
+    // produced -- that remains fail-closed.
+    if !generation.complete
+        && result.get("state").and_then(Value::as_str) != Some("suppressed")
+    {
+        note_incomplete_generation(&mut result);
+    }
+    Ok(result)
+}
+
+fn execute_query_impl(generation: &GraphGeneration, request: &BlueprintRequest, context: &RequestContext) -> Result<Value, BlueprintError> {
     check(context)?;
     let limits = Limits::from(request, context);
-    if stale(request, generation) || !generation.complete {
-        let reason = if stale(request, generation) { "stale_generation" } else { "incomplete_generation" };
-        let omissions = vec![omission(reason, None)];
+    // Only an explicit caller-requested generation that does not match the
+    // sealed generation fails closed (an exact-freshness contract violation).
+    // Worktree drift and generation incompleteness degrade instead (see the
+    // wrapper above); they never reach this suppression.
+    if stale(request, generation) {
+        let omissions = vec![omission("stale_generation", None)];
         let set = candidate_set("suppressed", std::iter::empty(), Some(0), true, omissions.clone());
         return Ok(envelope(request, &generation.generation_id, "suppressed", Map::from_iter([("requestedSeed".into(),requested(&request.input,"seed")),("requestedTarget".into(),requested(&request.input,"target")),("requestedGeneration".into(),json!(request.generation)),("omissions".into(),json!(omissions)),("candidateSet".into(),set)])));
     }
