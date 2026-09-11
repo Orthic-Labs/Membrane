@@ -1,7 +1,8 @@
 use std::{thread, time::Duration};
 
 use membrane_protocol::{
-    normalize_hook_payload, HookModuleId, HookModuleState, HOOK_MODULE_DEADLINE_MS,
+    normalize_hook_payload, project_hook_host_response, HookModuleId, HookModuleState, HookEvent,
+    HOOK_MODULE_DEADLINE_MS,
 };
 use membrane_runtime::hook::{NativeHookRuntime, NativeHookService};
 use serde_json::json;
@@ -62,4 +63,14 @@ fn native_hook_source_never_spawns_node_or_python() {
     assert!(!source.contains("command::new(\"python"));
     assert!(!source.contains("node.exe"));
     assert!(!source.contains("python.exe"));
+}
+
+#[test]
+fn session_end_is_typed_without_invalid_host_projection() {
+    let input = normalize_hook_payload(json!({"event":"SessionEnd", "session_id":"resume-1"})).unwrap();
+    let response = project_hook_host_response(NativeHookRuntime::default().dispatch(&input));
+    assert_eq!(input.event, HookEvent::SessionEnd);
+    let encoded = serde_json::to_value(response).unwrap();
+    assert!(encoded.get("hookSpecificOutput").is_none());
+    assert_eq!(encoded["membraneHook"]["event"], "SessionEnd");
 }

@@ -113,25 +113,72 @@ pub(crate) fn resident_recall(input: &HookInputEnvelopeV1) -> Option<String> {
     let task = input.payload.get("prompt").or_else(|| input.payload.get("user_prompt")).or_else(|| input.payload.get("task")).and_then(Value::as_str).unwrap_or("orient current task");
     let session = input.session_id.as_deref().unwrap_or("host-native");
     let client = input.payload.get("client").and_then(Value::as_str).unwrap_or("codex");
+    // Host integrations may provide either canonical camelCase or native
+    // snake_case envelope fields. Parse only a validated H8 observation;
+    // absence remains explicit instead of inventing a context window.
+    let observed_ceiling = input.payload.get("remainingContextCeiling")
+        .or_else(|| input.payload.get("remaining_context_ceiling"))
+        .cloned()
+        .and_then(|value| serde_json::from_value::<membrane_protocol::RemainingContextCeilingV1>(value).ok())
+        .filter(|ceiling| ceiling.validate().is_ok());
     let max_tokens = env::var("MEMBRANE_HOOK_RECALL_MAX_TOKENS").ok().and_then(|value| value.parse::<u64>().ok()).filter(|value| *value > 0)
         .or_else(|| input.payload.get("max_tokens").and_then(Value::as_u64)).unwrap_or(DEFAULT_HOOK_RECALL_MAX_TOKENS) as usize;
     // Resident holder first: reuse warm services when an authenticated local
     // holder is reachable.  Failure here is not a verdict on Membrane.
+    let need_digest = format!("sha256:{}", sha256(task.as_bytes()));
+    let mut resident_failure = false;
     if let Some((port, token)) = resident_endpoint(&root) {
-        let body = json!({"task": task, "repo": root, "maxTokens": max_tokens, "client": client, "session": session, "budgetPolicy": "configured_cap", "maxWaitMs": RECALL_RESIDENT_BUDGET_MS});
+        let mut body = json!({"task": task, "repo": root, "maxTokens": max_tokens, "client": client, "session": session, "budgetPolicy": if observed_ceiling.is_some() { "host_observed" } else { "configured_cap" }, "maxWaitMs": RECALL_RESIDENT_BUDGET_MS});
+        if let Some(ceiling) = observed_ceiling.as_ref() {
+            body["remainingContextCeiling"] = serde_json::to_value(ceiling).unwrap_or(Value::Null);
+        }
         if let Some(response) = authenticated_json_at(port, "/federate", body, &token, RECALL_RESIDENT_BUDGET_MS) {
             if let Some(text) = response.get("packet").and_then(packet_text) { return Some(text); }
         }
+        resident_failure = true;
+    } else {
+        // Hub-independent one-shot is authorized by this fresh, exact
+        // Membrane failure receipt, scoped to this information need/session.
+        resident_failure = true;
+    }
+    let supplied_receipt = input.payload.get("membraneFailureReceipt")
+        .or_else(|| input.payload.get("membrane_failure_receipt"))
+        .cloned();
+    let generated_failure = json!({
+        "kind":"membrane.retrieval.failure", "issuer":"membrane",
+        "receiptId": format!("membrane-failure-{}", &need_digest[7..]),
+        "informationNeedDigest": need_digest.clone(), "sessionId": session,
+        "issuedAtUnixMs": cortex_store::time::now_millis() as u64, "status":"failed"
+    });
+    // A resident miss is a fresh exact Membrane failure receipt. A supplied
+    // receipt can replace it only when its issuer, identity, age, status, and
+    // information need all match; success/unrelated/stale/fake values deny.
+    let authorization = supplied_receipt.as_ref().unwrap_or(&generated_failure);
+    if !resident_failure || !receipt_allows_alternative(Some(authorization), &need_digest, session) {
+        return None;
     }
     // Bounded ambient federation in this process under the configured cap,
     // with the remaining module budget as its deadline.
-    match crate::pull::federation::hook_mode_federate(task, &root, max_tokens, client, session, RECALL_ONE_SHOT_BUDGET_MS) {
+    match crate::pull::federation::hook_mode_federate_with_observation(task, &root, max_tokens, client, session, RECALL_ONE_SHOT_BUDGET_MS, observed_ceiling) {
         Ok(response) => response.get("packet").and_then(packet_text),
         Err(error) => {
             if env::var_os("MEMBRANE_HOOK_DEBUG").is_some() { eprintln!("membrane hook federate: {}", &error[..error.len().min(400)]); }
             None
         }
     }
+}
+
+fn receipt_allows_alternative(receipt: Option<&Value>, need_digest: &str, session: &str) -> bool {
+    receipt.is_some_and(|receipt| receipt.get("kind").and_then(Value::as_str) == Some("membrane.retrieval.failure")
+        && receipt.get("issuer").and_then(Value::as_str) == Some("membrane")
+        && receipt.get("receiptId").and_then(Value::as_str).is_some_and(|id| id.starts_with("membrane-failure-"))
+        && receipt.get("informationNeedDigest").and_then(Value::as_str) == Some(need_digest)
+        && receipt.get("sessionId").and_then(Value::as_str) == Some(session)
+        && receipt.get("issuedAtUnixMs").and_then(Value::as_u64).is_some_and(|issued| {
+            let now = cortex_store::time::now_millis() as u64;
+            issued <= now && now.saturating_sub(issued) <= 60_000
+        })
+        && receipt.get("status").and_then(Value::as_str).is_some_and(|status| matches!(status, "failed" | "insufficient")))
 }
 
 pub(crate) fn fence(input: &HookInputEnvelopeV1, completion: bool, enforcement_enabled: bool) -> HookModuleOutputV1 {
@@ -440,5 +487,21 @@ mod tests {
         let token = root.path().join("api-token");
         fs::write(&token, "installed-token\n").expect("token file");
         assert!(token_from_file(&token).is_some());
+    }
+
+    #[test]
+    fn alternative_receipt_requires_fresh_exact_need_and_session() {
+        let now = cortex_store::time::now_millis() as u64;
+        let base = |digest: &str, session: &str, issued: u64, status: &str| json!({
+            "kind":"membrane.retrieval.failure", "informationNeedDigest":digest,
+            "sessionId":session, "issuedAtUnixMs":issued, "status":status,
+            "issuer":"membrane", "receiptId":"membrane-failure-test"
+        });
+        assert!(receipt_allows_alternative(Some(&base("need", "s", now, "failed")), "need", "s"));
+        assert!(!receipt_allows_alternative(Some(&base("other", "s", now, "failed")), "need", "s"));
+        assert!(!receipt_allows_alternative(Some(&base("need", "other", now, "failed")), "need", "s"));
+        assert!(!receipt_allows_alternative(Some(&base("need", "s", now.saturating_sub(60_001), "failed")), "need", "s"));
+        assert!(!receipt_allows_alternative(Some(&base("need", "s", now, "success")), "need", "s"));
+        assert!(!receipt_allows_alternative(Some(&json!({"kind":"membrane.retrieval.failure","informationNeedDigest":"need","sessionId":"s","issuedAtUnixMs":now,"status":"failed","receiptId":"fake"})), "need", "s"));
     }
 }

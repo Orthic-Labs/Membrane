@@ -317,7 +317,7 @@ pub struct HookSpecificOutputV1 {
     pub additional_context: String,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct HookHostResponseV1 {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -326,6 +326,23 @@ pub struct HookHostResponseV1 {
     pub reason: Option<String>,
     pub hook_specific_output: HookSpecificOutputV1,
     pub membrane_hook: HookDispatchResultV1,
+}
+
+// Claude rejects `hookSpecificOutput.hookEventName=SessionEnd`; SessionEnd
+// accepts only the typed Membrane receipt. Keep field available to callers,
+// but omit host projection for that lifecycle event.
+impl serde::Serialize for HookHostResponseV1 {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where S: serde::Serializer {
+        use serde::ser::SerializeMap;
+        let omit_host_projection = matches!(&self.hook_specific_output.hook_event_name, HookEvent::SessionEnd);
+        let mut map = serializer.serialize_map(Some(if omit_host_projection { 2 } else { 3 }))?;
+        if let Some(decision) = &self.decision { map.serialize_entry("decision", decision)?; }
+        if let Some(reason) = &self.reason { map.serialize_entry("reason", reason)?; }
+        if !omit_host_projection { map.serialize_entry("hookSpecificOutput", &self.hook_specific_output)?; }
+        map.serialize_entry("membraneHook", &self.membrane_hook)?;
+        map.end()
+    }
 }
 
 /// Projects native module results into HookHost's deterministic JSON response.
@@ -696,5 +713,16 @@ mod tests {
                 }]
             }
         }));
+    }
+
+    #[test]
+    fn session_end_projection_omits_invalid_host_specific_output() {
+        let response = project_hook_host_response(HookDispatchResultV1::new(
+            HookEvent::SessionEnd,
+            vec![HookModuleResultV1::skipped(HookModuleId::MemorySessionEnd)],
+        ));
+        let value = serde_json::to_value(response).expect("response serializes");
+        assert!(value.get("hookSpecificOutput").is_none());
+        assert_eq!(value["membraneHook"]["event"], "SessionEnd");
     }
 }

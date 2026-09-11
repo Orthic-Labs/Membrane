@@ -519,6 +519,7 @@ fn activate_with_residency(options: ActivationOptions, start_resident: bool) -> 
 
     if !options.dry_run {
         reconcile_claude_hooks(&install_root)?;
+        reconcile_codex_hooks(&install_root)?;
     }
     let receipt = ActivationReceiptV1 {
         schema_version: ACTIVATION_RECEIPT_SCHEMA_VERSION,
@@ -609,6 +610,7 @@ fn deactivate_with_residency(
 
     let clients = deactivate_clients(&membrane, &options.clients, options.dry_run, run_client)?;
     let claude_hooks_matched = remove_claude_hooks(&install_root, options.dry_run)?;
+    let _ = remove_codex_hooks(&install_root, options.dry_run)?;
     let user_path_present = remove_user_path(&install_root, options.dry_run)?;
     let startup_entries_matched = remove_startup_entries(&tray, options.dry_run)?;
     let activation_receipt_matched = remove_activation_receipt(
@@ -1665,6 +1667,62 @@ fn reconcile_claude_hooks(install_root: &Path) -> Result<(), String> {
     reconcile_claude_hooks_at(&settings_path, install_root)
 }
 
+/// Reconcile Codex's native hook projection independently from its MCP
+/// registration.  Only exact Membrane commands are replaced/removed; all
+/// foreign hook entries remain byte-for-byte represented in the merged tree.
+fn reconcile_codex_hooks(install_root: &Path) -> Result<(), String> {
+    let home = std::env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" })
+        .map(PathBuf::from).ok_or_else(|| "Codex settings profile is unavailable".to_string())?;
+    reconcile_codex_hooks_at(&home.join(".codex").join("hooks.json"), install_root)
+}
+
+fn reconcile_codex_hooks_at(path: &Path, install_root: &Path) -> Result<(), String> {
+    require_file(&install_root.join(executable_name("membrane")), "installed native Codex hook executable")?;
+    let command = installed_hook_command(install_root);
+    let mut config: serde_json::Value = if path.is_file() {
+        serde_json::from_slice(&std::fs::read(path).map_err(|e| format!("read Codex hooks: {e}"))?)
+            .map_err(|e| format!("parse Codex hooks: {e}"))?
+    } else { serde_json::json!({}) };
+    let root = config.as_object_mut().ok_or_else(|| "Codex hooks root must be an object".to_string())?;
+    let hooks = root.entry("hooks").or_insert_with(|| serde_json::json!({})).as_object_mut()
+        .ok_or_else(|| "Codex hooks must be an object".to_string())?;
+    let entries = hooks.entry("UserPromptSubmit").or_insert_with(|| serde_json::json!([])).as_array_mut()
+        .ok_or_else(|| "Codex UserPromptSubmit hooks must be an array".to_string())?;
+    replace_legacy_hook_commands(entries, &command);
+    let mut seen = false;
+    for entry in entries.iter_mut() {
+        if let Some(items) = entry.get_mut("hooks").and_then(serde_json::Value::as_array_mut) {
+            items.retain(|item| {
+                if item.get("command").and_then(serde_json::Value::as_str) != Some(&command) { return true; }
+                if seen { false } else { seen = true; true }
+            });
+        }
+    }
+    if !seen { entries.push(serde_json::json!({"hooks":[{"type":"command","command":command,"timeout":10,"additionalContextLimit":7000}]})); }
+    let parent = path.parent().ok_or_else(|| "Codex hooks path has no parent".to_string())?;
+    std::fs::create_dir_all(parent).map_err(|e| format!("create Codex hooks directory: {e}"))?;
+    let staged = path.with_extension(format!("json.{}.partial", std::process::id()));
+    std::fs::write(&staged, serde_json::to_vec_pretty(&config).map_err(|e| format!("serialize Codex hooks: {e}"))?)
+        .map_err(|e| format!("stage Codex hooks: {e}"))?;
+    replace_file(&staged, path).map_err(|e| format!("promote Codex hooks: {e}"))
+}
+
+fn remove_codex_hooks(install_root: &Path, dry_run: bool) -> Result<usize, String> {
+    let home = std::env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" })
+        .map(PathBuf::from).ok_or_else(|| "Codex settings profile is unavailable".to_string())?;
+    let path = home.join(".codex").join("hooks.json");
+    if !path.is_file() { return Ok(0); }
+    let original = std::fs::read(&path).map_err(|e| format!("read Codex hooks: {e}"))?;
+    let mut config: serde_json::Value = serde_json::from_slice(&original).map_err(|e| format!("parse Codex hooks: {e}"))?;
+    let removed = remove_exact_hook_items(&mut config, &installed_hook_command(install_root));
+    if removed == 0 || dry_run { return Ok(removed); }
+    let staged = path.with_extension(format!("json.{}.partial", std::process::id()));
+    std::fs::write(&staged, serde_json::to_vec_pretty(&config).map_err(|e| format!("serialize Codex hooks: {e}"))?)
+        .map_err(|e| format!("stage Codex hooks: {e}"))?;
+    replace_file(&staged, &path).map_err(|e| format!("promote Codex hooks: {e}"))?;
+    Ok(removed)
+}
+
 /// Reconcile native Claude hooks at an explicit settings path.
 ///
 /// The production path supplies the user's real Claude settings path through
@@ -2707,6 +2765,32 @@ mod tests {
             "Command: C:\\Membrane\\membrane.exe\nArgs: stdio-mcp",
             r"\\?\C:\Membrane\membrane.exe"
         ));
+    }
+
+    #[test]
+    fn codex_hook_projection_is_owned_idempotent_and_foreign_safe() {
+        let directory = tempfile::tempdir().unwrap();
+        let install = directory.path().join("current");
+        std::fs::create_dir_all(&install).unwrap();
+        std::fs::write(install.join(executable_name("membrane")), b"native").unwrap();
+        let path = directory.path().join("hooks.json");
+        let foreign = r#"C:\Other\hook.exe hook"#;
+        let config = serde_json::json!({"hooks":{"UserPromptSubmit":[
+            {"hooks":[{"type":"command","command":foreign}]},
+            {"hooks":[{"type":"command","command":installed_hook_command(&install)}]},
+            {"hooks":[{"type":"command","command":installed_hook_command(&install)}]}
+        ]}});
+        std::fs::write(&path, serde_json::to_vec(&config).unwrap()).unwrap();
+        reconcile_codex_hooks_at(&path, &install).unwrap();
+        reconcile_codex_hooks_at(&path, &install).unwrap();
+        let after: serde_json::Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        let entries = after["hooks"]["UserPromptSubmit"].as_array().unwrap();
+        let owned = entries.iter().flat_map(|entry| entry["hooks"].as_array().into_iter().flatten())
+            .filter(|item| item["command"] == installed_hook_command(&install)).count();
+        assert_eq!(owned, 1);
+        assert!(entries.iter().any(|entry| entry["hooks"].as_array().unwrap().iter().any(|item| item["command"] == foreign)));
+        let mut removable = after;
+        assert_eq!(remove_exact_hook_items(&mut removable, &installed_hook_command(&install)), 1);
     }
 
     #[test]

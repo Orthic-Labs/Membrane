@@ -138,7 +138,7 @@ pub fn run_federate(
     // it a build-class budget. A resident Hub keeps freshness warm and
     // returns far faster; this ceiling only bounds the cold one-shot.
     let payload = run_federate_value(task, repo, max_tokens, packet_char_budget_override, packet_char_budget_model,
-        client, session, anchors, scope_grant_id, accepted_receipt_versions, 180_000, "explicit")?;
+        client, session, anchors, scope_grant_id, accepted_receipt_versions, 180_000, "explicit", None)?;
     println!(
         "{}",
         serde_json::to_string_pretty(&payload).map_err(|e| format!("serialize: {e}"))?
@@ -146,13 +146,9 @@ pub fn run_federate(
     Ok(())
 }
 
-/// Ambient hook-mode federate: a latency-bound, fail-open caller (the per-prompt
-/// host hook) that runs under a configured attention cap rather than a
-/// host-observed remaining-context ceiling. No host produces that observation
-/// today; the field (hindsight coding-agents across 13 harnesses) recalls
-/// under a configured cap. This is the separately declared advisory policy the
-/// Push canon requires: the receipt names `budgetPolicy: configured_cap`, and
-/// strict host-observed H8 stays the contract for explicit `membrane_context`.
+/// Ambient hook-mode federate: a latency-bound caller. When a host supplies a
+/// validated H8 observation it is passed to the shared planner verbatim;
+/// otherwise the receipt names the bounded configured-cap degradation policy.
 pub fn hook_mode_federate(
     task: &str,
     repo: &Path,
@@ -161,8 +157,18 @@ pub fn hook_mode_federate(
     session: &str,
     deadline_ms: u64,
 ) -> Result<Value, String> {
+    hook_mode_federate_with_observation(task, repo, max_tokens, client, session, deadline_ms, None)
+}
+
+/// Hook adapter carrying a host-produced H8 observation when available. The
+/// planner receives this exact observation; it never fabricates capacity.
+pub fn hook_mode_federate_with_observation(
+    task: &str, repo: &Path, max_tokens: usize, client: &str, session: &str,
+    deadline_ms: u64, ceiling: Option<membrane_protocol::RemainingContextCeilingV1>,
+) -> Result<Value, String> {
     run_federate_value(task.to_owned(), repo.to_path_buf(), max_tokens, None, None, client.to_owned(),
-        Some(session.to_owned()), Vec::new(), None, Vec::new(), deadline_ms, "configured_cap")
+        Some(session.to_owned()), Vec::new(), None, Vec::new(), deadline_ms,
+        if ceiling.is_some() { "host_observed" } else { "configured_cap" }, ceiling)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -179,24 +185,19 @@ fn run_federate_value(
     accepted_receipt_versions: Vec<u32>,
     deadline_ms: u64,
     budget_policy: &str,
+    ceiling: Option<membrane_protocol::RemainingContextCeilingV1>,
 ) -> Result<Value, String> {
     let root = repo
         .canonicalize()
         .map_err(|error| format!("resolve repository root: {error}"))?;
     let session_id = federation_session_id(session);
     let release_generation = RuntimeReleaseSource::generation()?;
-    let request = native_request(
-        &task,
-        &root,
-        max_tokens,
-        deadline_ms,
-        release_generation,
-        &client,
-        &session_id,
-        anchors,
-        scope_grant_id.clone(),
-        None,
-    );
+    let request = match ceiling.as_ref() {
+        Some(observed) => native_request_with_h8(&task, &root, max_tokens, deadline_ms,
+            release_generation, &client, &session_id, anchors, scope_grant_id.clone(), None, observed),
+        None => native_request(&task, &root, max_tokens, deadline_ms, release_generation,
+            &client, &session_id, anchors, scope_grant_id.clone(), None),
+    };
     let admitted_grant = admitted_publication_grant(&request)?;
     let started = Instant::now();
     // Same hazard as the request path below: a synchronous entry that built
@@ -2429,6 +2430,19 @@ mod tests {
         assert!(!without_contract
             .extensions
             .contains_key("sufficiencyContract"));
+    }
+
+    #[test]
+    fn host_observed_ceiling_is_forwarded_without_configured_default() {
+        let ceiling: membrane_protocol::RemainingContextCeilingV1 = serde_json::from_value(serde_json::json!({
+            "schemaVersion": 1, "ceilingId": "c", "sessionId": "s",
+            "taskId": {"coverage":"complete", "value":"t"}, "requestedAtUnixMs": 1,
+            "remainingTokens": {"basis":{"id":"host","version":"1"},"estimate":{"coverage":"complete","value":700}},
+            "provenanceReceipt":{"schemaVersion":1,"receiptId":"r","source":"codex","observedAtUnixMs":1,"receiptDigest":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}
+        })).unwrap();
+        let request = native_request_with_h8("task", Path::new(r"C:\repo"), 100, 1000,
+            "release".to_owned(), "codex", "s", Vec::new(), None, None, &ceiling);
+        assert_eq!(request.extensions["remainingContextCeiling"]["remainingTokens"]["estimate"]["value"], 700);
     }
 
     #[test]
