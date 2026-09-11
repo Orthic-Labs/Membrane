@@ -34,7 +34,14 @@ const IGNORED_FILES: &[&str] = &[".DS_Store", "Thumbs.db", "architecture.md", "p
 /// Canonical source-universe policy shared by graph discovery & native watch
 /// snapshots. Generated payloads stay outside both semantic indexing paths.
 pub fn is_canonical_ignored_dir(name: &str) -> bool {
-    IGNORED_DIRS.iter().any(|ignored| *ignored == name) || name.starts_with(".agent-")
+    // `.tmp-` prefixed directories are transient build/diagnosis scratch (e.g.
+    // the release pipeline's `.tmp-release-diagnosis-*` trees, which stage full
+    // installer payloads — hundreds of MB of binaries). They are never source
+    // and walking them both wastes the scan and, before the oversized-file fix,
+    // poisoned generation completeness. Treat them like `.agent-` scratch.
+    IGNORED_DIRS.iter().any(|ignored| *ignored == name)
+        || name.starts_with(".agent-")
+        || name.starts_with(".tmp-")
 }
 
 pub fn is_canonical_ignored_file(relative: &str, name: &str) -> bool {
@@ -283,9 +290,14 @@ pub fn scan_repository_with_cancellation(root: impl AsRef<Path>, options: &ScanO
                     continue;
                 }};
                 if meta.len() > MAX_FILE_BYTES {
+                    // An oversized file (a binary, a vendored blob) is an
+                    // expected per-file omission, not a failure to traverse the
+                    // tree: record the skip but DO NOT set traversal_truncated.
+                    // Marking the whole generation incomplete here is what made
+                    // every real-world repo (any repo containing a .exe/.wasm)
+                    // report complete=false, which in turn made query.rs suppress
+                    // every search/recall/expand/impact and return zero context.
                     report.skipped.push(ScanDisposition { path: rel.clone(), state: "unsupported".into(), reason: format!("file_bytes:{}>limit:{}", meta.len(), MAX_FILE_BYTES) });
-                    report.traversal_truncated = true;
-                    report.truncation_reasons.push(format!("unsupported_file_bytes:{rel}"));
                     continue;
                 }
                 let bytes = match fs::read(&path) { Ok(v) => v, Err(error) => {
