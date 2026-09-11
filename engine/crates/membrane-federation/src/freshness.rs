@@ -107,6 +107,31 @@ impl FreshnessBinding {
         })
     }
 
+    /// A freshness binding synthesized when the freshness source could not be
+    /// consulted at all: the Hub/watcher is not ready, the source is missing,
+    /// or it reported itself incomplete/unavailable. The planner degrades to
+    /// this rather than failing the whole federation — providers then run
+    /// against the release-generation fallback and the degradation is recorded
+    /// on the response. It is NEVER used for a generation mismatch or a
+    /// malformed snapshot: those remain fail-closed. State is `Unknown`
+    /// (`warning_code()` == "freshness_unavailable"), never fabricated Current.
+    pub fn unavailable(reason: impl Into<String>) -> Self {
+        Self {
+            snapshot: FreshnessSnapshotV1 {
+                graph_state: "unavailable".to_owned(),
+                generation: None,
+                snapshot_id: None,
+                base_commit: None,
+                overlay_digest: None,
+                stale: false,
+            },
+            state: FreshnessState::Unknown,
+            source_id: None,
+            provenance: Some(reason.into()),
+            release: None,
+        }
+    }
+
     pub fn with_provenance(
         mut self,
         source_id: impl Into<String>,

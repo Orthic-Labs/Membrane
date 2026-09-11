@@ -210,6 +210,100 @@ async fn inherited_expired_deadline_is_not_replaced_by_request_budget() {
     assert!(calls.0.lock().unwrap().is_empty());
 }
 
+/// A freshness source that reports itself incomplete (the Hub/watcher warm-up
+/// case): `acquire` turns this into a `freshness_unavailable:` error.
+#[derive(Clone)]
+struct IncompleteFreshness;
+#[async_trait]
+impl FreshnessSource for IncompleteFreshness {
+    async fn freshness(
+        &self,
+        _query: &membrane_provider_sdk::SourceQuery,
+    ) -> SourceResult<FreshnessSnapshotV1> {
+        Ok(SourceResponse {
+            value: FreshnessSnapshotV1 {
+                graph_state: "unavailable".to_owned(),
+                generation: None,
+                snapshot_id: None,
+                base_commit: None,
+                overlay_digest: None,
+                stale: true,
+            },
+            generation: None,
+            complete: false,
+            warnings: Vec::new(),
+        })
+    }
+}
+
+/// A freshness source whose snapshot generation is malformed. This must remain
+/// fail-closed: a broken/tampered snapshot is never silently degraded.
+#[derive(Clone)]
+struct MalformedFreshness;
+#[async_trait]
+impl FreshnessSource for MalformedFreshness {
+    async fn freshness(
+        &self,
+        _query: &membrane_provider_sdk::SourceQuery,
+    ) -> SourceResult<FreshnessSnapshotV1> {
+        Ok(SourceResponse {
+            value: FreshnessSnapshotV1 {
+                graph_state: "current".to_owned(),
+                generation: Some("not-a-valid-generation".to_owned()),
+                snapshot_id: None,
+                base_commit: None,
+                overlay_digest: None,
+                stale: false,
+            },
+            generation: Some("not-a-valid-generation".to_owned()),
+            complete: true,
+            warnings: Vec::new(),
+        })
+    }
+}
+
+/// A degraded freshness source (Hub not warmed up) must not zero the whole
+/// federation: the planner proceeds on the release-generation fallback,
+/// candidates still flow, and the degradation is recorded on the response.
+#[tokio::test]
+async fn unavailable_freshness_degrades_and_records_instead_of_failing() {
+    let calls = Calls::default();
+    let response = engine_with_freshness(calls, true, Arc::new(IncompleteFreshness))
+        .federate(&request(), CancellationToken::new())
+        .await
+        .expect("degraded freshness must not fail the federation");
+    assert!(
+        !response.candidates.is_empty(),
+        "providers must still run against the release-generation fallback"
+    );
+    let degraded = response
+        .extensions
+        .get("freshnessDegraded")
+        .expect("freshness degradation must be recorded on the response");
+    assert!(
+        degraded["reason"]
+            .as_str()
+            .is_some_and(|reason| reason.starts_with("freshness_unavailable:")),
+        "recorded reason names the unavailable source, got {degraded:?}"
+    );
+}
+
+/// A malformed freshness snapshot stays fail-closed — never degraded.
+#[tokio::test]
+async fn malformed_freshness_still_fails_closed() {
+    let calls = Calls::default();
+    let result = engine_with_freshness(calls, true, Arc::new(MalformedFreshness))
+        .federate(&request(), CancellationToken::new())
+        .await;
+    assert!(
+        matches!(
+            result,
+            Err(membrane_federation::engine::FederationEngineError::Freshness(_))
+        ),
+        "a malformed snapshot must fail closed, got {result:?}"
+    );
+}
+
 fn request() -> FederationRequestV1 {
     FederationRequestV1 {
         schema_version: FEDERATION_REQUEST_SCHEMA_VERSION,

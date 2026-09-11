@@ -258,9 +258,30 @@ impl FederationEngine {
 
         // Owner bindings happen before any provider task is created.
         let release = self.bind_release(normalized.release_generation.as_deref())?;
-        let freshness = tokio::time::timeout_at(
+        // Freshness is advisory, not a gate. When the source cannot be
+        // consulted at all -- the Hub/watcher has not warmed up, the source is
+        // missing, or it reports itself incomplete/unavailable -- degrade to an
+        // Unknown binding and record it, rather than failing the entire
+        // federation and returning zero context. Providers then run against the
+        // release-generation fallback (see `expected_generation` below). A
+        // generation MISMATCH (returned by `acquire` as an Ok binding whose
+        // state downstream admission enforces) and a MALFORMED snapshot (a
+        // distinct, non-degradable error) both remain fail-closed.
+        let mut freshness_degraded: Option<String> = None;
+        let freshness = match tokio::time::timeout_at(
             deadline.instant().into(), self.bind_freshness(&query, release.clone()),
-        ).await.map_err(|_| FederationEngineError::BindingDeadline)??;
+        ).await {
+            Ok(Ok(binding)) => binding,
+            Ok(Err(FederationEngineError::Freshness(reason))) if is_degradable_freshness(&reason) => {
+                let binding = FreshnessBinding::unavailable(reason.clone());
+                freshness_degraded = Some(reason);
+                binding
+            }
+            Ok(Err(other)) => return Err(other),
+            // A true timeout means the request's own deadline is spent; the
+            // is_exhausted check below turns it into BindingDeadline.
+            Err(_) => FreshnessBinding::unavailable("freshness_binding_timeout"),
+        };
         // Synchronous owner implementations can consume an entire poll. Check
         // after each owner too; timeout_at cannot preempt blocking owner I/O.
         if deadline.is_exhausted(&SystemClock) {
@@ -527,6 +548,17 @@ impl FederationEngine {
             "acquisitionPlan".to_owned(),
             serde_json::to_value(&acquisition_plan).unwrap_or(serde_json::Value::Null),
         );
+        // Record freshness degradation in the receipt: the planner proceeded on
+        // the release-generation fallback because the freshness source could
+        // not be consulted. This is the sanctioned "record degradation" path
+        // (per-provider diagnostics already carry freshness=unknown); it is
+        // never emitted for a mismatch or malformed snapshot.
+        if let Some(reason) = &freshness_degraded {
+            response.extensions.insert(
+                "freshnessDegraded".to_owned(),
+                serde_json::json!({ "reason": reason }),
+            );
+        }
         let mut journeys = Vec::new();
         let mut journey_keys = std::collections::BTreeSet::new();
         for candidate in &response.candidates {
@@ -973,6 +1005,17 @@ fn append_schedule_accounting(merged: &mut MergeResult, schedule: &ScheduleResul
         merged.warnings.push(warning_from_omission(omission));
         merged.omissions.push(omission.clone());
     }
+}
+
+/// Whether a freshness binding failure means "the source could not be
+/// consulted" (degradable: the planner proceeds on the release-generation
+/// fallback and records the degradation) versus a fail-closed condition. Only
+/// the unavailable/missing family degrades; a malformed snapshot
+/// (`freshness_malformed:`), a generation mismatch, or an unsatisfied
+/// requirement must still fail the federation. This is a whitelist, not a
+/// blacklist, so an unrecognised reason fails closed by default.
+fn is_degradable_freshness(reason: &str) -> bool {
+    reason == "source_missing" || reason.starts_with("freshness_unavailable:")
 }
 
 fn estimated_tokens(merged: &MergeResult) -> u64 {
