@@ -289,7 +289,14 @@ fn build_resident_repo(root: &Path, cancellation: &CancellationToken) -> Result<
     let service = Arc::new(NativeService::resident(membrane_blueprint::NativeBlueprintOperation, root.to_path_buf()));
     service.start().map_err(|error| format!("resident Blueprint startup service start: {error}"))?;
     let mut build = BlueprintRequest::new(format!("resident-build-{}", std::process::id()), Operation::Build, root.to_string_lossy());
-    build.deadline_ms = 120_000;
+    // Cold first-build of a large enrolled repo can exceed two minutes under
+    // in-resident contention (a second repo's watcher plus daemon overhead push
+    // a repo that builds in ~80s standalone past a 120s ceiling). Give the
+    // initial build room to finish and persist its generation; once cached,
+    // subsequent starts refresh incrementally and are fast. Without this the
+    // build is cancelled at the deadline, never caches, and retries cold
+    // forever — leaving the Hub permanently short of full watcher coverage.
+    build.deadline_ms = membrane_blueprint::model::MAX_BUILD_DEADLINE_MS;
     let response = service.dispatch(build, cancellation.clone());
     eprintln!("{}", serde_json::json!({"event":"resident_blueprint_repository_build", "stage":if response.ok { "completed" } else { "failed" }, "root":root, "elapsedMs":started.elapsed().as_millis()}));
     let generation_id = response.result.as_ref().and_then(|result| result.get("generationId")).and_then(serde_json::Value::as_str).map(str::to_owned);
