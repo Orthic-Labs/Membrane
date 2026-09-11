@@ -15,7 +15,7 @@ use thiserror::Error;
 use crate::api::CancellationToken;
 use crate::contracts::BarrierResult;
 use crate::freshness::{content_digest, stable_read_with_limit, StableReadError, MAX_SOURCE_FILE_BYTES};
-use crate::graph::{is_canonical_ignored_dir, is_canonical_ignored_file};
+use crate::graph::RepoIgnore;
 
 pub const DEFAULT_MAX_FILES: usize = 100_000;
 pub const DEFAULT_MAX_SNAPSHOT_BYTES: u64 = 256 * 1024 * 1024;
@@ -144,7 +144,7 @@ fn metadata_modified_ns(metadata: &Metadata) -> Option<u128> {
     metadata.modified().ok()?.duration_since(std::time::SystemTime::UNIX_EPOCH).ok().map(|v| v.as_nanos())
 }
 
-fn walk(root: &Path, current: &Path, config: &SnapshotConfig, output: &mut Vec<SnapshotEntry>, bytes: &mut u64, cancellation: &CancellationToken) -> Result<(), SnapshotError> {
+fn walk(root: &Path, current: &Path, config: &SnapshotConfig, ignore: &RepoIgnore, output: &mut Vec<SnapshotEntry>, bytes: &mut u64, cancellation: &CancellationToken) -> Result<(), SnapshotError> {
     if cancellation.is_cancelled() { return Err(SnapshotError::Cancelled); }
     let mut children = fs::read_dir(current)?.collect::<Result<Vec<_>, _>>()?;
     children.sort_by(|left, right| left.file_name().cmp(&right.file_name()));
@@ -159,13 +159,13 @@ fn walk(root: &Path, current: &Path, config: &SnapshotConfig, output: &mut Vec<S
         if file_type.is_symlink() { continue; }
         let metadata = child.metadata()?;
         if file_type.is_dir() {
-            if relative.split('/').any(is_canonical_ignored_dir) { continue; }
+            if ignore.dir_ignored(&relative, &child.file_name().to_string_lossy()) { continue; }
             if output.len() as u64 >= config.max_files as u64 { return Err(SnapshotError::Limit { kind: "entries", actual: output.len() as u64 + 1, limit: config.max_files as u64 }); }
             output.push(SnapshotEntry { path: relative.clone(), kind: EntryKind::Directory, size: 0, modified_ns: metadata_modified_ns(&metadata), digest: None, reason: None });
-            walk(root, &path, config, output, bytes, cancellation)?;
+            walk(root, &path, config, ignore, output, bytes, cancellation)?;
         } else if file_type.is_file() {
             if output.len() as u64 >= config.max_files as u64 { return Err(SnapshotError::Limit { kind: "entries", actual: output.len() as u64 + 1, limit: config.max_files as u64 }); }
-            if is_canonical_ignored_file(&relative, &child.file_name().to_string_lossy()) { continue; }
+            if ignore.file_ignored(&relative, &child.file_name().to_string_lossy()) { continue; }
             if metadata.len() > config.max_file_bytes {
                 output.push(SnapshotEntry { path: relative, kind: EntryKind::File, size: metadata.len(), modified_ns: metadata_modified_ns(&metadata), digest: None, reason: Some(format!("unsupported:file_bytes:{}>limit:{}", metadata.len(), config.max_file_bytes)) });
                 continue;
@@ -186,9 +186,10 @@ pub fn snapshot(config: &SnapshotConfig) -> Result<Snapshot, SnapshotError> {
 
 pub fn snapshot_with_cancellation(config: &SnapshotConfig, cancellation: &CancellationToken) -> Result<Snapshot, SnapshotError> {
     let root = canonical_root(&config.root)?;
+    let ignore = RepoIgnore::for_root(&root);
     let mut entries = Vec::new();
     let mut bytes = 0;
-    walk(&root, &root, config, &mut entries, &mut bytes, cancellation)?;
+    walk(&root, &root, config, &ignore, &mut entries, &mut bytes, cancellation)?;
     entries.sort_by(|left, right| left.path.as_bytes().cmp(right.path.as_bytes()));
     let mut canonical = Vec::new();
     for entry in &entries {

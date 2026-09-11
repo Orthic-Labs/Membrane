@@ -18,7 +18,7 @@ use std::path::{Path, PathBuf};
 
 use serde_json::Value;
 
-use crate::graph::{is_canonical_ignored_dir, is_canonical_ignored_file};
+use crate::graph::RepoIgnore;
 use crate::identity::content_digest;
 
 pub const AGENT_DIR_NAME: &str = ".agent";
@@ -60,6 +60,7 @@ fn normalize_path(value: &str) -> String {
 /// size cap and best-effort error handling.
 pub fn scan_source_files(root: &Path) -> Vec<ScannedFile> {
     const MAX_BYTES: u64 = 2 * 1024 * 1024;
+    let ignore = RepoIgnore::for_root(root);
     let mut out = Vec::new();
     let mut stack = vec![root.to_path_buf()];
     while let Some(dir) = stack.pop() {
@@ -70,12 +71,16 @@ pub fn scan_source_files(root: &Path) -> Vec<ScannedFile> {
         for entry in entries.flatten() {
             let path = entry.path();
             let name = entry.file_name().to_string_lossy().into_owned();
+            let relative = match path.strip_prefix(root) {
+                Ok(p) => normalize_path(&p.to_string_lossy()),
+                Err(_) => continue,
+            };
             let file_type = match entry.file_type() {
                 Ok(t) => t,
                 Err(_) => continue,
             };
             if file_type.is_dir() {
-                if is_canonical_ignored_dir(&name) {
+                if ignore.dir_ignored(&relative, &name) {
                     continue;
                 }
                 stack.push(path);
@@ -84,11 +89,7 @@ pub fn scan_source_files(root: &Path) -> Vec<ScannedFile> {
             if !file_type.is_file() {
                 continue;
             }
-            let relative = match path.strip_prefix(root) {
-                Ok(p) => normalize_path(&p.to_string_lossy()),
-                Err(_) => continue,
-            };
-            if is_canonical_ignored_file(&relative, &name) {
+            if ignore.file_ignored(&relative, &name) {
                 continue;
             }
             let metadata = match fs::metadata(&path) {

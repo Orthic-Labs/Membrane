@@ -50,6 +50,40 @@ pub fn is_canonical_ignored_file(relative: &str, name: &str) -> bool {
         || matches!(relative, "docs/product/README.md" | "docs/architecture/membrane.md")
 }
 
+/// The single, reader-independent repository source-universe policy.
+///
+/// Whether a path is source cannot depend on *which* subsystem or mode is
+/// reading the repo: the resident watcher, a Hub-less one-shot explicit
+/// operation, and bootstrap reuse-detection must all prune identically, or
+/// they disagree and force needless rebuilds / walk gitignored trees. This
+/// type combines the canonical hardcoded exclusions with the repository's own
+/// root `.gitignore` so every Blueprint reader funnels through one decision,
+/// regardless of whether the Hub/daemon is running.
+pub struct RepoIgnore {
+    gitignore: ignore::gitignore::Gitignore,
+}
+
+impl RepoIgnore {
+    pub fn for_root(root: &Path) -> Self {
+        let mut builder = ignore::gitignore::GitignoreBuilder::new(root);
+        let _ = builder.add(root.join(".gitignore"));
+        let gitignore = builder.build().unwrap_or_else(|_| ignore::gitignore::Gitignore::empty());
+        Self { gitignore }
+    }
+
+    /// True when a directory (by repo-relative path + leaf name) is not source.
+    pub fn dir_ignored(&self, relative: &str, name: &str) -> bool {
+        is_canonical_ignored_dir(name)
+            || self.gitignore.matched(Path::new(relative), true).is_ignore()
+    }
+
+    /// True when a file (by repo-relative path + leaf name) is not source.
+    pub fn file_ignored(&self, relative: &str, name: &str) -> bool {
+        is_canonical_ignored_file(relative, name)
+            || self.gitignore.matched(Path::new(relative), false).is_ignore()
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Ord, PartialOrd)]
 pub enum PrecisionTier { Compiler, Ast, Lexical }
 
@@ -212,11 +246,7 @@ pub fn scan_repository_with_cancellation(root: impl AsRef<Path>, options: &ScanO
     // repo's `.tmp-*` build/diagnosis scratch — hundreds of MB of binaries),
     // which both wasted the walk and, before the completeness fix, marked the
     // generation incomplete. A gitignored directory prunes its whole subtree.
-    let gitignore = {
-        let mut builder = ignore::gitignore::GitignoreBuilder::new(&root);
-        let _ = builder.add(root.join(".gitignore"));
-        builder.build().unwrap_or_else(|_| ignore::gitignore::Gitignore::empty())
-    };
+    let ignore = RepoIgnore::for_root(&root);
     let max_dirs = options.max_dirs.unwrap_or(MAX_DIRS);
     let max_entries = options.max_entries_per_dir.unwrap_or(MAX_ENTRIES_PER_DIR);
     let prefixes: Vec<String> = options.ignored_prefixes.iter().map(|value| normalize_path(value)).collect();
@@ -290,12 +320,11 @@ pub fn scan_repository_with_cancellation(root: impl AsRef<Path>, options: &ScanO
                 record_scan_skip(&mut report, rel, "metadata_error", error);
                 continue;
             }};
-            if gitignore.matched(std::path::Path::new(&rel), target_meta.is_dir()).is_ignore() { continue; }
             if target_meta.is_dir() {
-                if is_canonical_ignored_dir(&name) { continue; }
+                if ignore.dir_ignored(&rel, &name) { continue; }
                 child_dirs.push(path);
             } else if target_meta.is_file() {
-                if is_canonical_ignored_file(&rel, &name) { continue; }
+                if ignore.file_ignored(&rel, &name) { continue; }
                 let meta = match fs::metadata(&path) { Ok(v) => v, Err(error) => {
                     record_scan_skip(&mut report, rel, "metadata_error", error);
                     continue;

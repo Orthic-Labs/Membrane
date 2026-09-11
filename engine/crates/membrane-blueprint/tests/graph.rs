@@ -19,6 +19,35 @@ fn fixture() -> tempfile::TempDir {
 }
 
 #[test]
+fn gitignored_tree_is_pruned_identically_by_scan_and_watch() {
+    // The repository's own .gitignore must be honoured by every Blueprint
+    // reader, whether the daemon is running (watch snapshot) or not (one-shot
+    // scan). A single shared RepoIgnore is the reason both agree; this guards
+    // against a reader regressing to its own private ignore policy.
+    use membrane_blueprint::watch::{snapshot, EntryKind, SnapshotConfig};
+    let dir = tempdir().unwrap();
+    fs::write(dir.path().join(".gitignore"), "build/\n*.log\n").unwrap();
+    fs::write(dir.path().join("keep.rs"), "fn keep() {}\n").unwrap();
+    fs::write(dir.path().join("noisy.log"), "junk\n").unwrap();
+    fs::create_dir_all(dir.path().join("build")).unwrap();
+    fs::write(dir.path().join("build/artifact.rs"), "fn artifact() {}\n").unwrap();
+
+    let scan = scan_repository(dir.path(), &ScanOptions::default()).unwrap();
+    let scanned: Vec<_> = scan.files.iter().map(|f| f.path.as_str()).collect();
+    // .gitignore is itself a real tracked source file; build/ and *.log are pruned.
+    assert_eq!(scanned, vec![".gitignore", "keep.rs"], "one-shot scan must prune gitignored build/ and *.log");
+    // Gitignored omissions are not traversal failures.
+    assert!(!scan.traversal_truncated && !scan.file_limit_reached);
+
+    let snap = snapshot(&SnapshotConfig::new(dir.path())).unwrap();
+    let watched: Vec<_> = snap.entries.iter()
+        .filter(|e| e.kind == EntryKind::File)
+        .map(|e| e.path.as_str()).collect();
+    assert_eq!(watched, vec![".gitignore", "keep.rs"], "watch snapshot must prune the same tree the scan does");
+    assert!(!snap.entries.iter().any(|e| e.path == "build"), "gitignored dir must not appear as a watched directory");
+}
+
+#[test]
 fn scan_is_confined_sorted_and_typed() {
     let dir = fixture();
     let report = scan_repository(dir.path(), &ScanOptions::default()).unwrap();
