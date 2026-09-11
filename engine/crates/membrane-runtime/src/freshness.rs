@@ -852,6 +852,10 @@ pub(crate) fn read_blueprint_status(repo_root: &Path) -> Result<serde_json::Valu
     read_blueprint_status_at(&endpoint, repo_root)
 }
 
+/// Minimum remaining budget worth spending on a Hub-less Blueprint status.
+/// Below this, the status cannot complete and is not attempted.
+const ONE_SHOT_STATUS_MIN_BUDGET_MS: u64 = 5_000;
+
 fn read_blueprint_status_until(repo_root: &Path, deadline: Option<membrane_federation::deadline::Deadline>) -> Result<serde_json::Value, String> {
     use membrane_blueprint::{BlueprintRequest, CancellationToken, Operation};
     let request_id = format!("membrane-freshness-{}-{}", std::process::id(), crate::time::now_millis());
@@ -867,6 +871,21 @@ fn read_blueprint_status_until(repo_root: &Path, deadline: Option<membrane_feder
         .min(Duration::from_millis(membrane_blueprint::model::MAX_BUILD_DEADLINE_MS));
     if remaining.is_zero() {
         return Err("federation deadline exhausted during owner binding".to_owned());
+    }
+    // A latency-bound caller (the per-prompt hook has ~2s in total) cannot
+    // afford a Hub-less status read: a cold status is a reconcile/build that
+    // takes tens of seconds here and overshoots short deadlines by ~2s, so
+    // dispatching it would spend the caller's entire budget before any
+    // provider ran. Freshness is advisory: report it as not consulted (the
+    // verdict becomes indeterminate and the engine records the degradation)
+    // and leave the budget to the providers. A resident Hub answers instantly
+    // through `read_blueprint_status_at` and never reaches this branch.
+    if remaining < Duration::from_millis(ONE_SHOT_STATUS_MIN_BUDGET_MS) {
+        return Err(format!(
+            "freshness_budget_insufficient: {}ms remaining, one-shot Blueprint status needs {}ms",
+            remaining.as_millis(),
+            ONE_SHOT_STATUS_MIN_BUDGET_MS
+        ));
     }
     let mut request = BlueprintRequest::new(request_id, Operation::Status, repo_root.to_string_lossy());
     request.deadline_ms = remaining.as_millis().clamp(10, 30_000) as u64;
@@ -955,6 +974,18 @@ fn elapsed_ms(started: Instant) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn one_shot_status_is_not_attempted_below_minimum_budget() {
+        let dir = std::env::temp_dir().join(format!("membrane-fresh-floor-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let deadline = membrane_federation::deadline::Deadline::at(Instant::now() + Duration::from_millis(ONE_SHOT_STATUS_MIN_BUDGET_MS / 2));
+        let started = Instant::now();
+        let error = read_blueprint_status_until(&dir, Some(deadline)).expect_err("status must not be attempted");
+        assert!(error.starts_with("freshness_budget_insufficient"), "{error}");
+        assert!(started.elapsed() < Duration::from_millis(500), "floor must return immediately");
+        let _ = std::fs::remove_dir_all(dir);
+    }
 
     struct SequenceProbe {
         epochs: Vec<Result<FreshnessEpoch, String>>,
