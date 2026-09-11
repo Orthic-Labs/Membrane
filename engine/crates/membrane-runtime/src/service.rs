@@ -253,13 +253,30 @@ pub fn start_resident_blueprint() -> Result<(), String> {
 }
 
 fn enrolled_roots(registry: &crate::authorization::InstallationRegistryV1) -> Result<Vec<PathBuf>, String> {
-    let mut roots = registry
-        .bindings()
-        .iter()
-        .map(|binding| PathBuf::from(&binding.root).canonicalize().map_err(|error| format!("resident Blueprint enrollment root unavailable: {error}")))
-        .collect::<Result<Vec<_>, _>>()?;
-    if let Some(root) = roots.iter().find(|root| !root.is_dir()) {
-        return Err(format!("resident Blueprint enrollment root is not a directory: {}", root.display()));
+    // A registry binding whose repository has since been deleted, moved, or is
+    // otherwise unreachable must NOT take the whole resident down: the resident
+    // serves every still-enrolled repository and records the unavailable ones as
+    // omissions. Canonicalize-or-skip keeps one stale binding (e.g. a cleaned-up
+    // qualification temp repo) from crash-looping the daemon, honouring the
+    // "record material omissions/degradation" invariant instead of failing closed
+    // on state the operator can no longer influence.
+    let mut roots = Vec::new();
+    for binding in registry.bindings() {
+        match PathBuf::from(&binding.root).canonicalize() {
+            Ok(root) if root.is_dir() => roots.push(root),
+            Ok(root) => {
+                eprintln!(
+                    "{}",
+                    serde_json::json!({"event":"resident_blueprint_enrollment_skipped","reason":"not_a_directory","root":root})
+                );
+            }
+            Err(error) => {
+                eprintln!(
+                    "{}",
+                    serde_json::json!({"event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":binding.root,"error":error.to_string()})
+                );
+            }
+        }
     }
     roots.sort_by(|left, right| left.to_string_lossy().cmp(&right.to_string_lossy()));
     roots.dedup();
@@ -941,6 +958,27 @@ mod tests {
         assert!(!control.admission_open());
         assert!(control.shutdown_requested());
         assert_eq!(control.command().as_deref(), Some("stop"));
+    }
+
+    #[test]
+    fn enrolled_roots_skips_vanished_bindings_instead_of_failing() {
+        // A registry that still names a deleted repository (e.g. a cleaned-up
+        // qualification temp repo) must not take the resident down: the present
+        // root is enrolled and the missing one is dropped as an omission.
+        let present = tempfile::tempdir().unwrap();
+        let present_root = present.path().to_string_lossy().into_owned();
+        let missing_root = present
+            .path()
+            .join("this-directory-does-not-exist")
+            .to_string_lossy()
+            .into_owned();
+        let registry = crate::authorization::InstallationRegistryV1::from_roots_for_test([
+            missing_root,
+            present_root.clone(),
+        ]);
+        let roots = enrolled_roots(&registry).expect("a vanished enrolled root must not be fatal");
+        let present_canonical = std::fs::canonicalize(&present_root).unwrap();
+        assert_eq!(roots, vec![present_canonical]);
     }
 
     #[test]

@@ -174,6 +174,29 @@ impl InstallationRegistryV1 {
         &self.bindings
     }
 
+    /// Test-only constructor: build a registry from a set of enrolled roots so
+    /// resident-startup resilience (skip-not-crash on a vanished root) can be
+    /// exercised without writing a registry file to disk.
+    #[cfg(test)]
+    pub(crate) fn from_roots_for_test<I: IntoIterator<Item = String>>(roots: I) -> Self {
+        let bindings = roots
+            .into_iter()
+            .map(|root| RepositoryBindingV1 {
+                root,
+                repository_id: "test-repo".into(),
+                scope_id: "test-scope".into(),
+                scope_descriptor: None,
+                child_repository_ids: Vec::new(),
+                grant_level: None,
+                token_generation: None,
+                revoked_token_generations: Vec::new(),
+                not_before: None,
+                not_after: None,
+            })
+            .collect();
+        Self { bindings }
+    }
+
     fn binding_for_root(&self, root: &str) -> Option<&RepositoryBindingV1> {
         self.bindings
             .iter()
