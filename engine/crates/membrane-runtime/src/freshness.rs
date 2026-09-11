@@ -855,8 +855,16 @@ pub(crate) fn read_blueprint_status(repo_root: &Path) -> Result<serde_json::Valu
 fn read_blueprint_status_until(repo_root: &Path, deadline: Option<membrane_federation::deadline::Deadline>) -> Result<serde_json::Value, String> {
     use membrane_blueprint::{BlueprintRequest, CancellationToken, Operation};
     let request_id = format!("membrane-freshness-{}-{}", std::process::id(), crate::time::now_millis());
+    // Freshness for a Hub-less one-shot computes Blueprint status locally, and
+    // on a repo with no warm generation that means a cold build. Capping the
+    // status budget at 30s made freshness time out on any repo whose cold build
+    // exceeds 30s (measured ~28-40s here), so the whole one-shot federate failed
+    // with "deadline exhausted during owner binding" even though federate needs
+    // no Hub. Use the caller's remaining budget up to the Blueprint build
+    // ceiling; a resident Hub keeps this instant via its warm watcher.
     let remaining = deadline.map(|deadline| deadline.remaining_at(Instant::now()))
-        .unwrap_or(Duration::from_secs(30)).min(Duration::from_secs(30));
+        .unwrap_or(Duration::from_secs(30))
+        .min(Duration::from_millis(membrane_blueprint::model::MAX_BUILD_DEADLINE_MS));
     if remaining.is_zero() {
         return Err("federation deadline exhausted during owner binding".to_owned());
     }

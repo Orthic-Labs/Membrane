@@ -141,12 +141,12 @@ pub fn run_federate(
         &root,
         max_tokens,
         // Explicit one-shot federate is not latency-bound like an inline editor
-        // request: it must allow owner binding + a cold freshness evaluation
-        // (worktree fingerprint, store/ledger open) to complete. A 2s budget
-        // exhausted during owner binding on a real repo ("federation deadline
-        // exhausted during owner binding"), so give it the freshness source's
-        // own 30s budget rather than a latency-tuned 2s.
-        30_000,
+        // request: with the Hub off it must cold-build the Blueprint generation
+        // during freshness binding (measured ~28-40s on a real repo), then run
+        // providers. 2s (and even 30s) exhausted during owner binding, so give
+        // it a build-class budget. A resident Hub keeps freshness warm and
+        // returns far faster; this ceiling only bounds the cold one-shot.
+        180_000,
         release_generation,
         &client,
         &session_id,
