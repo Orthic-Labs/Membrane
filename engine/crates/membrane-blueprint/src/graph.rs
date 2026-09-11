@@ -207,6 +207,16 @@ pub fn scan_repository(root: impl AsRef<Path>, options: &ScanOptions) -> Result<
 pub fn scan_repository_with_cancellation(root: impl AsRef<Path>, options: &ScanOptions, cancellation: &CancellationToken) -> Result<ScanReport, GraphError> {
     let root = fs::canonicalize(root.as_ref()).map_err(|e| GraphError::Root(e.to_string()))?;
     if !root.is_dir() { return Err(GraphError::Root("root is not a directory".into())); }
+    // Honour the repository's own .gitignore, matching what Ledger's SourcePolicy
+    // already does. Without this the scanner walked gitignored trees (e.g. a
+    // repo's `.tmp-*` build/diagnosis scratch — hundreds of MB of binaries),
+    // which both wasted the walk and, before the completeness fix, marked the
+    // generation incomplete. A gitignored directory prunes its whole subtree.
+    let gitignore = {
+        let mut builder = ignore::gitignore::GitignoreBuilder::new(&root);
+        let _ = builder.add(root.join(".gitignore"));
+        builder.build().unwrap_or_else(|_| ignore::gitignore::Gitignore::empty())
+    };
     let max_dirs = options.max_dirs.unwrap_or(MAX_DIRS);
     let max_entries = options.max_entries_per_dir.unwrap_or(MAX_ENTRIES_PER_DIR);
     let prefixes: Vec<String> = options.ignored_prefixes.iter().map(|value| normalize_path(value)).collect();
@@ -280,6 +290,7 @@ pub fn scan_repository_with_cancellation(root: impl AsRef<Path>, options: &ScanO
                 record_scan_skip(&mut report, rel, "metadata_error", error);
                 continue;
             }};
+            if gitignore.matched(std::path::Path::new(&rel), target_meta.is_dir()).is_ignore() { continue; }
             if target_meta.is_dir() {
                 if is_canonical_ignored_dir(&name) { continue; }
                 child_dirs.push(path);
