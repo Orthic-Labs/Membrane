@@ -94,12 +94,37 @@ pub fn app_icon(status: Status, size: u32) -> Icon {
     Icon::from_rgba(pixels.into_raw(), width, height).expect("Membrane icon dimensions are valid")
 }
 
+/// Stable ids for the right-click context-menu items. `main`'s event loop
+/// matches `MenuEvent::id` against these to run the same actions as the
+/// popover buttons.
+pub const MENU_ID_OPEN: &str = "mb.open";
+pub const MENU_ID_RESTART: &str = "mb.restart";
+pub const MENU_ID_QUIT: &str = "mb.quit";
+
+/// Build the native right-click context menu. A menu-build failure is not
+/// fatal to the tray: we surface the icon and left-click popover regardless,
+/// so the tray degrades to popover-only management rather than failing to start.
+fn build_context_menu() -> Option<tray_icon::menu::Menu> {
+    use tray_icon::menu::{Menu, MenuItem};
+    let menu = Menu::new();
+    let open = MenuItem::with_id(MENU_ID_OPEN, "Open dashboard", true, None);
+    let restart = MenuItem::with_id(MENU_ID_RESTART, "Restart daemon", true, None);
+    let quit = MenuItem::with_id(MENU_ID_QUIT, "Quit Membrane", true, None);
+    match menu.append_items(&[&open, &restart, &quit]) {
+        Ok(()) => Some(menu),
+        Err(_) => None,
+    }
+}
+
 pub fn create_tray(status: Status) -> tray_icon::Result<TrayIcon> {
-    TrayIconBuilder::new()
+    let mut builder = TrayIconBuilder::new()
         .with_tooltip(format!("Membrane — {}", status.label()))
         .with_icon(app_icon(status, icon_size_for_scale(current_scale())))
-        .with_menu_on_left_click(false)
-        .build()
+        .with_menu_on_left_click(false);
+    if let Some(menu) = build_context_menu() {
+        builder = builder.with_menu(Box::new(menu));
+    }
+    builder.build()
 }
 
 pub fn update_tray(tray: &TrayIcon, status: Status, reason: &str) -> tray_icon::Result<()> {

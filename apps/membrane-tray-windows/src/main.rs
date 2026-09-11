@@ -25,6 +25,7 @@ use std::{
 
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use slint::{CloseRequestResponse, ComponentHandle, Timer, TimerMode};
+use tray_icon::menu::MenuEvent;
 use tray_icon::{MouseButton, MouseButtonState, TrayIconEvent};
 
 const POPOVER_WIDTH: i32 = 300;
@@ -329,6 +330,7 @@ fn main() -> Result<(), slint::PlatformError> {
     // icon creation. Slint's native event loop services those messages while
     // this timer drains tray + daemon channels.
     let tray_events = TrayIconEvent::receiver();
+    let menu_events = MenuEvent::receiver();
     let mut last_status = tray_status;
     let timer = Timer::default();
     let timer_popover = popover.as_weak();
@@ -356,8 +358,10 @@ fn main() -> Result<(), slint::PlatformError> {
                 ..
             } = event
             {
+                // Left click toggles the popover; right click is reserved for
+                // the native context menu (drained from `menu_events` below).
                 if button_state != MouseButtonState::Down
-                    || !matches!(button, MouseButton::Left | MouseButton::Right)
+                    || !matches!(button, MouseButton::Left)
                 {
                     continue;
                 }
@@ -384,6 +388,29 @@ fn main() -> Result<(), slint::PlatformError> {
                         }
                     }
                 }
+            }
+        }
+
+        // Native right-click context-menu actions mirror the popover buttons.
+        while let Ok(menu_event) = menu_events.try_recv() {
+            match menu_event.id.0.as_str() {
+                tray::MENU_ID_OPEN => {
+                    let _ = launch_dashboard(&timer_supervisor.borrow());
+                }
+                tray::MENU_ID_RESTART => match workspace::resolve() {
+                    Ok(workspace) => {
+                        let mut supervisor = timer_supervisor.borrow_mut();
+                        supervisor.set_workspace(&workspace);
+                        supervisor.manual_restart_process(now);
+                    }
+                    Err(reason) => {
+                        timer_supervisor.borrow_mut().block_startup(reason, now);
+                    }
+                },
+                tray::MENU_ID_QUIT => {
+                    timer_supervisor.borrow_mut().begin_drain(now);
+                }
+                _ => {}
             }
         }
 

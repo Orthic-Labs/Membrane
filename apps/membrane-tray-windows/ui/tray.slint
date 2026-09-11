@@ -291,19 +291,17 @@ export component TrayPopover inherits Window {
             }
         }
 
-        VerdictGlyph {
-            x: 16px;
-            y: 16px;
-            kind: root.state-kind;
-            tint: root.state-kind == "filled-square"
-                ? #3fd98b
-                : root.state-kind == "half-square" ? #f0b23c
-                : root.state-kind == "hollow-square" ? #ff6b73
-                : #8a8598;
+        Image {
+            x: 14px;
+            y: 9px;
+            width: 24px;
+            height: 24px;
+            source: @image-url("../../membrane-hub/assets/Membrane-Icon-Pack/Windows/PNG/Membrane-32x32.png");
+            image-fit: contain;
         }
 
         HorizontalLayout {
-            x: 40px;
+            x: 44px;
             y: 8px;
             width: 126px;
             height: 30px;
