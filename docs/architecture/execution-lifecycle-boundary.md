@@ -2,6 +2,8 @@
 
 **Status:** Normative user corrections, 2026-09-07 & 2026-09-08. Source implementation & installed acceptance are tracked in `audit/remediation/README.md`. Internal Windows delivery uses local RightKit builds & installed checks; CI does not gate that loop.
 
+**Selected replacement target, 2026-09-13:** [Single-instance Membrane & harness connections](single-instance-membrane.md) consolidates ordinary execution in one installed engine, separates engine availability from background holders, & removes per-chat direct-store fallback. This document retains pre-cutover lifecycle requirements & their safety guarantees; target selection alone does not establish installed behavior.
+
 This contract supersedes any statement that tray-off or Hub-off disables explicit Membrane operations, that MCP/CLI must only forward to a daemon, or that Blueprint is the only subsystem permitted bounded execution. It applies to all six subsystems & every installed agent integration, including CodeRight.
 
 Membrane owns one installed resident controller. Explicit operations available with Hub off remain bounded & independently available when neither holder exists. Automatic work requires Hub or CodeRight daemon holder. An active holder keeps controller lifetime & activates full Membrane background services, including Blueprint watchers and auto-refresh. Hub UI is optional when CodeRight daemon is active. Releasing or losing one holder preserves services required by another; final holder loss drains every resident worker.

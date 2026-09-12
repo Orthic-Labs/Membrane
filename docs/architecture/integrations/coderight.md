@@ -7,6 +7,8 @@
 **Scope:** CodeRight harness events, Membrane capability binding, Adapt evidence flow, Cortex/Ledger persistence boundaries, generic eval/trace infrastructure, and the closed improvement loop  
 **Companion documents:** revised Adapt canon, Ledger indexing canon, Membrane cross-subsystem improvement plan, native-Rust migration specification
 
+**Selected process/transport target, 2026-09-13:** [Single-instance Membrane & harness connections](../single-instance-membrane.md) records current CodeRight production wiring & final singleton connections. Current memory/federation callers select native signed HTTP; bounded explicit SDK described below is not evidence that production selects subprocess execution. Singleton target preserves semantic contracts here while replacing pre-cutover process/lifetime assumptions.
+
 ## Executive decision
 
 CodeRight is the execution harness.

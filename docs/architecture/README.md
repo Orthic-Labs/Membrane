@@ -15,6 +15,7 @@ superseded/derived material lives in [`../archive/`](../archive/).
 
 ## Current supporting architecture
 
+- [Single-instance Membrane & harness connections](single-instance-membrane.md) — selected target, current CodeRight source trace, migration & acceptance; not an installed-behavior claim.
 - [Tray-owned resident lifecycle decision](adr/tray-daemon-process.md)
 - [Tray–daemon runtime contract](runtime/tray-daemon-contract.md)
 - [Live Diagnostics](live-diagnostics.md)
