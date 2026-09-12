@@ -249,8 +249,14 @@ fn same_byte_refresh_is_zero_parse_zero_publication_and_generation_stable() {
     )
     .unwrap();
     let before = load_generation(root.path());
-    let before_generation = before.generation_id.clone();
-    let before_source_hash = before.source_hash.clone();
+    let before_generation = before.generation_id().unwrap().to_owned();
+    let before_source_hash = before
+        .manifest
+        .as_ref()
+        .and_then(|manifest| manifest.get("sourceHash"))
+        .and_then(Value::as_str)
+        .unwrap()
+        .to_owned();
     let construction_receipt = root.path().join(".agent/graph/full-constructions.jsonl");
     let before_constructions = fs::read_to_string(&construction_receipt).unwrap();
 
@@ -273,6 +279,13 @@ fn same_byte_refresh_is_zero_parse_zero_publication_and_generation_stable() {
         "same-byte no-op must publish no full construction"
     );
     let after = load_generation(root.path());
-    assert_eq!(after.generation_id, before_generation);
-    assert_eq!(after.source_hash, before_source_hash);
+    assert_eq!(after.generation_id(), Some(before_generation.as_str()));
+    assert_eq!(
+        after
+            .manifest
+            .as_ref()
+            .and_then(|manifest| manifest.get("sourceHash"))
+            .and_then(Value::as_str),
+        Some(before_source_hash.as_str())
+    );
 }
