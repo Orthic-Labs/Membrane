@@ -13,7 +13,7 @@ use membrane_blueprint::delta_store::{
     with_treeish_worktree, EventKind, FactBatch, FileDelta, PendingDomains, SourceKeyed,
     TreeishError,
 };
-use membrane_blueprint::store::{open_store, save_generation, Generation};
+use membrane_blueprint::store::{load_generation, open_store, save_generation, Generation};
 use rusqlite::Connection;
 use serde_json::json;
 use std::fs;
@@ -419,6 +419,21 @@ fn apply_file_delta_multiple_providers_retract_independently() {
 
     let owner_count_before: i64 = db.query_row("SELECT COUNT(*) FROM fact_owner WHERE source_path='b.ts'", [], |row| row.get(0)).unwrap();
     assert_eq!(owner_count_before, 3, "two lexical nodes (file + symbol) plus one other-provider symbol");
+    let lexical_generation: String = db
+        .query_row("SELECT generation_id FROM files WHERE path='b.ts'", [], |row| row.get(0))
+        .unwrap();
+    let other_generation: String = db
+        .query_row("SELECT generation_id FROM symbols WHERE id='symbol:b.ts::other-fn'", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(lexical_generation, other_generation, "one source delta gets one publication revision");
+    let other_owner_generation: String = db
+        .query_row(
+            "SELECT generation_id FROM fact_owner WHERE fact_id='symbol:b.ts::other-fn' AND fact_kind='node' AND provider_id='other-provider'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(other_owner_generation, other_generation, "fact ownership must carry its batch revision");
 
     // A second apply carrying only the `other-provider` batch must retract
     // and re-insert only that provider's facts, leaving `lexical`'s facts
@@ -537,6 +552,82 @@ fn apply_file_delta_changes_the_manifest_root_digest_and_generation_id_per_apply
         "a changed generationId/counts must change the recomputed manifestDigest"
     );
     assert_eq!(manifest_after_c["counts"]["nodes"], json!(3), "a.ts (seed) + b.ts + c.ts");
+}
+
+#[test]
+fn apply_file_delta_preserves_unrelated_generation_ids_and_reader_completeness() {
+    let mut db = seeded_store();
+    let insert_b = FileDelta {
+        path: "b.ts".to_string(),
+        event_kind: EventKind::Create,
+        content_digest: Some("deadbeef".to_string()),
+        fact_batches: vec![structural_batch("file:b.ts", "b.ts")],
+        source_clock: Some(1),
+        ..Default::default()
+    };
+    apply_file_delta(&mut db, &insert_b, ApplyOptions::default()).unwrap();
+    let b_generation: String = db
+        .query_row("SELECT generation_id FROM files WHERE path='b.ts'", [], |row| row.get(0))
+        .unwrap();
+    let b_owner_generation: String = db
+        .query_row("SELECT generation_id FROM fact_owner WHERE fact_id='file:b.ts' AND fact_kind='node'", [], |row| row.get(0))
+        .unwrap();
+
+    let insert_c = FileDelta {
+        path: "c.ts".to_string(),
+        event_kind: EventKind::Create,
+        content_digest: Some("f00dcafe".to_string()),
+        fact_batches: vec![structural_batch("file:c.ts", "c.ts")],
+        source_clock: Some(2),
+        ..Default::default()
+    };
+    apply_file_delta(&mut db, &insert_c, ApplyOptions::default()).unwrap();
+
+    let a_generation: String = db
+        .query_row("SELECT generation_id FROM files WHERE path='a.ts'", [], |row| row.get(0))
+        .unwrap();
+    let b_generation_after: String = db
+        .query_row("SELECT generation_id FROM files WHERE path='b.ts'", [], |row| row.get(0))
+        .unwrap();
+    let b_owner_generation_after: String = db
+        .query_row("SELECT generation_id FROM fact_owner WHERE fact_id='file:b.ts' AND fact_kind='node'", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(a_generation, "g-0", "unrelated seed row must not be rewritten");
+    assert_eq!(b_generation_after, b_generation, "prior delta row must not be rewritten by a later path delta");
+    assert_eq!(b_owner_generation_after, b_owner_generation, "prior delta owner must not be rewritten by a later path delta");
+
+    let generation = load_generation(&db).unwrap().expect("sealed graph should remain readable");
+    assert_eq!(generation.nodes.len(), 3, "reader must return complete graph rows across mixed batch revisions");
+}
+
+#[test]
+fn apply_file_delta_rolls_back_all_batch_revisions_on_late_failure() {
+    let mut db = seeded_store();
+    let delta = FileDelta {
+        path: "b.ts".to_string(),
+        event_kind: EventKind::Create,
+        content_digest: Some("deadbeef".to_string()),
+        fact_batches: vec![
+            structural_batch("file:b.ts", "b.ts"),
+            FactBatch {
+                provider_id: "broken-provider".to_string(),
+                nodes: vec![json!("malformed node")],
+                ..Default::default()
+            },
+        ],
+        source_clock: Some(1),
+        ..Default::default()
+    };
+
+    assert!(matches!(
+        apply_file_delta(&mut db, &delta, ApplyOptions::default()),
+        Err(ApplyFileDeltaError::Store(_))
+    ));
+    let manifest: String = db.query_row("SELECT value FROM generation WHERE key='manifest'", [], |row| row.get(0)).unwrap();
+    let manifest: serde_json::Value = serde_json::from_str(&manifest).unwrap();
+    assert_eq!(manifest["generationId"], json!("g-0"), "late batch failure must preserve last-good manifest");
+    let b_count: i64 = db.query_row("SELECT COUNT(*) FROM files WHERE path='b.ts'", [], |row| row.get(0)).unwrap();
+    assert_eq!(b_count, 0, "late batch failure must roll back earlier batch rows");
 }
 
 #[test]

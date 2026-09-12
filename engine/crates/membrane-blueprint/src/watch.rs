@@ -6,11 +6,13 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs::{self, Metadata};
 use std::path::{Component, Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
+use notify::{Event as NotifyEvent, EventKind as NotifyEventKind, RecommendedWatcher, RecursiveMode, Watcher};
+use notify::event::RenameMode;
 
 use crate::api::CancellationToken;
 use crate::contracts::BarrierResult;
@@ -19,9 +21,8 @@ use crate::graph::RepoIgnore;
 
 pub const DEFAULT_MAX_FILES: usize = 100_000;
 pub const DEFAULT_MAX_SNAPSHOT_BYTES: u64 = 256 * 1024 * 1024;
-/// Legacy watcher batches changes for one second. Native polling does not
-/// receive callbacks, but exposing same bounded window lets resident callers
-/// coalesce repeated polls without allowing an unbounded wait.
+/// Retained for wire/config compatibility. Native events are drained as soon
+/// as supervision runs; known paths never wait for this interval.
 pub const DEFAULT_DEBOUNCE_MS: u64 = 1_000;
 pub const DEBOUNCE_MS: u64 = DEFAULT_DEBOUNCE_MS;
 pub const MAX_DEBOUNCE_MS: u64 = 5_000;
@@ -200,9 +201,9 @@ pub fn snapshot_with_cancellation(config: &SnapshotConfig, cancellation: &Cancel
     Ok(Snapshot { entries, fingerprint: content_digest(&canonical) })
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Ord, PartialOrd, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum EventKind { Create, Modify, Delete }
+pub enum EventKind { Create, Modify, Delete, Rename }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WatchEvent {
@@ -210,6 +211,85 @@ pub struct WatchEvent {
     pub path: String,
     pub rename_to: Option<String>,
     pub source_clock: u64,
+}
+
+#[derive(Default)]
+struct NativeEventQueue {
+    events: Vec<WatchEvent>,
+    keys: BTreeSet<(EventKind, String, Option<String>)>,
+    next_source_clock: u64,
+    overflow: bool,
+    overflow_count: usize,
+}
+
+impl NativeEventQueue {
+    fn enqueue(&mut self, mut event: WatchEvent, max_events: usize) {
+        if event.rename_to.is_none() {
+            if let Some(existing) = self.events.iter_mut().find(|existing| existing.path == event.path && existing.rename_to.is_none()) {
+                let old_key = (existing.kind, existing.path.clone(), None);
+                let merged_kind = match (existing.kind, event.kind) {
+                    (EventKind::Create, EventKind::Modify) | (EventKind::Create, EventKind::Create) => EventKind::Create,
+                    (_, EventKind::Create) => EventKind::Create,
+                    (_, EventKind::Delete) => EventKind::Delete,
+                    _ => EventKind::Modify,
+                };
+                existing.kind = merged_kind;
+                self.keys.remove(&old_key);
+                self.keys.insert((merged_kind, existing.path.clone(), None));
+                return;
+            }
+        }
+        let key = (event.kind, event.path.clone(), event.rename_to.clone());
+        if !self.keys.insert(key) { return; }
+        if self.events.len() >= max_events {
+            self.overflow = true;
+            self.overflow_count = self.overflow_count.saturating_add(1);
+            return;
+        }
+        self.next_source_clock = self.next_source_clock.saturating_add(1);
+        event.source_clock = self.next_source_clock;
+        self.events.push(event);
+    }
+}
+
+fn normalize_watch_path(root: &Path, path: &Path) -> Option<String> {
+    let relative = if path.is_absolute() { path.strip_prefix(root).ok()? } else { path };
+    normalized_relative(relative)
+}
+
+fn enqueue_notify_event(
+    queue: &mut NativeEventQueue,
+    root: &Path,
+    max_events: usize,
+    result: notify::Result<NotifyEvent>,
+) {
+    let event = match result {
+        Ok(event) => event,
+        Err(_) => {
+            queue.overflow = true;
+            queue.overflow_count = queue.overflow_count.saturating_add(1);
+            return;
+        }
+    };
+    let mut enqueue = |kind: EventKind, path: &Path, rename_to: Option<String>| {
+        if let Some(path) = normalize_watch_path(root, path) {
+            queue.enqueue(WatchEvent { kind, path, rename_to, source_clock: 0 }, max_events);
+        }
+    };
+    match event.kind {
+        NotifyEventKind::Create(_) => for path in event.paths { enqueue(EventKind::Create, &path, None); },
+        NotifyEventKind::Remove(_) => for path in event.paths { enqueue(EventKind::Delete, &path, None); },
+        NotifyEventKind::Modify(notify::event::ModifyKind::Name(mode)) => match mode {
+            RenameMode::Both if event.paths.len() >= 2 => {
+                enqueue(EventKind::Rename, &event.paths[0], normalize_watch_path(root, &event.paths[1]));
+            }
+            RenameMode::From => for path in event.paths { enqueue(EventKind::Delete, &path, None); },
+            RenameMode::To => for path in event.paths { enqueue(EventKind::Create, &path, None); },
+            _ => for path in event.paths { enqueue(EventKind::Modify, &path, None); },
+        },
+        NotifyEventKind::Modify(_) => for path in event.paths { enqueue(EventKind::Modify, &path, None); },
+        NotifyEventKind::Access(_) | NotifyEventKind::Other | NotifyEventKind::Any => {}
+    }
 }
 
 /// BPT-020/021 (selective invalidation): this reconciler is what makes a
@@ -287,6 +367,8 @@ pub enum WatchError {
     Callback(String),
     #[error("watcher event batch exceeded limit: {actual} (limit {limit})")]
     EventOverflow { actual: usize, limit: usize },
+    #[error("native watcher unavailable: {0}")]
+    Native(String),
 }
 
 pub struct NativeWatcher {
@@ -299,7 +381,9 @@ pub struct NativeWatcher {
     sequence: u64,
     clock: Arc<dyn MonotonicClock>,
     sink: Option<Arc<dyn LifecycleSink>>,
-    last_poll: Option<Instant>,
+    ignore: RepoIgnore,
+    native_queue: Arc<Mutex<NativeEventQueue>>,
+    _native_watcher: RecommendedWatcher,
 }
 
 impl NativeWatcher {
@@ -308,8 +392,22 @@ impl NativeWatcher {
     }
 
     pub fn start_with_cancellation(config: SnapshotConfig, cancellation: &CancellationToken) -> Result<Self, WatchError> {
+        let root = canonical_root(&config.root)?;
+        let mut config = config;
+        config.root = root.clone();
         let initial = snapshot_with_cancellation(&config, cancellation)?;
-        let mut watcher = Self { config, previous: initial, source_clock: 0, applied_clock: 0, gap: None, closed: false, sequence: 0, clock: Arc::new(SteadyClock::new()), sink: None, last_poll: None };
+        let queue = Arc::new(Mutex::new(NativeEventQueue::default()));
+        let callback_queue = Arc::clone(&queue);
+        let callback_root = root.clone();
+        let max_events = config.max_events;
+        let native_watcher = notify::recommended_watcher(move |result| {
+            if let Ok(mut queue) = callback_queue.lock() {
+                enqueue_notify_event(&mut queue, &callback_root, max_events, result);
+            }
+        }).map_err(|error| WatchError::Native(error.to_string()))?;
+        let mut native_watcher = native_watcher;
+        native_watcher.watch(&root, RecursiveMode::Recursive).map_err(|error| WatchError::Native(error.to_string()))?;
+        let mut watcher = Self { config, previous: initial, source_clock: 0, applied_clock: 0, gap: None, closed: false, sequence: 0, clock: Arc::new(SteadyClock::new()), sink: None, ignore: RepoIgnore::for_root(&root), native_queue: queue, _native_watcher: native_watcher };
         watcher.emit("started", None);
         Ok(watcher)
     }
@@ -324,21 +422,10 @@ impl NativeWatcher {
     pub fn root(&self) -> &Path { &self.config.root }
     pub fn debounce(&self) -> Duration { Duration::from_millis(self.config.debounce_ms) }
 
-    /// Poll after a bounded quiet window. The first poll is immediate; later
-    /// polls wait only for the configured debounce period and remain
-    /// cancellation-aware. This keeps rapid saves from causing one refresh
-    /// per filesystem observation while preserving a hard upper bound.
+    /// Drain native events immediately. The debounce setting remains part of
+    /// config compatibility, but native known-path events do not sleep.
     pub fn poll_debounced<F>(&mut self, schedule_rebuild: F, cancellation: &CancellationToken) -> Result<Vec<WatchEvent>, WatchError>
     where F: FnMut(&WatchEvent) -> Result<(), String> {
-        if let Some(previous) = self.last_poll {
-            let mut remaining = self.debounce().saturating_sub(previous.elapsed());
-            while !remaining.is_zero() {
-                if cancellation.is_cancelled() { return Err(WatchError::Snapshot(SnapshotError::Cancelled)); }
-                let slice = remaining.min(Duration::from_millis(10));
-                std::thread::sleep(slice);
-                remaining = self.debounce().saturating_sub(previous.elapsed());
-            }
-        }
         self.poll_with_cancellation(schedule_rebuild, cancellation)
     }
 
@@ -349,9 +436,87 @@ impl NativeWatcher {
         self.poll_with_cancellation(schedule_rebuild, &CancellationToken::new())
     }
 
+    fn take_native_events(&mut self) -> Result<Vec<WatchEvent>, WatchError> {
+        let Ok(mut queue) = self.native_queue.lock() else {
+            self.gap = Some(EventGap { reason: GapReason::EventOverflow, source_clock: self.source_clock });
+            return Err(WatchError::EventOverflow { actual: self.config.max_events.saturating_add(1), limit: self.config.max_events });
+        };
+        if queue.overflow {
+            let actual = queue.events.len().saturating_add(queue.overflow_count).max(self.config.max_events.saturating_add(1));
+            queue.events.clear();
+            queue.keys.clear();
+            queue.overflow = false;
+            queue.overflow_count = 0;
+            drop(queue);
+            self.gap = Some(EventGap { reason: GapReason::EventOverflow, source_clock: self.source_clock });
+            self.emit("event_overflow", Some(format!("{actual}>{}", self.config.max_events)));
+            return Err(WatchError::EventOverflow { actual, limit: self.config.max_events });
+        }
+        let events = std::mem::take(&mut queue.events);
+        queue.keys.clear();
+        Ok(events)
+    }
+
+    fn apply_known_event(&mut self, event: &WatchEvent) {
+        let remove = |entries: &mut Vec<SnapshotEntry>, path: &str| {
+            entries.retain(|entry| entry.path != path && !entry.path.starts_with(&format!("{path}/")));
+        };
+        remove(&mut self.previous.entries, &event.path);
+        if let Some(rename_to) = &event.rename_to { remove(&mut self.previous.entries, rename_to); }
+        if matches!(event.kind, EventKind::Delete) { return; }
+        let path = event.rename_to.as_deref().unwrap_or(&event.path);
+        let full_path = self.config.root.join(path);
+        let Ok(metadata) = fs::symlink_metadata(&full_path) else { return; };
+        let name = Path::new(path).file_name().and_then(|value| value.to_str()).unwrap_or("");
+        let entry = if metadata.is_dir() {
+            if self.ignore.dir_ignored(path, name) { return; }
+            SnapshotEntry { path: path.to_owned(), kind: EntryKind::Directory, size: 0, modified_ns: metadata_modified_ns(&metadata), digest: None, reason: None }
+        } else if metadata.is_file() {
+            if self.ignore.file_ignored(path, name) { return; }
+            if metadata.len() > self.config.max_file_bytes {
+                SnapshotEntry { path: path.to_owned(), kind: EntryKind::File, size: metadata.len(), modified_ns: metadata_modified_ns(&metadata), digest: None, reason: Some(format!("unsupported:file_bytes:{}>limit:{}", metadata.len(), self.config.max_file_bytes)) }
+            } else {
+                let Ok(read) = stable_read_with_limit(&full_path, self.config.max_file_bytes) else { return; };
+                SnapshotEntry { path: path.to_owned(), kind: EntryKind::File, size: read.bytes.len() as u64, modified_ns: metadata_modified_ns(&metadata), digest: Some(read.content_digest), reason: None }
+            }
+        } else { return; };
+        self.previous.entries.push(entry);
+        self.previous.entries.sort_by(|left, right| left.path.as_bytes().cmp(right.path.as_bytes()));
+    }
+
+    fn publish_native_events<F>(&mut self, events: Vec<WatchEvent>, mut schedule_rebuild: F) -> Result<Vec<WatchEvent>, WatchError>
+    where F: FnMut(&WatchEvent) -> Result<(), String> {
+        if events.len() > self.config.max_events {
+            self.gap = Some(EventGap { reason: GapReason::EventOverflow, source_clock: self.source_clock });
+            return Err(WatchError::EventOverflow { actual: events.len(), limit: self.config.max_events });
+        }
+        for event in &events {
+            self.source_clock = self.source_clock.max(event.source_clock);
+            if let Err(error) = schedule_rebuild(event) {
+                self.gap = Some(EventGap { reason: GapReason::CallbackFailed, source_clock: self.source_clock });
+                self.emit("callback_failed", Some(error.clone()));
+                return Err(WatchError::Callback(error));
+            }
+            self.emit("rebuild_scheduled", Some(event.path.clone()));
+        }
+        for event in &events { self.apply_known_event(event); }
+        self.applied_clock = self.source_clock;
+        debug_assert!(self.applied_clock == self.source_clock, "published state must be committed before freshness is reported");
+        if self.gap.is_none() { self.emit("caught_up", None); }
+        Ok(events)
+    }
+
     pub fn poll_with_cancellation<F>(&mut self, mut schedule_rebuild: F, cancellation: &CancellationToken) -> Result<Vec<WatchEvent>, WatchError>
     where F: FnMut(&WatchEvent) -> Result<(), String> {
         if self.closed { return Err(WatchError::Shutdown); }
+        if cancellation.is_cancelled() {
+            self.emit("poll_cancelled", None);
+            return Err(WatchError::Snapshot(SnapshotError::Cancelled));
+        }
+        let native_events = self.take_native_events()?;
+        if !native_events.is_empty() {
+            return self.publish_native_events(native_events, schedule_rebuild);
+        }
         let current = match snapshot_with_cancellation(&self.config, cancellation) {
             Ok(current) => current,
             Err(SnapshotError::Cancelled) => {
@@ -387,13 +552,15 @@ impl NativeWatcher {
         // signal against state that has not actually been published yet.
         self.previous = current;
         self.applied_clock = self.source_clock;
+        if let Ok(mut queue) = self.native_queue.lock() {
+            queue.next_source_clock = queue.next_source_clock.max(self.source_clock);
+        }
         debug_assert!(self.applied_clock == self.source_clock, "published state must be committed before freshness is reported");
         if self.gap.as_ref().is_some_and(|gap| gap.reason != GapReason::CallbackFailed) {
             self.gap = None;
             self.emit("gap_cleared", None);
         }
         if self.gap.is_none() { self.emit("caught_up", None); }
-        self.last_poll = Some(Instant::now());
         Ok(events)
     }
 

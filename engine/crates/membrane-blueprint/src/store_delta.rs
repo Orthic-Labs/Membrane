@@ -438,9 +438,9 @@ pub fn upsert_parsed_node(
     ).map_err(|e| e.to_string())?;
 
     tx.execute(
-        "INSERT OR REPLACE INTO fact_owner(fact_id, fact_kind, source_path, source_digest, provider_id, provider_version, freshness_domain, fact_kind_detail)
-         VALUES (?1, 'node', ?2, ?3, ?4, ?5, 'structural', ?6)",
-        params![id, object.get("path").and_then(Value::as_str).unwrap_or(""), source_digest, provider_id, provider_version, kind],
+        "INSERT OR REPLACE INTO fact_owner(fact_id, fact_kind, source_path, source_digest, provider_id, provider_version, freshness_domain, fact_kind_detail, generation_id)
+         VALUES (?1, 'node', ?2, ?3, ?4, ?5, 'structural', ?6, ?7)",
+        params![id, object.get("path").and_then(Value::as_str).unwrap_or(""), source_digest, provider_id, provider_version, kind, generation_id],
     ).map_err(|e| e.to_string())?;
     let _ = repo_root; // repo_root is carried by callers for reseal only; fact_owner here has no repo_root column in this schema version.
     Ok(())
@@ -493,9 +493,9 @@ pub fn upsert_parsed_edge(
     });
     if let Some(source_path) = source_path {
         tx.execute(
-            "INSERT OR REPLACE INTO fact_owner(fact_id, fact_kind, source_path, source_digest, provider_id, provider_version, freshness_domain, fact_kind_detail)
-             VALUES (?1, 'edge', ?2, ?3, ?4, ?5, 'structural', ?6)",
-            params![id, source_path, source_digest, provider_id, provider_version, kind],
+            "INSERT OR REPLACE INTO fact_owner(fact_id, fact_kind, source_path, source_digest, provider_id, provider_version, freshness_domain, fact_kind_detail, generation_id)
+             VALUES (?1, 'edge', ?2, ?3, ?4, ?5, 'structural', ?6, ?7)",
+            params![id, source_path, source_digest, provider_id, provider_version, kind, generation_id],
         ).map_err(|e| e.to_string())?;
     }
     Ok(())

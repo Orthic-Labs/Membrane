@@ -3,7 +3,7 @@
 **Date:** 12 September 2026  
 **Status:** Implementation specification. No repository changes or runtime benchmarks are claimed by this document.  
 **Repository inspected:** `Orthic-Labs/Membrane`, `main` at `bb4f399422e053b74fc094efafad24b7884769d3`.  
-**Supersedes:** `Blueprint_Final_Architecture.md` and `Blueprint_Final_Shape_Implementation.md` for refresh/storage design and the atom changes specified here.  
+**Implementation relationship:** This proposal replaces the earlier external Blueprint refresh drafts. Implementation must amend `docs/architecture/subsystems/blueprint.md`, `docs/canon/blueprint.md`, and `docs/architecture/execution-lifecycle-boundary.md` in the areas specified here. It does not supersede their unrelated requirements.
 **Objective:** Minimize change/manual-trigger → correct, queryable graph latency without regenerating a healthy graph.
 
 ## 1. Decision
@@ -438,7 +438,7 @@ A local batch contains declarations, lexical scopes, references, imports, alias/
 
 A cache hit saves extraction; it does not mean the active graph is already correct. Detect payload/key inconsistencies as corruption rather than silently accepting mismatched cache content.
 
-Initially use full changed-file parsing and drop the tree. Give each worker its own mutable parser. Retained-tree optimization requires a measured parsing bottleneck, a bounded hot set, exact edit coordinates, and whole-file differential conformance for the particular grammar/runtime. Fragment-only re-parsing is not a correctness oracle. [S13, S14]
+Prefer incremental parsing for qualified integrated edit streams when the matching prior tree/source version is available. Fall back to full changed-file parsing when it is not. Give each worker its own mutable parser. Retained-tree optimization requires a bounded hot set, exact edit coordinates, and whole-file differential conformance for the particular grammar/runtime. Fragment-only re-parsing is not a correctness oracle. [S13, S14]
 
 Keep semantic identity separate from occurrences. Inserting a comment may preserve a binding while moving its source span. Update evidence without propagating a false semantic change. Avoid duplicating target declaration coordinates into every incoming edge when source-bound occurrence references can serve the same public response.
 
@@ -508,7 +508,7 @@ Persisted graph/results/subscriptions survive restart. Salsa memos do not have t
 
 ## 9. Queries, source evidence and completeness
 
-A query first satisfies any requested source boundary through the existing Blueprint owner, then opens its read transaction. Do not hold that transaction while waiting for refresh. The remaining request deadline covers both phases; joining a shared refresh does not let a single timed-out waiter cancel work still needed by others.
+A caller requesting a newer source boundary may request or join Blueprint's updater before the query opens its read transaction. Ordinary indexed query execution never hides parsing or mutation inside the read. Do not hold the read transaction while waiting for refresh. The remaining request deadline covers both phases; joining a shared refresh does not let a single timed-out waiter cancel work still needed by others.
 
 ```text
 BEGIN (read transaction)
@@ -721,6 +721,8 @@ Initial engineering targets on recorded reference hardware—not measured result
 | Same edit through qualified watcher | p95 ≤150 ms including batching/observation |
 | Bounded exact symbol/path query | p95 ≤5 ms inside Blueprint |
 | Bounded two-hop traversal, ≤1,000 returned edges | p95 ≤25 ms inside Blueprint |
+
+The agreed query target must be met. Indexed SQLite is the baseline. If SQL access prevents meeting that target, implement a coherent resident projection and remeasure. Do not lower the target or defer required graph computation into queries to claim success. Microsecond lookup latency remains distinct from complete Pull latency.
 
 Test fixed local changes/fanout on 1k/10k/100k-file fixtures and real repositories. Hard scaling assertions are zero unrelated source scan on the known-path hot update, zero unrelated fact rewrites, no all-graph clone, and no full-builder call. Global changes may legitimately take longer; report their actual work and responsiveness.
 

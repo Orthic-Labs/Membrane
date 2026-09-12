@@ -716,6 +716,8 @@ fn apply_file_delta_tx(
         })?;
         let source_observation = delta.source_observation.clone().or(read_source_observation(&tx)?);
         let root_before = update_leaf_chain(&tx, &new_path, content_digest_value.as_deref())?;
+        // One source delta is one publication. Stamp affected rows with its
+        // revision while leaving unrelated rows at their last-change revision.
         reseal_generation_identity_delta(&mut manifest, source_observation.as_ref(), Some(root_before.as_str()), applied_clock)
             .map_err(ApplyFileDeltaError::Store)?;
         let generation_id = manifest
@@ -723,7 +725,6 @@ fn apply_file_delta_tx(
             .and_then(Value::as_str)
             .ok_or_else(|| ApplyFileDeltaError::Store("resealed manifest missing generationId".into()))?
             .to_owned();
-
         let mut dependencies: Vec<(String, String, String)> = Vec::new();
         let source_digest_for_facts = content_digest_value.clone().unwrap_or_default();
         for batch in &delta.fact_batches {
@@ -820,17 +821,6 @@ fn apply_file_delta_tx(
     }
     if let Some(report) = &delta.file_report {
         update_file_report(&tx, &path, report)?;
-    }
-    // A delta publishes a new generation for the complete graph body. Keep
-    // every generation-bound row aligned with the resealed manifest, not only
-    // rows touched by this file, so pinned reads cannot observe mixed ids.
-    if let Some(manifest) = read_manifest(&tx)? {
-        if let Some(generation_id) = manifest.get("generationId").and_then(Value::as_str) {
-            for table in ["files", "symbols", "annotation_nodes", "edges", "vectors", "symbol_search", "symbol_terms", "fact_owner", "documents", "claims", "claim_code_edges", "document_supersession"] {
-                tx.execute(&format!("UPDATE {table} SET generation_id=?1"), params![generation_id])?;
-            }
-            crate::store_delta::write_manifest(&tx, &manifest)?;
-        }
     }
     Ok(ApplyResult {
         applied: true,

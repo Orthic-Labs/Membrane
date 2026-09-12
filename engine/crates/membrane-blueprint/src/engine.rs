@@ -11,6 +11,7 @@ use crate::query;
 use crate::security::{canonical_root, is_confined_path};
 use crate::store::{self, Generation, StoreError};
 use crate::delta_store::{self, ApplyOptions, EventKind, FactBatch, FileDelta};
+use crate::freshness::{stable_read_with_limit, StableReadError, MAX_SOURCE_FILE_BYTES};
 use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet};
 use std::fs;
@@ -203,6 +204,12 @@ fn incremental_refresh_with_repair(
     let (current, _) = load_current_with_observation(db_path)?;
     if !current.complete { return Err(unsupported("existing generation is incomplete")); }
     context.check()?;
+    // Watcher and explicit callers already identify the changed paths. Keep
+    // this path-scoped branch ahead of discovery so a known event never walks
+    // the repository just to rediscover the event it supplied.
+    if !pending.is_empty() {
+        return incremental_known_paths(request, context, root, db_path, current, pending);
+    }
     let scan = graph::scan_repository_with_cancellation(root, &graph::ScanOptions::default(), &context.cancellation)
         .map_err(|error| match error {
             graph::GraphError::Cancelled if context.cancellation.deadline_expired() => BlueprintError::deadline(),
@@ -364,6 +371,262 @@ fn incremental_refresh_with_repair(
         "invalidatedPaths": applied, "reusedFiles": scan.files.len().saturating_sub(ordered.len()), "sourceObservation": source_observation.unwrap_or(Value::Null),
     }))
 }
+
+/// Refresh an explicit event set without discovering any other filesystem
+/// paths. Existing graph facts provide resolver path identity; only supplied
+/// files are stable-read and hashed.
+fn incremental_known_paths(
+    request: &BlueprintRequest,
+    context: &RequestContext,
+    root: &Path,
+    db_path: &Path,
+    current: GraphGeneration,
+    pending: Vec<Value>,
+) -> Result<Value, BlueprintError> {
+    let unsupported = |reason: &str| {
+        let mut error = BlueprintError::new("blueprint_incremental_unsupported", reason);
+        error.details = Some(json!({"preservedGeneration": true, "pendingChanges": pending.clone()}));
+        error
+    };
+    let event_name = request.input.get("eventKind").and_then(Value::as_str).unwrap_or("modify").to_ascii_lowercase();
+    let event_kind = match event_name.as_str() {
+        "create" => EventKind::Create,
+        "modify" | "changed" => EventKind::Modify,
+        "delete" => EventKind::Delete,
+        "repair" => EventKind::Repair,
+        "rename" => EventKind::Rename,
+        _ => return Err(unsupported("event kind lacks incremental implementation")),
+    };
+    let mut paths = pending.iter().filter_map(Value::as_str).map(graph::normalize_path).collect::<Vec<_>>();
+    if paths.iter().any(|path| path.is_empty() || path.starts_with('/') || path.contains("..") || path.starts_with(".agent/")) {
+        return Err(unsupported("pending path is outside incremental scope"));
+    }
+    paths.dedup();
+    let rename_to = if event_kind == EventKind::Rename {
+        let destination = request.input.get("renameTo").and_then(Value::as_str).map(graph::normalize_path);
+        match (paths.len(), destination) {
+            (1, Some(destination)) if !destination.is_empty() => {
+                paths.push(destination);
+                Some(paths[1].clone())
+            }
+            (2, None) => Some(paths[1].clone()),
+            (2, Some(destination)) if destination == paths[1] => Some(destination),
+            _ => return Err(unsupported("rename requires old & new paths")),
+        }
+    } else {
+        paths.sort();
+        None
+    };
+    if paths.is_empty() { return Err(unsupported("explicit event set is empty")); }
+    context.check()?;
+
+    let mut source_files = stored_file_records(root, &current);
+    let before_paths = source_files.iter().map(|file| file.path.clone()).collect::<HashSet<_>>();
+    let mut observed = HashMap::<String, graph::FileRecord>::new();
+    for path in &paths {
+        let is_deleted = event_kind == EventKind::Delete
+            || (event_kind == EventKind::Rename && Some(path.as_str()) != rename_to.as_deref());
+        if is_deleted { continue; }
+        context.check()?;
+        match stable_explicit_file(root, path) {
+            Ok(Some(file)) => { observed.insert(path.clone(), file); }
+            Ok(None) => return Err(unsupported(&format!("source path is absent: {path}"))),
+            Err(error) => return Err(error),
+        }
+    }
+    // The event set is explicit, so derive membership from the stored graph
+    // and supplied observations only. The small closure below avoids any
+    // filesystem metadata probe for untouched paths.
+    let after_paths = {
+        let mut result = before_paths.clone();
+        match event_kind {
+            EventKind::Delete => { for path in &paths { result.remove(path); } }
+            EventKind::Rename => { result.remove(&paths[0]); result.insert(rename_to.clone().unwrap()); }
+            _ => { for path in &paths { result.insert(path.clone()); } }
+        }
+        result
+    };
+    let mut changed_paths = Vec::new();
+    let mut noop_paths = Vec::new();
+    for path in &paths {
+        let previous = source_files.iter().find(|file| file.path == *path).map(|file| file.content_hash.as_str());
+        let current_digest = observed.get(path).map(|file| file.content_hash.as_str());
+        let same_digest = previous.zip(current_digest).is_some_and(|(before, after)| normalize_digest(before) == normalize_digest(after));
+        if event_kind != EventKind::Repair && event_kind != EventKind::Rename && same_digest {
+            noop_paths.push(path.clone());
+        } else {
+            changed_paths.push(path.clone());
+        }
+    }
+    if event_kind == EventKind::Delete && paths.iter().any(|path| !before_paths.contains(path)) {
+        return Err(unsupported("delete path is absent from stored graph"));
+    }
+    if event_kind == EventKind::Modify && paths.iter().any(|path| !observed.contains_key(path)) {
+        return Err(unsupported("modify path is absent from repository"));
+    }
+
+    for path in &paths {
+        source_files.retain(|file| file.path != *path);
+    }
+    for file in observed.values() { source_files.push(file.clone()); }
+    source_files.sort_by(|a, b| a.path.cmp(&b.path));
+    let source_hash = graph::source_hash_for_files(&source_files);
+    let config_digest = crate::static_provider::build_config_digest_for_files(&source_files);
+    let observation = crate::git_source_observation::git_source_observation(&root.to_string_lossy());
+    if changed_paths.is_empty() {
+        let mut deltas = Vec::new();
+        for path in &noop_paths {
+            deltas.push(file_delta_from_graph(path, event_kind, None, observed.get(path), Vec::new(),
+                request.input.get("sourceClock").and_then(Value::as_u64).and_then(|value| i64::try_from(value).ok()).unwrap_or(0),
+                &source_hash, config_digest.clone(), observation.clone(), request)?);
+        }
+        if !deltas.is_empty() {
+            let mut connection = open_store(db_path)?;
+            delta_store::apply_file_deltas(&mut connection, &deltas, ApplyOptions::default())
+                .map_err(|error| BlueprintError::new("blueprint_delta_failed", error.to_string()))?;
+        }
+        let (generation, source_observation) = load_current_with_observation(db_path)?;
+        return bounded_generation_response(request, json!({
+            "schemaVersion": 1, "operation": request.method.as_str(), "state": "fresh", "refreshMode": "incremental_noop",
+            "generationId": generation.generation_id, "repoRoot": root.to_string_lossy(), "storePath": db_path.to_string_lossy(),
+            "sourceHash": generation.source_hash, "complete": generation.complete, "truncationReasons": generation.truncation_reasons,
+            "counts": {"nodes": generation.nodes.len(), "edges": generation.edges.len(), "files": generation.files.len()},
+            "invalidatedPaths": [], "reusedFiles": source_files.len(), "sourceObservation": source_observation.unwrap_or(Value::Null)
+        }));
+    }
+
+    let mut affected = std::collections::BTreeSet::new();
+    for path in &changed_paths {
+        affected.extend(affected_reference_closure(&current, path));
+        affected.insert(path.clone());
+    }
+    let mut ordered = affected.into_iter().collect::<Vec<_>>();
+    ordered.sort();
+    let mut target_events = HashMap::new();
+    for target in &ordered {
+        let target_file = source_files.iter().find(|file| file.path == *target);
+        let is_old_rename = event_kind == EventKind::Rename && target == &paths[0];
+        let target_event = if is_old_rename { EventKind::Delete }
+            else if !after_paths.contains(target) { EventKind::Delete }
+            else if !before_paths.contains(target) { EventKind::Create }
+            else if changed_paths.contains(target) { event_kind }
+            else { EventKind::Repair };
+        if target_event != EventKind::Delete && target_file.is_none() {
+            return Err(unsupported(&format!("source facts unavailable for {target}")));
+        }
+        target_events.insert(target.clone(), target_event);
+    }
+    let mut facts_by_path = HashMap::new();
+    for target in &ordered {
+        context.check()?;
+        if target_events[target] == EventKind::Delete { continue; }
+        let facts = if changed_paths.contains(target) {
+            graph::build_file_facts_from_scan(root, target, &source_files, &current.nodes, &context.cancellation)
+                .map_err(|error| match error {
+                    graph::GraphError::Cancelled if context.cancellation.deadline_expired() => BlueprintError::deadline(),
+                    graph::GraphError::Cancelled => BlueprintError::cancelled(),
+                    error => BlueprintError::new("blueprint_incremental_failed", error.to_string()),
+                })?.ok_or_else(|| unsupported(&format!("source facts unavailable for {target}")))?
+        } else {
+            stored_file_facts(&current, target).ok_or_else(|| unsupported(&format!("stored source facts unavailable for {target}")))?
+        };
+        facts_by_path.insert(target.clone(), facts);
+    }
+    for dependent in unresolved_reference_dependents(&current, facts_by_path.values(), &source_files) {
+        if target_events.contains_key(&dependent) || !source_files.iter().any(|file| file.path == dependent) { continue; }
+        target_events.insert(dependent.clone(), EventKind::Repair);
+        ordered.push(dependent.clone());
+        context.check()?;
+        let facts = stored_file_facts(&current, &dependent)
+            .ok_or_else(|| unsupported(&format!("stored source facts unavailable for {dependent}")))?;
+        facts_by_path.insert(dependent, facts);
+    }
+    ordered.sort();
+    let mut post_change_nodes = current.nodes.iter()
+        .filter(|node| node.path.as_deref().is_none_or(|path| !target_events.contains_key(path)))
+        .cloned().collect::<Vec<_>>();
+    for facts in facts_by_path.values() { post_change_nodes.push(facts.file.clone()); post_change_nodes.extend(facts.nodes.iter().cloned()); }
+    for facts in facts_by_path.values_mut() { graph::resolve_file_facts_edges(facts, &post_change_nodes, &source_files); }
+
+    let source_clock = request.input.get("sourceClock").and_then(Value::as_u64).and_then(|value| i64::try_from(value).ok()).unwrap_or(0);
+    let mut deltas = Vec::with_capacity(ordered.len() + noop_paths.len());
+    for target in &ordered {
+        context.check()?;
+        let target_file = source_files.iter().find(|file| file.path == *target);
+        let provider_batches = if target_events[target] == EventKind::Delete || !changed_paths.contains(target) {
+            Vec::new()
+        } else {
+            provider_batches_for_path(root, target, &source_files)?
+        };
+        deltas.push(file_delta_from_graph(target, target_events[target], facts_by_path.remove(target), target_file, provider_batches,
+            source_clock, &source_hash, config_digest.clone(), observation.clone(), request)?);
+    }
+    for path in &noop_paths {
+        deltas.push(file_delta_from_graph(path, event_kind, None, observed.get(path), Vec::new(), source_clock,
+            &source_hash, config_digest.clone(), observation.clone(), request)?);
+    }
+    context.check()?;
+    let mut connection = open_store(db_path)?;
+    delta_store::apply_file_deltas(&mut connection, &deltas, ApplyOptions::default())
+        .map_err(|error| BlueprintError::new("blueprint_delta_failed", error.to_string()))?;
+    let (generation, source_observation) = load_current_with_observation(db_path)?;
+    bounded_generation_response(request, json!({
+        "schemaVersion": 1, "operation": request.method.as_str(), "state": "fresh", "refreshMode": "incremental",
+        "generationId": generation.generation_id, "repoRoot": root.to_string_lossy(), "storePath": db_path.to_string_lossy(),
+        "sourceHash": generation.source_hash, "complete": generation.complete, "truncationReasons": generation.truncation_reasons,
+        "counts": {"nodes": generation.nodes.len(), "edges": generation.edges.len(), "files": generation.files.len()},
+        "sourceClock": request.input.get("sourceClock").cloned().unwrap_or(Value::Null), "eventKind": request.input.get("eventKind").cloned().unwrap_or(Value::Null),
+        "invalidatedPaths": ordered, "reusedFiles": source_files.len().saturating_sub(ordered.len()), "sourceObservation": source_observation.unwrap_or(Value::Null)
+    }))
+}
+
+fn normalize_digest(value: &str) -> String {
+    if value.starts_with("xxh128:") { value.to_owned() } else { format!("xxh128:{value}") }
+}
+
+fn stable_explicit_file(root: &Path, path: &str) -> Result<Option<graph::FileRecord>, BlueprintError> {
+    let absolute = root.join(path);
+    let read = match stable_read_with_limit(&absolute, MAX_SOURCE_FILE_BYTES) {
+        Ok(read) => read,
+        Err(StableReadError::Io(error)) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(BlueprintError::new("blueprint_incremental_read_failed", format!("{path}: {error}"))),
+    };
+    if read.unstable { return Err(BlueprintError::new("blueprint_incremental_unstable", format!("source changed during stable read: {path}"))); }
+    let text = String::from_utf8_lossy(&read.bytes).into_owned();
+    Ok(Some(graph::FileRecord {
+        path: path.to_owned(), absolute_path: absolute, size: read.bytes.len() as u64, bytes: read.bytes,
+        content_hash: read.content_digest.clone(), semantic_content_hash: read.content_digest,
+        text: Some(text),
+    }))
+}
+
+fn stored_file_records(root: &Path, current: &GraphGeneration) -> Vec<graph::FileRecord> {
+    let mut records = Vec::new();
+    for node in &current.nodes {
+        if node.kind != "file" { continue; }
+        let Some(path) = node.path.clone() else { continue; };
+        if records.iter().any(|file: &graph::FileRecord| file.path == path) { continue; }
+        let digest = node.evidence.first().and_then(|evidence| evidence.get("contentHash")).and_then(Value::as_str).unwrap_or("").to_owned();
+        records.push(graph::FileRecord {
+            absolute_path: root.join(&path), path, bytes: Vec::new(), text: None, size: 0,
+            semantic_content_hash: digest.clone(), content_hash: digest,
+        });
+    }
+    records
+}
+
+fn stored_file_facts(current: &GraphGeneration, path: &str) -> Option<graph::FileFacts> {
+    let file = current.nodes.iter().find(|node| node.kind == "file" && node.path.as_deref() == Some(path))?.clone();
+    let nodes = current.nodes.iter().filter(|node| node.path.as_deref() == Some(path) && node.kind != "file").cloned().collect();
+    let edges = current.edges.iter().filter(|edge| edge.evidence.iter().any(|evidence| evidence.get("path").and_then(Value::as_str) == Some(path))).cloned().collect();
+    let report = current.files.iter().find(|report| report.path == path).cloned().unwrap_or_else(|| graph::FileReport {
+        path: path.to_owned(), language: None, provider: "native-rust".into(), precision: graph::PrecisionTier::Lexical,
+        parse_status: "unknown".into(), error_node_count: 0, error: None,
+    });
+    let content_digest = file.evidence.first().and_then(|evidence| evidence.get("contentHash")).and_then(Value::as_str)?.to_owned();
+    Some(graph::FileFacts { file, nodes, edges, report, content_digest, size: 0 })
+}
+
 fn affected_reference_closure(current: &GraphGeneration, changed_path: &str) -> std::collections::BTreeSet<String> {
     let mut affected = std::collections::BTreeSet::new();
     let mut frontier = std::collections::VecDeque::from([changed_path.to_owned()]);
