@@ -47,7 +47,7 @@ tree-sitter-elm = "5.9.4"
 membrane-grammars-vendored = { path = "../membrane-grammars-vendored" }
 xxhash-rust = { version = "0.8", features = ["xxh3"] }
 unicode-normalization = "0.1"
-notify = "8"
+notify = "=8.0.0"
 
 [dev-dependencies]
 tempfile = "3"
