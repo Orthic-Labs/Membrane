@@ -22,6 +22,12 @@
 17. Push as the current context-reduction subsystem is retired. Its selection, truncation, skeletonization, compression, protected-span preservation, spill/externalization, resolver & recovery capabilities move under Pull delivery. Host tool-output capture stays a host/CodeRight integration concern; Membrane does not claim control of Codex transcript compaction.
 18. `push` is reserved as the agent-to-Membrane write operation. Initially it accepts durable memory writes only & routes them to Cortex; later typed write destinations require separate accepted decisions. Blueprint changes arise from repository edits, Ledger changes arise from document edits & Adapt remains an internal mining pipeline.
 19. A pushed memory preserves the agent-submitted body byte-for-byte in an immutable source/admission record. Cortex may add embeddings, metadata, scope, authority, lifecycle state & derived representations, but none replaces the original body. A user-directed memory write is stored as a memory rather than mislabeled as a pending proposal; Cortex still owns storage integrity, provenance, conflict & lifecycle behavior.
+20. Membrane runs one shared resident engine per OS user & canonical installed state. Chats, Hub, CodeRight, hooks & CLI clients never create another planner, store owner, watcher, embedder or subsystem runtime.
+21. Installer-owned OS supervision keeps that engine available independently of Hub or any chat. Hub & CodeRight background-holder leases authorize background work; they do not own engine lifetime.
+22. Claude Code & Codex connect directly to the resident engine through authenticated Streamable HTTP MCP. A stdio-only harness may use a thin forwarding client that owns no Membrane runtime or direct-store fallback.
+23. CodeRight reuses its signed native HTTP integration through a bounded connection pool, removes redundant per-operation health exchanges while preserving identity fencing & keeps its existing Windows mutation-diagnostics pipe into the same engine.
+24. Client startup may request OS activation, adopt the verified healthy owner or return typed unavailability. It never starts an alternate engine, selects another store/port or executes an ordinary operation through a one-shot local runtime.
+25. Implementation & qualification follow [single-instance Membrane](../single-instance-membrane.md), selected by Adrian on 2026-09-13. Architecture selection does not claim current runtime delivery or benchmark qualification.
 
 ## Historical decisions preserved
 
