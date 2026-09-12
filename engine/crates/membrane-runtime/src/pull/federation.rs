@@ -36,7 +36,7 @@ fn attach_compaction_federation_decision(
     request: &Value,
     session: &str,
     repository_id: &str,
-    selection: &crate::push::selection::PacketReductionSelectionV1,
+    selection: &crate::pull::selection::PacketReductionSelectionV1,
 ) -> Result<(), String> {
     let Some(marker) = request.get("requestCompaction") else {
         return Ok(());
@@ -105,7 +105,7 @@ fn federation_session_id(session: Option<String>) -> String {
 enum NativeRouteError {
     Internal(String),
     PolicyChanged(String),
-    RequestTime(crate::push::selection::PacketReductionRequestError),
+    RequestTime(crate::pull::selection::PacketReductionRequestError),
 }
 
 impl From<String> for NativeRouteError {
@@ -138,7 +138,7 @@ pub fn run_federate(
     // it a build-class budget. A resident Hub keeps freshness warm and
     // returns far faster; this ceiling only bounds the cold one-shot.
     let payload = run_federate_value(task, repo, max_tokens, packet_char_budget_override, packet_char_budget_model,
-        client, session, anchors, scope_grant_id, accepted_receipt_versions, 180_000, "explicit", None)?;
+        client, session, anchors, scope_grant_id, accepted_receipt_versions, 180_000, "explicit", None, None)?;
     println!(
         "{}",
         serde_json::to_string_pretty(&payload).map_err(|e| format!("serialize: {e}"))?
@@ -168,7 +168,7 @@ pub fn hook_mode_federate_with_observation(
 ) -> Result<Value, String> {
     run_federate_value(task.to_owned(), repo.to_path_buf(), max_tokens, None, None, client.to_owned(),
         Some(session.to_owned()), Vec::new(), None, Vec::new(), deadline_ms,
-        if ceiling.is_some() { "host_observed" } else { "configured_cap" }, ceiling)
+        if ceiling.is_some() { "host_observed" } else { "configured_cap" }, ceiling, None)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -186,6 +186,7 @@ fn run_federate_value(
     deadline_ms: u64,
     budget_policy: &str,
     ceiling: Option<membrane_protocol::RemainingContextCeilingV1>,
+    resident: Option<&crate::MemoryStore>,
 ) -> Result<Value, String> {
     let root = repo
         .canonicalize()
@@ -200,6 +201,12 @@ fn run_federate_value(
     };
     let admitted_grant = admitted_publication_grant(&request)?;
     let started = Instant::now();
+    let foreground = matches!(budget_policy, "configured_cap" | "host_observed");
+    let store = match resident {
+        Some(store) => store.clone(),
+        None if foreground => crate::service::open_installed_lexical_store()?,
+        None => crate::service::open_installed_store()?,
+    };
     // Same hazard as the request path below: a synchronous entry that built
     // a runtime inline panicked when it was reached from the resident
     // Hub's async worker. Drive it on its own thread instead.
@@ -211,10 +218,11 @@ fn run_federate_value(
                     .build()
                     .map_err(|error| format!("create native federation runtime: {error}"))?
                     .block_on(async {
-                        let bindings = federation_sources::NativeSourceBindings::for_repository(
-                            &root,
-                            scope_grant_id.as_deref(),
-                        )?;
+                        let bindings = if foreground && resident.is_none() {
+                            federation_sources::NativeSourceBindings::with_ambient_store(&root, scope_grant_id.as_deref(), store.clone())?
+                        } else {
+                            federation_sources::NativeSourceBindings::with_store(&root, scope_grant_id.as_deref(), store.clone())?
+                        };
                         let native = native_federation::NativeFederation::new(bindings)?;
                         let response = native
                             .federate(&request, tokio_util::sync::CancellationToken::new())
@@ -387,13 +395,24 @@ pub(crate) fn native_route_response_with_deadline(
         }
         None => None,
     };
-    let ceiling = match crate::push::selection::parse_request_time_h8(&value, &session, &task_id) {
-        Ok(ceiling) => ceiling,
-        Err(error) => {
-            return request_time_refusal(crate::push::selection::PacketReductionRequestError::H8(
-                error,
-            ))
+    if value.get("budgetPolicy").and_then(Value::as_str) == Some("configured_cap") {
+        if value.get("remainingContextCeiling").is_some_and(|value| !value.is_null()) {
+            return (400, "{\"error\":\"configured_cap cannot discard host observation\"}".into());
         }
+        let result = run_federate_value(task.to_owned(), root, max_tokens,
+            value.get("packetCharBudget").and_then(Value::as_u64).map(|n| n as usize),
+            value.get("packetCharBudgetModel").and_then(Value::as_str).map(str::to_owned),
+            client, Some(session), anchors, scope_grant_id, vec![2],
+            deadline.instant().saturating_duration_since(Instant::now()).as_millis() as u64,
+            "configured_cap", None, resident);
+        return match result {
+            Ok(payload) => (200, payload.to_string()),
+            Err(error) => (503, serde_json::json!({"error":error,"reason":"membrane_retrieval_failed"}).to_string()),
+        };
+    }
+    let ceiling = match crate::pull::selection::parse_request_time_h8(&value, &session, &task_id) {
+        Ok(ceiling) => ceiling,
+        Err(error) => return request_time_refusal(crate::pull::selection::PacketReductionRequestError::H8(error)),
     };
     let loaded_context = current_loaded_context(&value, &session);
     let result = (|| -> Result<Value, NativeRouteError> {
@@ -402,17 +421,8 @@ pub(crate) fn native_route_response_with_deadline(
         }
         let release_generation = RuntimeReleaseSource::generation()?;
         let mut request = native_request_with_h8(
-            task,
-            &root,
-            max_tokens,
-            deadline_ms,
-            release_generation,
-            &client,
-            &session,
-            anchors,
-            scope_grant_id.clone(),
-            sufficiency_contract,
-            &ceiling,
+            task, &root, max_tokens, deadline_ms, release_generation,
+            &client, &session, anchors, scope_grant_id.clone(), sufficiency_contract, &ceiling,
         );
         request
             .extensions
@@ -491,11 +501,8 @@ pub(crate) fn native_route_response_with_deadline(
         let freshness = native
             .freshness_snapshot()
             .ok_or_else(|| "native freshness verdict unavailable".to_owned())?;
-        let mut ccs = native_response_to_ccs(&response, &request, &freshness);
+        let ccs = native_response_to_ccs(&response, &request, &freshness);
         let provisional_coverage = ccs.get("requirementEvidenceMap").cloned();
-        let adapt_selection = resident
-            .map(|store| crate::adapt_service::prepare_packet(store, &root, &value, &mut ccs))
-            .transpose()?;
         let native_receipts = collect_native_receipts(&response);
         let mut payload = envelope_from_ccs(
             &serde_json::to_string(&ccs).map_err(|error| error.to_string())?,
@@ -653,11 +660,11 @@ pub(crate) fn native_route_response_with_deadline(
             return Ok(payload);
         }
         let push_policy = push_policy_for_request(&value, task);
-        let recovery_store = crate::push::recovery::RecoveryStore::configured();
-        let recovery_scope = crate::push::recovery::RecoveryScope::new(&root, &session).ok();
+        let recovery_store = crate::pull::recovery::RecoveryStore::configured();
+        let recovery_scope = crate::pull::recovery::RecoveryScope::new(&root, &session).ok();
         let recovery = recovery_scope.as_ref().and_then(|scope| value.get("pushResolverToken").and_then(Value::as_str).map(|token|
-            crate::push::selection::RecoveryContext {store:&recovery_store, scope, resolver_token:token}));
-        let selection = crate::push::selection::select_packet_for_h8_with_recovery(
+            crate::pull::selection::RecoveryContext {store:&recovery_store, scope, resolver_token:token}));
+        let selection = crate::pull::selection::select_packet_for_h8_with_recovery(
             &packet, &ceiling, &push_policy, recovery.as_ref(),
         )
         .map_err(NativeRouteError::RequestTime)?;
@@ -995,7 +1002,7 @@ fn planner_authored_sufficiency_contract(body: &Value) -> Option<Value> {
 /// `pushPolicy: "queryAware"`, carrying the request's own `task` as the
 /// query-admitted metadata. Membrane never derives this from task prose on
 /// its own — the opt-in is an explicit planner signal, not an inference.
-fn push_policy_for_request(body: &Value, task: &str) -> crate::push::prep::PushPolicy {
+fn push_policy_for_request(body: &Value, task: &str) -> crate::pull::prep::PushPolicy {
     let opts_into_query_aware = body
         .get("pushPolicy")
         .and_then(Value::as_str)
@@ -1003,9 +1010,9 @@ fn push_policy_for_request(body: &Value, task: &str) -> crate::push::prep::PushP
     if opts_into_query_aware && !task.trim().is_empty() {
         // A mode request is not admission/freshness proof. Until the owner
         // supplies a receipt-bound policy, this is a terminal exact refusal.
-        crate::push::prep::PushPolicy::query_aware(task.to_owned(), false, false)
+        crate::pull::prep::PushPolicy::query_aware(task.to_owned(), false, false)
     } else {
-        crate::push::prep::PushPolicy::Control
+        crate::pull::prep::PushPolicy::Control
     }
 }
 
@@ -1102,7 +1109,7 @@ fn final_requirement_evidence_map(
 }
 
 fn request_time_refusal(
-    error: crate::push::selection::PacketReductionRequestError,
+    error: crate::pull::selection::PacketReductionRequestError,
 ) -> (u16, String) {
     (
         400,
@@ -1917,7 +1924,9 @@ pub fn run_memory_candidates(
 /// not an arbitrary `entries(max)` slice — so results are relevant. Emits `text` = a bounded
 /// word-boundary content preview (the old code emitted `text = e.id`, i.e. a useless slug), and a
 /// real content hash. Feedback-rail vetoes are applied via `gate_history_for` so a memory the agent
-/// marked `contradicted` never surfaces here either.
+/// marked `contradicted` never surfaces here either. Adapt proposals can reach this Pull surface
+/// only after Cortex admission, through this `MemoryStore` recall boundary; Pull has no Adapt
+/// candidate or mutation input.
 pub fn memory_candidates_payload(
     store: &crate::MemoryStore,
     task: &str,
@@ -1972,6 +1981,7 @@ pub fn memory_candidates_payload_for_descriptor(
         repo_root,
         None,
         None,
+        false,
     )
 }
 
@@ -2011,6 +2021,19 @@ pub fn memory_candidates_payload_for_descriptor_cancellable_with_temporal(
         repo_root,
         Some(cancellation),
         temporal,
+        false,
+    )
+}
+
+pub fn memory_candidates_payload_for_descriptor_lexical(
+    store: &crate::MemoryStore,
+    task: &str,
+    descriptor: &crate::scope::ScopeDescriptorV1,
+    max_candidates: usize,
+    repo_root: Option<&Path>,
+) -> Result<serde_json::Value, String> {
+    memory_candidates_payload_for_descriptor_inner(
+        store, task, descriptor, max_candidates, repo_root, None, None, true,
     )
 }
 
@@ -2022,6 +2045,7 @@ fn memory_candidates_payload_for_descriptor_inner(
     repo_root: Option<&Path>,
     cancellation: Option<&tokio_util::sync::CancellationToken>,
     temporal: Option<cortex_store::TemporalFactQuery>,
+    lexical_only: bool,
 ) -> Result<serde_json::Value, String> {
     // Canonicalize whatever the caller sent (raw filesystem path, slug, or `global`) into the full
     // visibility chain: self + ancestor scopes that hold rows + global. Before 2026-07-16 this
@@ -2045,7 +2069,14 @@ fn memory_candidates_payload_for_descriptor_inner(
         Vec<CortexCandidateHit>,
         crate::store::RecallStageElapsed,
         crate::store::CortexCompletenessV1,
-    ) = if let Some(cancellation) = cancellation {
+    ) = if lexical_only {
+        let (hits, completeness) = store.recall_lexical_bounded(task, probe_limit, &scopes);
+        (
+            hits.into_iter().map(|(entry, score)| CortexCandidateHit::Memory(entry, score)).collect(),
+            crate::store::RecallStageElapsed::default(),
+            completeness,
+        )
+    } else if let Some(cancellation) = cancellation {
         if temporal.is_some() {
             let page = store.recall_typed_bounded(
                 task,
@@ -2201,9 +2232,16 @@ fn memory_candidates_payload_for_descriptor_inner(
     // signal (the epoch sandwich did or did not hold across the read); its negation is `stale`.
     // When no repo root is available at this call site at all, that is itself an unverifiable
     // condition — express it honestly as `stale: true`, never fall back to `false`.
-    let stale = repo_root.is_none_or(|root| {
-        !crate::freshness::evaluate_repository_freshness(store, root.to_path_buf()).stable
-    });
+    let stale = if lexical_only {
+        // Cortex rows are read from its persisted index; Blueprint graph
+        // freshness is accounted for by its own source. Do not rebuild that
+        // graph as a side effect of foreground memory recall.
+        false
+    } else {
+        repo_root.is_none_or(|root| {
+            !crate::freshness::evaluate_repository_freshness(store, root.to_path_buf()).stable
+        })
+    };
 
     let indexed_at = iso_now();
     Ok(serde_json::json!({
@@ -2581,6 +2619,7 @@ mod tests {
         );
         // text is CONTENT, not an id/slug (the bug this fixes).
         assert!(!text.starts_with("memory:role:") && !text.starts_with("mem-"));
+        assert_eq!(top["sourceKind"], "memory");
         assert!(top["resolver"]
             .as_str()
             .unwrap()

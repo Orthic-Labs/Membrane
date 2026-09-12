@@ -45,9 +45,9 @@ fn projects_fixed_order_context_and_deny_only_at_boundaries() {
         )),
     ];
     for boundary in [HookEvent::PreToolUse, HookEvent::Stop] {
-        let response = project_hook_host_response(HookDispatchResultV1::new(boundary, results.clone()));
-        assert_eq!(response.decision, Some(HookHostDecision::Block));
-        assert_eq!(response.hook_specific_output.permission_decision, Some(HookPermissionDecision::Deny));
+        let response = project_hook_host_response(HookDispatchResultV1::new(boundary.clone(), results.clone()));
+        assert_eq!(response.decision, (boundary == HookEvent::Stop).then_some(HookHostDecision::Block));
+        assert_eq!(response.hook_specific_output.permission_decision, (boundary == HookEvent::PreToolUse).then_some(HookPermissionDecision::Deny));
         assert_eq!(response.hook_specific_output.additional_context, "first\n\nsecond");
     }
 
@@ -69,4 +69,17 @@ fn typed_failure_is_content_free_and_aggregates_error_status() {
     let encoded = serde_json::to_string(&result).expect("result serializes");
     assert!(!encoded.contains("secret"));
     assert!(encoded.contains("module_deadline_exceeded"));
+}
+
+#[test]
+fn lifecycle_output_uses_only_host_supported_event_shapes() {
+    for event in SHIPPED_EVENTS {
+        let response = project_hook_host_response(HookDispatchResultV1::new(
+            HookEvent::from_host_value(event.into()), vec![],
+        ));
+        let wire = serde_json::to_value(response).unwrap();
+        let contextual = matches!(event, "SessionStart" | "UserPromptSubmit" | "PreToolUse" | "PostToolUse" | "PostToolUseFailure");
+        assert_eq!(wire.get("hookSpecificOutput").is_some(), contextual, "{event}");
+        assert_eq!(wire["membraneHook"]["event"], event);
+    }
 }

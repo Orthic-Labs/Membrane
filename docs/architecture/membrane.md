@@ -1,5 +1,7 @@
 # Membrane — Canonical Architecture and Implementation Doctrine
 
+> Current boundary: Pull owns context retrieval, selection, faithful reduction, recovery, & publication. Public `push` is an agent-to-Cortex durable-memory write. References to Push below describe retained `membrane_push_*` compatibility for real consumers.
+
 **Status:** Canonical · final architecture · implementation authority  
 **Repository:** `Orthic-Labs/Membrane`  
 **Date:** 2026-08-19  
@@ -13,7 +15,7 @@
 - **Cortex** — durable-knowledge subsystem.
 - **Ledger** — document registry, navigation, and section-index subsystem. Formerly named Guide (and Spine before that); Guide is retired as a current-product name.
 - **Adapt** — governed behavioral-learning subsystem: Taste learns user-backed preferences; Insights learns evidence-backed failures and gotchas.
-- **Push** — reversible reduction subsystem.
+- **Push** — agent-to-Cortex durable-memory write compatibility surface; former reduction identity is retired.
 
 **System hierarchy:** Pull, Push, Cortex, Blueprint, Ledger, and Adapt are the six named Membrane subsystems. Planner, provider adapters, host adapters, and Hub integration are Membrane core/modules/surfaces, not peer subsystems.
 
@@ -29,7 +31,7 @@ The repository already contains the differentiated spine:
 
 - five typed public protocol shapes;
 - a provider-neutral admission planner;
-- Push / Pull / Persist as one context economy;
+- Pull / Persist as one context economy, with public `push` for Cortex memory writes;
 - typed freshness, authority, degradation, omissions, and receipts;
 - one cross-provider attention ceiling;
 - local-first Cortex storage and retrieval;
@@ -44,9 +46,9 @@ The final system should make one idea mechanically true:
 
 Blueprint determines repository evidence and repository truth.  
 Cortex preserves durable knowledge.
-Ledger registers, indexes, and resolves document sections without owning document truth or durable knowledge.  
-Adapt turns experience into governed Taste and Insights proposals; it never bypasses Cortex durable admission or Membrane context admission.
-Push performs reversible reduction; the Membrane planner retains final attention and representation policy.  
+Ledger owns source-bound Markdown/document projections in its SQLite index and resolves exact document sections; source documents remain authoritative, and ordinary Ledger projections are not copied into Cortex. Ledger is a direct Pull evidence provider.
+Adapt turns experience into reviewed Taste and Insights proposals for Cortex durable admission; it is not a direct Pull/context provider and never bypasses Cortex durable admission.
+Pull performs faithful reduction & recovery; the Membrane planner retains final attention and representation policy.
 Other providers own their evidence.  
 One Membrane controller owns automatic work through its OS-coupled child daemon. Hub & CodeRight daemon hold independent lifetimes of that controller. Explicit operations across all six subsystems remain available without either holder through bounded installed execution. No ordinary request starts an orphanable daemon or automatic watcher.
 
@@ -93,11 +95,11 @@ retain separate ownership, tests, metrics, and improvement paths:
 | Axis | Responsibility | Authority boundary |
 |---|---|---|
 | **Pull** | Retrieve, admit, fuse, and publish task-relevant evidence. | Membrane planner owns final policy. |
-| **Push** | Reduce information already in flight. | Faithful, reversible reduction only; never a second planner. |
+| **Push** | Write agent-authored durable memory through Cortex. | Cortex admission only; former reduction operations remain legacy compatibility. |
 | **Cortex** | Admit, retain, lifecycle, and retrieve governed durable memory. | Durable-memory only; no resident service, port, or process authority. |
 | **Blueprint** | Own repository truth, evidence generations, and drift/change observation. | Blueprint-owned schemas/services; no duplicate parser or graph. |
-| **Ledger** | Register and navigate indexed document sections with hash-bound references. | Registry/navigation/index projections only; no document truth or durable memory. |
-| **Adapt** | Mine experience into Taste preferences and Insights failure/gotcha proposals. | Proposal eligibility is separate from Cortex durable admission and Membrane context admission; no direct durable writes. |
+| **Ledger** | Own source-bound Markdown/document projections, register and navigate indexed sections with hash-bound references, and provide direct Pull evidence. | Source documents remain authoritative; ordinary sections/index projections are not copied into Cortex. |
+| **Adapt** | Mine experience into reviewed Taste preferences and Insights failure/gotcha proposals for Cortex admission. | Internal proposal producer only; no direct Pull provider or federation candidate injection. |
 
 Membrane Hub is not a seventh axis. One controller owns resident lifecycle while Hub or CodeRight daemon holds it; its headless child
 daemon hosts Membrane runtime, and the Hub dashboard runs on demand. Installation, update, and
@@ -219,7 +221,7 @@ The architecture must reject scope growth that does not improve the core objecti
 | Sufficiency | Membrane planner | Determine whether required evidence dimensions are covered |
 | Fusion / dedupe / diversity | Membrane planner | One final policy path |
 | Attention admission | Membrane planner | One global budget; coverage floor then depth |
-| Representation choice | Membrane Push / planner boundary | Native/rendered/resolver/metadata and faithful reduction |
+| Representation choice | Membrane Pull / planner boundary | Native/rendered/resolver/metadata and faithful reduction |
 | Publication revalidation | Membrane runtime | Recheck authority/policy immediately before bytes leave |
 | Omissions / receipts | Membrane | Explain every material decision |
 | Durable knowledge | Cortex | Store governed long-lived knowledge; durable-memory only |
@@ -229,9 +231,9 @@ The architecture must reject scope growth that does not improve the core objecti
 | Repository stable identity / source spans / generations | Blueprint | Consume and policy-evaluate |
 | Code-anchor relocate / re-anchor / moved/ambiguous/missing | Blueprint | Call Blueprint resolution; do not reimplement |
 | Code/document truth comparison | Blueprint | Consume contradictions and coverage state |
-| Document registry / navigation / section indexing | Ledger | Consume typed document candidates and hash-bound section references; Ledger does not decide document truth or durable memory |
-| Experience-to-knowledge proposals | Adapt | Accept proposals only through governed Cortex admission; no direct durable write |
-| Faithful reduction mechanics | Push | Execute planner-selected reversible representations; never become a second admission/ranking owner |
+| Document truth / registry / navigation / section indexing | Ledger | Maintain source-bound Markdown/document projections in Ledger SQLite, exact hash-bound resolution, and direct Pull evidence; do not copy ordinary projections into Cortex |
+| Experience-to-knowledge proposals | Adapt | Produce reviewed proposals that cross Cortex durable admission; no direct Pull/context provider or federation injection |
+| Faithful reduction mechanics | Pull | Execute planner-selected reversible representations; never become a second admission/ranking owner |
 | Current Git/worktree facts | Git/live provider | Consume current evidence |
 | Rules / policy evidence | Rule provider / workspace policy owner | Consume without allowing text to self-authorize |
 | Audit findings | Audit | Consume typed findings |
@@ -1002,13 +1004,13 @@ Do not persist the full transcript as truth.
 
 ---
 
-# 9. Push — reduction must be wired into the real host loop
+# 9. Pull — reduction must be wired into the real host loop
 
-Push already has useful primitives. The final architecture must specify where they execute.
+Pull owns faithful reduction primitives. The final architecture specifies where they execute.
 
 ## 9.1 Canonical interception points
 
-Membrane-owned or Membrane-integrated Push interception happens at these boundaries when the host supports them:
+Membrane-owned or Membrane-integrated Pull delivery happens at these boundaries when the host supports them:
 
 ### A. Tool/MCP result egress
 
@@ -1028,7 +1030,7 @@ This is the primary portable integration point.
 
 ### B. Host post-tool hook
 
-When a host exposes a post-tool hook capable of replacing or reducing the tool result before the model consumes it, route large payloads through the same Push transform contract. Host adapters capability-probe this behavior; they never assume every host exposes an equivalent rewrite surface.
+When a host exposes a post-tool hook capable of replacing or reducing the tool result before the model consumes it, route large payloads through the same Pull transform contract. Host adapters capability-probe this behavior; they never assume every host exposes an equivalent rewrite surface.
 
 Host adapters remain thin; they do not implement separate compression algorithms.
 
@@ -1066,7 +1068,7 @@ It does not invent new ranking or policy.
 8 explicit truncation last
 ```
 
-Do not call a model in the prompt-critical Push path merely to summarize.
+Do not call a model in prompt-critical Pull delivery merely to summarize.
 
 Model-derived summaries may be produced asynchronously as provenance-bound, invalidatable representations and reused only when valid.
 
@@ -1106,12 +1108,12 @@ with required accounting invariants.
 
 Token savings are never claimed without a paired evidence-preservation assertion.
 
-## 9.5 Push adoption is a product metric
+## 9.5 Pull reduction adoption is a product metric
 
 Measure:
 
-- eligible Push opportunities;
-- Push executions;
+- eligible Pull reduction opportunities;
+- Pull reduction executions;
 - passthrough reasons;
 - artifacts externalized;
 - tokens/bytes avoided;
@@ -1120,7 +1122,7 @@ Measure:
 - transform failures;
 - task non-regression.
 
-An excellent unused primitive is not a finished Push system.
+An excellent unused primitive is not finished Pull delivery.
 
 ---
 
@@ -1907,9 +1909,9 @@ Gate:
 - moved/ambiguous/missing/unsupported distinctions remain typed;
 - poisoning text remains `data_only`.
 
-## Phase 5 — Push wiring + artifact-backed reversible reduction
+## Phase 5 — Pull wiring + artifact-backed reversible reduction
 
-Goal: make Push operate on real accumulated context, not merely exist as utilities.
+Goal: make Pull operate on real accumulated context, not merely exist as utilities.
 
 Do:
 
@@ -1923,13 +1925,13 @@ Do:
 - representation planner;
 - exact restoration;
 - `TokenBalanceV1`;
-- Push opportunity/adoption telemetry;
+- Pull opportunity/adoption telemetry;
 - position-aware semantic layout behind flag;
 - deterministic prefix/cache tests.
 
 Gate:
 
-- measurable Push adoption on real eligible events;
+- measurable Pull adoption on real eligible events;
 - zero protected corruption;
 - raw evidence resolvable;
 - task-quality non-regression;
@@ -2058,8 +2060,8 @@ of explicit compatibility paths.
 | `engine/federation/providers/*` | evidence producers; no final budget/authority decisions |
 | `engine/crates/cortex-core/` | durable-memory retrieval/admission/lifecycle/conflict policy |
 | `engine/crates/cortex-store/` | canonical durable store + rebuildable projections |
-| `engine/crates/membrane-runtime/` | publication, Push/artifact/working context/runtime integration |
-| `engine/crates/membrane-runtime/src/ledger/{outline,identifier,doc_spine,doc_projection,doc_shadow,doc_candidate_provider}.rs` | Ledger implementation; document navigation/index only, not document truth or durable knowledge |
+| `engine/crates/membrane-runtime/` | publication, Pull/artifact/working context/runtime integration |
+| `engine/crates/membrane-runtime/src/ledger/{outline,identifier,doc_spine,doc_projection,doc_shadow,doc_candidate_provider}.rs` | Ledger implementation; source-bound Markdown/document projections, navigation/index, exact resolution and direct Pull evidence |
 | `engine/crates/membrane-mcp/src/{jsonrpc,tools}.rs` | native MCP transport, discovery, prompts, resources, & tool surface |
 | `engine/crates/membrane-runtime/src/mcp_executor.rs` | native MCP operation execution & authority dispatch |
 | `engine/crates/membrane-runtime/src/working_context.rs` | bounded active working context; schema changes mirrored with Rust |
@@ -2107,11 +2109,11 @@ This is the file-exact core slice. The exact function bodies may evolve, but own
 - Blueprint SQLite reads;
 - structural re-anchoring logic in Membrane.
 
-### Push
+### Pull reduction
 
 **Modify**
 - `engine/crates/membrane-runtime/src/working_context.rs` — execute planner-selected working-context representation/layout only.
-- `engine/crates/membrane-runtime/src/hook.rs` — route native host-hook dispatch & rewrite-capable post-tool output through the common Push contract.
+- `engine/crates/membrane-runtime/src/hook.rs` — route native host-hook dispatch & rewrite-capable post-tool output through the common Pull contract.
 - `membrane_source_read` path in `engine/crates/membrane-runtime/src/mcp_executor.rs` — exact/hash-bound reduction & resolver behavior.
 
 **Add/complete under `engine/crates/membrane-runtime/src/`**
@@ -2138,7 +2140,7 @@ The early slice is complete only when:
 5. Blueprint generation mismatch fails closed;
 6. each complete RecallCircuit path stays atomic;
 7. the Membrane planner remains the only final policy owner;
-8. Push is exercised on at least one real tool/MCP result path;
+8. Pull reduction is exercised on at least one real tool/MCP result path;
 9. current protocol fixtures remain green.
 
 ---
@@ -2285,18 +2287,11 @@ from subsystem canons.
 - Unsupported/ambiguous/missing are not collapsed.
 - Repository evidence remains `data_only`.
 
-## 23.5 Push
+## 23.5 Public push & legacy reduction compatibility
 
-- Push is wired into real tool/MCP result egress.
-- Host post-tool integration is used where supported.
-- Large source/file reads use the same transform contract.
-- Raw artifacts are content-addressed and recoverable.
-- Query-critical spans survive or restore exactly.
-- Transform failure falls back to less reduction/raw.
-- Token/byte savings are paired with evidence-fidelity proof.
-- Push adoption/opportunity rate is measured.
-- Position-aware layout is semantic, deterministic, and qualified.
-- No prompt-critical LLM summarization dependency exists.
+- Public `push` writes agent-authored durable memory through Cortex.
+- Former reduction behavior remains only through `membrane_push_*` for live legacy consumers.
+- Pull owns reduction, recovery, artifact identity, and related qualification.
 
 ## 23.6 Persist
 
@@ -2423,6 +2418,6 @@ PERSIST
 
 The core ownership rule is:
 
-> **Membrane is the parent context system with six axes: Pull, Push, Cortex, Blueprint, Ledger, and Adapt. Blueprint determines repository evidence and repository truth. Cortex preserves durable knowledge. Ledger registers and navigates indexed documents. Adapt learns user-backed Taste preferences and evidence-backed Insights failures/gotchas. Push performs reversible reduction. Membrane planner determines what deserves agent attention now, in what form, under whose authority, and records why. One installed controller owns watchers, schedulers & background processes while Hub or CodeRight daemon holds its lifetime. Hub UI is optional for CodeRight. All six subsystems support explicit bounded operations without residency through canonical installed owners.**
+> **Membrane is the parent context system with six axes: Pull, Push, Cortex, Blueprint, Ledger, and Adapt. Blueprint determines repository evidence and repository truth. Cortex preserves durable knowledge. Ledger owns source-bound Markdown/document projections, registers and navigates indexed documents, and supplies direct Pull evidence. Adapt learns user-backed Taste preferences and evidence-backed Insights failures/gotchas for Cortex admission. Pull performs faithful reduction and recovery; public Push writes durable memory through Cortex. Membrane planner determines what deserves agent attention now, in what form, under whose authority, and records why. One installed controller owns watchers, schedulers & background processes while Hub or CodeRight daemon holds its lifetime. Hub UI is optional for CodeRight. All six subsystems support explicit bounded operations without residency through canonical installed owners.**
 
 That is the canonical shape.

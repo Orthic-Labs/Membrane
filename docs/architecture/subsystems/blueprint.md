@@ -148,9 +148,27 @@ For example, a stale SCIP fact cannot be treated as current for a dirty workspac
 
 An ordinary create/modify/delete/rename event must update affected facts and a bounded dependent frontier. It must not trigger a full repository rebuild.
 
-## INV-007 — Queries may repair narrowly, never reconcile unboundedly
+### BP-DEC-2026-09-12 — Construction, incremental updates & read boundaries
 
-A query may synchronously repair the exact dirty file(s) required to answer within a strict budget. It must never perform an unbounded repository reconciliation on the read path.
+**Decision maker: Adrian. Date: 2026-09-12. Status: accepted normative decision; implementation acceptance remains separate.** This decision supersedes conflicting construction, refresh or query-repair guidance. Its authority is Adrian's explicit instructions in this conversation, not an agent recommendation or donor implementation.
+
+Full repository graph construction is permitted only when Blueprint itself verifies:
+
+1. `graph_missing`: no graph generation exists. This is initial construction, not reconstruction.
+2. `unrecoverable_corruption`: integrity evidence establishes existing graph cannot be safely recovered or repaired while retaining valid data.
+3. `incompatible_generation_without_migration`: graph format or extraction changes invalidate all reusable graph facts & no valid migration exists. Preserve reusable source/parsing caches. An older reader encountering a newer schema must report incompatibility, not overwrite it.
+
+One Blueprint-owned guard covers every production full-construction entry point, including historical revisions. Caller-supplied reasons, force flags & generic store errors cannot authorize construction. Permission failures, locks, transient I/O failures, stale data, missing freshness metadata, restarts, watcher overflow & large change sets are not construction reasons. Verify integrity, generation identity & available recovery/migration before classifying corruption. Record actual evidence, caller, start, terminal outcome & resulting generation; coordinate recovery through the existing single writer & preserve recoverable stores and sidecars.
+
+Hub or CodeRight daemon residency maintains authorized repositories through incremental updates. Manual build/refresh uses the same incremental machinery without requiring residency. Reuse unaffected files, parsed facts & relationships; update added/modified/deleted/renamed files plus affected incoming/outgoing references, document/provider/framework facts & dependent projections. Missing caller paths means discover changes, never assume unchanged. Known watcher paths bound discovery; lost events require scan-and-diff, not full reconstruction. A no-change result requires verified source & extraction-configuration equivalence, then skips extraction, resolution & graph publication.
+
+Unsupported incremental work preserves the published generation, records durable pending changes & returns a typed failure/degradation. Never silently reconstruct, discard unaffected facts or report `fresh` while work remains. Publish incremental changes atomically & resume pending work after interruption.
+
+Acceptance must prove zero full constructions for ordinary valid-graph operations, no-change generation stability, incremental equivalence to independently constructed fixtures, affected-reference repair, interruption recovery & denial of transient-error construction. Measure complete manual/watcher updates separately from parsing, resolution & publication; database-only delta timings do not establish end-to-end latency.
+
+## INV-007 — Context & status reads never construct or refresh
+
+Context, recall, query, freshness, status & explorer read paths use published graph data & honestly report freshness, age, pending changes or unavailable evidence. They never construct graphs or silently initiate repair/refresh. Refresh belongs to authorized resident maintenance or an explicit update operation. Stale Blueprint evidence must not block unrelated subsystem retrieval; Membrane's planner retains final admission authority.
 
 ## INV-008 — One logical writer per repository generation
 

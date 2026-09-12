@@ -4,7 +4,7 @@ Status: source implementation landed on `ledger-end-to-end`; final release quali
 
 ## Final shape
 
-Ledger is the daemon-owned, source-bound document-navigation subsystem. It registers eligible sources, publishes rebuildable structural/search/link projections, resolves exact captured evidence, and offers bounded navigation to agents. Pull remains the only cross-provider admission/fusion authority; Blueprint remains repository/code truth; Cortex remains durable semantic memory; Push remains representation reduction.
+Ledger is the daemon-owned, source-bound document-navigation subsystem. It registers eligible sources, publishes rebuildable structural/search/link projections, resolves exact captured evidence, and offers bounded navigation to agents. Pull remains the only cross-provider admission/fusion authority and owns representation reduction/recovery; Blueprint remains repository/code truth; Cortex remains durable semantic memory; public `push` writes agent-authored memory through Cortex.
 
 The implemented path is:
 

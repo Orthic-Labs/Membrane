@@ -1,4 +1,6 @@
-# Push atomic capability canon
+# Push atomic capability canon — legacy compatibility
+
+> Push's context-reduction subsystem identity is retired. Pull owns reduction, recovery, & publication; public `push` is reserved for agent-to-Cortex durable-memory writes. This file records `membrane_push_*` compatibility while a real consumer remains.
 
 > **Post-merge implementation update — 5 September 2026.** PR #11 merged the Push repair implementation into `main` at `cb0cbbcc308f345f8d6c063eb458040f1e37f8c8` from implementation head `09694be7f457bdc6ea1eff07254afd8c8db7d23f`. The committed capability inventory remains the 29-atom specification below. Implementation states are conservatively updated from `MISSING` to `PARTIAL` where the merged mechanism now exists; verification, qualification, delivery and competitive closure are not promoted by this documentation update. Post-merge evidence: `docs/provenance/foundation/2026-09-05-push-post-merge-implementation/verification.md`.
 

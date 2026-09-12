@@ -114,11 +114,11 @@ impl ProviderRegistry {
         self.ids().into_iter().map(|provider| ProviderCapabilityV1 {
             provider,
             dimensions: match provider {
-                ProviderId::Anchors | ProviderId::Blueprint | ProviderId::Architect => vec![EvidenceDimensionV1::RepositoryTruth],
+                ProviderId::Anchors | ProviderId::Blueprint | ProviderId::Architect | ProviderId::Ledger => vec![EvidenceDimensionV1::RepositoryTruth],
                 ProviderId::LiveFiles => vec![EvidenceDimensionV1::CurrentState],
                 ProviderId::Rules => vec![EvidenceDimensionV1::Policy],
                 ProviderId::Git | ProviderId::Audit => vec![EvidenceDimensionV1::History, EvidenceDimensionV1::Diagnostics],
-                ProviderId::Skills | ProviderId::Cortex | ProviderId::Ledger => vec![EvidenceDimensionV1::DurableKnowledge],
+                ProviderId::Skills | ProviderId::Cortex => vec![EvidenceDimensionV1::DurableKnowledge],
             },
             authoritative: true,
             fresh: true,

@@ -6598,7 +6598,6 @@ pub fn run_stdio_mcp() -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    include!("adapt_path_tests.rs");
     use super::*;
 
     #[test]

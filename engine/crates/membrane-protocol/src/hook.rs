@@ -9,10 +9,10 @@ use serde_json::Value;
 use thiserror::Error;
 
 pub const HOOK_SCHEMA_VERSION: u32 = 1;
-/// Per-module wall budget. Codex allows a ten-second UserPromptSubmit hook;
+/// Per-module wall budget, inside each registered host handler deadline;
 /// ambient retrieval reserves time for process startup plus bounded cold
 /// one-shot federation while retaining a hard outer kill/reap deadline.
-pub const HOOK_MODULE_DEADLINE_MS: u64 = 8_000;
+pub const HOOK_MODULE_DEADLINE_MS: u64 = 3_000;
 
 /// Every host event supported by shipped Membrane hooks.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -331,15 +331,18 @@ pub struct HookHostResponseV1 {
     pub membrane_hook: HookDispatchResultV1,
 }
 
-// Claude rejects `hookSpecificOutput.hookEventName=SessionEnd`; SessionEnd
-// accepts only the typed Membrane receipt. Keep field available to callers,
-// but omit host projection for that lifecycle event.
+// Only events with a native context projection receive hookSpecificOutput.
+// Other lifecycle callbacks retain typed receipts, with top-level Stop control.
+// Emitting unsupported event variants makes Claude reject the entire response.
 impl serde::Serialize for HookHostResponseV1 {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where S: serde::Serializer {
         use serde::ser::SerializeMap;
-        let omit_host_projection = matches!(&self.hook_specific_output.hook_event_name, HookEvent::SessionEnd);
-        let mut map = serializer.serialize_map(Some(if omit_host_projection { 2 } else { 3 }))?;
+        let omit_host_projection = !matches!(&self.hook_specific_output.hook_event_name,
+            HookEvent::SessionStart | HookEvent::UserPromptSubmit | HookEvent::PreToolUse |
+            HookEvent::PostToolUse | HookEvent::PostToolUseFailure);
+        let count = 1 + usize::from(!omit_host_projection) + usize::from(self.decision.is_some()) + usize::from(self.reason.is_some());
+        let mut map = serializer.serialize_map(Some(count))?;
         if let Some(decision) = &self.decision { map.serialize_entry("decision", decision)?; }
         if let Some(reason) = &self.reason { map.serialize_entry("reason", reason)?; }
         if !omit_host_projection { map.serialize_entry("hookSpecificOutput", &self.hook_specific_output)?; }
@@ -363,12 +366,12 @@ pub fn project_hook_host_response(result: HookDispatchResultV1) -> HookHostRespo
             .or_else(|| Some(output.reason.clone()))
     }).or_else(|| deny.then(|| "semantic edit fence not cleared".to_owned()));
     HookHostResponseV1 {
-        decision: deny.then_some(HookHostDecision::Block),
-        reason: deny.then(|| reason.clone()).flatten(),
+        decision: (deny && result.event == HookEvent::Stop).then_some(HookHostDecision::Block),
+        reason: (deny && result.event == HookEvent::Stop).then(|| reason.clone()).flatten(),
         hook_specific_output: HookSpecificOutputV1 {
             hook_event_name: result.event.clone(),
-            permission_decision: deny.then_some(HookPermissionDecision::Deny),
-            permission_decision_reason: deny.then(|| reason.clone()).flatten(),
+            permission_decision: (deny && result.event == HookEvent::PreToolUse).then_some(HookPermissionDecision::Deny),
+            permission_decision_reason: (deny && result.event == HookEvent::PreToolUse).then(|| reason.clone()).flatten(),
             additional_context,
         },
         membrane_hook: result,
@@ -453,18 +456,18 @@ pub fn hook_injection_point_descriptors() -> [HookInjectionPointDescriptorV1; 8]
         HookInjectionPointDescriptorV1 {
             id: SessionStart, canonical_name: SessionStart.canonical_name(),
             host_names: &["SessionStart"],
-            purpose: "Prime a new session with cortex health and durable orientation before the first turn.",
+            purpose: "Prime startup, resume, clear, and compact session entry with one bounded Membrane orientation packet before the first turn.",
             when_to_use: "Once per fresh session, before any user prompt is normalized.",
             when_not_to_use: "Never on a resumed session with an intact prior context window; use Resume instead so orientation is not repeated at full cost.",
             input: "HookInputEnvelopeV1 with event=SessionStart; no tool or prompt fields populated.",
-            output: "HookModuleOutputV1 status (available|unavailable) with no additionalContext beyond health/rearm detail.",
-            cost_bound: "One resident health probe (<=800ms) plus rearm; no network beyond local resident.",
-            freshness_bound: "Health/rearm state must reflect the resident as of this call; no cached cross-session value.",
-            effect_bound: "Read-only against workspace and durable state; rearm writes only session-scoped local markers.",
-            budget: "Single attempt per session start; no retry budget beyond the module deadline.",
-            dedup: "One invocation per session id; a repeated SessionStart for the same session id is not re-primed.",
-            suppression: "Suppressed entirely when cortex resident is unreachable; falls back to unavailable status, never a stale substitute.",
-            receipt_kind: "membrane.hook.status (schemaVersion 1) recording available|unavailable and reason.",
+            output: "HookModuleOutputV1 status with bounded additionalContext containing repository identity, published Blueprint generation/freshness, Cortex/Ledger/Adapt/provider availability, relevant evidence, and typed omissions.",
+            cost_bound: "One shared-planner attempt bounded by HOOK_MODULE_DEADLINE_MS; resident controller first, sealed-store one-shot fallback.",
+            freshness_bound: "Blueprint generation and age come from its published read-only snapshot; startup never constructs or refreshes a graph.",
+            effect_bound: "Read-only against Blueprint, Cortex, Ledger, and provider state; session rearm/continuity markers remain the only local lifecycle writes.",
+            budget: "Single bounded attempt per SessionStart source=Startup|Resume|Clear|Compact; packet is capped before host projection.",
+            dedup: "Host may repeat SessionStart after resume/compact; each event is independently bounded and carries its source in the preserved payload.",
+            suppression: "Provider gaps, stale Blueprint, missing Ledger, or absent resident fail open with typed omissions; no full graph/store dump is substituted.",
+            receipt_kind: "membrane.hook.status (schemaVersion 1) with startup packet bytes, provider availability, Blueprint age, and omission accounting.",
         },
         HookInjectionPointDescriptorV1 {
             id: UserPrompt, canonical_name: UserPrompt.canonical_name(),
@@ -474,7 +477,7 @@ pub fn hook_injection_point_descriptors() -> [HookInjectionPointDescriptorV1; 8]
             output: "HookModuleOutputV1 status with additionalContext carrying recalled text when available.",
             when_to_use: "Every user prompt submission where a resident memory/federation endpoint is configured.",
             when_not_to_use: "Never when no resident API token is installed; skip rather than fabricate recall from an unauthenticated or absent source.",
-            cost_bound: "One federation call bounded by HOOK_MODULE_DEADLINE_MS (8000ms); no unbounded retrieval.",
+            cost_bound: "One federation call bounded by HOOK_MODULE_DEADLINE_MS (3000ms); no unbounded retrieval.",
             freshness_bound: "Recall reflects durable/document state as of the resident's current index generation, not a prior session snapshot.",
             effect_bound: "Read-only; no durable-state or workspace mutation.",
             budget: "One recall attempt per prompt submission.",
@@ -652,7 +655,7 @@ mod tests {
             vec![HookModuleResultV1::skipped(HookModuleId::CortexStatus)],
         ));
         let value = serde_json::to_value(response).expect("response serializes");
-        assert_eq!(value["hookSpecificOutput"]["hookEventName"], "OtherEvent");
+        assert!(value.get("hookSpecificOutput").is_none(), "unknown host events cannot receive an unsupported projection");
         assert_eq!(value["membraneHook"]["event"], "OtherEvent");
     }
 
@@ -663,7 +666,7 @@ mod tests {
             HookModuleResultV1::ok(HookModuleId::DiagnosticsFence, HookModuleOutputV1::status(HookModuleState::Blocked, "blocked", json!({"additionalContext":"second"}))),
         ]);
         let response = project_hook_host_response(result);
-        assert_eq!(response.decision, Some(HookHostDecision::Block));
+        assert_eq!(response.decision, None);
         assert_eq!(response.hook_specific_output.permission_decision, Some(HookPermissionDecision::Deny));
         assert_eq!(response.hook_specific_output.additional_context, "first\n\nsecond");
     }

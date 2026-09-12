@@ -35,7 +35,7 @@ pub(crate) fn pre_compact(input: &HookInputEnvelopeV1) -> HookModuleOutputV1 {
     let snapshot = json!({
         "schema_version": 1,
         "checkpoint_id": format!("checkpoint/{}/{}", session_digest(input.session_id.as_deref()), now_ms()),
-        "client": "codex",
+        "client": if input.payload.get("turn_id").is_some() { "codex" } else { "claude" },
         "session_id": input.session_id.as_deref().unwrap_or("missing-session"),
         "scope_id": root.to_string_lossy(),
         "created_at_ms": now_ms(),
@@ -153,7 +153,27 @@ fn tool_file(input: &HookInputEnvelopeV1) -> Option<&str> { input.payload.pointe
 fn root(input: &HookInputEnvelopeV1) -> PathBuf { env::var_os("WORKSPACE_ROOT").map(PathBuf::from).or_else(|| string(input, "cwd").map(PathBuf::from)).or_else(|| string(input, "working_directory").map(PathBuf::from)).unwrap_or_else(|| env::current_dir().unwrap_or_else(|_| PathBuf::from("."))) }
 fn home() -> PathBuf { env::var_os("USERPROFILE").or_else(|| env::var_os("HOME")).map(PathBuf::from).unwrap_or_else(|| PathBuf::from(".")) }
 fn claude_memory_root(root: &Path) -> PathBuf { let slug = root.to_string_lossy().replace([':', '\\', '/'], "-"); home().join(".claude/projects").join(slug).join("memory") }
-fn pending_path(root: &Path, session: Option<&str>) -> PathBuf { root.join("tools/.cache/memory/checkpoint-pending").join(format!("{}.json", session_digest(session))) }
+fn pending_path(root: &Path, session: Option<&str>) -> PathBuf {
+    let base = env::current_exe().ok().and_then(|exe| crate::service::runtime_from_exe(&exe).ok())
+        .filter(|runtime| runtime.origin == "installed")
+        .and_then(|runtime| runtime.db.parent().map(Path::to_path_buf))
+        .unwrap_or_else(|| root.join("tools/.cache/memory"));
+    base.join("checkpoint-pending").join(format!("{}.json", session_digest(session)))
+}
+
+/// Reuse this session's redacted, expiring compaction summary as retrieval
+/// query context. It is never promoted to durable knowledge by this read.
+pub(crate) fn pending_recall_task(input: &HookInputEnvelopeV1) -> Option<String> {
+    let session = input.session_id.as_deref()?;
+    let root = root(input);
+    let path = pending_path(&root, Some(session));
+    if fs::metadata(&path).ok()?.len() > 128 * 1024 { return None; }
+    let value: Value = serde_json::from_slice(&fs::read(path).ok()?).ok()?;
+    if value.get("session_id")?.as_str()? != session
+        || value.get("scope_id")?.as_str()? != root.to_string_lossy()
+        || value.get("expires_at_ms")?.as_u64()? as u128 <= now_ms() { return None; }
+    value.get("summary")?.as_str().filter(|summary| !summary.trim().is_empty()).map(str::to_owned)
+}
 fn session_digest(session: Option<&str>) -> String { hex::encode(Sha256::digest(session.unwrap_or("missing-session").as_bytes()))[..24].to_owned() }
 fn safe_component(value: &str) -> String { value.chars().map(|character| if character.is_ascii_alphanumeric() || matches!(character, '_' | '-') { character } else { '_' }).collect() }
 fn inside(parent: &Path, candidate: &Path) -> bool { candidate.strip_prefix(parent).ok().is_some_and(|relative| !relative.as_os_str().is_empty()) }

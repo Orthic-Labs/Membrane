@@ -23,7 +23,7 @@ use sha2::{Digest, Sha256};
 const STATUS_DEADLINE_MS: u64 = 800;
 const WRITE_DEADLINE_MS: u64 = 1_200;
 // Must stay strictly above membrane_protocol::hook::HOOK_MODULE_DEADLINE_MS
-// (8_000ms). `bounded_git`'s own timeout only calls a plain `Child::kill()`
+// (3_000ms). `bounded_git`'s own timeout only calls a plain `Child::kill()`
 // with no job-object/process-group containment, so it cannot reap a
 // detached descendant holding the piped stdout open. If this inner bound
 // were shorter than (or equal to) the outer per-module deadline, the git
@@ -107,12 +107,33 @@ fn packet_text(packet: &Value) -> Option<String> {
 /// `pull::federation::hook_mode_federate`); `MEMBRANE_HOOK_RECALL_MAX_TOKENS`
 /// overrides the default.
 const DEFAULT_HOOK_RECALL_MAX_TOKENS: u64 = 1_024;
+const STARTUP_PACKET_MAX_BYTES: usize = 8 * 1024;
 
 pub(crate) fn resident_recall(input: &HookInputEnvelopeV1) -> Option<String> {
+    let task = recall_task(input);
+    resident_recall_for_task(input, &task)
+}
+
+#[derive(Clone, Debug)]
+pub struct RecallOutcome {
+    pub context: Option<String>,
+    pub reason: &'static str,
+    pub detail: Value,
+    /// Only an affirmative planner sufficiency verdict fences off alternatives.
+    pub sufficient: bool,
+}
+
+/// Run Membrane once for one concrete host information need.  Resident and
+/// bounded one-shot are transport choices inside this attempt; neither is an
+/// alternative-retrieval authorization boundary.
+pub(crate) fn resident_recall_for_task(input: &HookInputEnvelopeV1, task: &str) -> Option<String> {
+    recall_attempt(input, task).context
+}
+
+pub(crate) fn recall_attempt(input: &HookInputEnvelopeV1, task: &str) -> RecallOutcome {
     let root = project_root(input);
-    let task = input.payload.get("prompt").or_else(|| input.payload.get("user_prompt")).or_else(|| input.payload.get("task")).and_then(Value::as_str).unwrap_or("orient current task");
     let session = input.session_id.as_deref().unwrap_or("host-native");
-    let client = input.payload.get("client").and_then(Value::as_str).unwrap_or("codex");
+    let client = input.payload.get("client").and_then(Value::as_str).or_else(|| input.payload.get("client_id").and_then(Value::as_str)).unwrap_or_else(|| if input.payload.get("turn_id").is_some() { "codex" } else { "claude" });
     // Host integrations may provide either canonical camelCase or native
     // snake_case envelope fields. Parse only a validated H8 observation;
     // absence remains explicit instead of inventing a context window.
@@ -125,63 +146,164 @@ pub(crate) fn resident_recall(input: &HookInputEnvelopeV1) -> Option<String> {
         .or_else(|| input.payload.get("max_tokens").and_then(Value::as_u64)).unwrap_or(DEFAULT_HOOK_RECALL_MAX_TOKENS) as usize;
     // Resident holder first: reuse warm services when an authenticated local
     // holder is reachable.  Failure here is not a verdict on Membrane.
-    let need_digest = format!("sha256:{}", sha256(task.as_bytes()));
-    let mut resident_failure = false;
+    // A resident miss is only a transport miss.  The one-shot path is part of
+    // this same Membrane attempt and must always be tried when needed.
     if let Some((port, token)) = resident_endpoint(&root) {
         let mut body = json!({"task": task, "repo": root, "maxTokens": max_tokens, "client": client, "session": session, "budgetPolicy": if observed_ceiling.is_some() { "host_observed" } else { "configured_cap" }, "maxWaitMs": RECALL_RESIDENT_BUDGET_MS});
         if let Some(ceiling) = observed_ceiling.as_ref() {
             body["remainingContextCeiling"] = serde_json::to_value(ceiling).unwrap_or(Value::Null);
         }
         if let Some(response) = authenticated_json_at(port, "/federate", body, &token, RECALL_RESIDENT_BUDGET_MS) {
-            if let Some(text) = response.get("packet").and_then(packet_text) { return Some(text); }
+            if response.get("packet").is_some() {
+                let outcome = outcome_from_response(&response, "resident");
+                return if is_session_start(input) { startup_outcome(input, outcome, &response) } else { outcome };
+            }
         }
-        resident_failure = true;
-    } else {
-        // Hub-independent one-shot is authorized by this fresh, exact
-        // Membrane failure receipt, scoped to this information need/session.
-        resident_failure = true;
-    }
-    let supplied_receipt = input.payload.get("membraneFailureReceipt")
-        .or_else(|| input.payload.get("membrane_failure_receipt"))
-        .cloned();
-    let generated_failure = json!({
-        "kind":"membrane.retrieval.failure", "issuer":"membrane",
-        "receiptId": format!("membrane-failure-{}", &need_digest[7..]),
-        "informationNeedDigest": need_digest.clone(), "sessionId": session,
-        "issuedAtUnixMs": cortex_store::time::now_millis() as u64, "status":"failed"
-    });
-    // A resident miss is a fresh exact Membrane failure receipt. A supplied
-    // receipt can replace it only when its issuer, identity, age, status, and
-    // information need all match; success/unrelated/stale/fake values deny.
-    let authorization = supplied_receipt.as_ref().unwrap_or(&generated_failure);
-    if !resident_failure || !receipt_allows_alternative(Some(authorization), &need_digest, session) {
-        return None;
     }
     // Bounded ambient federation in this process under the configured cap,
     // with the remaining module budget as its deadline.
     match crate::pull::federation::hook_mode_federate_with_observation(task, &root, max_tokens, client, session, RECALL_ONE_SHOT_BUDGET_MS, observed_ceiling) {
-        Ok(response) => response.get("packet").and_then(packet_text),
+        Ok(response) => {
+            let outcome = outcome_from_response(&response, "one_shot");
+            if is_session_start(input) { startup_outcome(input, outcome, &response) } else { outcome }
+        }
         Err(error) => {
-            if env::var_os("MEMBRANE_HOOK_DEBUG").is_some() { eprintln!("membrane hook federate: {}", &error[..error.len().min(400)]); }
-            None
+            if env::var_os("MEMBRANE_HOOK_DEBUG").is_some() { eprintln!("membrane hook federate: {}", error.chars().take(400).collect::<String>()); }
+            RecallOutcome { context: None, sufficient: false, reason: "membrane_retrieval_failed",
+                detail: json!({"transport":"one_shot", "error":error.chars().take(200).collect::<String>()}) }
         }
     }
 }
 
-fn receipt_allows_alternative(receipt: Option<&Value>, need_digest: &str, session: &str) -> bool {
-    receipt.is_some_and(|receipt| receipt.get("kind").and_then(Value::as_str) == Some("membrane.retrieval.failure")
-        && receipt.get("issuer").and_then(Value::as_str) == Some("membrane")
-        && receipt.get("receiptId").and_then(Value::as_str).is_some_and(|id| id.starts_with("membrane-failure-"))
-        && receipt.get("informationNeedDigest").and_then(Value::as_str) == Some(need_digest)
-        && receipt.get("sessionId").and_then(Value::as_str) == Some(session)
-        && receipt.get("issuedAtUnixMs").and_then(Value::as_u64).is_some_and(|issued| {
-            let now = cortex_store::time::now_millis() as u64;
-            issued <= now && now.saturating_sub(issued) <= 60_000
-        })
-        && receipt.get("status").and_then(Value::as_str).is_some_and(|status| matches!(status, "failed" | "insufficient")))
+fn outcome_from_response(response: &Value, transport: &str) -> RecallOutcome {
+    let packet = response.get("packet").unwrap_or(&Value::Null);
+    let context = packet_text(packet).filter(|text| !text.trim().is_empty());
+    let sufficiency = response.pointer("/correctiveRetrieval/sufficiency").cloned().unwrap_or(Value::Null);
+    let sufficient = context.is_some() && sufficiency.get("state").and_then(Value::as_str) == Some("sufficient")
+        && response.get("insufficientConfidence").is_none();
+    let reason = if context.is_none() { "membrane_no_matches" }
+        else if sufficient { "memory_recalled" } else { "membrane_retrieval_insufficient" };
+    RecallOutcome { context, sufficient, reason, detail: json!({
+        "transport": transport,
+        "packetId": packet.get("id"),
+        "freshness": packet.get("freshness").or_else(|| response.get("freshness")),
+        "sufficiency": sufficiency,
+        "requirementEvidenceMap": response.get("requirementEvidenceMap"),
+        "omissions": packet.get("omissions"),
+        "insufficientConfidence": response.get("insufficientConfidence"),
+        "budgetPolicy": response.get("budgetPolicy"),
+        "sources": packet.get("blocks").and_then(Value::as_array).into_iter().flatten()
+            .map(|block| json!({"id":block.get("id"),"sourceRef":block.get("sourceRef"),"sourceHash":block.get("sourceHash")})).collect::<Vec<_>>(),
+    }) }
 }
 
+fn is_session_start(input: &HookInputEnvelopeV1) -> bool {
+    serde_json::to_value(&input.event).ok().and_then(|value| value.as_str().map(str::to_owned)).as_deref() == Some("SessionStart")
+}
+
+/// Convert one ordinary planner packet into the bounded startup orientation
+/// surface.  The planner remains the sole source of candidates, freshness,
+/// provider accounting, omissions, and Adapt output; this function only
+/// selects a compact host representation and never reads or builds a graph.
+fn startup_outcome(input: &HookInputEnvelopeV1, mut outcome: RecallOutcome, response: &Value) -> RecallOutcome {
+    let root = project_root(input);
+    let generation = response.pointer("/freshness/revision").and_then(Value::as_str).unwrap_or("unknown");
+    let stale = response.pointer("/freshness/stale").and_then(Value::as_bool).unwrap_or(false);
+    let indexed_at = response.pointer("/freshness/indexedAt").and_then(Value::as_str).unwrap_or("unknown");
+    let providers = response.get("providerDiagnostics").and_then(Value::as_array).map(|items| {
+        items.iter().filter_map(|item| {
+            let name = item.get("provider").and_then(Value::as_str).or_else(|| item.get("name").and_then(Value::as_str))?;
+            let status = item.get("status").and_then(Value::as_str).unwrap_or("observed");
+            Some(format!("{name}={status}"))
+        }).collect::<Vec<_>>().join(", ")
+    }).filter(|value| !value.is_empty()).unwrap_or_else(|| "unavailable".to_owned());
+    let cortex = if providers.contains("cortex=") { "available" } else if providers.contains("cortex") { "observed" } else { "unavailable" };
+    let ledger = if providers.contains("ledger=") || providers.contains("rules=") || providers.contains("documents=") { "available" } else { "unavailable" };
+    let adapt = response.get("adaptDelivery").map_or("unavailable", |_| "observed");
+    let omissions = response.get("omissions").and_then(Value::as_array).map(|items| {
+        items.iter().filter_map(|item| {
+            item.get("id").and_then(Value::as_str).or_else(|| item.get("detailId").and_then(Value::as_str))
+        }).take(12).collect::<Vec<_>>().join(", ")
+    }).filter(|value| !value.is_empty()).unwrap_or_else(|| "none".to_owned());
+    let blocks = outcome.context.take().unwrap_or_default();
+    let evidence_count = response.pointer("/packet/blocks").and_then(Value::as_array).map_or(0, Vec::len);
+    let freshness = if stale { "stale (admitted with age recorded)" } else { "current" };
+    let text = format!(
+        "Membrane startup orientation\nrepository: {}\nBlueprint: generation={} freshness={} indexed={}\nCortex: {}\nLedger: {}\nAdapt/taste: {}\nproviders: {}\nevidence blocks: {}\nomissions: {}\n{}",
+        root.display(), generation, freshness, indexed_at, cortex, ledger, adapt, providers, evidence_count, omissions, blocks
+    );
+    let bounded = if text.len() > STARTUP_PACKET_MAX_BYTES {
+        let marker = format!("\n[Membrane startup packet truncated at {} bytes]", STARTUP_PACKET_MAX_BYTES);
+        let mut end = STARTUP_PACKET_MAX_BYTES.saturating_sub(marker.len());
+        while end > 0 && !text.is_char_boundary(end) { end -= 1; }
+        format!("{}{}", &text[..end], marker)
+    } else { text };
+    let has_content = !bounded.trim().is_empty();
+    outcome.context = has_content.then_some(bounded.clone());
+    outcome.sufficient = has_content;
+    outcome.reason = if has_content { "startup_orientation_delivered" } else { "membrane_no_matches" };
+    outcome.detail["startup"] = json!({
+        "repository": root,
+        "blueprint": {"generation": generation, "stale": stale, "indexedAt": indexed_at},
+        "providers": providers,
+        "cortex": cortex,
+        "ledger": ledger,
+        "adapt": adapt,
+        "omissions": omissions,
+        "byteBudget": STARTUP_PACKET_MAX_BYTES,
+        "bytes": bounded.len(),
+    });
+    outcome
+}
+
+fn recall_task(input: &HookInputEnvelopeV1) -> String {
+    let prompt = input.payload.get("prompt").or_else(|| input.payload.get("user_prompt")).or_else(|| input.payload.get("task")).and_then(Value::as_str);
+    let prompt = prompt.or_else(|| is_session_start(input).then_some("startup orientation for current repository"));
+    match (prompt, crate::hook_memory::pending_recall_task(input)) {
+        (Some(prompt), Some(summary)) => format!("{prompt}\nSession continuity (retrieval query only): {summary}"),
+        (Some(prompt), None) => prompt.to_owned(),
+        (None, Some(summary)) => summary,
+        (None, None) => "orient current task".to_owned(),
+    }
+}
+pub(crate) fn recall_task_for_service(input: &HookInputEnvelopeV1) -> String { recall_task(input) }
+
 pub(crate) fn fence(input: &HookInputEnvelopeV1, completion: bool, enforcement_enabled: bool) -> HookModuleOutputV1 {
+    fence_with_recall(input, completion, enforcement_enabled, recall_attempt)
+}
+
+pub(crate) fn requires_retrieval_attempt(input: &HookInputEnvelopeV1) -> bool {
+    alternative_information_need(input).is_some()
+}
+
+pub(crate) fn fence_with_recall(
+    input: &HookInputEnvelopeV1, completion: bool, enforcement_enabled: bool,
+    recall: impl FnOnce(&HookInputEnvelopeV1, &str) -> RecallOutcome,
+) -> HookModuleOutputV1 {
+    if !completion {
+        if let Some(need) = alternative_information_need(input) {
+            let args = input.payload.get("tool_input").or_else(|| input.payload.get("toolInput"));
+            if input.tool_name.as_deref().is_none_or(str::is_empty) || args.is_none_or(Value::is_null)
+                || serde_json::to_vec(args.unwrap()).map_or(true, |value| value.len() > 16_384) {
+                return status(HookModuleState::Blocked, "membrane_attempt_not_started", json!({"alternativeAllowed":false,"detail":"Membrane cannot identify this information need from invalid or oversized tool arguments."}));
+            }
+            let outcome = recall(input, &need);
+            let sufficient = outcome.sufficient;
+            let reason = if sufficient { "membrane_context_delivered" } else { outcome.reason };
+            return status(if sufficient { HookModuleState::Blocked } else { HookModuleState::Available }, reason, json!({
+                "additionalContext": outcome.context.unwrap_or_default(),
+                "detail": if sufficient { "Membrane supplied this information. Use injected context; alternate retrieval has not been authorized." } else { "Membrane attempted this exact information need & could not establish sufficiency; this operation may retrieve elsewhere." },
+                "informationNeedDigest": format!("sha256:{}", sha256(need.as_bytes())),
+                "sessionId": input.session_id,
+                "turnId": input.payload.get("turn_id"),
+                "toolUseId": input.payload.get("tool_use_id"),
+                "attempted": true,
+                "issuedAtUnixMs": cortex_store::time::now_millis(),
+                "alternativeAllowed": !sufficient,
+                "recall": outcome.detail,
+            }));
+        }
+    }
     if !enforcement_enabled {
         return status(HookModuleState::Skipped, "fence_enforcement_not_enabled", Value::Null);
     }
@@ -227,6 +349,54 @@ pub(crate) fn fence(input: &HookInputEnvelopeV1, completion: bool, enforcement_e
         return blocked("semantic edit fence not cleared: run diagnostics snapshot.await and repair before tests/builds/completion".into());
     }
     status(HookModuleState::Available, "fence_cleared", json!({"repoId": repo_id, "worktreeId": worktree_id, "boundary": boundary, "deadlineMs": STATUS_DEADLINE_MS}))
+}
+
+/// Extract a bounded, deterministic description of a host read/search need.
+/// Mutation, build, test, and install commands remain outside this retrieval
+/// fence so normal engineering workflows are not mistaken for information
+/// retrieval.
+fn alternative_information_need(input: &HookInputEnvelopeV1) -> Option<String> {
+    let tool = tool_name(input).to_ascii_lowercase();
+    let ti = input.payload.get("tool_input").or_else(|| input.payload.get("toolInput")).unwrap_or(&Value::Null);
+    if matches!(tool.as_str(), "read" | "grep" | "glob" | "search" | "file_search" | "exec_command" | "shell_command") {
+        if matches!(tool.as_str(), "exec_command" | "shell_command") {
+            let command = ti.get("command").or_else(|| ti.get("cmd")).and_then(Value::as_str).or_else(|| input.payload.get("command").and_then(Value::as_str)).unwrap_or("");
+            if non_retrieval_command(command) { return None; }
+            return Some(format!("{tool}: {command}"));
+        }
+        return Some(format!("{tool}: {}", bounded_tool_input(ti)));
+    }
+    // Claude sometimes reports Bash while Codex adapters report shell-like
+    // names. Unknown tools do not silently bypass when their declared input
+    // is recognizably a read command.
+    if tool == "bash" {
+        let command = command(input);
+        if non_retrieval_command(command) { return None; }
+        return Some(format!("bash: {command}"));
+    }
+    if tool.starts_with("mcp__membrane__")
+        || ["write", "edit", "multiedit", "apply_patch", "delete", "move", "copy", "mkdir", "task", "build", "test", "install"].contains(&tool.as_str()) {
+        return None;
+    }
+    // Unknown host tools are conservatively treated as information access when
+    // they carry an input. They must complete a Membrane attempt before host
+    // retrieval can proceed; only explicit mutation/engineering tools bypass.
+    Some(format!("{}: {}", if tool.is_empty() { "unknown-tool" } else { tool.as_str() }, bounded_tool_input(ti)))
+}
+
+fn bounded_tool_input(value: &Value) -> String {
+    let raw = serde_json::to_string(value).unwrap_or_else(|_| "<invalid-json>".to_owned());
+    if raw.len() <= 16_384 { raw } else { format!("<sha256:{};bytes:{}>", sha256(raw.as_bytes()), raw.len()) }
+}
+
+fn non_retrieval_command(command: &str) -> bool {
+    let trimmed = command.trim();
+    let lower = trimmed.to_ascii_lowercase();
+    let first = lower.split_whitespace().next().unwrap_or("");
+    if first.is_empty() || [";", "|", "&", "`", "$(", "\n"].iter().any(|token| trimmed.contains(token)) { return false; }
+    ["rm", "mv", "cp", "mkdir", "rmdir", "del", "remove-item", "set-content", "add-content", "touch", "write", "install", "build", "test"].contains(&first)
+        || ["git commit", "git checkout", "git switch", "git add", "git reset", "git clean", "git push", "git pull", "git merge", "git rebase", "git restore", "git tag"].iter().any(|word| lower == *word || lower.starts_with(&format!("{word} ")))
+        || ["rightkit cargo test", "rightkit cargo build", "rightkit cargo check", "rightkit cargo clippy", "rightkit cargo fmt", "cargo test", "cargo build", "cargo check", "cargo clippy", "cargo fmt", "pnpm test", "pnpm build", "pnpm install", "npm test", "npm run build", "npm install", "yarn test", "yarn build", "yarn install"].iter().any(|word| lower == *word || lower.starts_with(&format!("{word} ")))
 }
 
 pub(crate) fn observe_mutation(input: &HookInputEnvelopeV1) -> HookModuleOutputV1 {
@@ -282,7 +452,7 @@ pub(crate) fn observe_tool(input: &HookInputEnvelopeV1) -> HookModuleOutputV1 {
     let response_digest = sha256(serde_json::to_vec(input.payload.get("tool_response").unwrap_or(&Value::Null)).unwrap_or_default().as_slice());
     let policy = fs::read(root.join("tools/.cache/memory/active-policy.json")).unwrap_or_else(|_| b"membrane-tool-observer-v1".to_vec());
     let nonce = format!("{session}:{trace}:{}", cortex_store::time::now_millis());
-    let client = match env::var("MEMBRANE_CLIENT").unwrap_or_else(|_| "codex".to_owned()) { value if value == "claude" => "claude_code".to_owned(), value => value };
+    let client = match env::var("MEMBRANE_CLIENT").unwrap_or_else(|_| "codex".to_owned()) { value if value == "claude" => "claude".to_owned(), value => value };
     let body = json!({"events":[{"schema":"membrane.observable-event.v1","installation_id":"tool-observer","client_id":client,"session_id":session,"task_id":format!("task-{}", &sha256(format!("{session}:{trace}").as_bytes())[..24]),"turn_id":format!("turn-{trace}"),"trace_id":trace,"event_id":format!("evt-{}", &sha256(nonce.as_bytes())[..32]),"event_type":"tool_receipt","origin":"tool","content_ref_or_digest":format!("sha256:{response_digest}"),"timestamp":cortex_store::time::now_iso(),"completeness":{"observed":true,"tool":true},"policy_snapshot_digest":format!("sha256:{}",sha256(&policy))}]});
     if authenticated_json("/v1/telemetry/observable-events:batch", body, &token, 1000).is_some() { status(HookModuleState::Available, "tool_observed", json!({"contentFree": true, "deadlineMs": 1000})) } else { status(HookModuleState::Unavailable, "tool_observe_failed", json!({"contentFree": true, "deadlineMs": 1000})) }
 }
@@ -490,18 +660,80 @@ mod tests {
     }
 
     #[test]
-    fn alternative_receipt_requires_fresh_exact_need_and_session() {
-        let now = cortex_store::time::now_millis() as u64;
-        let base = |digest: &str, session: &str, issued: u64, status: &str| json!({
-            "kind":"membrane.retrieval.failure", "informationNeedDigest":digest,
-            "sessionId":session, "issuedAtUnixMs":issued, "status":status,
-            "issuer":"membrane", "receiptId":"membrane-failure-test"
+    fn retrieval_gate_requires_current_attempt_and_ignores_caller_receipts() {
+        for supplied in [json!({"status":"failed"}), json!({"status":"success"}), json!({"issuer":"membrane","issuedAtUnixMs":0})] {
+            let input = membrane_protocol::normalize_hook_payload(json!({
+                "event":"PreToolUse","session_id":"gate-session","tool_use_id":"gate-tool",
+                "tool_name":"Read","tool_input":{"file_path":"src/one.rs"},"membraneFailureReceipt":supplied,
+            })).unwrap();
+            let denied = fence_with_recall(&input, false, false, |_, need| {
+                assert!(need.contains("src/one.rs"));
+                RecallOutcome { context:Some("verified source".into()), sufficient:true, reason:"memory_recalled", detail:json!({}) }
+            });
+            assert_eq!(denied.state, HookModuleState::Blocked);
+            assert_eq!(denied.detail["alternativeAllowed"], false);
+            let allowed = fence_with_recall(&input, false, false, |_, _| RecallOutcome {
+                context:None, sufficient:false, reason:"membrane_retrieval_failed", detail:json!({"reason":"provider_timeout"}),
+            });
+            assert_eq!(allowed.detail["attempted"], true);
+            assert_eq!(allowed.detail["alternativeAllowed"], true);
+            assert_eq!(allowed.detail["toolUseId"], "gate-tool");
+        }
+    }
+
+    #[test]
+    fn malformed_or_oversized_retrieval_cannot_authorize_without_attempt() {
+        for args in [Value::Null, json!({"file_path":"x".repeat(17_000)})] {
+            let input = membrane_protocol::normalize_hook_payload(json!({"event":"PreToolUse","tool_name":"Read","tool_input":args})).unwrap();
+            let output = fence_with_recall(&input, false, false, |_, _| panic!("invalid need must not run fabricated query"));
+            assert_eq!(output.state, HookModuleState::Blocked);
+            assert_eq!(output.reason, "membrane_attempt_not_started");
+        }
+    }
+
+    #[test]
+    fn partial_packet_is_injected_but_not_declared_sufficient() {
+        let packet = json!({"packet":{"blocks":[{"id":"source-1","text":"Useful partial context"}],"omissions":[{"reason":"timeout"}]},
+            "correctiveRetrieval":{"sufficiency":{"state":"insufficient"}}});
+        let outcome = outcome_from_response(&packet, "resident");
+        assert_eq!(outcome.context.as_deref(), Some("Useful partial context"));
+        assert!(!outcome.sufficient);
+        assert_eq!(outcome.reason, "membrane_retrieval_insufficient");
+    }
+
+    #[test]
+    fn startup_orientation_is_bounded_and_keeps_stale_blueprint_honest() {
+        let input = membrane_protocol::normalize_hook_payload(json!({
+            "event":"SessionStart", "session_id":"startup", "cwd":"workspace"
+        })).unwrap();
+        let response = json!({
+            "packet":{"blocks":[{"text":"x".repeat(20_000)}]},
+            "freshness":{"revision":"sha256:blueprint", "stale":true, "indexedAt":"blueprint:old"},
+            "providerDiagnostics":[{"provider":"blueprint","status":"stale"}],
+            "omissions":[{"id":"ledger:unavailable"}]
         });
-        assert!(receipt_allows_alternative(Some(&base("need", "s", now, "failed")), "need", "s"));
-        assert!(!receipt_allows_alternative(Some(&base("other", "s", now, "failed")), "need", "s"));
-        assert!(!receipt_allows_alternative(Some(&base("need", "other", now, "failed")), "need", "s"));
-        assert!(!receipt_allows_alternative(Some(&base("need", "s", now.saturating_sub(60_001), "failed")), "need", "s"));
-        assert!(!receipt_allows_alternative(Some(&base("need", "s", now, "success")), "need", "s"));
-        assert!(!receipt_allows_alternative(Some(&json!({"kind":"membrane.retrieval.failure","informationNeedDigest":"need","sessionId":"s","issuedAtUnixMs":now,"status":"failed","receiptId":"fake"})), "need", "s"));
+        let outcome = startup_outcome(&input, outcome_from_response(&response, "one_shot"), &response);
+        assert!(outcome.context.as_ref().is_some_and(|text| text.len() <= STARTUP_PACKET_MAX_BYTES));
+        assert_eq!(outcome.detail["startup"]["blueprint"]["stale"], true);
+        assert!(outcome.context.as_deref().is_some_and(|text| text.contains("ledger:unavailable")));
+    }
+
+    #[test]
+    fn read_only_gate_rejects_mutation_commands() {
+        assert!(!non_retrieval_command("rg membrane src"));
+        assert!(!non_retrieval_command("git show HEAD:file"));
+        assert!(non_retrieval_command("pnpm test"));
+        assert!(!non_retrieval_command("cat file > out"));
+        assert!(!non_retrieval_command("Get-Content tests.rs | Select-Object -First 5"));
+        assert!(!non_retrieval_command("cat file; echo done"));
+        assert!(non_retrieval_command("cargo test --package membrane"));
+    }
+
+    #[test]
+    fn retrieval_need_is_scoped_to_tool_input() {
+        let input = membrane_protocol::normalize_hook_payload(json!({
+            "event":"PreToolUse", "tool_name":"Read", "tool_input":{"file_path":"src/lib.rs"}
+        })).unwrap();
+        assert!(alternative_information_need(&input).unwrap().contains("src/lib.rs"));
     }
 }

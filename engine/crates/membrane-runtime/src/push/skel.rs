@@ -17,7 +17,7 @@ pub struct BudgetSkeleton {
     pub budget_met: bool,
     /// Present only when full source bytes were durably published to a
     /// resolvable recovery handle. Pure skeletonization does not publish.
-    pub recovery_marker: Option<crate::push::compress::RecoveryMarkerV1>,
+    pub recovery_marker: Option<crate::pull::compress::RecoveryMarkerV1>,
 }
 
 pub fn skeletonize_with_spans(path: &Path, src: &str) -> (String, Vec<super::fidelity::SpanMapping>) {

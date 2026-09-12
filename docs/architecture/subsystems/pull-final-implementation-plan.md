@@ -4,7 +4,7 @@ Status: implementation landed on `work/pull-end-to-end-20260905`; this document 
 
 ## Final shape
 
-Pull is Membrane's single evidence-retrieval, admission, fusion, and publication subsystem. It accepts a task plus distinct request/task/session identity, repository/worktree authority, explicit token/deadline limits, anchors, sufficiency requirements, and an authentic host remaining-context observation. Providers supply evidence; they never gain policy authority. Push remains the representation-reduction owner and does not become a second planner.
+Pull is Membrane's single evidence-retrieval, admission, fusion, faithful-reduction, recovery, and publication subsystem. It accepts a task plus distinct request/task/session identity, repository/worktree authority, explicit token/deadline limits, anchors, sufficiency requirements, and an authentic host remaining-context observation. Providers supply evidence; they never gain policy authority. The former Push reduction path is a legacy compatibility surface only; public `push` writes durable memory through Cortex.
 
 The production path is native and tray-daemon bound:
 

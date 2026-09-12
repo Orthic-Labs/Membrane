@@ -516,7 +516,8 @@ fn caller<'a>(arguments: &'a Value, operation: &str) -> Result<(&'a str, &'a str
 /// e.g. `working_context load` is a read, `save`/`close` are writes).
 fn native_action_for(name: &str, arguments: &Value) -> &'static str {
     match name {
-        "membrane_context" | "membrane_blueprint" | "membrane_adapt_inspect" => "context",
+        "pull" | "membrane_context" | "membrane_blueprint" | "membrane_adapt_inspect" => "context",
+        "push" => "checkpoint",
         "membrane_source_read" | "membrane_memory_read" | "membrane_push_prepare" | "membrane_push_resolve" => "source_read",
         "membrane_ledger" => match arguments.get("operation").and_then(Value::as_str) {
             Some("erase" | "activate") => "checkpoint",
@@ -1125,6 +1126,36 @@ fn execute_blueprint(arguments: &Value) -> Value {
 
 impl NativeMcpExecutor for RuntimeMcpExecutor {
     fn execute(&self, name: &str, arguments: &Value) -> Value {
+        // Public Pull is the unified retrieval verb. Reuse the established
+        // planner path, then bind its canonical envelope to the public name.
+        if name == "pull" {
+            let mut result = self.execute("membrane_context", arguments);
+            if let Some(object) = result.as_object_mut() {
+                object.insert("operation".into(), Value::String("pull".into()));
+            }
+            return result;
+        }
+        // Public Push is agent-to-Cortex durable memory admission. It has no
+        // relationship to legacy reduction prepare/resolve operations.
+        if name == "push" {
+            let (root, repository, scope) = match caller(arguments, name) {
+                Ok(value) => value,
+                Err(result) => return result,
+            };
+            if arguments.get("repository").and_then(Value::as_str) != Some(repository) {
+                return error(name, "memory_scope_denied", "repository must match caller repositoryId");
+            }
+            if let Err(denial) = authorize_native_request(arguments, name, root, repository, scope) {
+                return error(name, denial.code(), denial.to_string());
+            }
+            let request_id = arguments.get("requestId").and_then(Value::as_str).unwrap_or("");
+            let body = arguments.get("body").and_then(Value::as_str).unwrap_or("");
+            let caller_id = arguments.get("callerId").and_then(Value::as_str)
+                .filter(|value| !value.trim().is_empty()).unwrap_or(scope);
+            return lifecycle_result(name, crate::cortex_lifecycle::agent_memory_push(
+                &self.store, repository, scope, request_id, caller_id, body,
+            ));
+        }
         let ingress = std::time::Instant::now();
         if name == "membrane_knowledge_propose" && arguments.get("review").is_some() {
             return error(
@@ -1288,13 +1319,13 @@ impl NativeMcpExecutor for RuntimeMcpExecutor {
             }
             "membrane_push_prepare" | "membrane_push_resolve" => {
                 match inherited_push_control() {
-                    Some(control) => crate::push::api::execute_with_control(
+                    Some(control) => crate::pull::api::execute_with_control(
                         name,
                         arguments,
                         control.deadline,
                         &control.cancellation,
                     ),
-                    None => crate::push::api::execute(name, arguments),
+                    None => crate::pull::api::execute(name, arguments),
                 }
             }
             "membrane_context" => {
@@ -1563,7 +1594,7 @@ impl NativeMcpExecutor for RuntimeMcpExecutor {
                             "degradationReason": "workspace_no_deliverable_evidence",
                             "sufficiencyEvaluated": arguments.get("sufficiencyContract").is_some()
                         }));
-                        return crate::push::egress::fit_native_response(result, &ceiling)
+                        return crate::pull::egress::fit_native_response(result, &ceiling)
                             .unwrap_or_else(|failure| error(name, "context_delivery_invalid", failure.to_string()));
                     }
 
@@ -1599,9 +1630,9 @@ impl NativeMcpExecutor for RuntimeMcpExecutor {
                             "degradationReason": if overall_status == "complete" { "none" } else { "workspace_partial" },
                             "sufficiencyEvaluated": arguments.get("sufficiencyContract").is_some()
                         }));
-                        match crate::push::egress::fit_native_response(result, &ceiling) {
+                        match crate::pull::egress::fit_native_response(result, &ceiling) {
                             Ok(fitted) => return fitted,
-                            Err(crate::push::recovery::RecoveryError::Limit)
+                            Err(crate::pull::recovery::RecoveryError::Limit)
                                 if repository_packets.len() > 1 =>
                             {
                                 let removed = repository_packets.pop().expect("length checked");
@@ -1621,7 +1652,7 @@ impl NativeMcpExecutor for RuntimeMcpExecutor {
                                     "allocatedTokens": 0
                                 }));
                             }
-                            Err(crate::push::recovery::RecoveryError::Limit) => {
+                            Err(crate::pull::recovery::RecoveryError::Limit) => {
                                 return error(
                                     name,
                                     "context_delivery_capacity_exceeded",
@@ -1752,10 +1783,10 @@ impl NativeMcpExecutor for RuntimeMcpExecutor {
                         "degradationReason": federated.get("degradationReason").filter(|v| !v.is_null()).cloned().unwrap_or_else(|| json!("none")),
                         "sufficiencyEvaluated": federated.get("insufficientConfidence").is_some(),
                     }));
-                    return crate::push::egress::fit_native_response(result, &ceiling)
+                    return crate::pull::egress::fit_native_response(result, &ceiling)
                         .unwrap_or_else(|failure| error(name, "context_delivery_invalid", failure.to_string()));
                 }
-                let selection: crate::push::selection::PacketReductionSelectionV1 = match serde_json::from_value(federated["packetReduction"].clone()) {
+                let selection: crate::pull::selection::PacketReductionSelectionV1 = match serde_json::from_value(federated["packetReduction"].clone()) {
                     Ok(value) => value, Err(_) => return error(name,"context_selection_invalid","selection receipt is required"),
                 };
                 // Reuse the already validated ladder; no provider re-execution,
@@ -1789,9 +1820,9 @@ impl NativeMcpExecutor for RuntimeMcpExecutor {
                         "degradationReason":federated.get("degradationReason").filter(|v| !v.is_null()).cloned().unwrap_or_else(|| json!("none")),
                         "sufficiencyEvaluated":sufficiency_evaluated,
                     }));
-                    match crate::push::egress::fit_native_response(result,&ceiling) {
+                    match crate::pull::egress::fit_native_response(result,&ceiling) {
                         Ok(fitted) => return fitted,
-                        Err(crate::push::recovery::RecoveryError::Limit) => continue,
+                        Err(crate::pull::recovery::RecoveryError::Limit) => continue,
                         Err(failure) => {
                             return error(name, "context_delivery_invalid", failure.to_string())
                         }
@@ -1811,6 +1842,35 @@ impl NativeMcpExecutor for RuntimeMcpExecutor {
                 let budget = crate::ledger::limits::WorkBudget::bounded(Duration::from_millis(deadline));
                 let result = if name == "membrane_source_read" { owner.read(arguments, &budget) }
                     else { owner.operation(arguments, &budget) };
+                if name == "membrane_ledger"
+                    && arguments.get("operation").and_then(Value::as_str) == Some("ingest")
+                {
+                    if let Ok(value) = &result {
+                        let Some(doc_id) = value.pointer("/artifact/docId").and_then(Value::as_str)
+                        else {
+                            return error(name, "ledger_projection_source_missing", "ingest omitted document identity");
+                        };
+                        let (content, source_ref, source_hash, source_revision) = match owner.converted_markdown(doc_id) {
+                            Ok(projection) => projection,
+                            Err(reason) => return error(name, "ledger_projection_source_missing", reason),
+                        };
+                        let scope_id = crate::scope::path_to_scope(root);
+                        let context = crate::store::MemoryEventContext::new("ledger")
+                            .with_session(arguments.get("sessionId").and_then(Value::as_str).unwrap_or("ledger"))
+                            .with_trace(doc_id);
+                        if let Err(reason) = self.store.try_put_document_projection(
+                            doc_id,
+                            &content,
+                            &scope_id,
+                            &source_ref,
+                            &source_hash,
+                            &source_revision,
+                            &context,
+                        ) {
+                            return error(name, "ledger_projection_admission_failed", reason);
+                        }
+                    }
+                }
                 match result {
                     Ok(value) => success(name, value),
                     Err(reason) => {

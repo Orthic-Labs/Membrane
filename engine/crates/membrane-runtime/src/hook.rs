@@ -10,6 +10,8 @@ use membrane_protocol::{
 };
 use serde_json::{json, Value};
 
+pub use crate::hook_diagnostics::RecallOutcome;
+
 pub const HEALTH_DEADLINE_MS: u64 = 800;
 pub const TELEMETRY_DEADLINE_MS: u64 = 1_000;
 pub const DIAGNOSTICS_READ_DEADLINE_MS: u64 = 800;
@@ -23,6 +25,9 @@ const MODULE_IPC_LIMIT_BYTES: usize = 2 * 1024 * 1024;
 pub trait NativeHookService: Send + Sync + 'static {
     fn healthy(&self, _input: &HookInputEnvelopeV1, _deadline: Duration) -> Result<bool, String> { Ok(false) }
     fn recall(&self, _input: &HookInputEnvelopeV1, _deadline: Duration) -> Result<Option<String>, String> { Ok(None) }
+    fn recall_detailed(&self, input: &HookInputEnvelopeV1, deadline: Duration) -> Result<crate::hook_diagnostics::RecallOutcome, String> {
+        self.recall(input, deadline).map(|context| RecallOutcome { sufficient: context.is_some(), reason: if context.is_some() { "memory_recalled" } else { "membrane_no_matches" }, context, detail: Value::Null })
+    }
     fn diagnostics_fence(&self, _input: &HookInputEnvelopeV1, _completion: bool, _deadline: Duration) -> Result<bool, String> { Ok(false) }
 }
 
@@ -34,6 +39,9 @@ impl NativeHookService for NoNativeHookService {
     }
     fn recall(&self, input: &HookInputEnvelopeV1, _deadline: Duration) -> Result<Option<String>, String> {
         Ok(crate::hook_diagnostics::resident_recall(input))
+    }
+    fn recall_detailed(&self, input: &HookInputEnvelopeV1, _deadline: Duration) -> Result<crate::hook_diagnostics::RecallOutcome, String> {
+        Ok(crate::hook_diagnostics::recall_attempt(input, &crate::hook_diagnostics::recall_task_for_service(input)))
     }
 }
 
@@ -52,7 +60,18 @@ impl<S: NativeHookService> NativeHookRuntime<S> {
     /// Serial, fixed-order execution. Every module receives full raw host input
     /// through `HookInputEnvelopeV1::payload`; no secret-bearing error escapes.
     pub fn dispatch(&self, input: &HookInputEnvelopeV1) -> HookDispatchResultV1 {
-        let results = HookModuleId::ORDERED.into_iter().map(|id| self.invoke(id, input)).collect();
+        let results = HookModuleId::ORDERED.into_iter().map(|id| {
+            let mut result = self.invoke(id, input);
+            if id == HookModuleId::DiagnosticsFence && input.event == HookEvent::PreToolUse
+                && crate::hook_diagnostics::requires_retrieval_attempt(input)
+                && result.status == membrane_protocol::HookInvocationStatus::Error {
+                // Child failure cannot prove an attempt completed, so it grants nothing.
+                result.output = Some(status(HookModuleState::Blocked, "membrane_attempt_unconfirmed", json!({
+                    "alternativeAllowed":false, "detail":"Membrane attempt did not produce a verified result; retry Membrane before alternate retrieval."
+                })));
+            }
+            result
+        }).collect();
         HookDispatchResultV1::new(input.event.clone(), results)
     }
 
@@ -63,7 +82,7 @@ impl<S: NativeHookService> NativeHookRuntime<S> {
         // their own socket/git limits bound every effect.  Detaching a generic
         // worker after timeout would permit a late filesystem/diagnostics write
         // and break HookHost's serial isolation invariant.
-        if !matches!(id, HookModuleId::CortexStatus | HookModuleId::MemoryRecall) {
+        if self.process_containment || !matches!(id, HookModuleId::CortexStatus | HookModuleId::MemoryRecall) {
             return if self.process_containment { self.contained_mutation(id, input) } else { HookModuleResultV1::ok(id, Self::execute(self.service.as_ref(), self.enforcement_enabled, id, input)) };
         }
         let (sender, receiver) = mpsc::sync_channel(1);
@@ -122,14 +141,22 @@ impl<S: NativeHookService> NativeHookRuntime<S> {
                 }
             }
             HookModuleId::MemoryRearm if is_event(input, "SessionStart") => crate::hook_memory::rearm(input),
-            HookModuleId::MemoryRecall if is_event(input, "UserPromptSubmit") => match service.recall(input, Duration::from_millis(HOOK_MODULE_DEADLINE_MS)) {
-                Ok(Some(context)) if !context.is_empty() => status(HookModuleState::Available, "memory_recalled", json!({"additionalContext": context})),
-                _ => status(HookModuleState::Unavailable, "memory_unavailable", Value::Null),
+            HookModuleId::MemoryRecall if is_recall_event(input) => match service.recall_detailed(input, Duration::from_millis(HOOK_MODULE_DEADLINE_MS)) {
+                Ok(outcome) => match outcome.context {
+                    Some(context) if !context.is_empty() => status(HookModuleState::Available, outcome.reason, json!({"additionalContext": context, "recall": outcome.detail})),
+                    _ => status(HookModuleState::Unavailable, outcome.reason, outcome.detail),
+                },
+                Err(error) => status(HookModuleState::Unavailable, "memory_retrieval_failed", json!({"error": error.chars().take(200).collect::<String>()})),
             },
             HookModuleId::MemoryPreCompact if is_event(input, "PreCompact") => crate::hook_memory::pre_compact(input),
             HookModuleId::MemoryPostCompact if is_event(input, "PostCompact") => crate::hook_memory::post_compact(input),
             HookModuleId::MemoryBump if is_event(input, "PreToolUse") => crate::hook_memory::bump(input),
-            HookModuleId::DiagnosticsFence if is_event(input, "PreToolUse") => crate::hook_diagnostics::fence(input, false, enforcement_enabled),
+            HookModuleId::DiagnosticsFence if is_event(input, "PreToolUse") => crate::hook_diagnostics::fence_with_recall(input, false, enforcement_enabled, |input, need| {
+                let mut scoped = input.clone();
+                scoped.payload["prompt"] = Value::String(need.to_owned());
+                service.recall_detailed(&scoped, Duration::from_millis(HOOK_MODULE_DEADLINE_MS))
+                    .unwrap_or_else(|_| RecallOutcome { context:None, sufficient:false, reason:"membrane_retrieval_failed", detail:json!({"serviceError":true}) })
+            }),
             HookModuleId::MemoryConflict if is_event(input, "PreToolUse") => crate::hook_memory::conflict(input),
             HookModuleId::ToolObserver if is_event(input, "PostToolUse") => crate::hook_diagnostics::observe_tool(input),
             HookModuleId::MemoryIngest if is_event(input, "PostToolUse") => crate::hook_memory::ingest(input),
@@ -176,7 +203,7 @@ fn module_name(id: HookModuleId) -> &'static str { match id { HookModuleId::Cort
 fn module_id(value: &str) -> Option<HookModuleId> { HookModuleId::ORDERED.into_iter().find(|id| module_name(*id) == value) }
 fn module_event_matches(id: HookModuleId, input: &HookInputEnvelopeV1) -> bool { match id {
     HookModuleId::CortexStatus | HookModuleId::MemoryRearm => is_event(input, "SessionStart"),
-    HookModuleId::MemoryRecall => is_event(input, "UserPromptSubmit"),
+    HookModuleId::MemoryRecall => is_recall_event(input),
     HookModuleId::MemoryPreCompact => is_event(input, "PreCompact"),
     HookModuleId::MemoryPostCompact => is_event(input, "PostCompact"),
     HookModuleId::MemoryBump | HookModuleId::DiagnosticsFence | HookModuleId::MemoryConflict => is_event(input, "PreToolUse"),
@@ -190,6 +217,7 @@ fn module_event_matches(id: HookModuleId, input: &HookInputEnvelopeV1) -> bool {
 
 fn status(state: HookModuleState, reason: &str, detail: Value) -> HookModuleOutputV1 { HookModuleOutputV1::status(state, reason, detail) }
 fn is_event(input: &HookInputEnvelopeV1, expected: &str) -> bool { serde_json::to_value(&input.event).ok().and_then(|value| value.as_str().map(str::to_owned)).as_deref() == Some(expected) }
+fn is_recall_event(input: &HookInputEnvelopeV1) -> bool { is_event(input, "SessionStart") || is_event(input, "UserPromptSubmit") }
 
 #[cfg(test)]
 mod tests {

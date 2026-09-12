@@ -5330,8 +5330,8 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
                 return Ok(());
             }
             QualificationCmd::Push { row } => {
-                let raw = crate::push::qualification_core::run(row)
-                    .or_else(|_| crate::push::qualification_lifecycle::run(row))
+                let raw = crate::ledger::qualification_core::run(row)
+                    .or_else(|_| crate::ledger::qualification_lifecycle::run(row))
                     .map_err(|error| format!("Push qualification {row} failed: {error}"))?;
                 let installed = installed_qualification_runtime();
                 let passed = raw.get("status").and_then(serde_json::Value::as_str) == Some("passed") && installed;

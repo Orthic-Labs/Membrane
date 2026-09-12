@@ -28,12 +28,12 @@
       {
         "id": "pull",
         "label": "Pull",
-        "description": "Retrieves, admits, fuses, and publishes task-relevant evidence."
+        "description": "Retrieves, admits, fuses, faithfully reduces, and publishes task-relevant evidence."
       },
       {
         "id": "push",
         "label": "Push",
-        "description": "Performs faithful, reversible reduction of information already in flight."
+        "description": "Writes agent-authored durable-memory records through Cortex; former reduction APIs remain only for live legacy consumers."
       },
       {
         "id": "cortex",
@@ -62,9 +62,8 @@
     "runtimeExecutionHost": "tray-owned-daemon",
     "dashboardResidency": "on-demand",
     "inactiveReasonCompatibilityToken": "hub_inactive",
-    "mcpToolCount": 24,
+    "mcpToolCount": 22,
     "mcpTools": [
-      "membrane_adapt_inspect",
       "membrane_blueprint",
       "membrane_checkpoint_load",
       "membrane_checkpoint_save",
@@ -79,7 +78,6 @@
       "membrane_feedback",
       "membrane_knowledge_propose",
       "membrane_knowledge_review",
-      "membrane_ledger",
       "membrane_memory",
       "membrane_memory_read",
       "membrane_push_prepare",

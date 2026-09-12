@@ -1,6 +1,6 @@
-//! Membrane runtime — one implementation surface for Pull, Push, Cortex,
-//! Blueprint, Ledger, and Adapt. Cortex durable storage remains isolated from
-//! Pull acquisition and Push reduction.
+//! Membrane runtime — one implementation surface for Pull, Cortex, Blueprint,
+//! Ledger, and Adapt. Cortex durable storage remains isolated from Pull
+//! acquisition and reduction.
 
 pub mod adapt;
 mod adapt_admin_qualification;
@@ -77,7 +77,9 @@ pub use provenance::{
     capture_working_tree, observe, record_provenance, ProvenanceError, ProvenanceRowV1,
     WorkingTreeSnapshotV1, PROVENANCE_ROW_SCHEMA_VERSION, WORKING_TREE_SNAPSHOT_SCHEMA_VERSION,
 };
-pub mod push;
+/// Legacy source-compatible alias for reduction APIs now owned by Pull.
+#[doc(hidden)]
+pub use pull as push;
 pub mod working_context;
 
 pub use adapt_effectiveness::project_joined_effectiveness_exact;

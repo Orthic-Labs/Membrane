@@ -39,9 +39,15 @@ pub mod lease;
 pub mod membrane_status;
 pub mod observable_event;
 pub mod operations;
-pub mod portable_pack;
-pub mod provider_readiness;
-pub mod push;
+  pub mod portable_pack;
+  pub mod provider_readiness;
+  pub mod push;
+  /// Pull-owned packet reduction contracts. `push` remains a wire-compatibility
+  /// module for older clients; new callers use this namespace.
+  pub mod pull {
+      pub use super::push::*;
+  }
+  pub mod memory_push;
 pub mod release_channel;
 pub mod source_resolution;
 pub mod status;
@@ -155,11 +161,12 @@ pub use provider_readiness::{
     ProviderIdentityV1, ProviderObservationV1, ProviderReadinessStateV1, ProviderReadinessV1,
     ProviderTestQueryV1, PROVIDER_READINESS_SCHEMA_VERSION,
 };
-pub use push::{
+  pub use push::{
     PacketReductionPlanError, PacketReductionPlanSelectionError, PacketReductionPlanV1,
     PacketReductionRepresentationV1, PacketReductionSelectionError,
     PACKET_REDUCTION_PLAN_SCHEMA_VERSION,
-};
+  };
+  pub use memory_push::{AgentMemoryPushRequestV1, AgentMemoryPushResponseV1};
 pub use release_channel::{
     ReleaseChannel, ReleaseChannelV1, SchemaCompatibility, SupportState, SupportWindowV1,
     RELEASE_CHANNEL_SCHEMA_VERSION,

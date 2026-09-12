@@ -131,6 +131,27 @@ impl LedgerService {
     #[cfg(test)]
     pub(crate) fn in_memory() -> Self { Self::with_catalog(LedgerDb::open_in_memory(),crate::catalog::ContextCatalog::open_in_memory()).unwrap() }
 
+    /// Return normalized converted Markdown for the internal Cortex
+    /// projection sink. This exposes no Ledger index or navigation state.
+    pub(crate) fn converted_markdown(
+        &self,
+        doc_id: &str,
+    ) -> Result<(String, String, String, String), String> {
+        self.db
+            .lock()
+            .query_row(
+                "SELECT c.markdown,c.source_ref,c.markdown_sha256,c.source_revision
+                 FROM ledger_document_conversions c
+                 JOIN ledger_doc_artifacts a ON a.doc_id=c.doc_id
+                 WHERE c.doc_id=?1",
+                [doc_id],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )
+            .optional()
+            .map_err(|error| error.to_string())?
+            .ok_or_else(|| "ledger_projection_source_missing".into())
+    }
+
     fn run<T>(&self, caller: &Caller, action: &str, budget: &WorkBudget,
         work: impl FnOnce(&LedgerDb) -> Result<T, String>) -> Result<T, String>
     {
@@ -318,7 +339,7 @@ impl LedgerService {
                     "owner":"tray-daemon","repositoryId":caller.repository_id,"enrolled":true,
                     "indexState":if state.is_some(){"published"}else{"not_indexed"},"publication":state,
                     "activeDocuments":active,"registeredDocuments":total,"mode":index::recall_mode(db)?.storage_name(),
-                    "providerDelivery":"shadow_unqualified","runtimeQualified":false,
+                    "providerDelivery":"direct_pull","runtimeQualified":false,
                     "literalMatch":"source_bytes","cursorSupported":true,"sourceByteLimit":resolve::MAX_SOURCE_BYTES}))
             }),
             "outline" => self.run(&caller, "source_read", budget, |db| {
@@ -343,7 +364,7 @@ impl LedgerService {
                     _ => return Err("ledger_mode_invalid".into()),
                 };
                 index::activate(db, mode, None)?;
-                Ok(json!({"mode":mode.storage_name(),"providerDelivery":"shadow_unqualified"}))
+                Ok(json!({"mode":mode.storage_name(),"providerDelivery":"direct_pull"}))
             }),
             "erase" => self.run(&caller, "checkpoint", budget, |db| erase(db, &self.catalog, &caller, arguments)),
             "backlinks" | "related" | "manifests" | "drift" => self.run(&caller, "context", budget, |db| {

@@ -1670,10 +1670,58 @@ fn reconcile_claude_hooks(install_root: &Path) -> Result<(), String> {
 /// Reconcile Codex's native hook projection independently from its MCP
 /// registration.  Only exact Membrane commands are replaced/removed; all
 /// foreign hook entries remain byte-for-byte represented in the merged tree.
-fn reconcile_codex_hooks(install_root: &Path) -> Result<(), String> {
+fn codex_hooks_path() -> Result<PathBuf, String> {
+    if let Some(home) = std::env::var_os("CODEX_HOME").filter(|home| !home.is_empty()) {
+        return Ok(PathBuf::from(home).join("hooks.json"));
+    }
     let home = std::env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" })
         .map(PathBuf::from).ok_or_else(|| "Codex settings profile is unavailable".to_string())?;
-    reconcile_codex_hooks_at(&home.join(".codex").join("hooks.json"), install_root)
+    Ok(home.join(".codex").join("hooks.json"))
+}
+
+fn reconcile_codex_hooks(install_root: &Path) -> Result<(), String> {
+    reconcile_codex_hooks_at(&codex_hooks_path()?, install_root)
+}
+
+// Verified native lifecycle contracts: Claude Code hooks reference & Codex
+// hooks reference, 2026-09-12. Unsupported host events are never projected.
+const CLAUDE_HOOK_EVENTS: &[&str] = &[
+    "SessionStart", "UserPromptSubmit", "PreCompact", "PostCompact", "PreToolUse",
+    "PostToolUse", "PostToolUseFailure", "Stop", "TaskCompleted", "SessionEnd",
+];
+const CODEX_HOOK_EVENTS: &[&str] = &[
+    "SessionStart", "UserPromptSubmit", "PreCompact", "PostCompact", "PreToolUse",
+    "PostToolUse", "Stop", "SessionEnd",
+];
+
+fn reconcile_owned_hook_events(
+    hooks: &mut serde_json::Map<String, serde_json::Value>,
+    events: &[&str], command: &str, codex: bool,
+) -> Result<(), String> {
+    for &event in events {
+        let entries = hooks.entry(event).or_insert_with(|| serde_json::json!([])).as_array_mut()
+            .ok_or_else(|| format!("{event} hooks must be an array"))?;
+        replace_legacy_hook_commands(entries, command);
+        // Remove only this installed command, including stale matchers/timeouts.
+        // Recreate one complete owned group; foreign items/metadata survive.
+        entries.retain_mut(|entry| {
+            if let Some(items) = entry.get_mut("hooks").and_then(serde_json::Value::as_array_mut) {
+                let before = items.len();
+                items.retain(|item| item.get("command").and_then(serde_json::Value::as_str) != Some(command));
+                if before != items.len() && items.is_empty() {
+                    return !entry.as_object().is_some_and(|object| object.keys().all(|key| matches!(key.as_str(), "hooks" | "matcher")));
+                }
+            }
+            true
+        });
+        let mut handler = serde_json::json!({"type":"command", "command":command,
+            "timeout": if event == "SessionEnd" { 3 } else { 20 }});
+        if codex && matches!(event, "SessionStart" | "UserPromptSubmit" | "PreToolUse" | "PostToolUse") {
+            handler["additionalContextLimit"] = serde_json::json!(2500);
+        }
+        entries.push(serde_json::json!({"hooks":[handler]}));
+    }
+    Ok(())
 }
 
 fn reconcile_codex_hooks_at(path: &Path, install_root: &Path) -> Result<(), String> {
@@ -1686,19 +1734,7 @@ fn reconcile_codex_hooks_at(path: &Path, install_root: &Path) -> Result<(), Stri
     let root = config.as_object_mut().ok_or_else(|| "Codex hooks root must be an object".to_string())?;
     let hooks = root.entry("hooks").or_insert_with(|| serde_json::json!({})).as_object_mut()
         .ok_or_else(|| "Codex hooks must be an object".to_string())?;
-    let entries = hooks.entry("UserPromptSubmit").or_insert_with(|| serde_json::json!([])).as_array_mut()
-        .ok_or_else(|| "Codex UserPromptSubmit hooks must be an array".to_string())?;
-    replace_legacy_hook_commands(entries, &command);
-    let mut seen = false;
-    for entry in entries.iter_mut() {
-        if let Some(items) = entry.get_mut("hooks").and_then(serde_json::Value::as_array_mut) {
-            items.retain(|item| {
-                if item.get("command").and_then(serde_json::Value::as_str) != Some(&command) { return true; }
-                if seen { false } else { seen = true; true }
-            });
-        }
-    }
-    if !seen { entries.push(serde_json::json!({"hooks":[{"type":"command","command":command,"timeout":10,"additionalContextLimit":7000}]})); }
+    reconcile_owned_hook_events(hooks, CODEX_HOOK_EVENTS, &command, true)?;
     let parent = path.parent().ok_or_else(|| "Codex hooks path has no parent".to_string())?;
     std::fs::create_dir_all(parent).map_err(|e| format!("create Codex hooks directory: {e}"))?;
     let staged = path.with_extension(format!("json.{}.partial", std::process::id()));
@@ -1708,9 +1744,7 @@ fn reconcile_codex_hooks_at(path: &Path, install_root: &Path) -> Result<(), Stri
 }
 
 fn remove_codex_hooks(install_root: &Path, dry_run: bool) -> Result<usize, String> {
-    let home = std::env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" })
-        .map(PathBuf::from).ok_or_else(|| "Codex settings profile is unavailable".to_string())?;
-    let path = home.join(".codex").join("hooks.json");
+    let path = codex_hooks_path()?;
     if !path.is_file() { return Ok(0); }
     let original = std::fs::read(&path).map_err(|e| format!("read Codex hooks: {e}"))?;
     let mut config: serde_json::Value = serde_json::from_slice(&original).map_err(|e| format!("parse Codex hooks: {e}"))?;
@@ -1752,35 +1786,7 @@ fn reconcile_claude_hooks_at(settings_path: &Path, install_root: &Path) -> Resul
         .or_insert_with(|| serde_json::json!({}))
         .as_object_mut()
         .ok_or_else(|| "Claude settings hooks must be an object".to_string())?;
-    const EVENTS: [&str; 10] = [
-        "SessionStart", "UserPromptSubmit", "PreCompact", "PostCompact", "PreToolUse",
-        "PostToolUse", "PostToolUseFailure", "Stop", "TaskCompleted", "SessionEnd",
-    ];
-    for event in EVENTS {
-        let entries = hooks
-            .entry(event)
-            .or_insert_with(|| serde_json::json!([]))
-            .as_array_mut()
-            .ok_or_else(|| format!("Claude hook {event} must be an array"))?;
-        replace_legacy_hook_commands(entries, &command);
-        let present = entries.iter().any(|entry| {
-            entry
-                .get("hooks")
-                .and_then(serde_json::Value::as_array)
-                .is_some_and(|items| items.iter().any(|item| {
-                    item.get("command").and_then(serde_json::Value::as_str) == Some(&command)
-                }))
-        });
-        if !present {
-            let mut projection = serde_json::json!({
-                "hooks": [{"type": "command", "command": command.clone()}]
-            });
-            if matches!(event, "PreToolUse" | "PostToolUse" | "PostToolUseFailure") {
-                projection["matcher"] = serde_json::Value::String(".*".to_string());
-            }
-            entries.push(projection);
-        }
-    }
+    reconcile_owned_hook_events(hooks, CLAUDE_HOOK_EVENTS, &command, false)?;
     let parent = settings_path
         .parent()
         .ok_or_else(|| "Claude settings path has no parent".to_string())?;
@@ -2676,8 +2682,9 @@ pub fn run_lc06_scenario(name: &str) -> serde_json::Value {
                 let after_activation: serde_json::Value = serde_json::from_slice(
                     &std::fs::read(&settings_path).map_err(|e| e.to_string())?,
                 ).map_err(|e| e.to_string())?;
-                let commands = after_activation["hooks"]["PreToolUse"][0]["hooks"]
-                    .as_array().ok_or_else(|| "native hook roundtrip omitted hook items".to_string())?;
+                let commands = after_activation["hooks"]["PreToolUse"].as_array()
+                    .ok_or_else(|| "native hook roundtrip omitted hook groups".to_string())?
+                    .iter().flat_map(|group| group["hooks"].as_array().into_iter().flatten()).collect::<Vec<_>>();
                 let exact = commands.iter().any(|item| item["command"] == expected);
                 let near = commands.iter().any(|item| item["command"] == near_match);
                 let other = commands.iter().any(|item| item["command"] == unrelated);
@@ -2789,8 +2796,50 @@ mod tests {
             .filter(|item| item["command"] == installed_hook_command(&install)).count();
         assert_eq!(owned, 1);
         assert!(entries.iter().any(|entry| entry["hooks"].as_array().unwrap().iter().any(|item| item["command"] == foreign)));
+        for &event in CODEX_HOOK_EVENTS {
+            let owned: Vec<_> = after["hooks"][event].as_array().unwrap().iter()
+                .flat_map(|group| group["hooks"].as_array().into_iter().flatten())
+                .filter(|item| item["command"] == installed_hook_command(&install)).collect();
+            assert_eq!(owned.len(), 1, "{event}");
+            assert_eq!(owned[0]["timeout"], if event == "SessionEnd" { 3 } else { 20 });
+        }
+        assert!(after["hooks"].get("TaskCompleted").is_none());
         let mut removable = after;
-        assert_eq!(remove_exact_hook_items(&mut removable, &installed_hook_command(&install)), 1);
+        assert_eq!(remove_exact_hook_items(&mut removable, &installed_hook_command(&install)), CODEX_HOOK_EVENTS.len());
+    }
+
+    #[test]
+    fn claude_session_start_projection_is_native_idempotent_and_foreign_safe() {
+        let directory = tempfile::tempdir().unwrap();
+        let install = directory.path().join("current");
+        std::fs::create_dir_all(&install).unwrap();
+        std::fs::write(install.join(executable_name("membrane")), b"native").unwrap();
+        let path = directory.path().join("settings.json");
+        let foreign = r#"C:\Other\hook.exe hook"#;
+        let command = installed_hook_command(&install);
+        let config = serde_json::json!({"hooks":{"SessionStart":[
+            {"hooks":[{"type":"command","command":foreign}]},
+            {"hooks":[{"type":"command", "command":command}]},
+            {"hooks":[{"type":"command", "command":command}]}
+        ]}});
+        std::fs::write(&path, serde_json::to_vec(&config).unwrap()).unwrap();
+        reconcile_claude_hooks_at(&path, &install).unwrap();
+        reconcile_claude_hooks_at(&path, &install).unwrap();
+        let after: serde_json::Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        let entries = after["hooks"]["SessionStart"].as_array().unwrap();
+        let owned: Vec<_> = entries.iter().flat_map(|entry| entry["hooks"].as_array().into_iter().flatten())
+            .filter(|item| item["command"] == command).collect();
+        assert_eq!(owned.len(), 1);
+        assert_eq!(owned[0]["timeout"], 20);
+        assert!(owned[0].get("additionalContextLimit").is_none());
+        assert!(entries.iter().any(|entry| entry["hooks"].as_array().unwrap().iter().any(|item| item["command"] == foreign)));
+        for &event in CLAUDE_HOOK_EVENTS {
+            let owned: Vec<_> = after["hooks"][event].as_array().unwrap().iter()
+                .flat_map(|group| group["hooks"].as_array().into_iter().flatten())
+                .filter(|item| item["command"] == command).collect();
+            assert_eq!(owned.len(), 1, "{event}");
+            assert_eq!(owned[0]["timeout"], if event == "SessionEnd" { 3 } else { 20 });
+        }
     }
 
     #[test]

@@ -45,12 +45,12 @@
     {
       "id": "pull",
       "label": "Pull",
-      "description": "Retrieves, admits, fuses, and publishes task-relevant evidence."
+      "description": "Retrieves, admits, fuses, faithfully reduces, and publishes task-relevant evidence."
     },
     {
       "id": "push",
       "label": "Push",
-      "description": "Performs faithful, reversible reduction of information already in flight."
+      "description": "Writes agent-authored durable-memory records through Cortex; former reduction APIs remain only for live legacy consumers."
     },
     {
       "id": "cortex",

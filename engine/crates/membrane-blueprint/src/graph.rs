@@ -449,13 +449,26 @@ pub fn build_generation_from_files_with_cancellation(root: &Path, scan: ScanRepo
     Ok(generation)
 }
 
-/// Build only lexical/AST facts for one code file. This is deliberately
-/// narrower than `build_generation`: provider registry, framework
-/// augmentation, and cross-file resolution require a complete scan and cause
-/// callers to fall back to a full refresh.
+/// Build lexical/AST facts for one file. Incremental callers provide a
+/// complete scan for path identity and run affected-file providers separately;
+/// untouched files are never reparsed.
 pub fn build_file_facts(root: &Path, relative_path: &str, cancellation: &CancellationToken) -> Result<Option<FileFacts>, GraphError> {
+    build_file_facts_from_scan(root, relative_path, &[], &[], cancellation)
+}
+
+/// Build facts for one path using an already collected source scan as resolver
+/// context. Only `relative_path` is read, parsed, & admitted; remaining files
+/// provide path identity for import resolution without reparsing or provider
+/// execution. `resolution_nodes` may contain the prior generation's symbols
+/// so cross-file calls retain their existing bindings while one file changes.
+pub fn build_file_facts_from_scan(
+    root: &Path,
+    relative_path: &str,
+    scan_files: &[FileRecord],
+    resolution_nodes: &[GraphNode],
+    cancellation: &CancellationToken,
+) -> Result<Option<FileFacts>, GraphError> {
     let relative_path = normalize_path(relative_path);
-    if language_for_path(&relative_path).is_none() { return Ok(None); }
     let root = fs::canonicalize(root).map_err(|e| GraphError::Root(e.to_string()))?;
     let absolute_path = root.join(&relative_path);
     crate::security::is_confined_path(&root, &absolute_path, true).map_err(|_| GraphError::EscapesRoot(relative_path.clone()))?;
@@ -466,17 +479,24 @@ pub fn build_file_facts(root: &Path, relative_path: &str, cancellation: &Cancell
         Err(error) => return Err(GraphError::Read { path: relative_path, message: error.to_string() }),
     };
     if metadata.len() > MAX_FILE_BYTES { return Ok(None); }
-    let bytes = fs::read(&absolute_path).map_err(|error| GraphError::Read { path: relative_path.clone(), message: error.to_string() })?;
+    let scanned = scan_files.iter().find(|file| file.path == relative_path);
+    let bytes = match scanned {
+        Some(file) => file.bytes.clone(),
+        None => fs::read(&absolute_path).map_err(|error| GraphError::Read { path: relative_path.clone(), message: error.to_string() })?,
+    };
     if bytes.contains(&0) { return Ok(None); }
     let text = String::from_utf8_lossy(&bytes).into_owned();
     let file = FileRecord {
         path: relative_path.clone(), absolute_path, size: bytes.len() as u64, bytes: bytes.clone(),
         content_hash: content_digest(&bytes),
-        semantic_content_hash: content_digest(text.as_bytes()), text: Some(text.clone()),
+        semantic_content_hash: scanned.map(|value| value.semantic_content_hash.clone()).unwrap_or_else(|| content_digest(text.as_bytes())),
+        text: if language_for_path(&relative_path).is_some() || is_file_only(&relative_path) { Some(text.clone()) } else { None },
     };
     let surface = module_surface(&file);
-    let mut file_map = BTreeMap::new();
-    file_map.insert(file.path.clone(), &file);
+    let mut context_files = scan_files.to_vec();
+    if let Some(existing) = context_files.iter_mut().find(|value| value.path == file.path) { *existing = file.clone(); }
+    else { context_files.push(file.clone()); }
+    let file_map = context_files.iter().map(|value| (value.path.clone(), value)).collect::<BTreeMap<_, _>>();
     let (lexical_nodes, lexical_edges, lexical_report) = lexical_facts(&file, &text, &file_map, &surface);
     let mut ast_nodes = Vec::new();
     let mut ast_edges = Vec::new();
@@ -490,7 +510,11 @@ pub fn build_file_facts(root: &Path, relative_path: &str, cancellation: &Cancell
         if ast.report.parse_status == "ok" || ast.report.parse_status == "partial" { report = ast.report; }
     }
     let (mut nodes, mut edges) = merge_facts(lexical_nodes, lexical_edges, ast_nodes, ast_edges, None);
-    edges = resolve_edges(edges, &nodes, &file_map);
+    // Resolver context is identity-only for untouched files. Their source is
+    // never parsed by this path-scoped operation.
+    let mut resolver_nodes = resolution_nodes.to_vec();
+    resolver_nodes.extend(nodes.iter().cloned());
+    edges = resolve_edges(edges, &resolver_nodes, &file_map);
     nodes.sort_by(|a, b| a.id.cmp(&b.id));
     edges.sort_by(|a, b| a.id.cmp(&b.id));
     Ok(Some(FileFacts {
@@ -499,9 +523,45 @@ pub fn build_file_facts(root: &Path, relative_path: &str, cancellation: &Cancell
     }))
 }
 
+/// Re-resolve edges produced for one affected file against the post-change
+/// symbol set.  Parsing stays path-scoped; this second, in-memory pass lets a
+/// newly created symbol satisfy callers that were unresolved in prior state.
+pub fn resolve_file_facts_edges(
+    facts: &mut FileFacts,
+    resolution_nodes: &[GraphNode],
+    scan_files: &[FileRecord],
+) {
+    let file_map = scan_files.iter().map(|file| (file.path.clone(), file)).collect::<BTreeMap<_, _>>();
+    for edge in &mut facts.edges {
+        if edge.kind == "CALLS" {
+            edge.target = None;
+            edge.evidence.retain(|evidence| evidence.get("confidenceTier").and_then(Value::as_str) != Some("CROSS_FILE_HEURISTIC"));
+            edge.evidence.iter_mut().for_each(|evidence| {
+                if let Some(object) = evidence.as_object_mut() {
+                    object.insert("resolved".into(), Value::Bool(false));
+                }
+            });
+        }
+    }
+    // `resolution_nodes` already contains this file's post-change nodes. Do
+    // not append them again: duplicate candidates make same-file calls look
+    // ambiguous even when their lexical target is unique.
+    facts.edges = resolve_edges(std::mem::take(&mut facts.edges), resolution_nodes, &file_map);
+    facts.edges.sort_by(|a, b| a.id.cmp(&b.id));
+}
+
 /// Compute source identity from an already collected scan without running any
 /// parser or provider. Used to seal an incremental refresh atomically.
 pub fn source_hash_for_files(files: &[FileRecord]) -> String { source_hash(files) }
+
+/// Return the resolver configuration identity represented by a complete graph.
+/// Config identity is carried on config-file evidence so incremental refreshes
+/// can compare the same content-addressed input as complete construction.
+pub fn config_digest_for_generation(generation: &GraphGeneration) -> Option<String> {
+    generation.nodes.iter()
+        .filter(|node| node.kind == "file" && crate::static_provider::is_build_config_file(node.path.as_deref().unwrap_or("")))
+        .find_map(|node| node.evidence.first().and_then(|evidence| evidence.get("configDigest")).and_then(Value::as_str).map(str::to_owned))
+}
 
 /// Return whether a path has a native parser and is safe for the structural
 /// incremental lane.
@@ -748,7 +808,13 @@ fn lexical_facts(file: &FileRecord, text: &str, files: &BTreeMap<String, &FileRe
             if callee == *name { continue; }
             let source_id = format!("symbol:{}::{}", file.path, qualified);
             let candidates: Vec<&GraphNode> = nodes.iter().filter(|n| (n.name.as_deref() == Some(callee.as_str()) || n.name.as_deref() == Some(callee.to_ascii_lowercase().as_str())) && n.evidence.iter().any(|e| e["path"] == file.path)).collect();
-            if let Some(target) = candidates.first() { edges.push(edge_record("CALLS", &source_id, Some(&target.id), ConfidenceTier::SameFileLexical, file, false, Some(&callee))); }
+            if let Some(target) = candidates.first() {
+                edges.push(edge_record("CALLS", &source_id, Some(&target.id), ConfidenceTier::SameFileLexical, file, false, Some(&callee)));
+            } else {
+                // Keep unresolved call sites in the graph so an incremental
+                // update that introduces this symbol can repair its caller.
+                edges.push(edge_record("CALLS", &source_id, None, ConfidenceTier::Unresolved, file, false, Some(&callee)));
+            }
         }
     }
     let report = FileReport { path: file.path.clone(), language: Some(language.into()), provider: "lexical".into(), precision: PrecisionTier::Lexical, parse_status: "ok".into(), error_node_count: 0, error: None };
@@ -865,6 +931,11 @@ fn resolve_edges(mut edges: Vec<GraphEdge>, nodes: &[GraphNode], files: &BTreeMa
         if let Some(candidates) = functions.get(&name) {
             if candidates.len() == 1 {
                 edge.target = Some(candidates[0].id.clone());
+                edge.evidence.iter_mut().for_each(|evidence| {
+                    if let Some(object) = evidence.as_object_mut() {
+                        object.insert("resolved".into(), Value::Bool(true));
+                    }
+                });
                 edge.evidence.push(json!({"confidenceTier":"CROSS_FILE_HEURISTIC","confidence":ConfidenceTier::CrossFileHeuristic.score()}));
             } else if candidates.len() > 1 {
                 edge.evidence.push(json!({"confidenceTier":"UNRESOLVED","confidence":0.0,"reason":"ambiguous call"}));

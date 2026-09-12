@@ -671,6 +671,18 @@ pub(crate) fn open_installed_store() -> Result<crate::MemoryStore, String> {
     crate::MemoryStore::try_open(crate::MemDb::open(&runtime.db).map_err(|error| error.to_string())?)
 }
 
+/// Foreground hook owner. Opens persisted Cortex rows without loading the
+/// optional embedding runtime; callers use its lexical read-only arm.
+pub(crate) fn open_installed_lexical_store() -> Result<crate::MemoryStore, String> {
+    let exe = std::env::current_exe().map_err(|error| error.to_string())?;
+    let runtime = runtime_from_installed_exe(&exe)?;
+    // Hook startup is a read-only bounded path.  In particular, do not create
+    // an absent store here: missing sealed state must become a typed omission.
+    crate::MemoryStore::try_open_lexical(
+        crate::MemDb::open_read_only(&runtime.db).map_err(|error| error.to_string())?,
+    )
+}
+
 pub(crate) fn runtime_from_installed_exe(exe: &Path) -> Result<Runtime, String> {
     let executable_root = exe.parent().ok_or_else(|| "executable has no parent".to_string())?;
     let current = if executable_root.file_name().is_some_and(|name| name == "current") {

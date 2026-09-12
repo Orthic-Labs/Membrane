@@ -4,8 +4,8 @@
 //! into a bounded, content-free reduction ladder, then applies the host's
 //! validated H8 ceiling without inventing capacity.
 
-use crate::push::prep::{is_code_ext, is_structured_text, PushPolicy};
-use crate::push::{compress, skel, telemetry};
+use crate::pull::prep::{is_code_ext, is_structured_text, PushPolicy};
+use crate::pull::{compress, skel, telemetry};
 use cortex_core::planner::{BlockV1, ContextPacketV1};
 use membrane_protocol::host_observation::{
     ObservationCoverageV1, ObservationUnavailableReasonV1, RemainingContextCeilingV1,
@@ -392,8 +392,8 @@ mod tests {
         let contents = std::fs::read_to_string(&telemetry_path)
             .expect("production selection must emit telemetry unconditionally");
         assert!(
-            contents.lines().any(|line| line.contains("\"axis\":\"push\"")),
-            "expected at least one content-free push observation, got: {contents}"
+            contents.lines().any(|line| line.contains("\"axis\":\"pull\"")),
+            "expected at least one content-free Pull observation, got: {contents}"
         );
     }
 

@@ -23,9 +23,6 @@ impl Provider for LedgerProvider {
             if context.is_cancelled() { return Ok(gap(ReasonCode::ProviderCancelled,"ledger_cancelled")); }
             if context.is_deadline_exhausted() { return Ok(gap(ReasonCode::DeadlineExhausted,"ledger_deadline_exhausted")); }
             let Some(owner) = self.owner.clone() else { return Ok(gap(ReasonCode::ProviderUnavailable,"ledger_owner_unavailable")); };
-            if !super::doc_candidate_provider::is_doc_provider_enabled() {
-                return Ok(gap(ReasonCode::ProviderUnavailable,"ledger_delivery_disabled"));
-            }
             let context = context.clone();
             let cancellation = context.cancellation.child_token();
             let guard = CancelWork(cancellation.clone());
@@ -81,43 +78,24 @@ fn materialize(owner: &LedgerService, context: &ProviderContext, budget: &WorkBu
     };
     let (result,tickets) = owner.search(&caller,&context.task,12,false,ranges,grant_id,budget)?;
     let generation = context.freshness.generation.clone().or(context.release_generation.clone());
-    let live = super::qualification::delivery_allowed(context.release_generation.as_deref());
     let observed_count = result.hits.len();
     let mut candidates = Vec::new();
-    if live {
-        for (hit,ticket) in result.hits.iter().zip(tickets) {
-            let mut arguments = serde_json::to_value(hit.resolve_request()).map_err(|e|e.to_string())?;
-            arguments["repository"] = json!(caller.repository_id);
-            arguments["caller"] = caller.envelope();
-            arguments["ledgerTicket"] = json!(ticket);
-            arguments["sessionId"] = json!(context.session_id);
-            let resolver = json!({"tool":"membrane_source_read","arguments":arguments}).to_string();
-            let text = format!("Ledger evidence: {} ({}, {} bytes). Resolve the captured span.",
-                hit.source_ref,hit.node_kind,hit.end_byte-hit.start_byte);
-            let estimated_tokens = cortex_core::estimate_tokens(&format!("{text}\n{resolver}")) as u32;
-            candidates.push(CandidateV1 {id:hit.node_id.clone(),layer:2,provider:Some("ledger".into()),
-                source_kind:"doc".into(),source_ref:format!("{}#{}",hit.source_ref,hit.node_id),
-                source_hash:format!("sha256:{}",hit.expected_span_hash),trust_class:"workspace_document".into(),
-                instruction_policy:"data_only".into(),provider_score:hit.score.clamp(0.0,1.0),
-                score_components:BTreeMap::from([("lexical".into(),hit.score),("freshness".into(),1.0)]),
-                base_commit:Some(hit.expected_revision.clone()),overlay_digest:Some(hit.expected_content_hash.clone()),
-                freshness_class:Some(if hit.source_kind=="imported_snapshot" {FreshnessClass::CommittedSnapshot}else{FreshnessClass::Current}),
-                snapshot_id:Some(format!("ledger:{}",hit.ledger_generation)),estimated_tokens,
-                protected:false,exact:true,recoverable:true,resolver,text});
-        }
+    for (hit,ticket) in result.hits.iter().zip(tickets) {
+        candidates.push(candidate_for_hit(
+            hit, &caller.repository_id, caller.envelope(), &context.session_id, ticket,
+        )?);
     }
     let mut output = ProviderOutputV1 {schema_version:PROVIDER_OUTPUT_SCHEMA_VERSION,provider:ProviderId::Ledger,
-        status:if result.complete && live {FederationProviderStatusV1::Complete}else{FederationProviderStatusV1::Partial},
+        status:if result.complete {FederationProviderStatusV1::Complete}else{FederationProviderStatusV1::Partial},
         generation:generation.clone(),candidates,warnings:Vec::new(),omissions:Vec::new(),
         diagnostics:Some(ProviderDiagnosticsV1 {provider:ProviderId::Ledger,elapsed_ms:None,generation,
             attributes:BTreeMap::from([("provenance".into(),"ledger-source-owner".into()),
                 ("ledger_generation".into(),result.publication_generation.to_string()),
-                ("mode".into(),if live{"live"}else{"shadow_unqualified"}.into())])}),
+                ("mode".into(),"live".into())])}),
         extensions:BTreeMap::from([("ledger".into(),json!({"observedCandidates":observed_count,
             "complete":result.complete,"omissions":result.omissions,"lane":result.lane,
             "sourceBytesChecked":result.source_bytes_checked,"policyDigest":result.policy_digest,
-            "publicationGeneration":result.publication_generation,"graph":result.graph,"delivered":live}))])};
-    if !live { output.omissions.push(omission(ReasonCode::ProviderUnavailable,"ledger_delivery_qualification_required")); }
+            "publicationGeneration":result.publication_generation,"graph":result.graph,"delivered":true}))])};
     if !result.complete {
         output.warnings.push(ProviderWarningV1 {provider:ProviderId::Ledger,reason:ReasonCode::ProviderFailed,
             severity:WarningSeverity::Warning,detail_id:Some("ledger_source_incomplete".into()),stage:Some("source".into()),message:None});
@@ -126,6 +104,61 @@ fn materialize(owner: &LedgerService, context: &ProviderContext, budget: &WorkBu
     validate_task_grant(grant_id,&caller,None,Some(&context.session_id))?;
     budget.check()?;
     Ok(output)
+}
+
+fn candidate_for_hit(
+    hit: &super::query::LedgerHit,
+    repository_id: &str,
+    caller: serde_json::Value,
+    session_id: &str,
+    ticket: String,
+) -> Result<CandidateV1, String> {
+    let mut arguments = serde_json::to_value(hit.resolve_request()).map_err(|e|e.to_string())?;
+    arguments["repository"] = json!(repository_id);
+    arguments["caller"] = caller;
+    arguments["ledgerTicket"] = json!(ticket);
+    arguments["sessionId"] = json!(session_id);
+    let resolver = json!({"tool":"membrane_source_read","arguments":arguments}).to_string();
+    let text = format!("Ledger evidence: {} ({}, {} bytes). Resolve the captured span.",
+        hit.source_ref,hit.node_kind,hit.end_byte-hit.start_byte);
+    let estimated_tokens = cortex_core::estimate_tokens(&format!("{text}\n{resolver}")) as u32;
+    Ok(CandidateV1 {id:hit.node_id.clone(),layer:2,provider:Some("ledger".into()),
+        source_kind:"doc".into(),source_ref:format!("{}#{}",hit.source_ref,hit.node_id),
+        source_hash:format!("sha256:{}",hit.expected_span_hash),trust_class:"workspace_document".into(),
+        instruction_policy:"data_only".into(),provider_score:hit.score.clamp(0.0,1.0),
+        score_components:BTreeMap::from([("lexical".into(),hit.score),("freshness".into(),1.0)]),
+        base_commit:Some(hit.expected_revision.clone()),overlay_digest:Some(hit.expected_content_hash.clone()),
+        freshness_class:Some(if hit.source_kind=="imported_snapshot" {FreshnessClass::CommittedSnapshot}else{FreshnessClass::Current}),
+        snapshot_id:Some(format!("ledger:{}",hit.ledger_generation)),estimated_tokens,
+        protected:false,exact:true,recoverable:true,resolver,text})
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn direct_pull_candidate_keeps_hash_bound_source_resolution() {
+        let hit = super::super::query::LedgerHit {
+            doc_id: "doc-1".into(), node_id: "node-1".into(),
+            source_ref: "doc://README.md".into(), anchor_id: "anchor-1".into(),
+            expected_content_hash: "content-hash".into(), expected_revision: "commit-1".into(),
+            expected_span_hash: "span-hash".into(), ledger_generation: 7,
+            source_kind: "markdown".into(), node_kind: "paragraph".into(),
+            start_byte: 10, end_byte: 24, lane: "exact".into(), score: 1.0,
+            literal_range: None,
+        };
+        let candidate = candidate_for_hit(
+            &hit, "repo-1", json!({"root":"/repo","repositoryId":"repo-1"}),
+            "session-1", "ticket-1".into(),
+        ).unwrap();
+        assert_eq!(candidate.provider.as_deref(), Some("ledger"));
+        assert_eq!(candidate.source_ref, "doc://README.md#node-1");
+        assert_eq!(candidate.source_hash, "sha256:span-hash");
+        assert!(candidate.recoverable);
+        assert!(candidate.resolver.contains("expectedSpanHash"));
+        assert!(candidate.resolver.contains("ticket-1"));
+    }
 }
 fn safe_reason(reason:&str)->String {
     let first = reason.split(':').next().unwrap_or("ledger_unavailable");

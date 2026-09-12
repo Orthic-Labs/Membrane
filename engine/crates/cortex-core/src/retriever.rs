@@ -128,7 +128,7 @@ impl MemoryRetriever {
         }
     }
     /// Tokenize a query into lowercased whitespace-separated terms.
-    fn query_terms(query: &str) -> Vec<String> {
+    pub fn query_terms(query: &str) -> Vec<String> {
         lexical::query_terms(query)
     }
 

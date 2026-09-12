@@ -1,12 +1,10 @@
 {
   "schemaVersion": 1,
-  "toolCount": 24,
+  "toolCount": 22,
   "toolsets": {
-    "default": ["membrane_context", "membrane_knowledge_propose", "membrane_memory", "membrane_memory_read", "membrane_checkpoint_save", "membrane_checkpoint_load", "membrane_source_read", "membrane_ledger"],
+    "default": ["membrane_context", "membrane_knowledge_propose", "membrane_memory", "membrane_memory_read", "membrane_checkpoint_save", "membrane_checkpoint_load", "membrane_source_read"],
     "memory": ["membrane_context", "membrane_knowledge_propose", "membrane_checkpoint_save", "membrane_checkpoint_load", "membrane_working_context", "membrane_temporal_fact", "membrane_scratchpad", "membrane_feedback", "membrane_memory", "membrane_memory_read"],
     "blueprint": ["membrane_source_read", "membrane_blueprint"],
-    "ledger": ["membrane_source_read", "membrane_ledger"],
-    "adapt": ["membrane_adapt_inspect"],
     "push": ["membrane_push_prepare", "membrane_push_resolve"],
     "diagnostic": ["membrane_diagnostic_workspace", "membrane_diagnostic_mutation", "membrane_diagnostic_snapshot", "membrane_diagnostic_fence", "membrane_diagnostic_capabilities", "membrane_diagnostic_baseline", "membrane_diagnostic_provider"],
     "operator": ["membrane_knowledge_review"]

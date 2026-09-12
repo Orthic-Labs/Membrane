@@ -19,12 +19,10 @@ use membrane_runtime::adapt::{
     execute_adapt_proposal_plan, AdaptProposalPlanRequestV1,
     ADAPT_PROPOSAL_SERVICE_CONTRACT,
 };
-use membrane_runtime::adapt_service::{
-    admit_verified_taste_manifest, finalize_packet, prepare_packet, render_taste_representation,
-    select,
-};
+use membrane_runtime::adapt_service::{admit_verified_taste_manifest, select};
 use membrane_runtime::{MemDb, MemoryStore};
 use serde_json::json;
+use tokio_util::sync::CancellationToken;
 
 fn model_proposal(excerpt: &str) -> ModelExtractionProposal {
     ModelExtractionProposal {
@@ -381,6 +379,15 @@ fn native_taste_manifest_admits_only_reviewed_records_replays_and_delivers_count
     let inventory = store.taste_delivery_inventory().unwrap();
     assert!(inventory.memory_ids.iter().any(|id| id.ends_with(&accepted_id)));
     assert!(!inventory.memory_ids.iter().any(|id| id.ends_with(&rejected_id)));
+    let recalled = store.recall_typed_bounded(
+        "focused local change", 4, std::slice::from_ref(&scope), None, false,
+        &CancellationToken::new(),
+    );
+    assert!(recalled.items.iter().any(|item| match item {
+        membrane_runtime::store::RecallResult::Memory { entry, .. } =>
+            entry.id.ends_with(&accepted_id) && entry.content.contains("focused local change"),
+        membrane_runtime::store::RecallResult::Temporal { .. } => false,
+    }));
     let context = membrane_adapt::delivery::PreferenceDeliveryContextV1 {
         allowed_scopes: vec![scope.clone()],
         dimensions: ScopeDimensions::default(),
@@ -410,52 +417,6 @@ fn native_taste_manifest_admits_only_reviewed_records_replays_and_delivers_count
         Some("recorded")
     );
     assert_eq!(delivered.receipt.applicability_reason, "applicable");
-
-    let mut ccs = json!({"traceId":"trace-render","candidates":[]});
-    let selection = prepare_packet(
-        &store,
-        &bound_root,
-        &json!({"hostContext":{},"session":"session-render"}),
-        &mut ccs,
-    )
-    .unwrap();
-    let rendered_candidate = selection
-        .inventory
-        .candidates
-        .iter()
-        .find(|candidate| candidate.record_id == accepted_id)
-        .unwrap();
-    let rendered = ccs["candidates"][0]["text"].as_str().unwrap();
-    assert!(rendered.contains(&format!("Preferred rule: {}", rendered_candidate.rule)));
-    let rejected = rendered_candidate
-        .counterfactual
-        .as_ref()
-        .and_then(|value| value.rejected_alternative.as_deref())
-        .unwrap();
-    assert!(rendered.contains("Avoided alternative (source-bound evidence only"));
-    assert!(rendered.contains(rejected));
-    let rendered_hash = sha256_hex(rendered.as_bytes());
-    assert_eq!(
-        ccs["candidates"][0]["sourceHash"].as_str(),
-        Some(rendered_hash.as_str())
-    );
-    let packet = json!({"blocks":ccs["candidates"].clone()});
-    let finalized = finalize_packet(&store, &selection, &packet, "render task").unwrap();
-    assert_eq!(
-        finalized["emission"]["records"][0]["representation_sha256"].as_str(),
-        Some(rendered_hash.as_str())
-    );
-    let mut none_candidate = rendered_candidate.clone();
-    let none_counterfactual = none_candidate.counterfactual.as_mut().unwrap();
-    none_counterfactual.status = "none_recorded".into();
-    none_counterfactual.rejected_alternative = None;
-    none_counterfactual.rejected_alternative_event_id = None;
-    none_counterfactual.rejected_alternative_byte_start = None;
-    none_counterfactual.rejected_alternative_byte_end = None;
-    none_counterfactual.rejected_alternative_text_sha256 = None;
-    let none_rendered = render_taste_representation(&none_candidate);
-    assert!(none_rendered.contains(&format!("Preferred rule: {}", none_candidate.rule)));
-    assert!(!none_rendered.contains("Avoided alternative"));
 
     let replay = admit_verified_taste_manifest(&store, &manifest, None).unwrap();
     assert_eq!(replay.inserted, 0);

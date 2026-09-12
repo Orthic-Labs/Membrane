@@ -527,6 +527,8 @@ pub struct FileDelta {
     /// Keeping it on the delta makes graph identity and source observation
     /// part of the same transaction as row mutation.
     pub source_hash: Option<String>,
+    /// Resolver configuration identity for the complete source scan.
+    pub config_digest: Option<String>,
     pub source_observation: Option<Value>,
     pub file_report: Option<Value>,
 }
@@ -546,6 +548,7 @@ impl Default for FileDelta {
             file_identity: None,
             is_document_delta: false,
             source_hash: None,
+            config_digest: None,
             source_observation: None,
             file_report: None,
         }
@@ -587,6 +590,33 @@ pub fn apply_file_delta(
     delta: &FileDelta,
     options: ApplyOptions,
 ) -> Result<ApplyResult, ApplyFileDeltaError> {
+    let tx = conn.transaction()?;
+    let result = apply_file_delta_tx(&tx, delta, options)?;
+    tx.commit()?;
+    Ok(result)
+}
+
+/// Apply one source event set inside one caller-owned transaction. All deltas
+/// either publish together or leave prior generation identity untouched.
+pub fn apply_file_deltas(
+    conn: &mut Connection,
+    deltas: &[FileDelta],
+    options: ApplyOptions,
+) -> Result<Vec<ApplyResult>, ApplyFileDeltaError> {
+    let tx = conn.transaction()?;
+    let mut results = Vec::with_capacity(deltas.len());
+    for delta in deltas {
+        results.push(apply_file_delta_tx(&tx, delta, options)?);
+    }
+    tx.commit()?;
+    Ok(results)
+}
+
+fn apply_file_delta_tx(
+    tx: &Transaction<'_>,
+    delta: &FileDelta,
+    options: ApplyOptions,
+) -> Result<ApplyResult, ApplyFileDeltaError> {
     let path = delta.path.replace('\\', "/");
     if delta.is_document_delta {
         return Err(ApplyFileDeltaError::UnsupportedDocumentDelta(path));
@@ -596,8 +626,6 @@ pub fn apply_file_delta(
         EventKind::Rename => delta.rename_to.as_deref().map(|p| p.replace('\\', "/")).unwrap_or_else(|| path.clone()),
         _ => path.clone(),
     };
-
-    let tx = conn.transaction()?;
 
     let prior = load_file_state(&tx, &path)?;
     ensure_watch_state(&tx)?;
@@ -625,7 +653,6 @@ pub fn apply_file_delta(
                 }
             }
             let root_digest = root_digest_tx(&tx)?;
-            tx.commit()?;
             return Ok(ApplyResult {
                 noop: true,
                 applied: true,
@@ -646,8 +673,12 @@ pub fn apply_file_delta(
         }
         seen.into_iter().collect()
     };
+    // An empty provider batch is a complete replacement for this source
+    // path. It is used by dependency repair so stale lexical/tree-sitter
+    // owners cannot survive beside refreshed cross-file facts.
+    let replace_all_providers = delta.fact_batches.iter().any(|batch| batch.provider_id.is_empty());
 
-    let old_owners: Vec<FactOwnerRow> = if matches!(delta.event_kind, EventKind::Delete | EventKind::Rename) || structural_providers.is_empty() {
+    let old_owners: Vec<FactOwnerRow> = if matches!(delta.event_kind, EventKind::Delete | EventKind::Rename) || replace_all_providers || structural_providers.is_empty() {
         select_fact_owners(&tx, &path, None)?
     } else {
         select_fact_owners(&tx, &path, Some(&structural_providers))?
@@ -665,8 +696,12 @@ pub fn apply_file_delta(
         delete_file_state(&tx, &path)?;
         update_leaf_chain(&tx, &path, None)?;
     } else {
-        for provider_id in &structural_providers {
-            delete_facts_by_owner(&tx, &path, Some(provider_id.as_str()))?;
+        if replace_all_providers {
+            delete_facts_by_owner(&tx, &path, None)?;
+        } else {
+            for provider_id in &structural_providers {
+                delete_facts_by_owner(&tx, &path, Some(provider_id.as_str()))?;
+            }
         }
     }
 
@@ -692,13 +727,14 @@ pub fn apply_file_delta(
         let mut dependencies: Vec<(String, String, String)> = Vec::new();
         let source_digest_for_facts = content_digest_value.clone().unwrap_or_default();
         for batch in &delta.fact_batches {
+            let provider_id = if batch.provider_id.is_empty() { "native-rust" } else { batch.provider_id.as_str() };
             for node in &batch.nodes {
                 upsert_parsed_node(
                     &tx,
                     node,
                     &generation_id,
                     &source_digest_for_facts,
-                    &batch.provider_id,
+                    provider_id,
                     &batch.provider_version,
                     None,
                 )
@@ -714,7 +750,7 @@ pub fn apply_file_delta(
                     edge,
                     &generation_id,
                     &source_digest_for_facts,
-                    &batch.provider_id,
+                    provider_id,
                     &batch.provider_version,
                     source_node_path,
                 )
@@ -742,6 +778,9 @@ pub fn apply_file_delta(
         if let Some(source_hash) = &delta.source_hash {
             manifest.as_object_mut().unwrap().insert("sourceHash".into(), Value::String(source_hash.clone()));
         }
+        if let Some(config_digest) = &delta.config_digest {
+            manifest.as_object_mut().unwrap().insert("configDigest".into(), Value::String(config_digest.clone()));
+        }
         let digest = crate::identity::compute_manifest_digest_value(&manifest, source_observation.as_ref());
         manifest.as_object_mut().unwrap().insert("manifestDigest".into(), Value::String(digest));
         crate::store_delta::write_manifest(&tx, &manifest)?;
@@ -758,6 +797,9 @@ pub fn apply_file_delta(
             refresh_manifest_counts(&tx, &mut manifest)?;
             if let Some(source_hash) = &delta.source_hash {
                 manifest.as_object_mut().unwrap().insert("sourceHash".into(), Value::String(source_hash.clone()));
+            }
+            if let Some(config_digest) = &delta.config_digest {
+                manifest.as_object_mut().unwrap().insert("configDigest".into(), Value::String(config_digest.clone()));
             }
             let digest = crate::identity::compute_manifest_digest_value(&manifest, source_observation.as_ref());
             manifest.as_object_mut().unwrap().insert("manifestDigest".into(), Value::String(digest));
@@ -790,8 +832,6 @@ pub fn apply_file_delta(
             crate::store_delta::write_manifest(&tx, &manifest)?;
         }
     }
-    tx.commit()?;
-
     Ok(ApplyResult {
         applied: true,
         noop: false,

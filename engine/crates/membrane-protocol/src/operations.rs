@@ -57,7 +57,7 @@ impl SubsystemAxis {
 /// return `None`: Hub is an integration surface, not a semantic subsystem.
 pub fn axis_for_operation(name: &str) -> Option<SubsystemAxis> {
     match name {
-        "membrane_context" => Some(SubsystemAxis::Pull),
+        "membrane_context" | "pull" => Some(SubsystemAxis::Pull),
         "membrane_source_read" => Some(SubsystemAxis::Ledger),
         "membrane_blueprint" => Some(SubsystemAxis::Blueprint),
         "membrane_knowledge_propose"
@@ -70,6 +70,7 @@ pub fn axis_for_operation(name: &str) -> Option<SubsystemAxis> {
         | "membrane_temporal_fact"
         | "membrane_scratchpad"
         | "membrane_feedback" => Some(SubsystemAxis::Cortex),
+        "push" => Some(SubsystemAxis::Cortex),
         _ => None,
     }
 }

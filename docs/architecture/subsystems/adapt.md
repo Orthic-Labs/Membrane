@@ -1,5 +1,7 @@
 # Adapt Canonical Product and Architecture Specification
 
+> Current boundary: Adapt emits proposals; Cortex admits durable records. Pull owns context selection, reduction, recovery, & publication. Public `push` writes agent-authored memory through Cortex; former Push reduction APIs remain legacy compatibility only.
+
 **Status:** Revised canonical product and architecture specification — reconciled onto current main; not release-qualified
 **Date:** 2026-09-05
 **Revision:** Adapt final consolidation, 2026-09-05
@@ -316,6 +318,12 @@ Adapt owns:
 - remediation/guard/evaluator proposals;
 - learning audit and rollback metadata;
 - delivery receipts and effectiveness semantics for Adapt-derived interventions;
+
+The August execution boundary is restored: offline/manual mining produces reviewed
+Taste and Insights proposals, which enter durable state only through Cortex
+admission. Adapt is an internal proposal producer, not a Pull/context provider;
+federation must not inject or relabel Adapt candidates. Operator and debug mining
+surfaces remain available, and agents receive admitted Adapt output through Cortex.
 - recurrence and mitigation-outcome interpretation.
 
 Adapt does **not** own:
@@ -444,7 +452,7 @@ Representative observation kinds include:
 - subagent spawn/handoff;
 - completion claim;
 - retrieval/context receipt;
-- Push reduction/restore;
+- Pull reduction/restore;
 - evaluator result;
 - user steer/correction linkage.
 
@@ -515,7 +523,7 @@ Every production Taste delivery entrypoint MUST delegate to the same resident se
 
 The delivery request preserves actual host/client and model identity separately from transport identity. It carries repository and scope identity, relevant task/applicability dimensions, installation/store/release binding, and explicit unavailable values. A transport label such as `membrane-native` MUST NOT substitute for an unobserved application or model. Missing narrowing information is nonmatching or unavailable, never guessed or discarded to broaden applicability.
 
-Cortex supplies admitted records and current lifecycle. Adapt determines behavioral eligibility. Pull determines final context admission and allocation; Push owns representation reduction under those limits. A generic memory projection MUST NOT erase a Taste record's semantic kind, scope qualifiers, or receipt links, and MUST NOT convert diagnostic Insights into user-authoritative instructions.
+Cortex supplies admitted records and current lifecycle. Adapt determines behavioral eligibility. Pull determines final context admission, allocation, representation reduction, and recovery under those limits. A generic memory projection MUST NOT erase a Taste record's semantic kind, scope qualifiers, or receipt links, and MUST NOT convert diagnostic Insights into user-authoritative instructions.
 
 Reuse existing host-observation and receipt envelopes. Domain contract names in this chapter describe semantic responsibilities, not permission to add another public protocol version or parallel transport. Both sides of a cross-repository change require an owner, schema digest, compatibility policy, and fixtures (§3.6).
 
@@ -1760,7 +1768,7 @@ Consume typed Pull/Ledger/Push outcome signals such as:
 - required evidence omitted then searched manually;
 - stale/missing resolver failures;
 - context packet insufficient then corrected;
-- Push reduction restored because protected evidence was lost;
+- Pull reduction restored because protected evidence was lost;
 - persistent context source repeatedly selected but apparently unused.
 
 Adapt may propose ranking, alias, chunking, query, or reduction changes. The owning subsystem must evaluate and promote them against its frozen corpus.
@@ -2015,7 +2023,7 @@ Canonical implementation owners to inspect include:
 - Cortex admission/retrieval APIs;
 - Ledger document/index integration;
 - Pull context receipts;
-- Push reduction/restore receipts;
+- Pull reduction/restore receipts;
 - root CI and runtime-language manifest;
 - CodeRight integration crates/configuration where available.
 
@@ -2181,4 +2189,4 @@ The following are the final product shape unless a future architecture amendment
 
 ## Architecture boundary
 
-> **Adapt owns behavioral learning from experience. Cortex owns durable admission and storage. Ledger owns document navigation/index projections. CodeRight owns agent execution and generic eval/trace machinery. Repository policy owns explicit project rules. These boundaries must remain visible in code, docs, schemas, evaluation, and UI.**
+> **Adapt owns behavioral learning from experience. Cortex owns durable admission and storage. Ledger owns source-bound Markdown/document projections, navigation and index, and supplies direct Pull evidence. CodeRight owns agent execution and generic eval/trace machinery. Repository policy owns explicit project rules. These boundaries must remain visible in code, docs, schemas, evaluation, and UI.**

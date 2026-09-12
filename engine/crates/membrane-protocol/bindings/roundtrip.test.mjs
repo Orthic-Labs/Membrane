@@ -18,7 +18,7 @@ import { canonicalize, canonicalDigest, loadJson, validate, SHAPES } from "./pro
 // fixture bytes; a drift in the Rust types, the fixtures, or the canonical rules
 // fails BOTH suites.
 const PINNED_DIGESTS = {
-  ScopeGrantV1: "sha256:21a54f593f194de52b30ebbde911aea78025c403becfbd62ae34ed1969bf43dd",
+  ScopeGrantV1: "sha256:1e5e9edc4f8dabdd25f8715ed2009cbe55a55ac1af3c3f458738756e038e2539",
   ContextCandidateSetV1: "sha256:12d6903c2883200da371fdaf8f2f6b6ccefbf6542ca3da480fb70124a3512a8f",
   ContextPacketV1: "sha256:fb56e8e59a99fa364c6acbfaf327140415fd19e78520a655c9b0aeacd478350a",
   ContextReceiptV1: "sha256:ed0d9ac5a641bd90e87aab6e949f0a207214cd43c4e75d6d31b5d2758c853ca2",

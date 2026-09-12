@@ -14,9 +14,9 @@
 
 **Lifecycle correction:** [Explicit execution & resident lifecycle](../execution-lifecycle-boundary.md) supersedes prohibitions on bounded Hub-off execution throughout this document. Explicit registration, indexing, search & resolution remain available through Ledger-owned services. Watchers & automatic background indexing require an active Hub or CodeRight daemon holder of the shared Membrane controller.
 
-Complete Ledger as a daemon-owned, source-bound document service reachable through the normal harness path. Retain its existing SQLite/FTS5 and structural mechanisms. Correct identity, lifecycle, complete-projection and resolver defects before enabling native document-provider delivery.
+Complete Ledger as a daemon-owned, source-bound document service reachable through the normal harness path. Retain its existing SQLite/FTS5 and structural mechanisms. Correct identity, lifecycle, complete-projection and resolver defects while preserving native direct document-provider delivery.
 
-The six named Membrane subsystems remain Pull, Push, Cortex, Blueprint, Ledger and Adapt. Ledger replaces Guide; it is not a seventh subsystem. Source bytes remain authoritative with their source owner. Ledger indexes are rebuildable projections, not repository truth or durable semantic memory.
+The six named Membrane subsystems remain Pull, Push, Cortex, Blueprint, Ledger and Adapt. Push is the public agent-to-Cortex durable-memory write surface; former reduction behavior remains legacy compatibility. Ledger replaces Guide; it is not a seventh subsystem. Source bytes remain authoritative with their source owner. Ledger owns Markdown/document truth as source-bound SQLite projections; its indexes are rebuildable and ordinary document projections are not durable Cortex knowledge.
 
 This revision strengthens seventeen existing atomic contracts and adds three distinct observable capabilities: **LDG-029 inbound references/link health; LDG-030 literal source-span matching; LDG-031 structural drift diagnostics**. The revised atomic inventory is 31 rows: 30 committed scope and one exploratory. Source implementations for the three new atoms are present on the implementation branch; verification, qualification and release delivery remain pending. **LDG-023 and Cortex CTX-033 remain exploratory/HOLD.** The three additions do not require a new search engine, graph database, protocol authority, resident process or Ledger crate.
 
@@ -82,7 +82,7 @@ It also owns source-local provenance, coverage and omission accounting. It mater
 
 ## 3.2 Other owners remain authoritative
 
-Blueprint owns repository semantics, source identity/truth services and code re-anchoring. Cortex owns admitted durable knowledge, conflicts, supersession and memory lifecycle. Adapt emits proposals rather than rewriting durable truth or Ledger policy. Pull/Membrane owns final eligibility, authority/freshness/sufficiency, fusion, context budgets and publication. Push owns faithful reduction after selection. CodeRight owns agent execution and host observations.
+Blueprint owns repository semantics, source identity/truth services and code re-anchoring. Cortex owns admitted durable knowledge, conflicts, supersession and memory lifecycle. Adapt emits proposals rather than rewriting durable truth or Ledger policy. Pull/Membrane owns final eligibility, authority/freshness/sufficiency, fusion, context budgets, faithful reduction, recovery, and publication. Public `push` writes durable memory through Cortex. CodeRight owns agent execution and host observations.
 
 Ledger never opens Blueprint SQLite or Cortex durable storage. Integrations use typed owner handles. Shared source references do not authorize cross-owner database access. A `RuntimeDeliveryLedger` used by a rules provider is not the document subsystem.
 
@@ -96,8 +96,8 @@ Document identity is not content equality. Separate sources may share a physical
 
 # 4. Locked invariants
 
-1. Canonical source identity/revision and raw bytes remain authoritative; Ledger projections are rebuildable.
-2. Ledger candidates are document-navigation evidence, never repository truth or durable-memory authority.
+1. Canonical source identity/revision and raw bytes remain authoritative; Ledger's source-bound projections are rebuildable.
+2. Ledger candidates are direct Pull document evidence with exact source identity, revision and span hashes; they are not durable Cortex knowledge.
 3. Scope, path, lifecycle, trust, influence and sensitivity eligibility precede ranking and expansion and are rechecked before byte release.
 4. Pull/Membrane retains final fusion, admission, sufficiency, budgeting, publication and receipt authority.
 5. A returned node binds source identity, expected revision/hash, supported span/range/hash, publication generation and parser/projection/query configuration.
@@ -140,7 +140,7 @@ Audit baseline: `75c257ad711d19ffce69258d132a45dbffa9b4ac`. Implementation sourc
 | Identity and lifecycle | Equal-content copies retain distinct document identities; unchanged tombstoned sources are reprocessed; Markdown reconciliation excludes imported conversions; stable node IDs no longer use unrelated global order; erasure policy survives index rebuild. | Qualified move/rename identity and alias-history transitions remain partial. |
 | Scope and source policy | Exact scope-grant read ranges survive catalog persistence and native federation; repository-local Git-ignore semantics, mandatory exclusions, source-read authority, cancellation/deadline and byte/item bounds are shared across scan/query/read. | Runtime revocation/race behavior still needs executed and packaged acceptance evidence. |
 | Links and navigation | Forward links, scope-filtered backlinks/link health, parent/previous/next/children/breadcrumb navigation, bounded one-hop strong-seed graph expansion and structural manifests/drift diagnostics are source-wired. | LDG-029/031 remain unqualified until their acceptance cases execute through the managed/product path. |
-| Native federation | `ProviderId::Ledger`, daemon owner binding and native provider registration are present; candidates retain exact resolver evidence and Pull remains final admission/fusion authority. | Automatic live candidate delivery remains intentionally gated: the release-specific qualification allowlist is empty and the provider enable flag defaults off. |
+| Native federation | `ProviderId::Ledger`, daemon owner binding and native provider registration are present; direct Pull candidates retain exact resolver evidence and Pull remains final admission/fusion authority. | Release-specific installed delivery qualification remains separate from source-level direct-provider behavior. |
 | Source reading | Exact registered nodes, imported snapshots, raw/projection/span hashes, continuation cursors, source-bound tickets and current policy checks share the daemon resolver. | Installed host round-trip and revocation-between-retrieval/read acceptance are not yet qualified. |
 | CLI/MCP | Operational Ledger CLI & MCP use canonical Ledger services through bounded explicit execution with Hub on or off. MCP exposes `membrane_ledger` plus enhanced `membrane_source_read`, including `related`, backlinks, manifests & drift. | Product-host capability negotiation & installed Hub-off execution require package evidence. |
 | Conversion | Deterministic internal conversion, raw/projection provenance and imported-snapshot resolution remain available internally. Public conversion ingest was withheld from the generic MCP/CLI surface. | Per-format semantic/integrity/installed round-trip qualification is required before a format is advertised. |
@@ -166,7 +166,7 @@ canonical granted source + source-collection manifest
     -> daemon-owned native Ledger source/provider
     -> Pull's existing fusion, admission, budget and publication gates
     -> shared exact resolver with current grant and captured source tuple
-    -> optional Push representation with raw recovery
+    -> optional Pull representation with raw recovery
     -> actual host-delivered evidence and omission receipts
 ```
 
@@ -351,19 +351,19 @@ A normal context request must prove the native Ledger source actually ran. Every
 
 ## 15.2 Cortex and conditional source-change work
 
-Cortex may retain Ledger references without importing the document corpus. Current source resolution/re-anchoring goes through Ledger. Both LDG-023 change notifications and CTX-033 document-derived semantic revalidation remain exploratory/HOLD in this revision.
+Cortex may retain Ledger references without importing the document corpus. Current source resolution/re-anchoring goes through Ledger, whose direct Pull provider supplies relevant source-bound evidence. Both LDG-023 change notifications and CTX-033 document-derived semantic revalidation remain exploratory/HOLD in this revision.
 
 If separately promoted, an owner-local ordered journal carries reference-only notices, publication identity and idempotency identity. Define durable cursor checkpoints, floor/head, bounded retention, restart/replay, duplicate handling and typed `rescan_required` on gaps. A reset-to-zero shortcut is not recovery once history has been compacted. Notices do not remove the need to resolve current bounded evidence under the current grant.
 
-A changed or unavailable reference can trigger Cortex-owned reference revalidation; it does not prove a durable statement false. Keep reference health distinct from semantic truth, contradiction, supersession and retirement. Ledger never directly modifies Cortex records or supplies an authoritative truth class. No new Cortex atom is allocated by this Ledger revision; any future promotion must update Cortex's owner canon explicitly.
+A changed or unavailable reference can trigger Cortex-owned reference revalidation; it does not prove a durable statement false. Keep reference health distinct from semantic truth, contradiction, supersession and retirement. Ledger never directly modifies Cortex records or supplies a Cortex semantic truth class. No new Cortex atom is allocated by this Ledger revision; any future promotion must update Cortex's owner canon explicitly.
 
 ## 15.3 Blueprint
 
 Consume typed source/revision and repository-truth services without direct database access. Respect Blueprint's document-domain convergence dependency and do not claim Ledger repair alone solves it. Any automatically pending domain needs a bounded automatic completion or a visible terminal failure.
 
-## 15.4 Push
+## 15.4 Pull reduction
 
-After Pull selection, Push may reduce resolved blocks while preserving code fences, tables, links, protected spans, source order and raw recovery. Keep the exact source and representation provenance distinct. Compression is not permission to alter literal-match evidence or hide material omissions.
+After Pull selection, Pull may reduce resolved blocks while preserving code fences, tables, links, protected spans, source order and raw recovery. Keep the exact source and representation provenance distinct. Compression is not permission to alter literal-match evidence or hide material omissions.
 
 ## 15.5 Adapt
 
@@ -453,7 +453,7 @@ This revision uses the supplied commit-pinned audit, companion `membrane-ledger.
 | SQLite FTS5 documentation | Column weights and tokenized phrase behavior | Ranking configuration does not prove literal equality or delivery |
 | Tantivy companion reference | Possible future measured engine comparison | Not selected; numeric ranking is not hard eligibility |
 
-The older research disposition remains: GFM/CommonMark/source-position structure, build-time projections and deterministic navigation are directly relevant; title chains and contextual retrieval are ablations. Heterogeneous fusion belongs in Pull; query-aware reduction and raw recovery belong in Push. No research name is itself a production gate.
+The older research disposition remains: GFM/CommonMark/source-position structure, build-time projections and deterministic navigation are directly relevant; title chains and contextual retrieval are ablations. Heterogeneous fusion, query-aware reduction, and raw recovery belong in Pull. No research name is itself a production gate.
 
 Primary baseline and verification references:
 
@@ -474,4 +474,4 @@ Source-derived current-state claims are confined to the reviewed baseline. Norma
 
 # 22. Final canonical statement
 
-> Ledger is Membrane's granted document registry, structural indexing, navigation, source-local retrieval and exact source-resolution subsystem. It owns rebuildable source-bound AST/FTS/link/conversion projections and bounded reference/drift diagnostics, while authoritative bytes remain with their source owner. It executes through the shared installed resident runtime or bounded explicit owner and is consumed through usable host contracts. Blueprint owns repository truth, Cortex durable knowledge, Adapt proposals, Pull final context admission/fusion, Push faithful reduction, and CodeRight agent execution. A capability is complete only when its actual supported production path and applicable acceptance evidence prove it—not when its table, helper or architecture diagram exists.
+> Ledger is Membrane's granted Markdown/document truth, structural indexing, navigation, source-local retrieval and exact source-resolution subsystem. It owns rebuildable source-bound AST/FTS/link/conversion projections, emits direct Pull evidence with hash-bound resolvers, and keeps ordinary document projections out of Cortex while authoritative bytes remain with their source owner. It executes through the shared installed resident runtime or bounded explicit owner and is consumed through usable host contracts. Blueprint owns repository truth, Cortex durable knowledge, Adapt proposals, Pull final context admission/fusion/reduction/recovery, and CodeRight agent execution; public `push` writes durable memory through Cortex. A capability is complete only when its actual supported production path and applicable acceptance evidence prove it—not when its table, helper or architecture diagram exists.

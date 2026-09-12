@@ -15,6 +15,13 @@ impl NativeHookService for SlowRecall {
     }
 }
 
+struct StartupRecall;
+impl NativeHookService for StartupRecall {
+    fn recall(&self, _: &membrane_protocol::HookInputEnvelopeV1, _: Duration) -> Result<Option<String>, String> {
+        Ok(Some("seeded durable orientation".into()))
+    }
+}
+
 #[test]
 fn native_dispatch_is_fixed_order_with_typed_skips_for_unknown_event() {
     let input = normalize_hook_payload(json!({"event": "FutureHostEvent", "opaque": true}))
@@ -36,6 +43,21 @@ fn native_recall_deadline_returns_content_free_typed_error() {
     let encoded = serde_json::to_string(recall).expect("result serializes");
     assert!(!encoded.contains("secret input"));
     assert!(!encoded.contains("must not reach host"));
+}
+
+#[test]
+fn session_start_projects_recalled_orientation_as_additional_context() {
+    let input = normalize_hook_payload(json!({
+        "hook_event_name": "SessionStart",
+        "session_id": "startup-session",
+        "source": "resume",
+        "cwd": "D:\\workspace"
+    })).expect("payload normalizes");
+    let response = project_hook_host_response(NativeHookRuntime::new(StartupRecall, false).dispatch(&input));
+    let wire = serde_json::to_value(response).expect("response serializes");
+    assert_eq!(wire["hookSpecificOutput"]["hookEventName"], "SessionStart");
+    assert_eq!(wire["hookSpecificOutput"]["additionalContext"], "seeded durable orientation");
+    assert_eq!(wire["membraneHook"]["event"], "SessionStart");
 }
 
 #[test]
@@ -68,7 +90,7 @@ fn native_hook_source_never_spawns_node_or_python() {
 #[test]
 fn ambient_hook_budget_fits_codex_ten_second_timeout() {
     assert!(HOOK_MODULE_DEADLINE_MS < 10_000);
-    assert!(HOOK_MODULE_DEADLINE_MS >= 8_000);
+    assert!(HOOK_MODULE_DEADLINE_MS >= 3_000);
 }
 
 #[test]

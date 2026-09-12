@@ -1,7 +1,8 @@
 //! Ledger candidate observation at the planner boundary.
 //!
-//! This module deliberately runs beside, never inside, planner admission. Document candidates
-//! stay shadow-only until replay evidence authorizes a separate live-admission change.
+//! This module provides Ledger's operator/debug shadow-selection surface. The
+//! native Ledger provider supplies source-bound candidates to Pull directly;
+//! this diagnostic surface remains outside planner admission.
 
 use serde::{Deserialize, Serialize};
 
@@ -11,14 +12,6 @@ use super::doc_shadow::{
 };
 
 pub const DOC_CANDIDATE_PROVIDER_NAME: &str = "ledger";
-
-/// Opt-in flag: document candidates are shadow-only unless explicitly enabled.
-/// Default OFF — no behavior change for existing installs until `MEMBRANE_DOC_PROVIDER_ENABLED=1`.
-pub fn is_doc_provider_enabled() -> bool {
-    std::env::var("MEMBRANE_DOC_PROVIDER_ENABLED")
-        .map(|v| v == "1" || v.to_lowercase() == "true")
-        .unwrap_or(false)
-}
 
 /// Input owned by the document provider; it never joins the planner candidate set.
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]

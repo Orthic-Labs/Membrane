@@ -452,7 +452,7 @@ fn checked_in_registry_matches_canonical_parent_workspace_registry() {
     let local_sha = hex::encode(sha2::Sha256::digest(&local_normalized));
     assert_eq!(
         local_sha,
-        "03ab73429cb56a826d900a8aa7f2124c705759bc5aa268d761d6f7a74ee099ce"
+        "be60f9cf2edb0f9f089750605df36fdc4898a4301af395485aabe6d5c1cda0c2"
     );
 
     let parent_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))

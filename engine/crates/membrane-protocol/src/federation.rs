@@ -793,3 +793,15 @@ pub type InsufficientConfidenceLaneSearch = InsufficientConfidenceLaneSearchV1;
 pub type PublicationFence = PublicationFenceV1;
 pub type PublicationFenceStatus = PublicationFenceStatusV1;
 pub type PublicationFenceChange = PublicationFenceChangeV1;
+
+#[cfg(test)]
+mod tests {
+    use super::{ProviderId, PROVIDER_ORDER};
+
+    #[test]
+    fn adapt_is_not_a_direct_federation_provider() {
+        assert!(ProviderId::parse("adapt").is_none());
+        assert!(!PROVIDER_ORDER.contains(&"adapt"));
+        assert!(PROVIDER_ORDER.contains(&"ledger"));
+    }
+}

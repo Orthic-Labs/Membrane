@@ -6,21 +6,21 @@ import { atomicCanonTestHooks, validateAtomicCanons } from "./check-atomic-canon
 test("normalized canon inventory is complete & generated indexes are current", () => {
   assert.deepEqual(validateAtomicCanons(), {
     canons: 7,
-    capabilityRows: 353,
-    atoms: 340,
+    capabilityRows: 354,
+    atoms: 341,
     exploratory: 13,
     competitiveClosed: 58,
-    competitiveOpen: 282,
+    competitiveOpen: 283,
     lifecycleClosed: 0,
-    lifecycleOpen: 340,
+    lifecycleOpen: 341,
     groups: 7,
-    implementations: 354,
-    qualifications: 353,
+    implementations: 355,
+    qualifications: 354,
     decisions: 107,
     preservationRows: 728,
     legacyAtoms: 249,
     introducedSplits: 30,
-    introducedCapabilities: 78,
+    introducedCapabilities: 79,
     specRows: 479,
     unclassified: 0,
   });
@@ -88,7 +88,7 @@ test("Cortex governed-lifecycle additions preserve status boundaries", () => {
 
 // Donor intake refines acceptance without inventing delivery or capability rows.
 test("Ripwire intake preserves one qualification per capability and no donor promotion", () => {
-  const cases = [["Blueprint", "blueprint.md", "BPT", 69, 4], ["Ledger", "ledger.md", "LDG", 31, 2], ["Pull", "pull.md", "PUL", 41, 2], ["Push", "push.md", "PSH", 29, 2], ["Adapt", "adapt.md", "ADP", 75, 1], ["Cortex", "cortex.md", "CTX", 42, 1], ["Membrane", "membrane.md", "MEM", 66, 2]];
+  const cases = [["Blueprint", "blueprint.md", "BPT", 69, 4], ["Ledger", "ledger.md", "LDG", 31, 2], ["Pull", "pull.md", "PUL", 41, 2], ["Push", "push.md", "PSH", 29, 2], ["Adapt", "adapt.md", "ADP", 75, 1], ["Cortex", "cortex.md", "CTX", 42, 1], ["Membrane", "membrane.md", "MEM", 67, 2]];
   for (const [owner, file, prefix, count, decisionCount] of cases) {
     const canon = atomicCanonTestHooks.parseCanon({ owner, file, prefix, boundary: "RELEASED" });
     assert.equal(canon.capabilities.length, count, file);

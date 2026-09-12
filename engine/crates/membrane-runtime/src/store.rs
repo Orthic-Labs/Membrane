@@ -2525,7 +2525,15 @@ impl MemoryStore {
 
     pub fn try_open(db: MemDb) -> Result<Self, String> {
         let attribution = operation_attribution_for_store(db_path(&db).as_deref())?;
-        Self::try_open_with_operation_attribution(db, attribution)
+        Self::try_open_with_operation_attribution_mode(db, attribution, true)
+    }
+
+    /// Open persisted Cortex rows without initializing an embedding backend.
+    /// Foreground hooks use the FTS5/keyword lane only; persisted vectors are
+    /// retained but never queried or rewritten by this owner.
+    pub fn try_open_lexical(db: MemDb) -> Result<Self, String> {
+        let attribution = operation_attribution_for_store(db_path(&db).as_deref())?;
+        Self::try_open_with_operation_attribution_mode(db, attribution, false)
     }
 
     pub fn open_with_operation_attribution(db: MemDb, attribution: OperationAttribution) -> Self {
@@ -2537,15 +2545,46 @@ impl MemoryStore {
         db: MemDb,
         attribution: OperationAttribution,
     ) -> Result<Self, String> {
-        crate::cortex_lifecycle::ensure_memory_schema(&db.lock())
-            .map_err(|error| format!("Cortex lifecycle schema: {error}"))?;
-        let mut registry = if vector_dispatch_v2_enabled() {
+        Self::try_open_with_operation_attribution_mode(db, attribution, true)
+    }
+
+    fn try_open_with_operation_attribution_mode(
+        db: MemDb,
+        attribution: OperationAttribution,
+        initialize_embedder: bool,
+    ) -> Result<Self, String> {
+        if initialize_embedder {
+            crate::cortex_lifecycle::ensure_memory_schema(&db.lock())
+                .map_err(|error| format!("Cortex lifecycle schema: {error}"))?;
+        } else {
+            let conn = db.lock();
+            let version: i64 = conn
+                .query_row("PRAGMA user_version", [], |row| row.get(0))
+                .map_err(|error| format!("Cortex schema version unreadable: {error}"))?;
+            if version != cortex_store::memdb::LATEST_SCHEMA_VERSION {
+                return Err(format!("Cortex schema version {version} is not readable by lexical owner (expected {})", cortex_store::memdb::LATEST_SCHEMA_VERSION));
+            }
+            conn.query_row(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='memories'",
+                [],
+                |_| Ok(()),
+            ).map_err(|error| format!("Cortex memories table unavailable: {error}"))?;
+        }
+        let mut registry = if initialize_embedder && vector_dispatch_v2_enabled() {
             MemoryRegistry::new_indexed()
         } else {
             MemoryRegistry::new()
         };
         let db_path = db_path(&db);
-        let (embedder, embedder_issue, writes_enabled) = default_embedder();
+        let (embedder, embedder_issue, writes_enabled) = if initialize_embedder {
+            default_embedder()
+        } else {
+            (
+                Arc::new(HashEmbedder::new()) as Arc<dyn Embedder>,
+                Some("foreground lexical owner: embedding backend not initialized".to_owned()),
+                false,
+            )
+        };
         {
             let conn = db.lock();
             #[allow(clippy::type_complexity)]
@@ -5786,6 +5825,68 @@ impl MemoryStore {
         }
     }
 
+    /// Read-only lexical recall for foreground hooks. It uses the persisted
+    /// FTS5 projection when present, with deterministic keyword/content
+    /// scoring as its documented degraded path, and never embeds `query`.
+    pub fn recall_lexical_bounded(
+        &self,
+        query: &str,
+        limit: usize,
+        scopes: &[String],
+    ) -> (Vec<(MemoryEntry, f32)>, CortexCompletenessV1) {
+        if limit == 0 {
+            return (Vec::new(), CortexCompletenessV1::exact(0, 0, 0));
+        }
+        let registry = self.registry.read().unwrap_or_else(|error| error.into_inner());
+        let mut ranked = self
+            .fts5_lexical_hits(query, limit.saturating_mul(4).max(64))
+            .map(|hits| {
+                hits.into_iter().filter_map(|hit| {
+                    let entry = registry.get(&hit.record_id)?;
+                    if !scopes.is_empty() && !scopes.iter().any(|scope| scope == &entry.scope_id) {
+                        return None;
+                    }
+                    Some((entry.clone(), hit.score as f32))
+                }).collect::<Vec<_>>()
+            })
+            .unwrap_or_else(|| {
+                let terms = cortex_core::MemoryRetriever::query_terms(query);
+                registry.all().into_iter().filter_map(|entry| {
+                    if !scopes.is_empty() && !scopes.iter().any(|scope| scope == &entry.scope_id) {
+                        return None;
+                    }
+                    let score = cortex_core::MemoryRetriever::score_entry(entry, &terms) as f32;
+                    (score > 0.0).then(|| (entry.clone(), score))
+                }).collect()
+            });
+        let candidate_ids = ranked.iter().map(|(entry, _)| entry.id.clone()).collect::<Vec<_>>();
+        let eligible = recall_eligible_ids_among(
+            &self.db.lock(),
+            crate::time::now_millis() as i64,
+            false,
+            &candidate_ids,
+        ).unwrap_or_default();
+        ranked.retain(|(entry, _)| eligible.contains(&entry.id));
+        ranked.sort_by(|left, right| right.1.partial_cmp(&left.1).unwrap_or(std::cmp::Ordering::Equal));
+        let considered = ranked.len();
+        ranked.truncate(limit);
+        let dropped = considered.saturating_sub(ranked.len());
+        let completeness = if dropped == 0 {
+            CortexCompletenessV1::exact(considered, ranked.len(), 0)
+        } else {
+            CortexCompletenessV1 {
+                schema_version: 1,
+                state: CortexCompletenessState::LowerBound,
+                causes: vec!["lexical_ceiling_truncated".to_owned()],
+                considered_count: considered,
+                returned_count: ranked.len(),
+                dropped_count: dropped,
+                counts_exact: false,
+            }
+        };
+        (ranked, completeness)
+    }
+
     /// Scope-aware recall: unscoped calls keep the measured hybrid-candidate + cosine order.
     /// Scoped calls retrieve per scope in chain order (self, ancestors, global) and sort by
     /// cosine within each scope so a large global corpus cannot drown out workspace memories.
@@ -8890,6 +8991,50 @@ impl MemoryStore {
             context,
             &MemoryLifecycleInputV1::default(),
         )
+    }
+
+    /// Admit one rebuildable Ledger document projection into Cortex. The
+    /// projection is searchable through Cortex but remains explicitly typed
+    /// and source-bound; it is never treated as authored durable memory.
+    pub fn try_put_document_projection(
+        &self,
+        document_id: &str,
+        content: &str,
+        scope: &str,
+        source_ref: &str,
+        source_hash: &str,
+        source_revision: &str,
+        context: &MemoryEventContext,
+    ) -> Result<String, String> {
+        if document_id.trim().is_empty()
+            || source_ref.trim().is_empty()
+            || source_hash.trim().is_empty()
+            || source_revision.trim().is_empty()
+        {
+            return Err("document projection provenance is incomplete".into());
+        }
+        let source_ids = vec![
+            format!("document:{document_id}"),
+            format!("source-ref:{source_ref}"),
+            format!("source-hash:{source_hash}"),
+            format!("source-revision:{source_revision}"),
+        ];
+        self.try_put_with_record_metadata_observed(
+            &format!("document_projection:{document_id}"),
+            content,
+            scope,
+            MemoryTier::Semantic,
+            &crate::time::now_iso(),
+            &source_ids,
+            Some(MemoryRecordMetadata {
+                artifact_family: "document_projection".into(),
+                producer: "ledger".into(),
+                record_type: "document_projection".into(),
+            }),
+            context,
+            &MemoryLifecycleInputV1::default(),
+        )
+        .map(|disposition| disposition)
     }
 
     #[allow(clippy::too_many_arguments)]

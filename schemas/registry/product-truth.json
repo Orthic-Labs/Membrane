@@ -19,12 +19,12 @@
   ],
   "axisDefinitions": [
     {
-      "description": "Retrieves, admits, fuses, and publishes task-relevant evidence.",
+      "description": "Retrieves, admits, fuses, faithfully reduces, and publishes task-relevant evidence.",
       "id": "pull",
       "label": "Pull"
     },
     {
-      "description": "Performs faithful, reversible reduction of information already in flight.",
+      "description": "Writes agent-authored durable-memory records through Cortex; former reduction APIs remain only for live legacy consumers.",
       "id": "push",
       "label": "Push"
     },
@@ -61,9 +61,8 @@
   "residentServiceAuthority": "tray",
   "runtimeExecutionHost": "tray-owned-daemon",
   "schema": "membrane.product-truth.v1",
-  "toolCount": 24,
+  "toolCount": 22,
   "tools": [
-    "membrane_adapt_inspect",
     "membrane_blueprint",
     "membrane_checkpoint_load",
     "membrane_checkpoint_save",
@@ -78,7 +77,6 @@
     "membrane_feedback",
     "membrane_knowledge_propose",
     "membrane_knowledge_review",
-    "membrane_ledger",
     "membrane_memory",
     "membrane_memory_read",
     "membrane_push_prepare",

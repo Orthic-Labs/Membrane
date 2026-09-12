@@ -1,5 +1,7 @@
 # Push qualification entrypoint
 
+> Legacy compatibility qualification: Pull owns reduction, recovery, & publication in current architecture. Public `push` writes durable memory through Cortex.
+
 Push qualification checks Pull-selected headroom handoff, head/tail capture,
 skeleton fidelity, protected-span retention, compression accounting, prep
 routing, content-addressed restore, & host telemetry isolation from

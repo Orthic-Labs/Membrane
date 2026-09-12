@@ -2,7 +2,7 @@
 
 **Date:** 2026-08-25
 **Status:** canonical cross-subsystem contracts; companion to canonical Membrane doctrine
-**Scope:** contracts spanning Pull, Push, Cortex, Blueprint, Ledger, Adapt, tray/daemon/Hub, and CodeRight integration
+**Scope:** contracts spanning Pull, public push memory writes, Cortex, Blueprint, Ledger, Adapt, tray/daemon/Hub, and CodeRight integration
 **Does not supersede:** subsystem-specific semantic canons
 
 ## Executive decision
@@ -16,7 +16,7 @@ The main decisions are:
    > **A capability is not landed until the production path executes it and frozen acceptance evidence shows it meets or improves the baseline it replaces.**
 3. Keep shared integrity semantics aligned across subsystems without creating an unowned generic "contracts" layer.
 4. Pull uses deterministic RRF as its standing fusion baseline and owns bounded corrective retrieval.
-5. Push may perform query-aware reduction and preserves planner-selected ordering without becoming a second planner.
+5. Pull performs query-aware reduction and preserves planner-selected ordering without becoming a second planner.
 6. Make Cortex semantic lifecycle/curation the shared durable mechanism that satisfies Adapt's reevaluation requirements.
 7. Keep Blueprint build-time intelligence and deterministic graph traversal under Blueprint ownership.
 8. Use Adapt as the behavioral-learning loop over subsystem outcomes, not as the implementation owner of other subsystems.
@@ -143,7 +143,7 @@ State transitions require receipts where the subsystem already uses governed act
 
 # 3. Shared integrity doctrine without a generic-owner mistake
 
-Claude correctly identified that source/digest binding now appears in Ledger, Adapt, Cortex, Push, and other Membrane surfaces.
+Claude correctly identified that source/digest binding now appears in Ledger, Adapt, Cortex, Pull, and other Membrane surfaces.
 
 Do **not** respond by creating an unowned `common-contracts` dumping ground.
 
@@ -192,10 +192,10 @@ The canonical six axes become:
 | Axis | Responsibility |
 |---|---|
 | Pull | retrieve/fuse/admit task-relevant evidence |
-| Push | faithful reversible reduction |
+| Push | agent-to-Cortex durable-memory writes; former reduction is legacy compatibility |
 | Cortex | governed durable knowledge |
 | Blueprint | repository truth and graph/evidence generations |
-| **Ledger** | registered document corpus indexing/navigation/exact resolution |
+| **Ledger** | source-bound Markdown/document truth projections in SQLite, indexing/navigation/exact resolution, and direct Pull evidence |
 | Adapt | governed behavioral learning |
 
 Current product code and documentation use Ledger. Historical `Guide`/`Spine` remains only in
@@ -288,11 +288,11 @@ This makes retrieval quality learnable.
 
 ---
 
-# 6. Push improvements
+# 6. Pull reduction improvements
 
-## 6.1 Keep Push's boundary
+## 6.1 Keep Pull's reduction boundary
 
-Push executes planner-selected faithful transformations.
+Pull executes planner-selected faithful transformations.
 
 It does not:
 
@@ -305,7 +305,7 @@ It does not:
 
 LongLLMLingua is relevant for the high-level finding that compression can benefit from query/task awareness.
 
-Do not automatically add an LLM compressor to Push.
+Do not automatically add an LLM compressor to Pull.
 
 Any query-aware reduction mode uses planner-supplied task/evidence metadata and remains a faithful transform, not a second attention planner.
 
@@ -321,8 +321,8 @@ Qualification compares:
 
 ```text
 raw control
-structural query-agnostic Push
-query-aware Push
+structural query-agnostic Pull
+query-aware Pull
 ```
 
 at matched attention budgets.
@@ -341,7 +341,7 @@ Metrics:
 
 "Lost in the Middle" shows long-context models can use evidence differently depending on position.
 
-This does not make Push the ranking owner.
+This does not make Pull reduction the ranking owner.
 
 Pull/final renderer owns explicit, versioned ordering policies such as:
 
@@ -350,20 +350,20 @@ Pull/final renderer owns explicit, versioned ordering policies such as:
 - grouped evidence by dimension;
 - baseline fused order.
 
-Push must preserve selected order unless the planner explicitly chooses a representation/order policy.
+Pull reduction must preserve selected order unless the planner explicitly chooses a representation/order policy.
 
 ## 6.4 Reduction effectiveness events
 
 CodeRight should report:
 
-- Push opportunity;
+- Pull reduction opportunity;
 - transform selected;
 - bytes/tokens before/after;
 - protected-span status;
 - restore/refetch;
 - task outcome.
 
-Adapt may detect recurring waste or reduction failures but cannot rewrite Push policy directly.
+Adapt may detect recurring waste or reduction failures but cannot rewrite Pull policy directly.
 
 ---
 
@@ -426,7 +426,8 @@ At retrieval or validation:
 
 - resolve current source through Ledger;
 - honor relocation/stale/missing;
-- do not copy the whole source corpus into Cortex merely for navigation.
+- source documents remain authoritative;
+- do not copy the whole source corpus or ordinary Ledger projections into Cortex merely for navigation.
 
 ---
 
@@ -507,7 +508,7 @@ Cross-system responsibilities:
 - Langfuse-style human review queue;
 - Phoenix-style versioned evaluator/regression workflow, executed by CodeRight;
 - CHIRON/HORKOS lesson: deterministic capture and exact completion/artifact receipts where possible;
-- learn from Pull/Ledger/Push outcomes without becoming their policy owner.
+- learn from Pull/Ledger/Cortex outcomes without becoming their policy owner.
 
 ---
 
@@ -553,7 +554,7 @@ It should emit typed facts about:
 - agents/subagents;
 - user actions;
 - Membrane retrieval/context receipts;
-- Push reductions/restores;
+- Pull reductions/restores;
 - evaluator scores;
 - task/goal outcome.
 
@@ -589,7 +590,7 @@ Do not:
 - tune BM25 weights on final eval;
 - tune detector regexes on final detector test;
 - tune routing thresholds on final benchmark;
-- tune Push protected-span thresholds on final quality set.
+- tune Pull protected-span thresholds on final quality set.
 
 ## 13.2 Paired comparisons
 
@@ -623,7 +624,7 @@ Do not:
 - turn Ledger into Cortex;
 - turn Adapt into observability storage;
 - turn CodeRight generic traces into Cortex durable knowledge by default;
-- turn Push into a second planner;
+- turn Pull reduction into a second planner;
 - turn Blueprint graph into a universal ontology;
 - create a generic shared-contract crate merely because several subsystems hash things;
 - adopt RRF/query-aware compression/semantic clustering without measured qualification;
@@ -651,7 +652,7 @@ These motivate hypotheses and workflow patterns. Membrane's own frozen evaluatio
 
 # 17. Final system statement
 
-> **Membrane has six axes: Pull, Push, Cortex, Blueprint, Ledger, and Adapt. Each owns a distinct evidence problem. A mechanism is not complete because code exists; it is complete only when the production path executes it and qualified evidence shows it satisfies the baseline. CodeRight supplies real execution outcomes, Adapt learns behavioral patterns, Cortex governs durable knowledge, Ledger navigates registered documents, Blueprint owns repository truth, Pull decides attention, and Push faithfully reduces what Pull selected.**
+> **Membrane has six axes: Pull, Push, Cortex, Blueprint, Ledger, and Adapt. Each owns a distinct evidence problem. A mechanism is not complete because code exists; it is complete only when the production path executes it and qualified evidence shows it satisfies the baseline. CodeRight supplies real execution outcomes, Adapt learns behavioral patterns for Cortex admission, Cortex governs durable knowledge, Ledger owns source-bound document projections and direct Pull evidence, Blueprint owns repository truth, Pull decides attention, reduction, recovery, and publication, and public `push` writes durable memory through Cortex.**
 
 
 ---

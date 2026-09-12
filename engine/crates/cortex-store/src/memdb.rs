@@ -2354,6 +2354,27 @@ impl MemDb {
         Ok(db)
     }
 
+    /// Open an existing store read-only without migrations, backfills, event
+    /// extraction, or outbox flushing. Used by bounded foreground retrieval.
+    pub fn open_read_only<P: AsRef<Path>>(path: P) -> rusqlite::Result<Self> {
+        let path = path.as_ref();
+        let conn = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY)?;
+        conn.execute_batch("PRAGMA query_only=ON; PRAGMA busy_timeout=250;")?;
+        let event_path = resolve_event_db_path(path);
+        let event_conn = Connection::open_with_flags(&event_path, OpenFlags::SQLITE_OPEN_READ_ONLY)?;
+        event_conn.execute_batch("PRAGMA query_only=ON; PRAGMA busy_timeout=250;")?;
+        let startup_wal = Arc::new([
+            startup_wal_report(&conn, Some(path)),
+            startup_wal_report(&event_conn, Some(&event_path)),
+        ]);
+        Ok(Self {
+            conn: Arc::new(Mutex::new(conn)),
+            event_conn: Arc::new(Mutex::new(event_conn)),
+            event_db_path: Some(Arc::new(event_path)),
+            startup_wal,
+        })
+    }
+
     /// Ephemeral in-memory DB (tests / no path).
     pub fn open_in_memory() -> Self {
         let mut conn = Connection::open_in_memory().expect("open in-memory sqlite");

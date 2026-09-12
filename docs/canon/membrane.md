@@ -8,7 +8,7 @@ Only committed capability rows count. Implementation, verification, qualificatio
 
 | ID | Parent | Owner | Scope | Derived rollup |
 |---|---|---|---|---|
-| MEM-G01 | — | Membrane | COMMITTED | 66 committed capabilities; 0 exploratory capability; closure derived from child rows |
+| MEM-G01 | — | Membrane | COMMITTED | 67 committed capabilities; 0 exploratory capability; closure derived from child rows |
 
 ## Capability ledger
 
@@ -80,6 +80,7 @@ Only committed capability rows count. Implementation, verification, qualificatio
 | MEM-064 | MEM-G01 | Membrane | COMMITTED | Enforce idle and activity budgets for daemon jobs. | DELIVERED | FOCUSED_PASS | PENDING | PUSHED | VERIFY | Acceptance: MEM-064; Revision: f42b6c96611cd98fa06eb21360e2b1389c67527a; Receipt: docs/provenance/migrations/2026-08-30-atomic-canons/source-consumer-reconciliation.md@acf5546a204e3ba3420cdc144b1b0d24f66940f0; Freshness: 2026-08-30 | CURRENT_BEST | Receipt: docs/provenance/foundation/2026-08-31-competitive-comparison/membrane.md@abc702c2caec15f2b9165075bb9a24b3e4b26dd4; Atom: MEM-064; Compared: 30b3c211ae874f369bed3fe92eb94b2fc5acbb16 |
 | MEM-065 | MEM-G01 | Membrane | COMMITTED | Enforce daemon job token budgets. | DELIVERED | FOCUSED_PASS | PENDING | PUSHED | VERIFY | Acceptance: MEM-065; Revision: f42b6c96611cd98fa06eb21360e2b1389c67527a; Receipt: docs/provenance/migrations/2026-08-30-atomic-canons/source-consumer-reconciliation.md@acf5546a204e3ba3420cdc144b1b0d24f66940f0; Freshness: 2026-08-30 | CURRENT_BEST | Receipt: docs/provenance/foundation/2026-08-31-competitive-comparison/membrane.md@abc702c2caec15f2b9165075bb9a24b3e4b26dd4; Atom: MEM-065; Compared: 30b3c211ae874f369bed3fe92eb94b2fc5acbb16 |
 | MEM-066 | MEM-G01 | Membrane | COMMITTED | Emit H5 daemon scheduling observations. | DELIVERED | FOCUSED_PASS | PENDING | PUSHED | VERIFY | Acceptance: MEM-066; Revision: f42b6c96611cd98fa06eb21360e2b1389c67527a; Receipt: docs/provenance/migrations/2026-08-30-atomic-canons/source-consumer-reconciliation.md@acf5546a204e3ba3420cdc144b1b0d24f66940f0; Freshness: 2026-08-30 | CURRENT_BEST | Receipt: docs/provenance/foundation/2026-08-31-competitive-comparison/membrane.md@abc702c2caec15f2b9165075bb9a24b3e4b26dd4; Atom: MEM-066; Compared: 30b3c211ae874f369bed3fe92eb94b2fc5acbb16 |
+| MEM-067 | MEM-G01 | Membrane | COMMITTED | Inject one bounded startup/resume/clear/compact orientation packet through native SessionStart for Codex and Claude, using the shared planner to report repository identity, published Blueprint generation/freshness, Cortex knowledge, Ledger/evidence, Adapt/taste, provider availability, and typed omissions without graph/store construction or dump. | PARTIAL | PENDING | PENDING | LOCAL | REPAIR_WIRE | PENDING | CURRENT_INCOMPLETE | Receipt: docs/provenance/foundation/2026-09-12-session-startup/membrane.md@1cca8df23ec920573a72ce656ef019385cea3fda; Atom: MEM-067; Compared: 30b3c211ae874f369bed3fe92eb94b2fc5acbb16 |
 
 ## Implementation register
 
@@ -98,6 +99,7 @@ Only committed capability rows count. Implementation, verification, qualificatio
 | MEM-I011 | MEM-011 | `engine/crates/membrane-mcp/src/jsonrpc.rs:8-65; engine/crates/membrane-runtime/src/serve.rs:5611-5613` | COMPLETE | ADAPT | DELIVERED | engine/crates/membrane/src/modes.rs:884-891 |
 | MEM-I012 | MEM-012 | `engine/crates/membrane-runtime/src/mcp_http.rs:88-253` | COMPLETE | ADAPT | DELIVERED | engine/crates/membrane-runtime/src/serve.rs:5550-5563 |
 | MEM-I013 | MEM-013 | `engine/crates/membrane-mcp/src/tools.rs:114-156`; `engine/crates/membrane-mcp/src/jsonrpc.rs:14-16` | `tools/list` exposes only `membrane_context` by default & adds memory, Blueprint, or diagnostic groups explicitly. Seventeen tool descriptions remain generic & require qualification/polish. | RECONCILE | DELIVERED | MCP clients |
+| MEM-I067 | MEM-067 | `engine/crates/membrane-runtime/src/hook.rs`; `engine/crates/membrane-runtime/src/hook_diagnostics.rs`; `engine/crates/membrane-runtime/src/pull/federation.rs`; `engine/crates/membrane-runtime/src/pull/federation_sources.rs`; `engine/crates/membrane/src/activation.rs` | Current native hook work plus explicit startup atom request, 2026-09-12 | ADAPT | PARTIAL | Codex and Claude native SessionStart hook bindings |
 | MEM-I014 | MEM-014 | `engine/crates/membrane-mcp/src/resources.rs:69-181` | COMPLETE | ADAPT | DELIVERED | engine/crates/membrane-mcp/src/jsonrpc.rs:17-34 |
 | MEM-I015 | MEM-015 | `engine/crates/membrane-mcp/src/prompts.rs:25-64` | COMPLETE | ADAPT | DELIVERED | engine/crates/membrane-mcp/src/jsonrpc.rs:35-46 |
 | MEM-I016 | MEM-016 | hub/service/release/runtime receipt tests | Legacy pre-normalization source membrane.md:24@c6cfbca96e5be1d0f8de8cb9614d6158f57cc948; dependencies: MEM-003, MEM-006–MEM-010; canon: MCA §15; note: Internal semantics still conflate Hub residency with tray-owned daemon lifecycle. | ADAPT | PARTIAL | Tray/Hub/CodeRight |
@@ -222,6 +224,7 @@ Only committed capability rows count. Implementation, verification, qualificatio
 | MEM-Q064 | MEM-064 | Qualify idle/activity budget enforcement across review and corpus-health/maintenance jobs at RELEASED boundary | PENDING | PENDING | LOCAL |
 | MEM-Q065 | MEM-065 | Qualify zero-token deterministic maintenance plus bounded-token semantic review without budget bypass at RELEASED boundary | PENDING | PENDING | LOCAL |
 | MEM-Q066 | MEM-066 | Qualify H5 scheduling observations distinguish review from corpus-health/maintenance jobs through completion, deferral, cancellation, retry, & terminal failure at RELEASED boundary | PENDING | PENDING | LOCAL |
+| MEM-Q067 | MEM-067 | Prove Codex/Claude SessionStart registration and byte-correct additionalContext for startup, resume, clear, compact, Hub-on, Hub-off, stale Blueprint, provider omission, and bounded packet paths at RELEASED boundary | PENDING | PENDING | LOCAL |
 
 ## Decision register
 

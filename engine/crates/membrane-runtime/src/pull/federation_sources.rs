@@ -3,7 +3,7 @@
 //! Providers receive typed owner handles. They do not open Cortex, catalog
 //! storage, or Blueprint transport themselves.
 
-use membrane_federation::blueprint_client::{BlueprintClient, ContextualBlueprintSource};
+use membrane_federation::blueprint_client::{BlueprintBounds, BlueprintClient, BlueprintQuery, ContextualBlueprintSource};
 use membrane_federation::providers::rules::{
     DeliveryKey, DeliveryLedger, DeliveryMode, DeliveryReceipt, LedgerError, RuleDocument,
     RuleFuture, RuleSource, RuleSourceError, RuleSourceResponse,
@@ -69,6 +69,16 @@ impl NativeSourceBindings {
         Self::with_store(repository_root, scope_grant_id, store)
     }
 
+    /// Hub-off hook bindings read the published Blueprint generation.  This
+    /// path must not trigger a cold graph rebuild for freshness accounting.
+    pub fn for_ambient_repository(
+        repository_root: &Path,
+        scope_grant_id: Option<&str>,
+    ) -> Result<Self, String> {
+        let store = crate::service::open_installed_lexical_store()?;
+        Self::with_ambient_store(repository_root, scope_grant_id, store)
+    }
+
     pub fn with_store(
         _repository_root: &Path,
         scope_grant_id: Option<&str>,
@@ -77,11 +87,29 @@ impl NativeSourceBindings {
         Self::with_store_and_deadline(_repository_root, scope_grant_id, store, None)
     }
 
+    pub(crate) fn with_ambient_store(
+        repository_root: &Path,
+        scope_grant_id: Option<&str>,
+        store: crate::MemoryStore,
+    ) -> Result<Self, String> {
+        Self::with_store_and_deadline_mode(repository_root, scope_grant_id, store, None, true)
+    }
+
     pub(crate) fn with_store_and_deadline(
         _repository_root: &Path,
         scope_grant_id: Option<&str>,
         store: crate::MemoryStore,
         deadline: Option<membrane_federation::deadline::Deadline>,
+    ) -> Result<Self, String> {
+        Self::with_store_and_deadline_mode(_repository_root, scope_grant_id, store, deadline, false)
+    }
+
+    fn with_store_and_deadline_mode(
+        _repository_root: &Path,
+        scope_grant_id: Option<&str>,
+        store: crate::MemoryStore,
+        deadline: Option<membrane_federation::deadline::Deadline>,
+        persisted_freshness: bool,
     ) -> Result<Self, String> {
         let catalog_path = crate::catalog::default_catalog_path()
             .map_err(|error| format!("resolve context catalog: {error}"))?;
@@ -106,6 +134,7 @@ impl NativeSourceBindings {
                 store: store.clone(),
                 cancellations: cancellations.clone(),
                 temporal_queries: temporal_queries.clone(),
+                lexical_only: persisted_freshness,
             })),
             scope_grant: Some(Arc::new(RuntimeScopeGrantSource {
                 catalog,
@@ -113,7 +142,7 @@ impl NativeSourceBindings {
                 deadline,
                 grant_id: scope_grant_id.map(str::to_owned),
             })),
-            freshness: Some(Arc::new(RuntimeFreshnessSource { store, deadline })),
+            freshness: Some(Arc::new(RuntimeFreshnessSource { store, deadline, blueprint: blueprint.clone(), persisted_freshness })),
             blueprint: Some(blueprint.clone()),
             blueprint_contextual: Some(blueprint),
             release: Some(RuntimeReleaseSource),
@@ -164,6 +193,7 @@ struct RuntimeMemorySource {
     store: crate::MemoryStore,
     cancellations: Arc<Mutex<HashMap<String, CancellationToken>>>,
     temporal_queries: Arc<Mutex<HashMap<String, cortex_store::TemporalFactQuery>>>,
+    lexical_only: bool,
 }
 
 impl MemoryCandidateSource for RuntimeMemorySource {
@@ -179,6 +209,7 @@ impl MemoryCandidateSource for RuntimeMemorySource {
         let store = self.store.clone();
         let cancellations = self.cancellations.clone();
         let temporal_queries = self.temporal_queries.clone();
+        let lexical_only = self.lexical_only;
         let query = query.clone();
         Box::pin(async move {
             let cancellation = cancellations
@@ -191,15 +222,16 @@ impl MemoryCandidateSource for RuntimeMemorySource {
                 .lock()
                 .ok()
                 .and_then(|queries| queries.get(&query.request_id).cloned());
-            let payload = crate::pull::federation::memory_candidates_payload_for_descriptor_cancellable_with_temporal(
-                &store,
-                &query.task,
-                &descriptor,
-                64,
-                Some(Path::new(&query.repository_root)),
-                &cancellation,
-                temporal,
-            )
+            let payload = if lexical_only {
+                crate::pull::federation::memory_candidates_payload_for_descriptor_lexical(
+                    &store, &query.task, &descriptor, 64, Some(Path::new(&query.repository_root)),
+                )
+            } else {
+                crate::pull::federation::memory_candidates_payload_for_descriptor_cancellable_with_temporal(
+                    &store, &query.task, &descriptor, 64,
+                    Some(Path::new(&query.repository_root)), &cancellation, temporal,
+                )
+            }
             .map_err(membrane_provider_sdk::ProviderError::Unavailable)?;
             let generation = query
                 .generation
@@ -324,6 +356,71 @@ impl SkillCatalogSource for RuntimeSkillsSource {
 struct RuntimeFreshnessSource {
     store: crate::MemoryStore,
     deadline: Option<membrane_federation::deadline::Deadline>,
+    blueprint: Arc<BlueprintClient>,
+    persisted_freshness: bool,
+}
+
+fn persisted_blueprint_freshness(
+    blueprint: &BlueprintClient,
+    query: &SourceQuery,
+) -> Result<SourceResponse<FreshnessSnapshotV1>, String> {
+    let request = BlueprintQuery {
+        request_id: format!("{}:freshness", query.request_id),
+        repository_id: query.repository_id.clone(),
+        repository_root: query.repository_root.clone(),
+        worktree: query.repository_root.clone(),
+        task: query.task.clone(),
+        anchors: query.anchors.clone(),
+        policy_digest: String::new(),
+        expected_generation: None,
+        symbol: None,
+        bounds: BlueprintBounds { max_candidates: 1, max_paths: 8, max_response_bytes: 4096 },
+        deadline: std::time::Duration::from_millis(1_200),
+    };
+    let result = blueprint
+        .query(&request)
+        .map_err(|error| error.to_string())?;
+    let observation = result
+        .payload
+        .as_ref()
+        .and_then(|payload| payload.get("sourceObservation"))
+        .ok_or_else(|| "blueprint_source_observation_missing".to_owned())?;
+    let indexed_head = observation.get("head").and_then(serde_json::Value::as_str)
+        .ok_or_else(|| "blueprint_source_head_missing".to_owned())?;
+    let indexed_status = observation.get("statusDigest").and_then(serde_json::Value::as_str)
+        .ok_or_else(|| "blueprint_status_digest_missing".to_owned())?;
+    let current = membrane_blueprint::git_source_observation::git_source_observation_at(Path::new(&query.repository_root));
+    let (graph_state, stale, overlay_digest, complete, reason) = match current {
+        Some(current) if current.head != indexed_head => (
+            "stale_snapshot", true, Some(current.status_digest), false,
+            Some("blueprint_generation_stale"),
+        ),
+        Some(current) if current.status_digest != indexed_status => (
+            // Published graph does not contain current working-tree edits;
+            // without an attached overlay, keep Blueprint explicitly stale.
+            "stale_snapshot", true, Some(current.status_digest), false,
+            Some("blueprint_overlay_unattached"),
+        ),
+        Some(_) => ("clean", false, None, true, None),
+        None => ("indeterminate", true, None, false, Some("source_observation_unavailable")),
+    };
+    let snapshot_id = format!("blueprint:{}:{}", result.generation, indexed_head);
+    Ok(SourceResponse {
+        value: FreshnessSnapshotV1 {
+            graph_state: graph_state.to_owned(),
+            generation: Some(result.generation.clone()),
+            snapshot_id: Some(snapshot_id),
+            base_commit: Some(indexed_head.to_owned()),
+            overlay_digest,
+            stale,
+        },
+        generation: Some(result.generation),
+        complete,
+        warnings: reason.into_iter().map(|code| SourceWarning {
+            code: code.to_owned(),
+            detail_id: Some(query.request_id.clone()),
+        }).collect(),
+    })
 }
 
 impl FreshnessSource for RuntimeFreshnessSource {
@@ -339,7 +436,13 @@ impl FreshnessSource for RuntimeFreshnessSource {
         let store = self.store.clone();
         let root = PathBuf::from(&query.repository_root);
         let deadline = self.deadline;
+        let blueprint = self.blueprint.clone();
+        let persisted_freshness = self.persisted_freshness;
         Box::pin(async move {
+            if persisted_freshness {
+                return persisted_blueprint_freshness(&blueprint, query)
+                    .map_err(membrane_provider_sdk::ProviderError::Unavailable);
+            }
             let verdict = crate::freshness::evaluate_repository_freshness_until(&store, root, deadline);
             let graph_state = serde_json::to_string(&verdict.graph_state)
                 .unwrap_or_else(|_| "\"indeterminate\"".to_owned())
@@ -588,6 +691,7 @@ mod tests {
             store,
             cancellations,
             temporal_queries,
+            lexical_only: false,
         };
         let repository = tempfile::tempdir().unwrap();
         let query = SourceQuery {

@@ -307,6 +307,33 @@ pub fn delete_facts_by_owner(
             )?;
         }
     }
+    if provider_id.is_none() {
+        // Complete generations written by the native builder predate
+        // `fact_owner`; recover their ownership from path/provider indexes so
+        // the first incremental repair can replace rows without collisions.
+        let mut node_ids = Vec::new();
+        {
+            let mut statement = tx.prepare("SELECT node_id FROM node_provider WHERE source_path = ?1")?;
+            let rows = statement.query_map(params![path], |row| row.get::<_, String>(0))?;
+            node_ids.extend(rows.collect::<Result<Vec<_>, _>>()?);
+        }
+        for node_id in &node_ids {
+            tx.execute("DELETE FROM symbols WHERE id = ?1", params![node_id])?;
+            tx.execute("DELETE FROM annotation_nodes WHERE id = ?1", params![node_id])?;
+            tx.execute("DELETE FROM node_provider WHERE node_id = ?1", params![node_id])?;
+        }
+        let edge_pattern = format!("%\"path\":\"{}\"%", path.replace('"', ""));
+        let mut edge_ids = Vec::new();
+        {
+            let mut statement = tx.prepare("SELECT id FROM edges WHERE evidence LIKE ?1")?;
+            let rows = statement.query_map(params![edge_pattern], |row| row.get::<_, String>(0))?;
+            edge_ids.extend(rows.collect::<Result<Vec<_>, _>>()?);
+        }
+        for edge_id in edge_ids { tx.execute("DELETE FROM edges WHERE id = ?1", params![edge_id])?; }
+        tx.execute("DELETE FROM files WHERE path = ?1", params![path])?;
+        tx.execute("DELETE FROM symbols WHERE path = ?1", params![path])?;
+        tx.execute("DELETE FROM node_provider WHERE source_path = ?1", params![path])?;
+    }
     Ok(owners)
 }
 
@@ -461,7 +488,10 @@ pub fn upsert_parsed_edge(
         ],
     ).map_err(|e| e.to_string())?;
 
-    if let Some(source_path) = source_node_path {
+    let source_path = source_node_path.or_else(|| {
+        evidence.as_array().and_then(|items| items.iter().find_map(|item| item.get("path").and_then(Value::as_str)))
+    });
+    if let Some(source_path) = source_path {
         tx.execute(
             "INSERT OR REPLACE INTO fact_owner(fact_id, fact_kind, source_path, source_digest, provider_id, provider_version, freshness_domain, fact_kind_detail)
              VALUES (?1, 'edge', ?2, ?3, ?4, ?5, 'structural', ?6)",

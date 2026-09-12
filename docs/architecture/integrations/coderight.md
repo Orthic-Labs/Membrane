@@ -1,5 +1,7 @@
 # CodeRight ↔ Membrane Observability, Learning, and Evaluation Integration
 
+> Current boundary: Pull owns context selection, faithful reduction, recovery, & publication. Public `push` writes agent-authored durable memory through Cortex; former Push reduction behavior remains only for live legacy consumers.
+
 **Date:** 2026-08-25  
 **Status:** target integration architecture for CodeRight and Membrane  
 **Scope:** CodeRight harness events, Membrane capability binding, Adapt evidence flow, Cortex/Ledger persistence boundaries, generic eval/trace infrastructure, and the closed improvement loop  
@@ -43,7 +45,7 @@ There are distinct data classes and owners:
 - Ledger registers/indexes/resolves document-shaped sources and generated virtual documents.
 - Blueprint owns repository truth.
 - Pull owns final context evidence fusion/admission.
-- Push owns faithful reduction.
+- Pull owns faithful reduction and recovery.
 - CodeRight consumes the resulting context/knowledge and executes the agent system.
 
 
@@ -108,7 +110,7 @@ Cortex store identity
 Ledger index identity/version
 Blueprint availability/version
 Adapt contract versions
-Pull/Push capability versions
+Pull capability version; public `push` memory-write capability
 native-only/runtime compatibility
 installation identity
 ```
@@ -236,10 +238,10 @@ Ledger is not the raw CodeRight event store.
 
 Adapt consumes evidence about behavior and produces governed Taste/Insights proposals.
 
-## 3.4 Pull/Push/Blueprint
+## 3.4 Pull/Blueprint
 
 - Pull selects/admit/fuses current task evidence.
-- Push faithfully reduces selected evidence.
+- Pull faithfully reduces and recovers selected evidence.
 - Blueprint owns repository/code truth.
 - CodeRight consumes their outputs but does not replicate their canonical stores.
 
@@ -341,7 +343,7 @@ Observation kinds should cover at least:
 - completion accepted/rejected;
 - user correction/steer;
 - Membrane retrieval/context result;
-- Push reduction/restore;
+- Pull reduction/restore;
 - evaluator outcome.
 
 Mechanical facts belong here rather than regex inference.
@@ -445,7 +447,7 @@ Span types:
 - tool;
 - retrieval;
 - Membrane context;
-- Push transform;
+- Pull transform;
 - subagent;
 - verifier;
 - evaluator;
@@ -518,7 +520,7 @@ An experiment compares a controlled change over a fixed dataset:
 - context policy A/B;
 - Taste enabled/disabled;
 - Insight guard enabled/disabled;
-- Push mode;
+- Pull reduction mode;
 - Ledger retrieval strategy;
 - agent/orchestration strategy;
 - harness change.
@@ -640,7 +642,7 @@ This enables measurement of:
 - Blueprint evidence;
 - provider omissions;
 - Pull sufficiency;
-- Push reductions;
+- Pull reductions;
 - tokens by source/class;
 - whether the model later used/ignored/requeried evidence.
 
@@ -802,7 +804,7 @@ Actions:
 | registered Markdown/index | Ledger |
 | generated session/handoff document | Ledger after virtual-source qualification |
 | context packet/receipt | Pull/Membrane |
-| reduction artifact/receipt | Push |
+| reduction artifact/receipt | Pull |
 | routing/action | CodeRight |
 
 ---
@@ -835,7 +837,7 @@ For each relevant model call/task record:
 - Cortex record ids;
 - Blueprint evidence refs;
 - omissions;
-- Push transforms;
+- Pull transforms;
 - model route;
 - final evaluator outcome.
 
@@ -849,7 +851,7 @@ Then record observable follow-up:
 
 Adapt may convert recurring failures into Insights.
 
-The owning subsystem remains Pull/Ledger/Push.
+The owning subsystem remains Pull/Ledger/Cortex; public `push` is the memory-write operation.
 
 ---
 
@@ -970,7 +972,7 @@ CodeRight should expose metrics for both harness engineering and Adapt learning.
 - Ledger retrieval success;
 - stale/relocation failures;
 - manual search after packet;
-- Push token reduction/restores.
+- Pull token reduction/restores.
 
 ---
 
@@ -995,4 +997,4 @@ Do not:
 
 # 20. Final canonical integration statement
 
-> **CodeRight is the execution and evaluation harness. Membrane is mandatory context, durable-knowledge, document-navigation, repository-evidence, reduction, and behavioral-learning infrastructure. CodeRight emits exact runtime events, transcript references, execution observations, and evaluation outcomes. Users explicitly select transcripts for Adapt; exact source/hash/span binding plus required review governs Taste proposals. Cortex governs durable admission and retrieval; Ledger indexes and resolves registered documents; Blueprint owns repository truth; Pull decides task attention; Push faithfully reduces selected evidence. CodeRight then consumes those outputs to route models, build context, run guards/evaluators, and improve the harness, while measured outcomes flow back into Adapt and the subsystem-specific evaluation loops.**
+> **CodeRight is the execution and evaluation harness. Membrane is mandatory context, durable-knowledge, document-navigation, repository-evidence, reduction, and behavioral-learning infrastructure. CodeRight emits exact runtime events, transcript references, execution observations, and evaluation outcomes. Users explicitly select transcripts for Adapt; exact source/hash/span binding plus required review governs Taste proposals. Cortex governs durable admission and retrieval; Ledger indexes and resolves registered documents; Blueprint owns repository truth; Pull decides task attention, faithfully reduces selected evidence, and recovers exact sources. Public `push` writes durable memory through Cortex. CodeRight then consumes those outputs to route models, build context, run guards/evaluators, and improve the harness, while measured outcomes flow back into Adapt and the subsystem-specific evaluation loops.**

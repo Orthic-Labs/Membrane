@@ -5,7 +5,9 @@
 //! A wire caller's reviewer/authority strings never confer review permission.
 //! Trust is loaded from an installation-owned file, never a request path.
 
-use crate::{digest::digest_str, MemoryStore};
+use crate::{digest::{digest_bytes, digest_str}, MemoryStore};
+use crate::store::{MemoryEventContext, MemoryLifecycleInputV1};
+use cortex_core::MemoryTier;
 use cortex_store::TemporalFact;
 use cortex_store::temporal::{
     validate_fact_proposal, TemporalInstantV1, TemporalValidityReceiptV1, TemporalValidityV1,
@@ -177,8 +179,95 @@ pub(crate) fn ensure_memory_schema(db: &Connection) -> rusqlite::Result<()> {
          CREATE INDEX IF NOT EXISTS cortex_lifecycle_review_signals_v1_memory
            ON cortex_lifecycle_review_signals_v1(memory_id);
          CREATE INDEX IF NOT EXISTS cortex_lifecycle_review_signals_v1_scope
-           ON cortex_lifecycle_review_signals_v1(scope_id);"
+           ON cortex_lifecycle_review_signals_v1(scope_id);
+         -- Agent push keeps immutable source bytes beside the searchable
+         -- memory row. Derived/embedded forms can evolve without replacing
+         -- what the caller submitted.
+         CREATE TABLE IF NOT EXISTS cortex_agent_memory_source_v1(
+           memory_id TEXT PRIMARY KEY,
+           request_id TEXT NOT NULL,
+           repository_id TEXT NOT NULL,
+           scope_id TEXT NOT NULL,
+           caller_id TEXT NOT NULL,
+           raw_body BLOB NOT NULL,
+           raw_sha256 TEXT NOT NULL,
+           recorded_at_ms INTEGER NOT NULL,
+           FOREIGN KEY(memory_id) REFERENCES memories(id)) STRICT;
+         CREATE UNIQUE INDEX IF NOT EXISTS cortex_agent_memory_source_request_v1
+           ON cortex_agent_memory_source_v1(scope_id, request_id);
+         CREATE TRIGGER IF NOT EXISTS cortex_agent_memory_source_immutable_update_v1
+           BEFORE UPDATE ON cortex_agent_memory_source_v1
+           BEGIN SELECT RAISE(ABORT, 'immutable Cortex agent memory source'); END;
+         CREATE TRIGGER IF NOT EXISTS cortex_agent_memory_source_immutable_delete_v1
+           BEFORE DELETE ON cortex_agent_memory_source_v1
+           BEGIN SELECT RAISE(ABORT, 'immutable Cortex agent memory source'); END;"
     )
+}
+
+/// Admit one agent-directed memory while retaining submitted UTF-8 bytes in
+/// an immutable Cortex source row. Request identity is scope-bound and
+/// replay-safe; authority/lifecycle are assigned by Cortex and never copied
+/// from request JSON.
+pub fn agent_memory_push(
+    store: &MemoryStore,
+    repository: &str,
+    scope: &str,
+    request_id: &str,
+    caller_id: &str,
+    body: &str,
+) -> Result<Value> {
+    if repository.trim().is_empty() || scope.trim().is_empty() || request_id.trim().is_empty()
+        || caller_id.trim().is_empty() || body.is_empty()
+    {
+        return Err(fail("memory_envelope_invalid", "repository, scope, requestId, callerId, and body are required"));
+    }
+    if body.len() > membrane_protocol::explicit::EXPLICIT_MAX_BYTES {
+        return Err(fail("memory_payload_too_large", "body exceeds 8388608 UTF-8 bytes"));
+    }
+    let body_bytes = body.as_bytes();
+    let body_hash = digest_bytes(body_bytes);
+    let request_key = digest_str(&format!("agent-memory-push\0{scope}\0{request_id}"));
+    let memory_name = format!("agent_push_{}", &request_key[7..39]);
+    {
+        let db = store.db().lock();
+        ensure_memory_schema(&db).map_err(storage)?;
+        let existing: Option<(String, String, Vec<u8>, String, String)> = db.query_row(
+            "SELECT memory_id,raw_sha256,raw_body,repository_id,caller_id
+               FROM cortex_agent_memory_source_v1 WHERE scope_id=?1 AND request_id=?2",
+            rusqlite::params![scope, request_id],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
+        ).optional().map_err(storage)?;
+        if let Some((memory_id, hash, raw, stored_repository, stored_caller)) = existing {
+            if hash != body_hash || raw != body_bytes || stored_repository != repository || stored_caller != caller_id {
+                return Err(fail("memory_push_idempotency_conflict", "requestId is already bound to different immutable source bytes or provenance"));
+            }
+            return Ok(json!({"schemaVersion":1,"memoryId":memory_id,"contentHash":hash,
+                "rawBodyBytes":raw.len(),"authority":"A2","status":"replayed",
+                "provenance":{"repositoryId":repository,"scopeId":scope,"callerId":caller_id,
+                    "requestId":request_id,"source":"cortex_agent_memory_source_v1"},
+                "lifecycle":{"managedBy":"cortex","callerAuthority":"untrusted"}}));
+        }
+    }
+    let context = MemoryEventContext::new("agent").with_session(scope).with_trace(request_id);
+    let memory_id = store.try_put_attributed_lifecycle_observed(
+        &memory_name, body, scope, MemoryTier::Semantic, "memory", "agent",
+        "agent_memory_push", &context, &MemoryLifecycleInputV1::default(),
+    ).map_err(storage)?;
+    let db = store.db().lock();
+    ensure_memory_schema(&db).map_err(storage)?;
+    db.execute(
+        "INSERT INTO cortex_agent_memory_source_v1
+         (memory_id,request_id,repository_id,scope_id,caller_id,raw_body,raw_sha256,recorded_at_ms)
+         VALUES(?1,?2,?3,?4,?5,?6,?7,?8)",
+        rusqlite::params![memory_id, request_id, repository, scope, caller_id, body_bytes, body_hash, crate::time::now_millis() as i64],
+    ).map_err(|error| {
+        if error.to_string().contains("UNIQUE") { storage("agent memory push raced with an identical request") } else { storage(error) }
+    })?;
+    Ok(json!({"schemaVersion":1,"memoryId":memory_id,"contentHash":body_hash,
+        "rawBodyBytes":body_bytes.len(),"authority":"A2","status":"stored",
+        "provenance":{"repositoryId":repository,"scopeId":scope,"callerId":caller_id,
+            "requestId":request_id,"source":"cortex_agent_memory_source_v1"},
+        "lifecycle":{"managedBy":"cortex","callerAuthority":"untrusted"}}))
 }
 fn ensure_proposal_schema(db: &Connection) -> rusqlite::Result<()> {
     db.execute_batch(
@@ -1203,6 +1292,37 @@ mod tests {
             assert_eq!(r["admissionState"], "completed", "{r}");
             r["admission"]["memoryId"].as_str().unwrap().into()
         }
+    }
+
+    #[test]
+    fn agent_push_retains_exact_bytes_and_replays_immutably() {
+        let s = Sandbox::new();
+        let body = "café\nraw source";
+        let first = agent_memory_push(&s.store, "repo", "scope", "request-1", "caller", body).unwrap();
+        assert_eq!(first["status"], "stored");
+        assert_eq!(first["rawBodyBytes"], body.len());
+        assert_eq!(first["contentHash"], digest_bytes(body.as_bytes()));
+        assert_eq!(first["authority"], "A2");
+        assert_eq!(first.pointer("/provenance/callerId").unwrap(), "caller");
+
+        let db = s.store.db().lock();
+        let raw: Vec<u8> = db.query_row(
+            "SELECT raw_body FROM cortex_agent_memory_source_v1 WHERE request_id='request-1'",
+            [], |row| row.get(0),
+        ).unwrap();
+        assert_eq!(raw, body.as_bytes());
+        let immutable = db.execute(
+            "UPDATE cortex_agent_memory_source_v1 SET raw_body='changed' WHERE request_id='request-1'",
+            [],
+        );
+        assert!(immutable.is_err());
+        drop(db);
+
+        let replay = agent_memory_push(&s.store, "repo", "scope", "request-1", "caller", body).unwrap();
+        assert_eq!(replay["status"], "replayed");
+        assert_eq!(replay["memoryId"], first["memoryId"]);
+        let conflict = agent_memory_push(&s.store, "repo", "scope", "request-1", "caller", "changed").unwrap_err();
+        assert_eq!(conflict.code, "memory_push_idempotency_conflict");
     }
 
     #[test]

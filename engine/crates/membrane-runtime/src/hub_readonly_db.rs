@@ -545,6 +545,12 @@ mod tests {
             ),
             (
                 "cortex-store/src/memdb.rs",
+                "open_read_only",
+                2,
+                "bounded startup hook read-only handles for Cortex and its event ledger",
+            ),
+            (
+                "cortex-store/src/memdb.rs",
                 "inspect_smoke_recalls",
                 1,
                 "frozen RC-2.3 read-only inspection",

@@ -783,6 +783,7 @@ Add future capabilities here when they are new product behavior rather than spli
 |---|---|---|---|
 | ADP-041 | Sage reconciliation | Converge persisted multiwriter preference writes order-independently while retaining conflicts for review. | `engine/crates/membrane-adapt/src/multiwriter.rs:63-186` at `f42b6c96611cd98fa06eb21360e2b1389c67527a` |
 | ADP-042 | Canon reconciliation | Project read-only learning lineage & insights joins with typed gaps for absent host receipts. | `engine/crates/membrane-adapt/src/lineage.rs` at `f42b6c96611cd98fa06eb21360e2b1389c67527a` |
+| MEM-067 | Explicit user request, 2026-09-12 | Inject one bounded startup/resume/clear/compact orientation packet through native SessionStart for Codex and Claude using the shared Membrane planner. | `engine/crates/membrane-runtime/src/hook_diagnostics.rs`; `engine/crates/membrane/src/activation.rs`; explicit user request, 2026-09-12 |
 | ADP-043 | Sage reconciliation | Detect duplicate assignment execution. | Harness specification/runtime-source reconciliation, 2026-08-31 |
 | ADP-044 | Sage reconciliation | Detect orchestrator role leakage. | Harness specification/runtime-source reconciliation, 2026-08-31 |
 | ADP-045 | Sage reconciliation | Detect lane scope overlap. | Harness specification/runtime-source reconciliation, 2026-08-31 |

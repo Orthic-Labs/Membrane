@@ -5,7 +5,6 @@
       "membrane_context",
       "membrane_source_read",
       "membrane_blueprint",
-      "membrane_ledger",
       "membrane_knowledge_propose",
       "membrane_memory",
       "membrane_memory_read",
@@ -28,10 +27,6 @@
       "membrane_source_read",
       "membrane_blueprint"
     ],
-    "ledger": [
-      "membrane_source_read",
-      "membrane_ledger"
-    ],
     "diagnostic": [
       "membrane_diagnostic_workspace",
       "membrane_diagnostic_mutation",
@@ -44,9 +39,6 @@
     "push": [
       "membrane_push_prepare",
       "membrane_push_resolve"
-    ],
-    "adapt": [
-      "membrane_adapt_inspect"
     ],
     "operator": [
       "membrane_knowledge_review"

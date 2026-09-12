@@ -20,6 +20,7 @@
     "artifact_families": [
       "memory",
       "adapt",
+      "document_projection",
       "blueprint",
       "skill_output",
       "rule",

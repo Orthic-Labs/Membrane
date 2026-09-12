@@ -176,7 +176,7 @@ fn canonical_digests_are_pinned() {
     let expected: &[(&str, &str)] = &[
         (
             "ScopeGrantV1",
-            "sha256:21a54f593f194de52b30ebbde911aea78025c403becfbd62ae34ed1969bf43dd",
+            "sha256:1e5e9edc4f8dabdd25f8715ed2009cbe55a55ac1af3c3f458738756e038e2539",
         ),
         (
             "ContextCandidateSetV1",

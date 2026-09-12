@@ -87,6 +87,12 @@ fn run_git(root: &Path, args: &[&str]) -> Result<Vec<u8>, ()> {
 /// for the `snapshot`/`generation` reference kinds.
 fn treeish_semantic_graph(repo_root: &Path, treeish: &str) -> Result<Value, BlueprintError> {
     crate::delta_store::with_treeish_worktree(repo_root, treeish, |worktree| {
+        let historical_store = worktree.join(".agent").join("graph").join("graph.db");
+        let authorization = crate::engine::verified_construction_reason(&historical_store)
+            .map_err(|error| error.to_string())?;
+        if authorization.is_none() {
+            return Err("historical graph construction is not authorized for an existing valid store".into());
+        }
         let cancellation = crate::api::CancellationToken::new();
         let graph = crate::graph::build_generation_with_cancellation(
             worktree,

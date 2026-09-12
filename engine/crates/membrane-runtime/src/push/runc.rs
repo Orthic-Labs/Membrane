@@ -4,7 +4,7 @@
 //! stdout+stderr, produces a head/tail-capped view for context injection, spills
 //! the full output to disk when truncated, and preserves the child exit code.
 
-use crate::push::truncate;
+use crate::pull::truncate;
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 use std::collections::VecDeque;
@@ -28,7 +28,7 @@ pub struct RuncResult {
     pub spill_path: Option<PathBuf>,
     pub anchor: String,
     pub exit_code: i32,
-    pub recovery_marker: Option<crate::push::compress::RecoveryMarkerV1>,
+    pub recovery_marker: Option<crate::pull::compress::RecoveryMarkerV1>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -481,7 +481,7 @@ fn publish_spill_scoped(
         String,
         PathBuf,
         String,
-        crate::push::compress::RecoveryMarkerV1,
+        crate::pull::compress::RecoveryMarkerV1,
     ),
     String,
 > {
@@ -530,8 +530,8 @@ fn publish_spill_scoped(
     ));
     let created_at_millis = crate::time::now_millis();
     let expires_at_millis = retained.expires_at as u128;
-    let recovery = crate::push::compress::RecoveryMarkerV1 {
-        schema_version: crate::push::compress::RECOVERY_MARKER_SCHEMA_VERSION,
+    let recovery = crate::pull::compress::RecoveryMarkerV1 {
+        schema_version: crate::pull::compress::RECOVERY_MARKER_SCHEMA_VERSION,
         source_digest: format!("sha256:{digest}"),
         transform: "head_tail_spill".to_string(),
         transform_version: 1,

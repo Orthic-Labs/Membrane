@@ -18,11 +18,13 @@ const CORE: &[&str] = &[
     "membrane_temporal_fact",
     "membrane_scratchpad",
     "membrane_feedback",
-    "membrane_ledger",
     "membrane_push_prepare",
     "membrane_push_resolve",
 ];
-const ADAPT: &[&str] = &["membrane_adapt_inspect"];
+/// Stable agent-facing MCP verbs. Legacy membrane_* operations remain
+/// accepted by the native bridge for installed compatibility, but are not
+/// advertised to agents.
+const PUBLIC: &[&str] = &["pull", "push"];
 const OPERATOR: &[&str] = &["membrane_knowledge_review"];
 const DIAGNOSTIC: &[&str] = &[
     "membrane_diagnostic_workspace",
@@ -69,6 +71,27 @@ fn remaining_context_ceiling() -> Value {
 }
 
 fn schema(name: &str) -> Value {
+    if name == "pull" {
+        let mut value = schema("membrane_context");
+        value["description"] = json!("Retrieve unified, grant-aware context from Pull providers, including Blueprint, Cortex, and Ledger evidence.");
+        return value;
+    }
+    if name == "push" {
+        return json!({
+            "type":"object",
+            "required":["repository","caller","requestId","body"],
+            "properties":{
+                "repository":{"type":"string","minLength":1},
+                "caller":caller(),
+                "requestId":{"type":"string","minLength":1,"maxLength":256},
+                "callerId":{"type":"string","minLength":1,"maxLength":256},
+                "body":{"type":"string","minLength":1,"maxLength":8388608,"description":"Exact UTF-8 body stored as immutable Cortex source bytes."},
+                "keywords":{"type":"array","items":{"type":"string","minLength":1,"maxLength":256},"maxItems":64,"uniqueItems":true},
+                "lifecycle":{"type":"object"}
+            },
+            "additionalProperties":false
+        });
+    }
     if name.starts_with("membrane_push_") {
         let definitions: Value = serde_json::from_str(include_str!(
             "../../../../schemas/registry/push-tools.v1.json"
@@ -83,12 +106,6 @@ fn schema(name: &str) -> Value {
             .clone();
     }
     let (required, mut properties) = match name {
-        "membrane_adapt_inspect" => (
-            vec!["repository", "caller", "operation"],
-            json!({"repository":{"type":"string","minLength":1},"caller":caller(),
-        "operation":{"type":"string","enum":["preferences","explain","insights","proposals","status"]},
-        "limit":{"type":"integer","minimum":0,"maximum":32},"hostContext":host_context()}),
-        ),
         "membrane_context" => (
             // The runtime refuses every request without remainingContextCeiling
             // (RequestTimeH8Error::Missing), so the tool must advertise it.
@@ -113,27 +130,6 @@ fn schema(name: &str) -> Value {
                 "expectedContentHash",
             ],
             json!({"repository":{"type":"string"},"caller":caller(),"sessionId":{"type":"string","minLength":1},"sourceRef":{"type":"string"},"anchorId":{"type":"string"},"expectedContentHash":{"type":"string"}}),
-        ),
-        "membrane_ledger" => (
-            vec!["repository", "caller", "operation"],
-            json!({"repository":{"type":"string"},"caller":caller(),"sessionId":{"type":"string","minLength":1},
-                "operation":{"enum":["recall","literal","outline","sync","status","activate","erase","ingest","backlinks","related","manifests","drift"]},
-                "query":{"type":"string","minLength":1,"maxLength":4096},
-                "k":{"type":"integer","minimum":1,"maximum":32},
-                "docId":{"type":"string"},"nodeId":{"type":"string"},
-"scopeGrantId":{"type":"string"},"taskId":{"type":"string","minLength":1},
-                "expectedContentHash":{"type":"string"},"continuationCursor":{"type":"string"},
-                "maxSections":{"type":"integer","minimum":1,"maximum":256},
-                "limit":{"type":"integer","minimum":1,"maximum":256},
-                "mode":{"enum":["legacy_scan","shadow","ledger_fts"]},
-                "fromManifest":{"type":"string"},"toManifest":{"type":"string"},
-                "path":{"type":"string","minLength":1,"maxLength":4096},"sourceRef":{"type":"string","minLength":1,"maxLength":8192},
-                "sourceRevision":{"type":"string","minLength":1,"maxLength":8192},"title":{"type":"string","maxLength":1024},
-                "format":{"type":"string","minLength":1,"maxLength":128},
-                "rawInput":{"oneOf":[{"type":"string","maxLength":8388608},{"type":"array","maxItems":8388608,"items":{"type":"integer","minimum":0,"maximum":255}}]},
-                "maxRawBytes":{"type":"integer","minimum":1,"maximum":8388608},
-                "deadlineMs":{"type":"integer","minimum":1,"maximum":30000},
-                "taskGrantLevel":{"type":"string"}}),
         ),
         "membrane_blueprint" => (
             vec!["repository", "caller", "operation"],
@@ -236,8 +232,9 @@ fn schema(name: &str) -> Value {
 }
 fn annotations(name: &str) -> Value {
     match name {
-        "membrane_adapt_inspect"
-        | "membrane_push_resolve"
+        "pull" => json!({"readOnlyHint":true,"destructiveHint":false,"idempotentHint":true}),
+        "push" => json!({"readOnlyHint":false,"destructiveHint":false,"idempotentHint":true}),
+        "membrane_push_resolve"
         | "membrane_context"
         | "membrane_source_read"
         | "membrane_memory_read"
@@ -253,42 +250,21 @@ fn annotations(name: &str) -> Value {
     }
 }
 pub(crate) fn definitions() -> Value {
-    Value::Array(
-        CORE.iter().chain(DIAGNOSTIC).chain(ADAPT).chain(OPERATOR)
-            .map(|name| {
-                if name.starts_with("membrane_push_") {
-                    let entries: Value = serde_json::from_str(include_str!("../../../../schemas/registry/push-tools.v1.json")).expect("Push schemas parse");
-                    return entries.as_array().unwrap().iter().find(|v| v["name"] == *name).unwrap().clone();
-                }
-                let mut tool = json!({
-                  "name":name,"description":match *name {
-                    "membrane_context" => "Federate bounded, grant-aware context through Membrane planner, with Hub on or off.",
-                    "membrane_source_read" => "Resolve hash/revision/span-bound source reference.",
-                    "membrane_ledger" => "Navigate Ledger document index with Hub on or off. Final prompt admission remains Pull-owned.",
-                    "membrane_adapt_inspect" => "Read scoped Taste decisions, Insights & live Adapt progress.",
-                    "membrane_knowledge_propose" => "Submit untrusted knowledge proposal. No caller can self-review or admit truth.",
-                    "membrane_knowledge_review" => "Apply installation-trusted signed Cortex review or reversible recall suppression.",
-                    "membrane_memory" => "Resolve exact Cortex memory, inspect proposal state, promote checkpoints to proposals, or run bounded named recall recipes.",
-                    "membrane_memory_read" => "Resolve exact bounded Cortex memory through a read-only compatibility operation.",
-                    "membrane_temporal_fact" => "Query temporal facts or submit proposal-only temporal record with explicit cardinality policy.",
-                    _ => "Native Membrane operation.",
-                  },
-                  "inputSchema":schema(name),"annotations":annotations(name)
-                });
-                let output = match *name {
-                    "membrane_memory" => Some(include_str!("../../../../schemas/operations/membrane-memory.v1.schema.json")),
-                    "membrane_memory_read" => Some(include_str!("../../../../schemas/operations/membrane-memory-read.v1.schema.json")),
-                    "membrane_knowledge_review" => Some(include_str!("../../../../schemas/operations/membrane-knowledge-review.v1.schema.json")),
-                    "membrane_knowledge_propose" => Some(include_str!("../../../../schemas/operations/membrane-knowledge-propose.v2.schema.json")),
-                    "membrane_temporal_fact" => Some(include_str!("../../../../schemas/operations/membrane-temporal-fact.v2.schema.json")),
-                    "membrane_blueprint" => Some(include_str!("../../../../schemas/operations/membrane-blueprint.v1.schema.json")),
-                    _ => None,
-                };
-                if let Some(output) = output { tool["outputSchema"] = serde_json::from_str(output).expect("compiled operation schema"); }
-                tool
-            }).collect(),
-    )
-}fn requested(params: Option<&Value>) -> Option<Vec<&str>> {
+    Value::Array(PUBLIC.iter().map(|name| {
+        json!({
+            "name": name,
+            "description": if *name == "pull" {
+                "Retrieve unified, grant-aware task context from Pull providers, including Blueprint, Cortex, and Ledger evidence."
+            } else {
+                "Store exact submitted bytes as durable Cortex memory."
+            },
+            "inputSchema": schema(name),
+            "annotations": annotations(name)
+        })
+    }).collect())
+}
+
+fn requested(params: Option<&Value>) -> Option<Vec<&str>> {
     let list = params?.pointer("/_meta/membrane.toolsets.v1")?.as_array()?;
     let mut seen = HashSet::new();
     let mut result = Vec::new();
@@ -296,7 +272,7 @@ pub(crate) fn definitions() -> Value {
         let group = value.as_str()?;
         if !matches!(
             group,
-            "default" | "memory" | "blueprint" | "diagnostic" | "ledger" | "adapt" | "push" | "operator"
+            "default" | "memory" | "blueprint" | "diagnostic" | "push" | "operator"
         ) || !seen.insert(group)
         {
             return None;
@@ -306,35 +282,20 @@ pub(crate) fn definitions() -> Value {
     Some(result)
 }
 pub(crate) fn negotiated_definitions(params: Option<&Value>) -> Value {
-    let mut names = vec![
-        "membrane_context", "membrane_source_read", "membrane_blueprint", "membrane_ledger",
-        "membrane_knowledge_propose", "membrane_memory", "membrane_memory_read",
-        "membrane_checkpoint_save", "membrane_checkpoint_load",
-    ];
-    for group in requested(params).unwrap_or_default() {
-        let additions: &[&str] = match group {
-            "memory" => &["membrane_knowledge_propose", "membrane_memory", "membrane_memory_read",
-                "membrane_checkpoint_save", "membrane_checkpoint_load", "membrane_working_context",
-                "membrane_temporal_fact", "membrane_scratchpad", "membrane_feedback"],
-            "ledger" => &["membrane_source_read", "membrane_ledger"],
-            "push" => &["membrane_push_prepare", "membrane_push_resolve"],
-            "blueprint" => &CORE[1..3],
-            "diagnostic" => DIAGNOSTIC,
-            "adapt" => ADAPT,
-            "operator" => OPERATOR,
-            _ => &[],
-        };
-        for name in additions { if !names.contains(name) { names.push(name); } }
-    }
-    Value::Array(definitions().as_array().unwrap().iter()
-        .filter(|tool| names.contains(&tool["name"].as_str().unwrap_or("")))
-        .cloned().collect())
-}fn envelope(operation: &str, code: &str, message: &str) -> Value {
+    // Toolset negotiation is retained as a compatibility input, but the
+    // public registry is intentionally closed to pull and push.
+    let _ = requested(params);
+    definitions()
+}
+
+fn envelope(operation: &str, code: &str, message: &str) -> Value {
     let (schema_version, error_version) = membrane_protocol::operations::operation_versions(operation);
     json!({"schemaVersion":schema_version,"operation":operation,"errorVersion":error_version,"result":{"kind":"error","code":code,"message":message,"retryable":false}})
 }
 pub fn invalid_envelope_code(name: &str) -> &'static str {
     match name {
+        "pull" => "context_envelope_invalid",
+        "push" => "memory_envelope_invalid",
         "membrane_source_read" => "source_read_envelope_invalid",
         "membrane_ledger" => "ledger_envelope_invalid",
         "membrane_blueprint" => "blueprint_envelope_invalid",
@@ -389,7 +350,7 @@ fn summary_field<'a>(value: Option<&'a Value>, fallback: &'a str) -> &'a str {
 }
 /// Typed fail-closed seam. No interpreter fallback is ever attempted.
 pub(crate) fn call(name: &str, arguments: &Value) -> Value {
-    if !CORE.contains(&name) && !DIAGNOSTIC.contains(&name) && !ADAPT.contains(&name) && !OPERATOR.contains(&name) {
+    if !PUBLIC.contains(&name) && !CORE.contains(&name) && !DIAGNOSTIC.contains(&name) && !OPERATOR.contains(&name) {
         return json!({"content":[{"type":"text","text":"unknown_tool"}],"isError":true});
     }
     if let Err(message) = validate_arguments(name, arguments) {
@@ -419,6 +380,19 @@ mod tool_result_tests {
     use super::*;
 
     #[test]
+    fn public_registry_exposes_only_pull_and_push() {
+        let registry = definitions();
+        let names = registry
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|tool| tool["name"].as_str().unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(names, ["pull", "push"]);
+        assert_eq!(negotiated_definitions(None), definitions());
+    }
+
+    #[test]
     fn structured_content_is_the_only_full_payload_body() {
         let selected = "selected representation only";
         let result = json!({
@@ -439,11 +413,11 @@ mod tool_result_tests {
 
 /// Validate bounded structural vocabulary emitted by registry.
 pub fn validate_arguments(name: &str, arguments: &Value) -> Result<(), String> {
-    if !CORE.contains(&name) && !DIAGNOSTIC.contains(&name) && !ADAPT.contains(&name) && !OPERATOR.contains(&name) {
+    if !PUBLIC.contains(&name) && !CORE.contains(&name) && !DIAGNOSTIC.contains(&name) && !OPERATOR.contains(&name) {
         return Err("unknown native operation".into());
     }
     let bytes = serde_json::to_vec(arguments).map_err(|_| "invalid JSON arguments")?;
-    let max_argument_bytes = if name.starts_with("membrane_push_") {
+    let max_argument_bytes = if name == "push" || name.starts_with("membrane_push_") {
         membrane_protocol::explicit::EXPLICIT_MAX_BYTES
     } else {
         65_536

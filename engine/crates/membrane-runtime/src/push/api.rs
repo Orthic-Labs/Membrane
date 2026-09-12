@@ -22,7 +22,7 @@ pub fn execute_with_control(operation: &str, arguments: &Value,
         let request_session = arguments.pointer("/sessionId").and_then(Value::as_str).filter(|id| !id.trim().is_empty());
         let task_id = arguments.pointer("/taskId").and_then(Value::as_str).filter(|id| !id.trim().is_empty());
         match (request_session, task_id) {
-            (Some(request_session), Some(task_id)) => crate::push::selection::parse_request_time_h8(arguments, request_session, task_id).ok(),
+            (Some(request_session), Some(task_id)) => crate::pull::selection::parse_request_time_h8(arguments, request_session, task_id).ok(),
             _ => None,
         }
     } else { None };
@@ -120,7 +120,7 @@ pub fn execute_with_control(operation: &str, arguments: &Value,
         Ok(data) => {
             let envelope = json!({"schemaVersion":1,"operation":operation,"errorVersion":1,"result":{"kind":"success","data":data}});
             if let Some(ceiling) = ceiling {
-                match crate::push::egress::fit_native_response(envelope, &ceiling) {
+                match crate::pull::egress::fit_native_response(envelope, &ceiling) {
                     Ok(fitted) => fitted,
                     Err(error) => failure(operation, &error.to_string()),
                 }

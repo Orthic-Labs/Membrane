@@ -11,9 +11,8 @@ narrative overview; this file carries the source-derived facts.
 
 ## Public surface
 
-- **MCP server** — 24 tools over stdio:
+- **MCP server** — 22 tools over stdio:
 
-| `membrane_adapt_inspect` |
 | `membrane_blueprint` |
 | `membrane_checkpoint_load` |
 | `membrane_checkpoint_save` |
@@ -28,7 +27,6 @@ narrative overview; this file carries the source-derived facts.
 | `membrane_feedback` |
 | `membrane_knowledge_propose` |
 | `membrane_knowledge_review` |
-| `membrane_ledger` |
 | `membrane_memory` |
 | `membrane_memory_read` |
 | `membrane_push_prepare` |
@@ -52,8 +50,8 @@ narrative overview; this file carries the source-derived facts.
 
 | Axis | Responsibility |
 |---|---|
-| **Pull** | Retrieves, admits, fuses, and publishes task-relevant evidence. |
-| **Push** | Performs faithful, reversible reduction of information already in flight. |
+| **Pull** | Retrieves, admits, fuses, faithfully reduces, and publishes task-relevant evidence. |
+| **Push** | Writes agent-authored durable-memory records through Cortex; former reduction APIs remain only for live legacy consumers. |
 | **Cortex** | Owns governed durable-memory admission, lifecycle, and retrieval; it is not a resident service authority. |
 | **Blueprint** | Owns repository truth, evidence generations, and drift/change observation. |
 | **Ledger** | Navigates indexed document sections with hash-bound references. |

@@ -1,4 +1,8 @@
-# Membrane Push: final implementation plan and canon revision
+# Membrane Push: agent memory write compatibility record
+
+> Current architecture status: Push's former context-reduction identity is retired. Pull owns selection, faithful reduction, recovery, & publication. Public `push` is the agent-to-Cortex durable-memory write operation. Remaining `membrane_push_*` material below is retained only for live legacy consumers.
+
+All normative reduction language below describes that retained compatibility surface; current product ownership is Pull. This file does not define an active reduction subsystem.
 
 ## Post-merge implementation status — 5 September 2026
 

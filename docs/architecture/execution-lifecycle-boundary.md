@@ -22,7 +22,7 @@ CodeRight treats Membrane as a required installed dependency. It adopts a compat
 | Cortex | Recall, memory operations, checkpoints & authorized durable writes | Automatic consolidation or maintenance |
 | Ledger | Registration, indexing, search, navigation & source resolution | Watchers & scheduled reindexing |
 | Adapt | Inspection, feedback & authorized proposal operations | Automatic observation, review & proposal generation |
-| Push | Explicit prepare, reduction & resolution | Automatic interception or background reduction |
+| Push | Explicit agent-to-Cortex durable-memory write; legacy prepare/resolution where consumed | Automatic interception or background reduction |
 
 Explicit execution uses installed product entry points, bounded process lifetime & existing subsystem services. It preserves repository authorization, caller identity, grants, freshness, generation/schema validation, transaction semantics & concurrency control. It never starts Hub, installs a service, enrolls a watcher or leaves a resident process behind. This contract does not authorize bypassing another subsystem's storage owner or protected effects.
 
