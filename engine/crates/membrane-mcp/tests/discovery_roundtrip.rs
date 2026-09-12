@@ -7,6 +7,7 @@ fn discovery_matches_initialize_contract_and_public_registry() {
     let discovery = discovery_response();
     assert_eq!(discovery["protocolVersion"], initialize_response()["protocolVersion"]);
     assert_eq!(discovery["serverInfo"]["name"], "membrane");
+    assert!(initialize_response()["instructions"].as_str().unwrap().contains("Use pull for federated context & push for durable Cortex memory"));
     let tools = discovery["tools"].as_array().unwrap();
     assert_eq!(tools.len(), 2);
     assert_eq!(tools.iter().map(|tool| tool["name"].as_str().unwrap()).collect::<Vec<_>>(), ["pull", "push"]);

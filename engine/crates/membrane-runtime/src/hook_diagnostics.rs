@@ -79,7 +79,14 @@ pub(crate) fn fence_enforcement_enabled(input: &HookInputEnvelopeV1) -> bool {
 /// fail solely because no resident holder exists (execution-lifecycle
 /// boundary), so the ambient injection loop works with Hub off.
 const RECALL_RESIDENT_BUDGET_MS: u64 = 600;
-const RECALL_ONE_SHOT_BUDGET_MS: u64 = HOOK_MODULE_DEADLINE_MS - RECALL_RESIDENT_BUDGET_MS - 200;
+const RECALL_BUDGET_MARGIN_MS: u64 = 200;
+
+fn recall_one_shot_budget_ms(elapsed: Duration) -> u64 {
+    HOOK_MODULE_DEADLINE_MS
+        .saturating_sub(elapsed.as_millis() as u64)
+        .saturating_sub(RECALL_BUDGET_MARGIN_MS)
+        .max(10)
+}
 
 /// Installed resident endpoint (port + bearer token) when this binary runs
 /// from an installed root; development falls back to `MEMBRANE_API_TOKEN_FILE`
@@ -131,6 +138,7 @@ pub(crate) fn resident_recall_for_task(input: &HookInputEnvelopeV1, task: &str) 
 }
 
 pub(crate) fn recall_attempt(input: &HookInputEnvelopeV1, task: &str) -> RecallOutcome {
+    let started = Instant::now();
     let root = project_root(input);
     let session = input.session_id.as_deref().unwrap_or("host-native");
     let client = input.payload.get("client").and_then(Value::as_str).or_else(|| input.payload.get("client_id").and_then(Value::as_str)).unwrap_or_else(|| if input.payload.get("turn_id").is_some() { "codex" } else { "claude" });
@@ -162,7 +170,7 @@ pub(crate) fn recall_attempt(input: &HookInputEnvelopeV1, task: &str) -> RecallO
     }
     // Bounded ambient federation in this process under the configured cap,
     // with the remaining module budget as its deadline.
-    match crate::pull::federation::hook_mode_federate_with_observation(task, &root, max_tokens, client, session, RECALL_ONE_SHOT_BUDGET_MS, observed_ceiling) {
+    match crate::pull::federation::hook_mode_federate_with_observation(task, &root, max_tokens, client, session, recall_one_shot_budget_ms(started.elapsed()), observed_ceiling) {
         Ok(response) => {
             let outcome = outcome_from_response(&response, "one_shot");
             if is_session_start(input) { startup_outcome(input, outcome, &response) } else { outcome }
@@ -657,6 +665,12 @@ mod tests {
         let token = root.path().join("api-token");
         fs::write(&token, "installed-token\n").expect("token file");
         assert!(token_from_file(&token).is_some());
+    }
+
+    #[test]
+    fn hub_off_recall_reclaims_unused_resident_budget() {
+        assert_eq!(recall_one_shot_budget_ms(Duration::ZERO), HOOK_MODULE_DEADLINE_MS - RECALL_BUDGET_MARGIN_MS);
+        assert_eq!(recall_one_shot_budget_ms(Duration::from_millis(RECALL_RESIDENT_BUDGET_MS)), HOOK_MODULE_DEADLINE_MS - RECALL_RESIDENT_BUDGET_MS - RECALL_BUDGET_MARGIN_MS);
     }
 
     #[test]
