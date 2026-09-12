@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { resolveTargetRoot } from "@rightkit/release/cargo-target.mjs";
 
@@ -25,6 +25,7 @@ export function writeUnsignedCandidateManifest({ hubRoot, installerPath, version
   }
   if (!existsSync(installerPath)) throw new Error(`installer artifact missing: ${installerPath}`);
   const artifactSha256 = createHash("sha256").update(readFileSync(installerPath)).digest("hex");
+  const artifact = { path: basename(installerPath), sha256: artifactSha256, size: statSync(installerPath).size };
   const candidate = {
     schema: "membrane.release-evidence.v1",
     product: "Membrane Hub",
@@ -32,6 +33,7 @@ export function writeUnsignedCandidateManifest({ hubRoot, installerPath, version
     sourceCommit: identity.commit,
     dirty: identity.dirty,
     release: {
+      tag: `v${version}`,
       version,
       commit: identity.commit,
       tree: identity.sourceTreeSha256,
@@ -39,11 +41,19 @@ export function writeUnsignedCandidateManifest({ hubRoot, installerPath, version
       target: "windows-x86_64",
       artifact_sha256: artifactSha256,
     },
-    artifact: { path: installerPath, sha256: artifactSha256, size: statSync(installerPath).size },
+    artifact,
     signing: { status: "unsigned", reason: "internal_local_unsigned_route" },
+  };
+  const sbom = {
+    schema: "membrane.sbom.v1",
+    signing: candidate.signing,
+    artifact,
+    package: { name: "membrane-hub", version, target: "windows-x86_64" },
+    components: [{ name: "Membrane Hub Windows installer", type: "application", sha256: artifactSha256 }],
   };
   mkdirSync(dirname(outputPath), { recursive: true });
   writeFileSync(outputPath, `${JSON.stringify(candidate, null, 2)}\n`);
+  writeFileSync(join(dirname(outputPath), "sbom.json"), `${JSON.stringify(sbom, null, 2)}\n`);
   return candidate;
 }
 

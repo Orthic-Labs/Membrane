@@ -200,6 +200,7 @@ test("local unsigned route emits a non-fabricated release-evidence candidate nex
     assert.equal(candidate.profile, "internal-unsigned");
     assert.equal(candidate.sourceCommit, identity.commit);
     assert.equal(candidate.dirty, true);
+    assert.equal(candidate.release.tag, "v9.9.9");
     assert.equal(candidate.release.target, "windows-x86_64");
     assert.equal(candidate.release.generation, identity.sourceTreeSha256);
     assert.equal(candidate.signing.status, "unsigned");
@@ -207,6 +208,9 @@ test("local unsigned route emits a non-fabricated release-evidence candidate nex
     assert.equal(candidate.release.artifact_sha256, expectedArtifactSha256);
     assert.ok(existsSync(outputPath));
     assert.deepEqual(JSON.parse(readFileSync(outputPath, "utf8")), candidate);
+    const sbom = JSON.parse(readFileSync(join(scratch, "bundle", "nsis", "sbom.json"), "utf8"));
+    assert.equal(sbom.schema, "membrane.sbom.v1");
+    assert.deepEqual(sbom.artifact, candidate.artifact);
 
     assert.throws(
       () => writeUnsignedCandidateManifest({ hubRoot: join(scratch, "no-such-hub"), installerPath, version: "9.9.9", outputPath }),

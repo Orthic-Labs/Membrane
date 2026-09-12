@@ -5,7 +5,18 @@ Adrian authorized this temporary internal-development route on 2026-09-07.
 is `.rightkit-local-development.json`: only `Orthic-Labs/Membrane`, native Windows,
 & unsigned installer development. Remove that file to restore GitHub-only builds.
 
-From primary Membrane checkout:
+From primary Membrane checkout, run one command:
+
+```powershell
+pnpm run release:local:win:unsigned
+```
+
+It builds through RightKit, creates installer-bound `candidate.json` &
+`sbom.json`, runs installed `internal-unsigned` qualification, then installs
+that exact installer at stable `current`. Its final JSON names installer hash,
+qualification evidence, installed root & version.
+
+Build only:
 
 ```powershell
 pnpm --dir apps/membrane-hub run release:build:win:unsigned

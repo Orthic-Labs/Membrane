@@ -33,6 +33,7 @@
     "release:finalize:windows": "node scripts/release/right-git-release-chain.mjs finalize-windows",
     "release:finalize:macos": "node scripts/release/right-git-release-chain.mjs finalize-macos",
     "release:qualify:installed": "node scripts/release/right-git-release-chain.mjs qualify-installed",
+    "release:local:win:unsigned": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/release/local-windows-development.ps1",
     "release:verify:evidence": "node scripts/release/right-git-release-chain.mjs evidence-verification",
     "release:publish:qualified": "node scripts/release/right-git-release-chain.mjs publish-qualified",
     "rightkit:ax:plugin": "right-ax plugin validate .",
