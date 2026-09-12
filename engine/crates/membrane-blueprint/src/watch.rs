@@ -436,7 +436,32 @@ impl NativeWatcher {
         self.poll_with_cancellation(schedule_rebuild, &CancellationToken::new())
     }
 
-    fn take_native_events(&mut self) -> Result<Vec<WatchEvent>, WatchError> {
+    fn native_event_is_source(&self, event: &WatchEvent) -> bool {
+        let path_is_source = |path: &str| {
+            let name = Path::new(path)
+                .file_name()
+                .and_then(|value| value.to_str())
+                .unwrap_or("");
+            if self.ignore.file_ignored(path, name) {
+                return false;
+            }
+            match fs::symlink_metadata(self.config.root.join(path)) {
+                Ok(metadata) => metadata.is_file(),
+                Err(_) => self
+                    .previous
+                    .entries
+                    .iter()
+                    .any(|entry| entry.path == path && entry.kind == EntryKind::File),
+            }
+        };
+        path_is_source(&event.path)
+            || event
+                .rename_to
+                .as_deref()
+                .is_some_and(path_is_source)
+    }
+
+    fn take_native_events(&mut self) -> Result<(bool, Vec<WatchEvent>), WatchError> {
         let Ok(mut queue) = self.native_queue.lock() else {
             self.gap = Some(EventGap { reason: GapReason::EventOverflow, source_clock: self.source_clock });
             return Err(WatchError::EventOverflow { actual: self.config.max_events.saturating_add(1), limit: self.config.max_events });
@@ -454,7 +479,13 @@ impl NativeWatcher {
         }
         let events = std::mem::take(&mut queue.events);
         queue.keys.clear();
-        Ok(events)
+        drop(queue);
+        let observed = !events.is_empty();
+        let events = events
+            .into_iter()
+            .filter(|event| self.native_event_is_source(event))
+            .collect();
+        Ok((observed, events))
     }
 
     fn apply_known_event(&mut self, event: &WatchEvent) {
@@ -513,8 +544,8 @@ impl NativeWatcher {
             self.emit("poll_cancelled", None);
             return Err(WatchError::Snapshot(SnapshotError::Cancelled));
         }
-        let native_events = self.take_native_events()?;
-        if !native_events.is_empty() {
+        let (native_events_observed, native_events) = self.take_native_events()?;
+        if native_events_observed {
             return self.publish_native_events(native_events, schedule_rebuild);
         }
         let current = match snapshot_with_cancellation(&self.config, cancellation) {
@@ -628,5 +659,41 @@ mod tests {
         let after = snapshot(&SnapshotConfig::new(root.path())).unwrap();
         let events = reconcile_snapshots(&before, &after, 0);
         assert_eq!(events.iter().filter(|event| event.path == "src.rs" && event.kind == EventKind::Modify).count(), 1);
+    }
+
+    #[test]
+    fn native_events_publish_only_source_files() {
+        let root = tempfile::tempdir().unwrap();
+        fs::create_dir_all(root.path().join(".agent/graph")).unwrap();
+        fs::create_dir_all(root.path().join("src")).unwrap();
+        fs::write(root.path().join("src/live.rs"), "fn live() {}\n").unwrap();
+        fs::write(root.path().join("deleted.rs"), "fn deleted() {}\n").unwrap();
+        let watcher = NativeWatcher::start(SnapshotConfig::new(root.path())).unwrap();
+        fs::remove_file(root.path().join("deleted.rs")).unwrap();
+
+        assert!(!watcher.native_event_is_source(&WatchEvent {
+            kind: EventKind::Modify,
+            path: ".agent".into(),
+            rename_to: None,
+            source_clock: 1,
+        }));
+        assert!(!watcher.native_event_is_source(&WatchEvent {
+            kind: EventKind::Modify,
+            path: "src".into(),
+            rename_to: None,
+            source_clock: 2,
+        }));
+        assert!(watcher.native_event_is_source(&WatchEvent {
+            kind: EventKind::Modify,
+            path: "src/live.rs".into(),
+            rename_to: None,
+            source_clock: 3,
+        }));
+        assert!(watcher.native_event_is_source(&WatchEvent {
+            kind: EventKind::Delete,
+            path: "deleted.rs".into(),
+            rename_to: None,
+            source_clock: 4,
+        }));
     }
 }
