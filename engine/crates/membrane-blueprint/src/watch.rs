@@ -438,6 +438,23 @@ impl NativeWatcher {
 
     fn native_event_is_source(&self, event: &WatchEvent) -> bool {
         let path_is_source = |path: &str| {
+            let mut relative_parent = String::new();
+            let components = Path::new(path)
+                .components()
+                .filter_map(|component| match component {
+                    Component::Normal(value) => value.to_str(),
+                    _ => None,
+                })
+                .collect::<Vec<_>>();
+            for component in components.iter().take(components.len().saturating_sub(1)) {
+                if !relative_parent.is_empty() {
+                    relative_parent.push('/');
+                }
+                relative_parent.push_str(component);
+                if self.ignore.dir_ignored(&relative_parent, component) {
+                    return false;
+                }
+            }
             let name = Path::new(path)
                 .file_name()
                 .and_then(|value| value.to_str())
@@ -666,6 +683,7 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         fs::create_dir_all(root.path().join(".agent/graph")).unwrap();
         fs::create_dir_all(root.path().join("src")).unwrap();
+        fs::write(root.path().join(".agent/graph/graph.db"), "generated").unwrap();
         fs::write(root.path().join("src/live.rs"), "fn live() {}\n").unwrap();
         fs::write(root.path().join("deleted.rs"), "fn deleted() {}\n").unwrap();
         let watcher = NativeWatcher::start(SnapshotConfig::new(root.path())).unwrap();
@@ -679,21 +697,27 @@ mod tests {
         }));
         assert!(!watcher.native_event_is_source(&WatchEvent {
             kind: EventKind::Modify,
-            path: "src".into(),
+            path: ".agent/graph/graph.db".into(),
             rename_to: None,
             source_clock: 2,
+        }));
+        assert!(!watcher.native_event_is_source(&WatchEvent {
+            kind: EventKind::Modify,
+            path: "src".into(),
+            rename_to: None,
+            source_clock: 3,
         }));
         assert!(watcher.native_event_is_source(&WatchEvent {
             kind: EventKind::Modify,
             path: "src/live.rs".into(),
             rename_to: None,
-            source_clock: 3,
+            source_clock: 4,
         }));
         assert!(watcher.native_event_is_source(&WatchEvent {
             kind: EventKind::Delete,
             path: "deleted.rs".into(),
             rename_to: None,
-            source_clock: 4,
+            source_clock: 5,
         }));
     }
 }
