@@ -52,7 +52,7 @@ pub fn run(
 fn read_input(path: &Path) -> io::Result<String> {
     if path.as_os_str() == "-" {
         let mut buf = String::new();
-        io::stdin().read_to_string(&mut buf)?;
+        io::Cursor::new(crate::cli::read_request_stdin().map_err(io::Error::other)?).read_to_string(&mut buf)?;
         return Ok(buf);
     }
     std::fs::read_to_string(path)
@@ -68,10 +68,10 @@ fn print_output(out: &PlannerOutput) -> Result<(), String> {
         "sourceGeneration": out.source_generation,
         "structuredEvent": out.structured_event,
     });
-    println!(
+    crate::cli::emit_stdout(format_args!(
         "{}",
         serde_json::to_string_pretty(&payload).map_err(|e| format!("serialize: {e}"))?
-    );
+    ));
     Ok(())
 }
 
@@ -87,9 +87,9 @@ fn print_error(err: &PlannerError) -> Result<(), String> {
         "error": err.to_string(),
         "kind": kind,
     });
-    println!(
+    crate::cli::emit_stdout(format_args!(
         "{}",
         serde_json::to_string(&payload).map_err(|e| format!("serialize: {e}"))?
-    );
+    ));
     Ok(())
 }

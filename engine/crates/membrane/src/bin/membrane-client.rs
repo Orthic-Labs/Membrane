@@ -6,7 +6,7 @@
 use serde_json::{json, Value};
 use membrane::dispatch::parse_mode;
 use membrane::modes::{dispatch, DispatchOutcome};
-use std::io::{self, BufRead, Read, Write};
+use std::io::{self, BufRead, IsTerminal, Read, Write};
 use std::net::{TcpStream, ToSocketAddrs};
 use std::time::Duration;
 
@@ -74,30 +74,46 @@ fn run() -> Result<(), String> {
         "hook" => forward_stdin("/hook"),
         "cli" => {
             let tail = args.collect::<Vec<_>>();
-            let request = json!({ "args": tail });
-            match request_engine("/cli", request.to_string().as_bytes()) {
-                Ok((_, body)) => write_stdout(&body),
-                Err(_) => unavailable_cli(),
-            }
+            forward_cli(tail)
         }
         other => {
             let mut tail = vec![other.to_owned()];
             tail.extend(args);
-            let request = json!({ "args": tail });
-            match request_engine("/cli", request.to_string().as_bytes()) {
-                Ok((_, body)) => write_stdout(&body),
-                Err(_) => unavailable_cli(),
-            }
+            forward_cli(tail)
         }
     }
 }
 
-fn unavailable_cli() -> Result<(), String> {
-    println!(
-        "{}",
-        json!({ "kind": "membrane_unavailable", "reason": "hub_inactive", "retryable": true })
-    );
-    Err("hub inactive".into())
+fn forward_cli(args: Vec<String>) -> Result<(), String> {
+    let mut stdin = String::new();
+    if !io::stdin().is_terminal() {
+        io::stdin()
+            .take((MAX_BODY_BYTES + 1) as u64)
+            .read_to_string(&mut stdin)
+            .map_err(|error| format!("read CLI input: {error}"))?;
+    }
+    let request = json!({ "args": args, "stdin": stdin }).to_string();
+    if request.len() > MAX_BODY_BYTES {
+        return Err("CLI request exceeds transport limit".into());
+    }
+    let (_, body) = request_engine("/cli", request.as_bytes())?;
+    let response: CliResponse = serde_json::from_slice(&body)
+        .map_err(|error| format!("invalid CLI response: {error}"))?;
+    write_stdout(response.stdout.as_bytes())?;
+    io::stderr()
+        .write_all(response.stderr.as_bytes())
+        .map_err(|error| format!("write CLI error output: {error}"))?;
+    if response.exit_code != 0 {
+        std::process::exit(response.exit_code);
+    }
+    Ok(())
+}
+
+#[derive(serde::Deserialize)]
+struct CliResponse {
+    stdout: String,
+    stderr: String,
+    exit_code: i32,
 }
 
 fn run_stdio_mcp() -> Result<(), String> {
@@ -152,6 +168,9 @@ fn request_engine(path: &str, body: &[u8]) -> Result<(u16, Vec<u8>), String> {
         .map_err(|error| format!("resolve engine endpoint: {error}"))?
         .next()
         .ok_or_else(|| "engine endpoint has no address".to_owned())?;
+    if !address.ip().is_loopback() {
+        return Err("singleton engine endpoint must be loopback".into());
+    }
     let mut stream = TcpStream::connect_timeout(&address, IO_TIMEOUT)
         .map_err(|error| format!("connect to singleton engine: {error}"))?;
     stream
@@ -172,9 +191,12 @@ fn request_engine(path: &str, body: &[u8]) -> Result<(u16, Vec<u8>), String> {
         .and_then(|_| stream.write_all(body))
         .map_err(|error| format!("send engine request: {error}"))?;
     let mut response = Vec::new();
-    stream
+    stream.take((MAX_BODY_BYTES + 16 * 1024 + 1) as u64)
         .read_to_end(&mut response)
         .map_err(|error| format!("read engine response: {error}"))?;
+    if response.len() > MAX_BODY_BYTES + 16 * 1024 {
+        return Err("engine response exceeds transport limit".into());
+    }
     parse_response(response)
 }
 
@@ -204,6 +226,11 @@ fn bearer_token() -> Option<String> {
     }
     std::env::var_os("MEMBRANE_API_TOKEN_FILE")
         .and_then(|path| std::fs::read_to_string(path).ok())
+        .or_else(|| {
+            let executable = std::env::current_exe().ok()?;
+            let product = executable.parent()?.parent()?;
+            std::fs::read_to_string(product.join("state/tools/.cache/memory/api-token")).ok()
+        })
         .map(|value| value.trim().to_owned())
         .filter(|value| !value.is_empty())
 }
@@ -234,8 +261,32 @@ fn parse_response(response: Vec<u8>) -> Result<(u16, Vec<u8>), String> {
                     .and_then(Value::as_str)
                     .map(str::to_owned)
             })
-            .unwrap_or_else(|| format!("HTTP {status}"));
-        return Err(format!("engine request failed: {detail}"));
+            .unwrap_or_else(|| String::from_utf8_lossy(&body).into_owned());
+        return Err(format!("engine request failed: HTTP {status}: {detail}"));
     }
     Ok((status, body))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rejected_requests_keep_http_status_and_typed_reason() {
+        let response = b"HTTP/1.1 401 Unauthorized\r\nContent-Type: application/json\r\n\r\n{\"denial\":\"invalid_bearer\"}";
+        let error = parse_response(response.to_vec()).unwrap_err();
+        assert!(error.contains("HTTP 401"));
+        assert!(error.contains("invalid_bearer"));
+        assert!(!error.contains("hub_inactive"));
+    }
+
+    #[test]
+    fn cli_response_preserves_output_and_failure_status() {
+        let response: CliResponse = serde_json::from_str(
+            r#"{"stdout":"exact output\n","stderr":"invalid argument\n","exit_code":2}"#,
+        ).unwrap();
+        assert_eq!(response.stdout, "exact output\n");
+        assert_eq!(response.stderr, "invalid argument\n");
+        assert_eq!(response.exit_code, 2);
+    }
 }

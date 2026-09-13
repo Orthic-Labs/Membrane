@@ -22,6 +22,7 @@ use membrane_mcp::http_security::{
     admit, HttpAdmissionPolicy, HttpAdmissionRequest, HttpDenialCode, DEFAULT_MAX_BODY_BYTES,
 };
 use membrane_mcp::McpServer;
+use serde::Deserialize;
 use serde_json::Value;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::Arc;
@@ -29,9 +30,16 @@ use std::time::Duration;
 use membrane_federation::deadline::{Deadline, SystemClock};
 use tokio_util::sync::CancellationToken;
 
-/// The single route this transport exposes. POST carries JSON-RPC messages;
-/// unsupported streaming/session methods return 405 with `Allow: POST`.
+/// Resident transport routes. POST carries JSON-RPC, CLI, or hook payloads;
+/// unsupported methods return 405 with `Allow: POST`.
 pub const MCP_HTTP_PATH: &str = "/mcp";
+pub const CLI_HTTP_PATH: &str = "/cli";
+pub const HOOK_HTTP_PATH: &str = "/hook";
+
+const MAX_CLI_ARGS: usize = 128;
+const MAX_CLI_ARG_BYTES: usize = 64 * 1024;
+const MAX_CLI_OUTPUT_BYTES: usize = 1024 * 1024;
+const MAX_BLOCKING_REQUESTS: usize = 4;
 
 /// Carries the caller's claimed installation id. Distinct from
 /// `installation_manifest::HANDSHAKE_HEADER`, which carries a full manifest
@@ -77,6 +85,7 @@ struct McpHttpState {
     policy: Arc<HttpAdmissionPolicy>,
     server: Arc<McpServer>,
     resolver: Arc<dyn HostResolver>,
+    blocking_requests: Arc<tokio::sync::Semaphore>,
 }
 
 /// Build the Streamable HTTP MCP router with the production (real) resolver.
@@ -94,11 +103,24 @@ fn build_mcp_http_router_with_resolver(
         policy: Arc::new(policy),
         server: Arc::new(McpServer),
         resolver,
+        blocking_requests: Arc::new(tokio::sync::Semaphore::new(MAX_BLOCKING_REQUESTS)),
     };
     Router::new()
         .route(
             MCP_HTTP_PATH,
             post(handle_mcp_request)
+                .get(method_not_allowed)
+                .delete(method_not_allowed),
+        )
+        .route(
+            CLI_HTTP_PATH,
+            post(handle_cli_request)
+                .get(method_not_allowed)
+                .delete(method_not_allowed),
+        )
+        .route(
+            HOOK_HTTP_PATH,
+            post(handle_hook_request)
                 .get(method_not_allowed)
                 .delete(method_not_allowed),
         )
@@ -155,74 +177,139 @@ fn bearer_token(headers: &HeaderMap) -> &str {
         .unwrap_or("")
 }
 
+fn admit_request(
+    state: &McpHttpState,
+    peer: SocketAddr,
+    headers: &HeaderMap,
+    body: &Bytes,
+) -> Result<(), Response> {
+    let host = header_value(headers, "host");
+    let origin = headers
+        .get(header::ORIGIN)
+        .map(|value| value.to_str().ok().filter(|origin| !origin.is_empty()).unwrap_or("\u{0}"))
+        .unwrap_or("");
+    let resolved_host_ip = state
+        .resolver
+        .resolve(strip_port(host))
+        .unwrap_or(IpAddr::V4(Ipv4Addr::UNSPECIFIED));
+    let receipt = admit(&state.policy, &HttpAdmissionRequest {
+        peer_ip: peer.ip(),
+        resolved_host_ip,
+        host,
+        origin,
+        installation_id: header_value(headers, INSTALLATION_HEADER),
+        bearer_token: bearer_token(headers),
+        session_binding: header_value(headers, SESSION_HEADER),
+        body_bytes: body.len(),
+        deadline_ms: state.policy.max_deadline_ms,
+    });
+    if receipt.accepted {
+        Ok(())
+    } else {
+        let status = receipt.denial.as_ref().map(status_for_denial).unwrap_or(StatusCode::FORBIDDEN);
+        let mut response = (status, axum::Json(receipt)).into_response();
+        if status == StatusCode::UNAUTHORIZED {
+            response.headers_mut().insert(header::WWW_AUTHENTICATE, axum::http::HeaderValue::from_static("Bearer"));
+        }
+        Err(response)
+    }
+}
+
+fn json_content_type(headers: &HeaderMap) -> bool {
+    headers.get(header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.split(';').next())
+        .is_some_and(|value| value.trim().eq_ignore_ascii_case("application/json"))
+}
+
+#[derive(Deserialize)]
+struct CliRequest {
+    args: Vec<String>,
+    #[serde(default)]
+    stdin: String,
+}
+
+fn output_within_limit(value: &str) -> bool {
+    value.len() <= MAX_CLI_OUTPUT_BYTES
+}
+
+async fn handle_cli_request(
+    State(state): State<McpHttpState>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Response {
+    if let Err(response) = admit_request(&state, peer, &headers, &body) { return response; }
+    if !json_content_type(&headers) { return StatusCode::UNSUPPORTED_MEDIA_TYPE.into_response(); }
+    let request: CliRequest = match serde_json::from_slice(&body) {
+        Ok(request) => request,
+        Err(_) => return StatusCode::BAD_REQUEST.into_response(),
+    };
+    if request.args.len() > MAX_CLI_ARGS || request.args.iter().any(|arg| arg.len() > MAX_CLI_ARG_BYTES) {
+        return StatusCode::PAYLOAD_TOO_LARGE.into_response();
+    }
+    let stdin = request.stdin.into_bytes();
+    if stdin.len() > DEFAULT_MAX_BODY_BYTES { return StatusCode::PAYLOAD_TOO_LARGE.into_response(); }
+    let mut argv = Vec::with_capacity(request.args.len() + 1);
+    argv.push("membrane".to_owned());
+    argv.extend(request.args);
+    let Ok(permit) = Arc::clone(&state.blocking_requests).try_acquire_owned() else {
+        return StatusCode::TOO_MANY_REQUESTS.into_response();
+    };
+    let result = tokio::task::spawn_blocking(move || {
+        let _permit = permit;
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| crate::cli::run_cli_captured(&argv, &stdin)))
+    }).await;
+    match result {
+        Ok(Ok(result)) if output_within_limit(&result.stdout) && output_within_limit(&result.stderr) =>
+            (StatusCode::OK, axum::Json(serde_json::json!({
+                "stdout": result.stdout,
+                "stderr": result.stderr,
+                "exit_code": result.exit_code,
+            }))).into_response(),
+        Ok(Ok(_)) => (StatusCode::OK, axum::Json(serde_json::json!({
+            "stdout": "",
+            "stderr": "output_limit_exceeded\n",
+            "exit_code": 1,
+            "error": "output_limit_exceeded",
+        }))).into_response(),
+        Ok(Err(_)) | Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+    }
+}
+
+async fn handle_hook_request(
+    State(state): State<McpHttpState>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Response {
+    if let Err(response) = admit_request(&state, peer, &headers, &body) { return response; }
+    if !json_content_type(&headers) { return StatusCode::UNSUPPORTED_MEDIA_TYPE.into_response(); }
+    let payload: Value = match serde_json::from_slice(&body) {
+        Ok(payload) => payload,
+        Err(_) => return StatusCode::BAD_REQUEST.into_response(),
+    };
+    let Ok(permit) = Arc::clone(&state.blocking_requests).try_acquire_owned() else {
+        return StatusCode::TOO_MANY_REQUESTS.into_response();
+    };
+    let result = tokio::task::spawn_blocking(move || {
+        let _permit = permit;
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| crate::hook::run_hook_payload(payload)))
+    }).await;
+    match result {
+        Ok(Ok(response)) => (StatusCode::OK, axum::Json(response)).into_response(),
+        Ok(Err(_)) | Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+    }
+}
+
 async fn handle_mcp_request(
     State(state): State<McpHttpState>,
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
     body: Bytes,
 ) -> Response {
-    let host = headers
-        .get(header::HOST)
-        .and_then(|value| value.to_str().ok())
-        .unwrap_or("");
-    // Keep malformed supplied Origin distinct from absent Origin. The former
-    // is invalid and must not be treated as native-client omission.
-    let origin = headers
-        .get(header::ORIGIN)
-        .map(|value| {
-            value
-                .to_str()
-                .ok()
-                .filter(|origin| !origin.is_empty())
-                .unwrap_or("\u{0}")
-        })
-        .unwrap_or("");
-    let installation_id = header_value(&headers, INSTALLATION_HEADER);
-    let session_binding = header_value(&headers, SESSION_HEADER);
-    let bearer_token = bearer_token(&headers);
-
-    // A host that fails to resolve is denied the same way a host that
-    // resolves off-loopback is denied: fail closed rather than admit on
-    // ambiguous DNS state.
-    let resolved_host_ip = state
-        .resolver
-        .resolve(strip_port(host))
-        .unwrap_or(IpAddr::V4(Ipv4Addr::UNSPECIFIED));
-
-    let admission_request = HttpAdmissionRequest {
-        peer_ip: peer.ip(),
-        resolved_host_ip,
-        host,
-        origin,
-        installation_id,
-        bearer_token,
-        session_binding,
-        body_bytes: body.len(),
-        deadline_ms: state.policy.max_deadline_ms,
-    };
-    let receipt = admit(&state.policy, &admission_request);
-    if !receipt.accepted {
-        let status = receipt
-            .denial
-            .as_ref()
-            .map(status_for_denial)
-            .unwrap_or(StatusCode::FORBIDDEN);
-        let mut response = (status, axum::Json(receipt)).into_response();
-        if status == StatusCode::UNAUTHORIZED {
-            response.headers_mut().insert(
-                header::WWW_AUTHENTICATE,
-                axum::http::HeaderValue::from_static("Bearer"),
-            );
-        }
-        return response;
-    }
-
-    let json_content_type = headers
-        .get(header::CONTENT_TYPE)
-        .and_then(|value| value.to_str().ok())
-        .and_then(|value| value.split(';').next())
-        .is_some_and(|value| value.trim().eq_ignore_ascii_case("application/json"));
-    if !json_content_type {
+    if let Err(response) = admit_request(&state, peer, &headers, &body) { return response; }
+    if !json_content_type(&headers) {
         return StatusCode::UNSUPPORTED_MEDIA_TYPE.into_response();
     }
 
@@ -388,6 +475,19 @@ mod tests {
             .unwrap()
     }
 
+    fn resident_request(path: &str, bearer: Option<&str>, payload: Value) -> Request<Body> {
+        let mut builder = Request::builder()
+            .method("POST")
+            .uri(path)
+            .header(header::HOST, "127.0.0.1:9")
+            .header(header::CONTENT_TYPE, "application/json")
+            .extension(ConnectInfo(loopback_peer()));
+        if let Some(bearer) = bearer {
+            builder = builder.header(header::AUTHORIZATION, format!("Bearer {bearer}"));
+        }
+        builder.body(Body::from(payload.to_string())).unwrap()
+    }
+
     async fn denial_of(response: Response) -> String {
         let bytes = to_bytes(response.into_body(), MAX_BODY).await.unwrap();
         let receipt: Value = serde_json::from_slice(&bytes).unwrap();
@@ -415,6 +515,55 @@ mod tests {
         // implementation of it.
         let stdio_result = McpServer.dispatch(&ping_payload()).unwrap();
         assert_eq!(http_result, stdio_result);
+    }
+
+    #[tokio::test]
+    async fn resident_routes_require_bearer_admission() {
+        let app = router_with(Arc::new(FixedResolver(Some(Ipv4Addr::LOCALHOST.into()))));
+        for path in [CLI_HTTP_PATH, HOOK_HTTP_PATH] {
+            let response = app.clone().oneshot(resident_request(path, None, serde_json::json!({"args": []}))).await.unwrap();
+            assert_eq!(response.status(), StatusCode::UNAUTHORIZED, "{path}");
+        }
+    }
+
+    #[tokio::test]
+    async fn authenticated_hook_route_dispatches_host_response() {
+        let app = router_with(Arc::new(FixedResolver(Some(Ipv4Addr::LOCALHOST.into()))));
+        let response = app.oneshot(resident_request(
+            HOOK_HTTP_PATH,
+            Some("correct-token"),
+            serde_json::json!({"event": "SessionEnd", "session_id": "route-test"}),
+        )).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let bytes = to_bytes(response.into_body(), MAX_BODY).await.unwrap();
+        let value: Value = serde_json::from_slice(&bytes).unwrap();
+        assert!(value.get("membraneHook").is_some() || value.get("membrane_hook").is_some());
+    }
+
+    #[tokio::test]
+    async fn authenticated_cli_route_dispatches_captured_help() {
+        let app = router_with(Arc::new(FixedResolver(Some(Ipv4Addr::LOCALHOST.into()))));
+        let response = app.oneshot(resident_request(
+            CLI_HTTP_PATH,
+            Some("correct-token"),
+            serde_json::json!({"args": ["--help"], "stdin": ""}),
+        )).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let bytes = to_bytes(response.into_body(), MAX_BODY).await.unwrap();
+        let value: Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(value["exit_code"], 0);
+        assert!(value["stdout"].as_str().unwrap().contains("Usage"));
+    }
+
+    #[tokio::test]
+    async fn authenticated_cli_route_rejects_non_string_args() {
+        let app = router_with(Arc::new(FixedResolver(Some(Ipv4Addr::LOCALHOST.into()))));
+        let response = app.oneshot(resident_request(
+            CLI_HTTP_PATH,
+            Some("correct-token"),
+            serde_json::json!({"args": [42], "stdin": ""}),
+        )).await.unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     }
 
     #[tokio::test]

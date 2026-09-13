@@ -8,6 +8,84 @@ use membrane_blueprint::{BlueprintRequest, CancellationToken, Operation};
 use serde::{Deserialize, Serialize};
 use std::io::{BufRead, Read, Write};
 use std::path::{Path, PathBuf};
+use std::cell::{Cell, RefCell};
+use std::fmt;
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct CapturedCliResult {
+    pub stdout: String,
+    pub stderr: String,
+    pub exit_code: i32,
+}
+
+thread_local! {
+    static CAPTURED_IO: RefCell<Option<(String, String)>> = const { RefCell::new(None) };
+    static CAPTURED_STDIN: RefCell<Option<Vec<u8>>> = const { RefCell::new(None) };
+    static CLI_EXIT_CODE: Cell<i32> = const { Cell::new(0) };
+}
+
+pub(crate) fn read_request_stdin() -> Result<Vec<u8>, String> {
+    if let Some(input) = CAPTURED_STDIN.with(|slot| slot.borrow().clone()) {
+        return Ok(input);
+    }
+    let mut input = Vec::new();
+    std::io::stdin().read_to_end(&mut input).map_err(|error| error.to_string())?;
+    Ok(input)
+}
+
+pub(crate) fn emit_stdout(args: fmt::Arguments<'_>) {
+    emit_stdout_fragment(args, true);
+}
+
+fn emit_stdout_fragment(args: fmt::Arguments<'_>, newline: bool) {
+    CAPTURED_IO.with(|slot| {
+        if let Some((stdout, _)) = slot.borrow_mut().as_mut() {
+            const MAX_CAPTURE_BYTES: usize = 8 * 1024 * 1024;
+            if stdout.len() < MAX_CAPTURE_BYTES {
+                stdout.push_str(&args.to_string());
+                if newline { stdout.push('\n'); }
+                if stdout.len() > MAX_CAPTURE_BYTES {
+                    let mut end = MAX_CAPTURE_BYTES;
+                    while !stdout.is_char_boundary(end) { end -= 1; }
+                    stdout.truncate(end);
+                }
+            }
+        } else {
+            if newline { std::println!("{}", args); } else { std::print!("{}", args); }
+        }
+    });
+}
+
+pub(crate) fn emit_stderr(args: fmt::Arguments<'_>) {
+    CAPTURED_IO.with(|slot| {
+        if let Some((_, stderr)) = slot.borrow_mut().as_mut() {
+            const MAX_CAPTURE_BYTES: usize = 8 * 1024 * 1024;
+            if stderr.len() < MAX_CAPTURE_BYTES {
+                stderr.push_str(&args.to_string());
+                stderr.push('\n');
+                if stderr.len() > MAX_CAPTURE_BYTES {
+                    let mut end = MAX_CAPTURE_BYTES;
+                    while !stderr.is_char_boundary(end) { end -= 1; }
+                    stderr.truncate(end);
+                }
+            }
+        } else {
+            std::eprintln!("{}", args);
+        }
+    });
+}
+
+macro_rules! println {
+    () => {{ crate::cli::emit_stdout(format_args!("")) }};
+    ($($arg:tt)*) => {{ crate::cli::emit_stdout(format_args!($($arg)*)) }}
+}
+macro_rules! print {
+    ($($arg:tt)*) => {{ crate::cli::emit_stdout_fragment(format_args!($($arg)*), false) }}
+}
+macro_rules! eprintln {
+    () => {{ crate::cli::emit_stderr(format_args!("")) }};
+    ($($arg:tt)*) => {{ crate::cli::emit_stderr(format_args!($($arg)*)) }}
+}
 use std::sync::{Arc, Barrier};
 #[cfg(unix)]
 use std::process::{Command, Stdio};
@@ -2875,8 +2953,7 @@ fn run_resident_holder(input: Option<&Path>) -> Result<(), String> {
             .map_err(|error| format!("read resident-holder input {}: {error}", path.display()))?,
         None => {
             let mut body = String::new();
-            std::io::stdin()
-                .read_to_string(&mut body)
+            body = String::from_utf8(read_request_stdin()?)
                 .map_err(|error| format!("read resident-holder stdin: {error}"))?;
             body
         }
@@ -4084,7 +4161,7 @@ fn run_push(command: PushCmd) -> Result<(), String> {
             let mut bytes = Vec::new();
             let mut reader: Box<dyn std::io::Read> = match input {
                 Some(path) => Box::new(std::fs::File::open(path).map_err(|e| e.to_string())?),
-                None => Box::new(std::io::stdin()),
+                None => Box::new(std::io::Cursor::new(read_request_stdin()?)),
             };
             reader
                 .by_ref()
@@ -4178,7 +4255,7 @@ fn run_push(command: PushCmd) -> Result<(), String> {
                     })?;
                 }
                 None => {
-                    std::io::stdin()
+                    std::io::Cursor::new(read_request_stdin()?)
                         .take((crate::push::recovery::MAX_ARTIFACT_BYTES + 1) as u64)
                         .read_to_string(&mut input)
                         .map_err(|error| error.to_string())?;
@@ -4343,7 +4420,11 @@ fn run_push(command: PushCmd) -> Result<(), String> {
             } else {
                 eprintln!("runc: exit={} full=<unavailable>", result.exit_code);
             }
-            std::process::exit(result.exit_code);
+            if result.exit_code != 0 {
+                CLI_EXIT_CODE.with(|code| code.set(result.exit_code));
+                return Err(format!("runc exited with status {}", result.exit_code));
+            }
+            return Ok(());
         }
         PushCmd::Restore {
             anchor,
@@ -5179,7 +5260,16 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
     if let Some(runtime) = &deployed {
         apply_deployed_runtime_defaults(runtime);
     }
-    let cli = Cli::parse_from(&argv);
+    let cli = match Cli::try_parse_from(&argv) {
+        Ok(cli) => cli,
+        Err(error) => {
+            let code = error.exit_code();
+            CLI_EXIT_CODE.with(|status| status.set(code));
+            let rendered = error.to_string();
+            if code == 0 { println!("{rendered}"); } else { eprintln!("{rendered}"); }
+            return if code == 0 { Ok(()) } else { Err(format!("CLI exited with status {code}")) };
+        }
+    };
     if matches!(cli.cmd, Cmd::ExplicitCall) {
         return crate::explicit_client::run();
     }
@@ -5476,8 +5566,7 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
                         })?,
                         None => {
                             let mut body = String::new();
-                            std::io::stdin()
-                                .read_to_string(&mut body)
+                            body = String::from_utf8(read_request_stdin()?)
                                 .map_err(|error| format!("read checkpoint stdin: {error}"))?;
                             body
                         }
@@ -5866,7 +5955,7 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
                     .map_err(|error| format!("open replay input {}: {error}", path.display()))?;
                 replay_queries(&store, file, k)?
             } else {
-                replay_queries(&store, std::io::stdin().lock(), k)?
+                replay_queries(&store, std::io::Cursor::new(read_request_stdin()?), k)?
             };
             for row in rows {
                 println!(
@@ -6148,7 +6237,7 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
                 None => {
                     let mut s = String::new();
                     use std::io::Read as _;
-                    if let Err(error) = std::io::stdin().read_to_string(&mut s) {
+                    if let Err(error) = String::from_utf8(read_request_stdin()?).map(|value| s = value) {
                         let store = open(&db)?;
                         record_cli_external(
                             &store,
@@ -8884,6 +8973,35 @@ pub fn run_cli_from(argv: &[&str]) -> Result<(), String> {
         .and_then(|result| result)
 }
 
+/// Execute one resident CLI request on the current thread with request-local
+/// captured output & input; it never redirects process-wide streams.
+pub fn run_cli_captured(argv: &[String], stdin: &[u8]) -> CapturedCliResult {
+    CLI_EXIT_CODE.with(|code| code.set(0));
+    CAPTURED_STDIN.with(|slot| *slot.borrow_mut() = Some(stdin.to_vec()));
+    CAPTURED_IO.with(|slot| *slot.borrow_mut() = Some((String::new(), String::new())));
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        run_main_with_argv(argv.to_vec())
+    }));
+    let (stdout, mut stderr) = CAPTURED_IO
+        .with(|slot| slot.borrow_mut().take().unwrap_or_default());
+    CAPTURED_STDIN.with(|slot| *slot.borrow_mut() = None);
+    let exit_code = match result {
+        Ok(Ok(())) => 0,
+        Ok(Err(error)) => {
+            if !error.is_empty() {
+                stderr.push_str(&error);
+                stderr.push('\n');
+            }
+            CLI_EXIT_CODE.with(|code| if code.get() == 0 { 1 } else { code.get() })
+        }
+        Err(_) => {
+            stderr.push_str("Membrane CLI panicked\n");
+            1
+        }
+    };
+    CapturedCliResult { stdout, stderr, exit_code }
+}
+
 /// Cortex projection of CLI: durable-memory verbs only. Pull, Push, Ledger,
 /// Blueprint, Adapt, & orchestration stay addressable through Membrane.
 pub const CORTEX_DURABLE_COMMANDS: &[&str] = &[
@@ -9125,5 +9243,44 @@ mod qualification_cli_tests {
             result.get("terminal").and_then(serde_json::Value::as_bool),
             Some(true)
         );
+    }
+
+    #[test]
+    fn captured_cli_push_prepare_uses_exact_request_stdin() {
+        let result = super::run_cli_captured(
+            &["membrane".into(), "push".into(), "prepare".into()],
+            br#"{"text":"capture-stdin-marker","kind":"text","maxBytes":4096,"exact":true,"protectedSpans":[]}"#,
+        );
+        assert_eq!(result.exit_code, 0, "{}", result.stderr);
+        let output: serde_json::Value = serde_json::from_str(&result.stdout).unwrap();
+        assert_eq!(output["text"], "capture-stdin-marker");
+        assert_eq!(output["inlineFidelity"], "exact_bytes");
+    }
+
+    #[test]
+    fn captured_cli_help_and_invalid_args_preserve_status() {
+        let help = super::run_cli_captured(
+            &["membrane".into(), "--help".into()],
+            &[],
+        );
+        assert_eq!(help.exit_code, 0);
+        assert!(help.stdout.contains("Membrane"));
+        let invalid = super::run_cli_captured(
+            &["membrane".into(), "--definitely-invalid".into()],
+            &[],
+        );
+        assert_eq!(invalid.exit_code, 2);
+        assert!(!invalid.stderr.is_empty());
+    }
+
+    #[test]
+    fn captured_cli_output_is_isolated_between_threads() {
+        let left = std::thread::spawn(|| super::run_cli_captured(&["membrane".into(), "--help".into()], &[]));
+        let right = std::thread::spawn(|| super::run_cli_captured(&["membrane".into(), "--help".into()], &[]));
+        let left = left.join().unwrap();
+        let right = right.join().unwrap();
+        assert_eq!(left.exit_code, 0);
+        assert_eq!(right.exit_code, 0);
+        assert_eq!(left.stdout, right.stdout);
     }
 }
