@@ -20,10 +20,16 @@ fn main() {
         println!("membrane-client {}", env!("CARGO_PKG_VERSION"));
         return;
     }
+    // Packaging probes are local metadata/help reads; they neither connect nor
+    // construct runtime state.
+    let packaging_probe = matches!(
+        args.iter().skip(1).filter_map(|arg| arg.to_str()).collect::<Vec<_>>().as_slice(),
+        ["cli", "build-info"] | ["hook", "--help"]
+    );
     // Transport modes never enter Membrane's command dispatcher: they only
     // forward to the authenticated installed engine. Activation remains here
     // as installer-owned control-plane work, not a resident runtime path.
-    if args.get(1).and_then(|arg| arg.to_str()).is_some_and(|mode| {
+    if !packaging_probe && args.get(1).and_then(|arg| arg.to_str()).is_some_and(|mode| {
         matches!(mode, "stdio-mcp" | "hook" | "cli")
     }) {
         if let Err(error) = run() {
