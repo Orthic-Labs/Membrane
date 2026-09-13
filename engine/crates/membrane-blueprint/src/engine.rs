@@ -142,8 +142,7 @@ impl BlueprintOperation for NativeBlueprintOperation {
                         object.insert("sourceObservation".into(), observation);
                     }
                 }
-                let indexed_paths = generation.files.iter().map(|file| file.path.as_str()).collect::<HashSet<_>>();
-                let receipt = freshness_receipt(&root, &generation.generation_id, result.get("sourceObservation"), Some(&indexed_paths));
+                let receipt = sealed_freshness_receipt(&generation.generation_id, result.get("sourceObservation"));
                 if let Value::Object(object) = &mut result { object.insert("freshnessReceipt".into(), receipt); }
                 context.check()?;
                 Ok(result)
@@ -720,7 +719,7 @@ fn file_delta_from_graph(
         path: path.to_owned(), event_kind, source_clock: Some(source_clock),
         content_digest: file.map(|file| file.content_hash.clone()), size: file.map(|file| file.size as i64),
         source_hash: Some(source_hash.to_owned()), config_digest,
-        source_observation: Some(json!({"sourceClock": request.input.get("sourceClock"), "eventKind": request.input.get("eventKind"), "paths": request.input.get("paths"), "head": observation.as_ref().map(|value| value.head.clone()), "dirty": observation.as_ref().map(|value| value.dirty), "statusDigest": observation.as_ref().map(|value| value.status_digest.clone())})),
+        source_observation: Some(json!({"sourceClock": request.input.get("sourceClock"), "eventKind": request.input.get("eventKind"), "paths": request.input.get("paths"), "head": observation.as_ref().map(|value| value.head.clone()), "dirty": observation.as_ref().map(|value| value.dirty), "statusDigest": observation.as_ref().map(|value| value.status_digest.clone()), "sealedAtUnixMs": now_unix_ms()})),
         ..FileDelta::default()
     };
     if let Some(facts) = facts {
@@ -863,6 +862,7 @@ fn build_and_publish(request: &BlueprintRequest, context: &RequestContext, root:
         "head": git_identity.as_ref().map(|observation| observation.head.clone()),
         "dirty": git_identity.as_ref().map(|observation| observation.dirty),
         "statusDigest": git_identity.as_ref().map(|observation| observation.status_digest.clone()),
+        "sealedAtUnixMs": now_unix_ms(),
     });
     store::save_generation(&mut connection, &to_store_generation(&graph, observation.clone()))
         .map_err(store_error)?;
@@ -997,25 +997,68 @@ fn status(request: &BlueprintRequest, context: &RequestContext, root: &Path, db_
     if !db_path.exists() {
         return Ok(status_value(request, root, db_path, "missing", None, None, None));
     }
-    let (generation, source_observation) = match load_current_with_observation(db_path) {
+    // Status is admission metadata, not a graph query. Reading every node,
+    // edge, and file row made Pull freshness proportional to repository size.
+    let connection = match store::open_store_read_only(db_path).map_err(store_error) {
+        Ok(connection) => connection,
+        Err(error) if error.code == "blueprint_store_corrupt" => {
+            return Ok(status_value(request, root, db_path, "corrupt", None, Some(error.message), None));
+        }
+        Err(error) => return Err(error),
+    };
+    let envelope = match store::read_generation_envelope(&connection).map_err(store_error) {
+        Ok(Some(envelope)) => envelope,
+        Ok(None) => return Ok(status_value(request, root, db_path, "missing", None, None, None)),
+        Err(error) if error.code == "blueprint_store_corrupt" => {
+            return Ok(status_value(request, root, db_path, "corrupt", None, Some(error.message), None));
+        }
+        Err(error) => return Err(error),
+    };
+    let (generation, source_observation) = match graph_metadata_from_envelope(envelope) {
         Ok(value) => value,
         Err(error) if error.code == "blueprint_store_corrupt" => {
             return Ok(status_value(request, root, db_path, "corrupt", None, Some(error.message), None));
         }
         Err(error) => return Err(error),
     };
+    let freshness = sealed_freshness_receipt(&generation.generation_id, source_observation.as_ref());
     context.check()?;
-    let current = graph::scan_repository_with_cancellation(root, &graph::ScanOptions::default(), &context.cancellation)
-        .map_err(|error| match error {
-            graph::GraphError::Cancelled if context.cancellation.deadline_expired() => BlueprintError::deadline(),
-            graph::GraphError::Cancelled => BlueprintError::cancelled(),
-            error => BlueprintError::new("blueprint_status_failed", error.to_string()),
-        })?;
-    context.check()?;
-    let state = if !current.traversal_truncated && !current.file_limit_reached
-        && generation.source_hash == graph::source_hash_for_files(&current.files) { "fresh" } else { "stale" };
-    let indexed_paths = generation.files.iter().map(|file| file.path.as_str()).collect::<HashSet<_>>();
-    Ok(status_value(request, root, db_path, state, Some(&generation), None, Some(freshness_receipt(root, &generation.generation_id, source_observation.as_ref(), Some(&indexed_paths)))) )
+    let state = match freshness.get("freshness").and_then(Value::as_str) {
+        Some("fresh") => "fresh",
+        Some("changed_since_generation") => "stale",
+        Some("unknown") => "unknown",
+        _ => "unavailable",
+    };
+    Ok(status_value(request, root, db_path, state, Some(&generation), None, Some(freshness)))
+}
+
+fn graph_metadata_from_envelope(envelope: store::GenerationEnvelope) -> Result<(GraphGeneration, Option<Value>), BlueprintError> {
+    let manifest = envelope.manifest.as_ref()
+        .ok_or_else(|| BlueprintError::new("blueprint_store_corrupt", "persisted generation manifest is missing"))?;
+    let generation_id = manifest.get("generationId").and_then(Value::as_str)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| BlueprintError::new("blueprint_store_corrupt", "persisted generation identity is missing"))?
+        .to_owned();
+    let provider = envelope.provider.as_ref().and_then(|value| value.get("id")).and_then(Value::as_str)
+        .unwrap_or("native-rust").to_owned();
+    let provider_version = envelope.provider.as_ref().and_then(|value| value.get("version")).and_then(Value::as_str)
+        .unwrap_or("native-rust-1").to_owned();
+    let source_observation = envelope.source_observation.clone();
+    Ok((GraphGeneration {
+        schema_version: envelope.schema_version.unwrap_or(graph::GRAPH_SCHEMA_VERSION),
+        provider,
+        provider_version,
+        generation_id,
+        source_hash: manifest.get("sourceHash").and_then(Value::as_str).unwrap_or("").to_owned(),
+        repo_root: envelope.repo_root.as_ref().and_then(Value::as_str).unwrap_or("").to_owned(),
+        complete: manifest.get("complete").and_then(Value::as_bool).unwrap_or(true),
+        nodes: Vec::new(),
+        edges: Vec::new(),
+        files: Vec::new(),
+        truncation_reasons: manifest.get("truncationReasons").and_then(Value::as_array)
+            .map(|values| values.iter().filter_map(Value::as_str).map(str::to_owned).collect())
+            .unwrap_or_default(),
+    }, source_observation))
 }
 
 fn status_value(request: &BlueprintRequest, root: &Path, db_path: &Path, state: &str, generation: Option<&GraphGeneration>, detail: Option<String>, freshness: Option<Value>) -> Value {
@@ -1091,33 +1134,48 @@ fn architecture_changes(request: &BlueprintRequest, context: &RequestContext, ro
     if let Value::Object(object) = &mut value {
         object.insert("view".into(), json!("changes"));
         object.insert("generationId".into(), json!(generation.generation_id.clone()));
-        let indexed_paths = generation.files.iter().map(|file| file.path.as_str()).collect::<HashSet<_>>();
-        object.insert("freshnessReceipt".into(), freshness_receipt(root, &generation.generation_id, source_observation.as_ref(), Some(&indexed_paths)));
+        object.insert("freshnessReceipt".into(), sealed_freshness_receipt(&generation.generation_id, source_observation.as_ref()));
     }
     context.check()?;
     Ok(value)
 }
 
-/// Build query-time freshness evidence from the same persisted source
-/// observation captured at publication. Freshness is advisory state; graph
-/// generation pinning remains an independent fail-closed check.
-fn freshness_receipt(root: &Path, generation_id: &str, source_observation: Option<&Value>, indexed_paths: Option<&HashSet<&str>>) -> Value {
+/// Report the source boundary sealed with this generation. Ordinary reads do
+/// not inspect the repository; watcher or explicit refresh owns observation.
+fn sealed_freshness_receipt(generation_id: &str, source_observation: Option<&Value>) -> Value {
     let indexed_revision = source_observation.and_then(|value| value.get("head")).and_then(Value::as_str).map(str::to_owned);
     let indexed_fingerprint = source_observation.and_then(|value| value.get("statusDigest")).and_then(Value::as_str).map(str::to_owned);
-    let current = crate::freshness_observation::observe_current_vcs_state(root);
+    let current = crate::freshness::CurrentSourceState {
+        available: indexed_revision.is_some() && indexed_fingerprint.is_some(),
+        vcs_revision: indexed_revision.clone(),
+        dirty: source_observation.and_then(|value| value.get("dirty")).and_then(Value::as_bool),
+        worktree_fingerprint: indexed_fingerprint.clone(),
+    };
     let basis = crate::freshness::GenerationFreshnessBasis { indexed_revision: indexed_revision.clone(), indexed_worktree_fingerprint: indexed_fingerprint.clone() };
-    let changed_basis = basis.clone();
-    let changed_current = current.clone();
-    let indexed = indexed_paths;
     let receipt = crate::freshness_receipt::build_freshness_receipt(
         Some(generation_id.to_owned()),
         None,
         basis,
         current,
-        || crate::freshness_observation::changed_paths_for_freshness(root, &changed_basis, &changed_current),
-        |path| indexed.map_or(true, |paths| paths.contains(path)),
+        || crate::freshness_receipt::ChangedPaths::complete(Vec::new()),
+        |_| true,
     );
-    serde_json::to_value(receipt).unwrap_or_else(|_| json!({"schema":"BlueprintFreshnessReceiptV1","generationId":generation_id,"freshness":"unavailable"}))
+    let mut value = serde_json::to_value(receipt).unwrap_or_else(|_| json!({"schema":"BlueprintFreshnessReceiptV1","generationId":generation_id,"freshness":"unavailable"}));
+    if let Value::Object(object) = &mut value {
+        let sealed_at = source_observation.and_then(|observation| observation.get("sealedAtUnixMs")).and_then(Value::as_u64);
+        object.insert("observationMode".into(), json!("sealed_generation"));
+        object.insert("liveSourceObserved".into(), json!(false));
+        object.insert("sealedAtUnixMs".into(), sealed_at.map_or(Value::Null, Value::from));
+        object.insert("ageMs".into(), sealed_at.map(|sealed| now_unix_ms().saturating_sub(sealed)).map_or(Value::Null, Value::from));
+    }
+    value
+}
+
+fn now_unix_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| u64::try_from(duration.as_millis()).unwrap_or(u64::MAX))
+        .unwrap_or(0)
 }
 
 fn open_store(path: &Path) -> Result<rusqlite::Connection, BlueprintError> {

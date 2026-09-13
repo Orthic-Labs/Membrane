@@ -3,7 +3,7 @@ name = "membrane"
 version = "0.1.0"
 edition.workspace = true
 license-file.workspace = true
-description = "Native Membrane CLI and stdio MCP client for the Hub-owned in-process runtime."
+description = "Installed Membrane singleton engine plus its lightweight forwarding client."
 
 [lib]
 name = "membrane"
@@ -12,6 +12,10 @@ path = "src/lib.rs"
 [[bin]]
 name = "membrane"
 path = "src/main.rs"
+
+[[bin]]
+name = "membrane-client"
+path = "src/bin/membrane-client.rs"
 
 [[bin]]
 name = "cli-parity"

@@ -203,6 +203,16 @@ impl BlueprintClient {
         self.query_with_cancellation(query, CancellationToken::new())
     }
 
+    /// Read Blueprint's sealed publication state without executing recall.
+    pub fn status(&self, query: &BlueprintQuery) -> Result<BlueprintResult, BlueprintClientError> {
+        self.status_with_cancellation(query, CancellationToken::new())
+    }
+
+    pub fn status_with_cancellation(&self, query: &BlueprintQuery, cancellation: CancellationToken) -> Result<BlueprintResult, BlueprintClientError> {
+        let query = bounded_query(query, cancellation.clone())?;
+        self.dispatch_status(&query, cancellation)
+    }
+
     pub fn query_with_cancellation(&self, query: &BlueprintQuery, cancellation: CancellationToken) -> Result<BlueprintResult, BlueprintClientError> {
         let query = bounded_query(query, cancellation.clone())?;
         let key = query.cache_key();
@@ -254,6 +264,32 @@ impl BlueprintClient {
         if cancellation.is_cancelled() { return Err(BlueprintClientError::Cancelled); }
         if deadline.is_some_and(|at| dispatch_finished_at >= at) { return Err(BlueprintClientError::Timeout); }
         parse_result(response, &request, query, bounds)
+    }
+
+    fn dispatch_status(&self, query: &BlueprintQuery, cancellation: CancellationToken) -> Result<BlueprintResult, BlueprintClientError> {
+        if cancellation.is_cancelled() { return Err(BlueprintClientError::Cancelled); }
+        let bounds = query.bounds.bounded();
+        let request = native_request(query, Operation::Status);
+        let native_cancellation = NativeCancellation::new();
+        let watcher_token = native_cancellation.clone();
+        let caller_cancellation = cancellation.clone();
+        let deadline = Instant::now().checked_add(query.deadline);
+        let watcher = std::thread::spawn(move || {
+            while !watcher_token.is_cancelled() {
+                if caller_cancellation.is_cancelled() || deadline.is_some_and(|at| Instant::now() >= at) {
+                    watcher_token.cancel();
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(1));
+            }
+        });
+        let response = self.api.dispatch(request.clone(), native_cancellation.clone());
+        let dispatch_finished_at = Instant::now();
+        native_cancellation.cancel();
+        let _ = watcher.join();
+        if cancellation.is_cancelled() { return Err(BlueprintClientError::Cancelled); }
+        if deadline.is_some_and(|at| dispatch_finished_at >= at) { return Err(BlueprintClientError::Timeout); }
+        parse_status_result(response, &request, query, bounds)
     }
 
     fn cached(&self, key: &BlueprintCacheKey) -> Option<BlueprintResult> {
@@ -422,6 +458,21 @@ fn parse_result(response: BlueprintResponse, request: &BlueprintRequest, query: 
         serde_json::from_value::<CandidateV1>(value).map_err(|error| BlueprintClientError::Malformed(error.to_string()))
     }).collect::<Result<Vec<_>, _>>()?;
     Ok(BlueprintResult { generation: observed, candidates: typed, payload: Some(raw) })
+}
+
+fn parse_status_result(response: BlueprintResponse, request: &BlueprintRequest, query: &BlueprintQuery, bounds: BlueprintBounds) -> Result<BlueprintResult, BlueprintClientError> {
+    response.validate(bounds.native()).map_err(native_error)?;
+    if response.request_id.as_deref() != Some(request.request_id.as_str()) { return Err(BlueprintClientError::Malformed("response request identity mismatch".into())); }
+    if !response.ok {
+        return Err(native_error(response.error.unwrap_or_else(|| BlueprintError::new("blueprint_unavailable", "request failed"))));
+    }
+    let raw = response.result.ok_or_else(|| BlueprintClientError::Malformed("successful response has no result".into()))?;
+    let observed = response.generation.or_else(|| raw.get("generationId").and_then(Value::as_str).map(str::to_owned))
+        .ok_or_else(|| BlueprintClientError::Malformed("response has no generation identity".into()))?;
+    if let Some(expected) = query.expected_generation.as_deref().filter(|value| !value.is_empty()) {
+        if observed != expected { return Err(BlueprintClientError::GenerationMismatch { expected: expected.to_owned(), observed }); }
+    }
+    Ok(BlueprintResult { generation: observed, candidates: Vec::new(), payload: Some(raw) })
 }
 
 fn native_error(error: BlueprintError) -> BlueprintClientError {

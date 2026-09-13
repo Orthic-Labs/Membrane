@@ -1,9 +1,9 @@
-//! Tray-owned daemon supervisor.
+//! Tray attachment/status reducer.
 //!
 //! The reducer is deliberately small and deterministic so crash-loop and
-//! drain semantics remain testable without a desktop. The Windows process
-//! plumbing lives in `process.rs`; this type owns its lifetime, protocol
-//! reader, restart policy, and user-visible observation.
+//! drain semantics remain testable without a desktop. Installed tray code is
+//! a status/UI attachment: OS supervision owns resident engine lifetime.
+//! `process.rs` remains bounded development compatibility plumbing only.
 
 use std::{
     collections::VecDeque,
@@ -122,6 +122,10 @@ pub enum Reason {
     DaemonDrainTimeout,
     DaemonPreHolderGraceExpired,
     DaemonJobEscapeDenied,
+    ResidentAttachStarting,
+    ResidentReady,
+    ResidentUnavailable,
+    TrayDetached,
 }
 
 impl Reason {
@@ -140,6 +144,10 @@ impl Reason {
             Self::DaemonDrainTimeout => "daemon_drain_timeout",
             Self::DaemonPreHolderGraceExpired => "daemon_pre_holder_grace_expired",
             Self::DaemonJobEscapeDenied => "daemon_job_escape_denied",
+            Self::ResidentAttachStarting => "resident_attach_starting",
+            Self::ResidentReady => "resident_ready",
+            Self::ResidentUnavailable => "resident_unavailable",
+            Self::TrayDetached => "tray_detached",
         }
     }
 }
@@ -216,6 +224,9 @@ pub struct Supervisor {
     http_port: u16,
     bearer_token: Option<String>,
     installed_origin: bool,
+    activation_client_path: Option<PathBuf>,
+    stable_current: Option<PathBuf>,
+    attachment_seen: bool,
     residency: ResidentController,
     /// Launch mode selected before the next spawn. Never mutated after a
     /// process has been acquired for the current generation — a change here
@@ -267,6 +278,9 @@ impl Supervisor {
             http_port,
             bearer_token: None,
             installed_origin: false,
+            activation_client_path: None,
+            stable_current: None,
+            attachment_seen: false,
             residency: ResidentController::new(),
             pending_launch_mode: process::LaunchMode::Contained,
             pre_holder_deadline: None,
@@ -306,6 +320,10 @@ impl Supervisor {
     }
     pub fn set_origin(&mut self, origin: workspace::RuntimeOrigin) {
         self.installed_origin = origin == workspace::RuntimeOrigin::Installed;
+        if !self.installed_origin {
+            self.activation_client_path = None;
+            self.stable_current = None;
+        }
     }
     pub fn is_quit_complete(&self) -> bool {
         self.drain_complete
@@ -316,6 +334,8 @@ impl Supervisor {
         self.http_port = workspace.http_port;
         self.set_origin(workspace.origin);
         self.daemon_path = workspace.daemon_path().unwrap_or_else(default_daemon_path);
+        self.activation_client_path = workspace.client_path();
+        self.stable_current = workspace.stable_current.clone();
     }
 
     /// Acquire this tray's controller lease from a stable-current identity.
@@ -329,6 +349,9 @@ impl Supervisor {
         now_ms: u64,
         expires_at_ms: u64,
     ) -> Result<Transition, &'static str> {
+        if self.installed_origin {
+            return Err("tray_attachment_does_not_acquire_holder");
+        }
         workspace.validate_controller_identity(&identity)?;
         let decision = self
             .residency
@@ -369,6 +392,9 @@ impl Supervisor {
         now_ms: u64,
         expires_at_ms: u64,
     ) -> Result<(), &'static str> {
+        if self.installed_origin {
+            return Err("tray_attachment_does_not_renew_holder");
+        }
         self.residency
             .renew(holder, now_ms, expires_at_ms)
             .map(|_| ())
@@ -381,6 +407,9 @@ impl Supervisor {
         holder: &Holder,
         now_ms: u64,
     ) -> Result<Transition, &'static str> {
+        if self.installed_origin {
+            return Err("tray_attachment_does_not_release_holder");
+        }
         let release = self
             .residency
             .release(holder)
@@ -399,6 +428,9 @@ impl Supervisor {
     }
 
     pub fn reconcile_expired_holders(&mut self, now_ms: u64) -> Option<Transition> {
+        if self.installed_origin {
+            return None;
+        }
         self.residency
             .reconcile_expired(now_ms)
             .drain_controller
@@ -439,6 +471,75 @@ impl Supervisor {
         self.observation.generation = generation;
     }
 
+    fn stop_snapshot_polling(&mut self) {
+        if let Some(stop) = self.snapshot_stop.take() {
+            stop.store(true, std::sync::atomic::Ordering::Release);
+        }
+        self.snapshot_rx = None;
+    }
+
+    /// Attach to installed resident engine without creating a runtime owner.
+    /// Health polling remains valid even when activation request is refused;
+    /// the tray then reports unavailable status and keeps no child handle.
+    fn attach_installed(&mut self, now_ms: u64) -> Transition {
+        self.stop_snapshot_polling();
+        self.event_rx = None;
+        self.event_decoder = EventDecoder::default();
+        self.process_exited = false;
+        self.quit_requested = false;
+        self.drain_complete = false;
+        self.terminal_event = false;
+        self.handshake_deadline = Some(now_ms.saturating_add(HANDSHAKE_TIMEOUT_MS));
+        self.pre_holder_deadline = None;
+        self.attachment_seen = false;
+        if self.observation.generation == 0 {
+            self.set_generation(1);
+        }
+
+        let token = match workspace::api_token(&self.workspace_root) {
+            Ok(token) if token.len() == 64 => token,
+            Ok(_) => {
+                return self.transition(
+                    State::CrashLoop,
+                    "resident_auth_invalid",
+                    now_ms,
+                    None,
+                    None,
+                )
+            }
+            Err(reason) => {
+                return self.transition(State::CrashLoop, reason, now_ms, None, None)
+            }
+        };
+        let endpoint = format!("http://127.0.0.1:{}", self.http_port);
+        self.observation.endpoint = Some(endpoint.clone());
+        self.bearer_token = Some(token.clone());
+        self.start_snapshot_polling(endpoint, token);
+
+        if let (Some(client), Some(current)) = (
+            self.activation_client_path.as_deref(),
+            self.stable_current.as_deref(),
+        ) {
+            match crate::startup::request_activation(client, current) {
+                Ok(()) => lifecycle_event(
+                    "resident_activation_requested",
+                    json!({"origin":"installed"}),
+                ),
+                Err(error) => lifecycle_event(
+                    "resident_activation_request_failed",
+                    json!({"reason": format!("{:?}", error.kind())}),
+                ),
+            }
+        }
+        self.transition(
+            State::Starting,
+            Reason::ResidentAttachStarting.as_str(),
+            now_ms,
+            None,
+            None,
+        )
+    }
+
     /// Pure starting transition retained for deterministic reducer tests.
     /// Use [`start_process`] from the native tray.
     #[cfg(test)]
@@ -457,6 +558,11 @@ impl Supervisor {
     }
 
     pub fn start_process(&mut self, now_ms: u64) -> Transition {
+        // Installed tray is never a resident owner. Attach to the canonical
+        // endpoint and ask installed client/OS supervision to activate it.
+        if self.installed_origin {
+            return self.attach_installed(now_ms);
+        }
         if self.observation.generation == 0 {
             self.set_generation(1);
         }
@@ -481,6 +587,23 @@ impl Supervisor {
     }
 
     pub fn begin_drain(&mut self, now_ms: u64) -> Transition {
+        // Closing tray detaches its UI only. Never send drain to, or drop a
+        // process handle for, the installed resident engine.
+        if self.installed_origin {
+            self.quit_requested = true;
+            self.drain_complete = true;
+            self.pre_holder_deadline = None;
+            self.stop_snapshot_polling();
+            self.observation.endpoint = None;
+            self.bearer_token = None;
+            return self.transition(
+                State::Stopped,
+                Reason::TrayDetached.as_str(),
+                now_ms,
+                None,
+                None,
+            );
+        }
         // Final-holder drain (or explicit quit) ends this generation's
         // residency entirely; the next `start_process` must be free to arm a
         // fresh pre-holder grace rather than inherit a stale established flag
@@ -596,6 +719,13 @@ impl Supervisor {
     }
 
     pub fn manual_restart_process(&mut self, now_ms: u64) -> Transition {
+        if self.installed_origin {
+            self.failures.clear();
+            self.run_started_at = None;
+            self.retry_at = None;
+            self.set_generation(self.observation.generation.saturating_add(1));
+            return self.attach_installed(now_ms);
+        }
         self.close_process();
         self.failures.clear();
         self.run_started_at = None;
@@ -636,9 +766,38 @@ impl Supervisor {
                 self.observation.budget = update.values.budget;
                 self.observation.snapshot_observed = update.values.observed;
                 if let Some(remote) = update.resident_holder.as_ref() {
+                    self.attachment_seen = true;
                     self.note_remote_holder(remote);
                 }
             }
+        }
+
+        // Installed mode has no child event stream, retry loop, or drain
+        // deadline. A fenced status response proves attachment; absence is
+        // merely unavailable and must never trigger a local engine launch.
+        if self.installed_origin {
+            if self.attachment_seen && self.observation.state == State::Starting {
+                self.handshake_deadline = None;
+                self.transition(
+                    State::Running,
+                    Reason::ResidentReady.as_str(),
+                    now_ms,
+                    None,
+                    None,
+                );
+            } else if self.observation.state == State::Starting
+                && self.handshake_deadline.is_some_and(|deadline| now_ms >= deadline)
+            {
+                self.handshake_deadline = None;
+                self.transition(
+                    State::Stopped,
+                    Reason::ResidentUnavailable.as_str(),
+                    now_ms,
+                    None,
+                    None,
+                );
+            }
+            return;
         }
 
         let mut events = Vec::new();
@@ -726,6 +885,9 @@ impl Supervisor {
     /// CodeRight holder can satisfy startup grace; zero, failed, or mismatched
     /// observations remain non-authoritative.
     fn note_remote_holder(&mut self, remote: &snapshot::RemoteHolderObservation) {
+        if self.installed_origin {
+            return;
+        }
         let status = &remote.status;
         if matches!(self.observation.state, State::Starting | State::Running)
             && (status.hub_holders > 0 || status.coderight_daemon_holders > 0)
@@ -832,6 +994,11 @@ impl Supervisor {
     }
 
     fn launch_process(&mut self, now_ms: u64) -> Option<Transition> {
+        if self.installed_origin {
+            // Defense in depth: installed tray must never reach process
+            // plumbing, even if a future reducer path calls this helper.
+            return Some(self.attach_installed(now_ms));
+        }
         self.close_process();
         self.process_exited = false;
         if workspace::installed_tray_path().is_some() {
@@ -926,10 +1093,7 @@ impl Supervisor {
     }
 
     fn close_process(&mut self) {
-        if let Some(stop) = self.snapshot_stop.take() {
-            stop.store(true, std::sync::atomic::Ordering::Release);
-        }
-        self.snapshot_rx = None;
+        self.stop_snapshot_polling();
         self.event_rx = None;
         self.event_decoder = EventDecoder::default();
         self.bearer_token = None;
@@ -940,7 +1104,13 @@ impl Supervisor {
         self.observation.budget = unknown.budget;
         self.observation.snapshot_observed = unknown.observed;
         self.observation.process_identity = None;
-        self.process.take(); // Drop closes job, coupling daemon lifetime.
+        // Installed mode never stores a process. Keep this explicit so future
+        // attachment changes cannot accidentally turn tray into an owner.
+        if self.installed_origin {
+            debug_assert!(self.process.is_none());
+        } else {
+            self.process.take();
+        }
     }
 
     fn start_snapshot_polling(&mut self, endpoint: String, token: String) {
@@ -969,6 +1139,10 @@ fn reason_from_str(value: &str) -> Reason {
         "daemon_drain_timeout" => Reason::DaemonDrainTimeout,
         "daemon_pre_holder_grace_expired" => Reason::DaemonPreHolderGraceExpired,
         "daemon_job_escape_denied" => Reason::DaemonJobEscapeDenied,
+        "resident_attach_starting" => Reason::ResidentAttachStarting,
+        "resident_ready" => Reason::ResidentReady,
+        "resident_unavailable" => Reason::ResidentUnavailable,
+        "tray_detached" => Reason::TrayDetached,
         _ => Reason::DaemonReadyFailed,
     }
 }
@@ -1099,6 +1273,17 @@ mod tests {
         );
         assert_eq!(Reason::DaemonReadyFailed.as_str(), "daemon_ready_failed");
         assert_eq!(Reason::DaemonDrainTimeout.as_str(), "daemon_drain_timeout");
+    }
+
+    #[test]
+    fn installed_close_detaches_without_process_lifetime_effect() {
+        let mut supervisor = test_supervisor();
+        supervisor.set_origin(workspace::RuntimeOrigin::Installed);
+        let transition = supervisor.begin_drain(42);
+        assert_eq!(transition.state, State::Stopped);
+        assert_eq!(transition.reason.as_str(), "tray_detached");
+        assert!(supervisor.is_quit_complete());
+        assert!(supervisor.process.is_none());
     }
 
     #[test]

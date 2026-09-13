@@ -378,48 +378,32 @@ fn persisted_blueprint_freshness(
         deadline: std::time::Duration::from_millis(1_200),
     };
     let result = blueprint
-        .query(&request)
+        .status(&request)
         .map_err(|error| error.to_string())?;
-    let observation = result
+    let receipt = result
         .payload
         .as_ref()
-        .and_then(|payload| payload.get("sourceObservation"))
-        .ok_or_else(|| "blueprint_source_observation_missing".to_owned())?;
-    let indexed_head = observation.get("head").and_then(serde_json::Value::as_str)
+        .and_then(|payload| payload.get("freshnessReceipt"))
+        .ok_or_else(|| "blueprint_freshness_receipt_missing".to_owned())?;
+    let generation = receipt.get("generation")
+        .ok_or_else(|| "blueprint_freshness_generation_missing".to_owned())?;
+    let indexed_head = generation.get("indexed_revision").and_then(serde_json::Value::as_str)
         .ok_or_else(|| "blueprint_source_head_missing".to_owned())?;
-    let indexed_status = observation.get("statusDigest").and_then(serde_json::Value::as_str)
+    generation.get("indexed_worktree_fingerprint").and_then(serde_json::Value::as_str)
         .ok_or_else(|| "blueprint_status_digest_missing".to_owned())?;
-    let current = membrane_blueprint::git_source_observation::git_source_observation_at(Path::new(&query.repository_root));
-    let (graph_state, stale, overlay_digest, complete, reason) = match current {
-        Some(current) if current.head != indexed_head => (
-            "stale_snapshot", true, Some(current.status_digest), false,
-            Some("blueprint_generation_stale"),
-        ),
-        Some(current) if current.status_digest != indexed_status => (
-            // Published graph does not contain current working-tree edits;
-            // without an attached overlay, keep Blueprint explicitly stale.
-            "stale_snapshot", true, Some(current.status_digest), false,
-            Some("blueprint_overlay_unattached"),
-        ),
-        Some(_) => ("clean", false, None, true, None),
-        None => ("indeterminate", true, None, false, Some("source_observation_unavailable")),
-    };
     let snapshot_id = format!("blueprint:{}:{}", result.generation, indexed_head);
     Ok(SourceResponse {
         value: FreshnessSnapshotV1 {
-            graph_state: graph_state.to_owned(),
+            graph_state: "clean".to_owned(),
             generation: Some(result.generation.clone()),
             snapshot_id: Some(snapshot_id),
             base_commit: Some(indexed_head.to_owned()),
-            overlay_digest,
-            stale,
+            overlay_digest: None,
+            stale: false,
         },
         generation: Some(result.generation),
-        complete,
-        warnings: reason.into_iter().map(|code| SourceWarning {
-            code: code.to_owned(),
-            detail_id: Some(query.request_id.clone()),
-        }).collect(),
+        complete: true,
+        warnings: Vec::new(),
     })
 }
 
@@ -438,38 +422,43 @@ impl FreshnessSource for RuntimeFreshnessSource {
         let deadline = self.deadline;
         let blueprint = self.blueprint.clone();
         let persisted_freshness = self.persisted_freshness;
+        let query = query.clone();
         Box::pin(async move {
-            if persisted_freshness {
-                return persisted_blueprint_freshness(&blueprint, query)
-                    .map_err(membrane_provider_sdk::ProviderError::Unavailable);
-            }
-            let verdict = crate::freshness::evaluate_repository_freshness_until(&store, root, deadline);
-            let graph_state = serde_json::to_string(&verdict.graph_state)
-                .unwrap_or_else(|_| "\"indeterminate\"".to_owned())
-                .trim_matches('"')
-                .to_owned();
-            let stale = !verdict.stable
-                || matches!(
-                    verdict.graph_state,
-                    crate::freshness::GraphState::StaleSnapshot
-                );
-            let warning = (!verdict.stable).then(|| SourceWarning {
-                code: "freshness_unavailable".to_owned(),
-                detail_id: verdict.reasons.first().cloned(),
-            });
-            Ok(SourceResponse {
-                value: FreshnessSnapshotV1 {
-                    graph_state,
-                    generation: verdict.blueprint_generation.clone(),
-                    snapshot_id: Some(verdict.snapshot_id),
-                    base_commit: verdict.base_commit,
-                    overlay_digest: Some(verdict.overlay_digest),
-                    stale,
-                },
-                generation: verdict.blueprint_generation,
-                complete: verdict.stable,
-                warnings: warning.into_iter().collect(),
+            tokio::task::spawn_blocking(move || {
+                if persisted_freshness {
+                    return persisted_blueprint_freshness(&blueprint, &query)
+                        .map_err(membrane_provider_sdk::ProviderError::Unavailable);
+                }
+                let verdict = crate::freshness::evaluate_repository_freshness_until(&store, root, deadline);
+                let graph_state = serde_json::to_string(&verdict.graph_state)
+                    .unwrap_or_else(|_| "\"indeterminate\"".to_owned())
+                    .trim_matches('"')
+                    .to_owned();
+                let stale = !verdict.stable
+                    || matches!(
+                        verdict.graph_state,
+                        crate::freshness::GraphState::StaleSnapshot
+                    );
+                let warning = (!verdict.stable).then(|| SourceWarning {
+                    code: "freshness_unavailable".to_owned(),
+                    detail_id: verdict.reasons.first().cloned(),
+                });
+                Ok(SourceResponse {
+                    value: FreshnessSnapshotV1 {
+                        graph_state,
+                        generation: verdict.blueprint_generation.clone(),
+                        snapshot_id: Some(verdict.snapshot_id),
+                        base_commit: verdict.base_commit,
+                        overlay_digest: Some(verdict.overlay_digest),
+                        stale,
+                    },
+                    generation: verdict.blueprint_generation,
+                    complete: verdict.stable,
+                    warnings: warning.into_iter().collect(),
+                })
             })
+            .await
+            .map_err(|error| membrane_provider_sdk::ProviderError::Unavailable(format!("freshness blocking worker: {error}")))?
         })
     }
 }
@@ -498,47 +487,51 @@ impl ScopeGrantSource for RuntimeScopeGrantSource {
         let grant_id = self.grant_id.clone();
         let query = query.clone();
         Box::pin(async move {
-            let Some(id) = grant_id else {
-                return Err(membrane_provider_sdk::ProviderError::Unavailable(
-                    "scope_grant_missing".into(),
-                ));
-            };
-            let grant = match deadline {
-                Some(deadline) => crate::catalog::lookup_grant_until(&catalog_path, &id, deadline),
-                None => crate::catalog::lookup_grant(catalog.as_ref().expect("unbounded catalog owner"), &id)
-                    .map_err(|error| error.to_string()),
-            }
-                .map_err(|error| {
-                    membrane_provider_sdk::ProviderError::Unavailable(error.to_string())
-                })?
-                .ok_or_else(|| {
-                    membrane_provider_sdk::ProviderError::Unavailable("scope_grant_missing".into())
-                })?;
-            let complete = grant.permits();
-            if !grant.repository_ids.iter().any(|repository_id| repository_id == &query.repository_id) {
-                return Err(membrane_provider_sdk::ProviderError::Unavailable(
-                    "scope_grant_repository_mismatch".into(),
-                ));
-            }
-            let value = membrane_provider_sdk::ScopeGrantView {
-                id: grant.id,
-                repository_id: query.repository_id,
-                repository_root: query.repository_root,
-                task_id: grant.task_id,
-                session_id: grant.session_id,
-                manifest_digest: grant.manifest_digest,
-                blueprint_generation: query.generation.unwrap_or_else(|| "unknown".to_owned()),
-                permitted_edge_types: grant.permitted_edge_types,
-                read_paths: grant.read_paths.into_iter()
-                    .map(|path| format!("{}:{}-{}", path.path, path.start_line, path.end_line))
-                    .collect(),
-            };
-            Ok(SourceResponse {
-                value,
-                generation: None,
-                complete,
-                warnings: Vec::new(),
+            tokio::task::spawn_blocking(move || {
+                let Some(id) = grant_id else {
+                    return Err(membrane_provider_sdk::ProviderError::Unavailable(
+                        "scope_grant_missing".into(),
+                    ));
+                };
+                let grant = match deadline {
+                    Some(deadline) => crate::catalog::lookup_grant_until(&catalog_path, &id, deadline),
+                    None => crate::catalog::lookup_grant(catalog.as_ref().expect("unbounded catalog owner"), &id)
+                        .map_err(|error| error.to_string()),
+                }
+                    .map_err(|error| {
+                        membrane_provider_sdk::ProviderError::Unavailable(error.to_string())
+                    })?
+                    .ok_or_else(|| {
+                        membrane_provider_sdk::ProviderError::Unavailable("scope_grant_missing".into())
+                    })?;
+                let complete = grant.permits();
+                if !grant.repository_ids.iter().any(|repository_id| repository_id == &query.repository_id) {
+                    return Err(membrane_provider_sdk::ProviderError::Unavailable(
+                        "scope_grant_repository_mismatch".into(),
+                    ));
+                }
+                let value = membrane_provider_sdk::ScopeGrantView {
+                    id: grant.id,
+                    repository_id: query.repository_id,
+                    repository_root: query.repository_root,
+                    task_id: grant.task_id,
+                    session_id: grant.session_id,
+                    manifest_digest: grant.manifest_digest,
+                    blueprint_generation: query.generation.unwrap_or_else(|| "unknown".to_owned()),
+                    permitted_edge_types: grant.permitted_edge_types,
+                    read_paths: grant.read_paths.into_iter()
+                        .map(|path| format!("{}:{}-{}", path.path, path.start_line, path.end_line))
+                        .collect(),
+                };
+                Ok(SourceResponse {
+                    value,
+                    generation: None,
+                    complete,
+                    warnings: Vec::new(),
+                })
             })
+            .await
+            .map_err(|error| membrane_provider_sdk::ProviderError::Unavailable(format!("scope grant blocking worker: {error}")))?
         })
     }
 }

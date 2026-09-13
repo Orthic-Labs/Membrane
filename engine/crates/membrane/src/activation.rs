@@ -10,7 +10,9 @@
 //! - OpenViking `openviking-entrypoint.sh`: start, wait for health, fail when
 //!   child exits early or readiness deadline expires.
 //! Native activation owns exact Membrane add/get/remove command shapes &
-//! conflict-restoration contract; the former MCP installer is historical.
+//! conflict-restoration contract. Claude Code & Codex use the installed
+//! authenticated Streamable HTTP listener; only unsupported hosts retain the
+//! transport-only stdio compatibility entrypoint.
 
 use serde::{Deserialize, Serialize};
 use sha2::Digest;
@@ -26,6 +28,8 @@ pub const ACTIVATION_RECEIPT_SCHEMA_VERSION: u32 = 1;
 pub const DEACTIVATION_RECEIPT_SCHEMA_VERSION: u32 = 1;
 pub const ACTIVATION_RECEIPT_FILE: &str = "activation-receipt.json";
 pub const INSTALLED_PORT: u16 = 47_851;
+const MCP_HTTP_PATH: &str = "/mcp";
+const MCP_TOKEN_ENV: &str = "MEMBRANE_BEARER_TOKEN";
 const WORKSPACE_SCHEMA_VERSION: u32 = 3;
 const WORKSPACE_MIGRATION_RECEIPT_SCHEMA_VERSION: u32 = 1;
 const WORKSPACE_MIGRATION_NAME: &str = "workspace_config_v2_to_v3";
@@ -427,11 +431,11 @@ fn activate_with_residency(options: ActivationOptions, start_resident: bool) -> 
         .parent()
         .ok_or_else(|| "stable installed path has no product root".to_string())?;
     let membrane = install_root.join(executable_name("membrane"));
-    let tray = install_root.join(executable_name("membrane-tray"));
+    let membrane_client = install_root.join(executable_name("membrane-client"));
     let runtime_membrane = version_root.join(executable_name("membrane"));
-    let runtime_tray = version_root.join(executable_name("membrane-tray"));
+    let runtime_client = version_root.join(executable_name("membrane-client"));
     require_file(&runtime_membrane, "resolved membrane executable")?;
-    require_file(&runtime_tray, "resolved tray executable")?;
+    require_file(&runtime_client, "resolved membrane client executable")?;
     let (workspace_root, port) = installed_runtime(product_root)?;
     // Migration is installer/activation-owned and happens before state,
     // locking, health, client, or resident activation effects.
@@ -465,7 +469,7 @@ fn activate_with_residency(options: ActivationOptions, start_resident: bool) -> 
     // an unverified/foreign listener on the Membrane port cannot suppress
     // explicit binding reconciliation (docs/architecture/execution-lifecycle-boundary.md).
     let clients = reconcile_clients(
-        &membrane, &options.clients, options.dry_run, run_client,
+        &membrane_client, &options.clients, options.dry_run, run_client,
     )?;
     if !options.dry_run {
         ensure_user_path(&install_root)?;
@@ -505,11 +509,9 @@ fn activate_with_residency(options: ActivationOptions, start_resident: bool) -> 
     } else if let HealthObservation::Ready { release_generation, .. } = &initial {
         (release_generation.clone(), "ready".to_string(), None)
     } else {
-        if matches!(&initial, HealthObservation::PriorGeneration { .. }) {
-            request_resident_replacement(&tray, &workspace_root, port)?;
-            wait_for_shutdown(port, &expected_generation, options.timeout)?;
-        }
-        launch_tray(&tray, &workspace_root, port)?;
+        // The installed engine is the sole resident owner. Tray/Hub is only
+        // an optional status surface and must never be part of startup.
+        launch_engine(&membrane, &workspace_root, port)?;
         (
             wait_for_health(port, &expected_generation, options.timeout)?,
             "ready".to_string(),
@@ -518,6 +520,7 @@ fn activate_with_residency(options: ActivationOptions, start_resident: bool) -> 
     };
 
     if !options.dry_run {
+        provision_mcp_credential(product_root)?;
         reconcile_claude_hooks(&install_root)?;
         reconcile_codex_hooks(&install_root)?;
     }
@@ -527,7 +530,7 @@ fn activate_with_residency(options: ActivationOptions, start_resident: bool) -> 
         install_root: install_root.clone(),
         version_root,
         membrane_executable: membrane,
-        tray_executable: tray,
+        tray_executable: install_root.join(executable_name("membrane-tray")),
         activated_at_unix_ms: now_unix_ms(),
         dry_run: options.dry_run,
         service: ServiceActivationReceipt {
@@ -565,10 +568,15 @@ fn deactivate_with_residency(
         .parent()
         .ok_or_else(|| "stable installed path has no product root".to_string())?;
     let membrane = install_root.join(executable_name("membrane"));
+    let membrane_client = install_root.join(executable_name("membrane-client"));
     let tray = install_root.join(executable_name("membrane-tray"));
     require_file(
         &version_root.join(executable_name("membrane")),
         "resolved membrane executable",
+    )?;
+    require_file(
+        &version_root.join(executable_name("membrane-client")),
+        "resolved membrane client executable",
     )?;
     require_file(
         &version_root.join(executable_name("membrane-tray")),
@@ -608,7 +616,7 @@ fn deactivate_with_residency(
         wait_for_shutdown(port, &expected_generation, options.timeout)?;
     }
 
-    let clients = deactivate_clients(&membrane, &options.clients, options.dry_run, run_client)?;
+    let clients = deactivate_clients(&membrane_client, &options.clients, options.dry_run, run_client)?;
     let claude_hooks_matched = remove_claude_hooks(&install_root, options.dry_run)?;
     let _ = remove_codex_hooks(&install_root, options.dry_run)?;
     let user_path_present = remove_user_path(&install_root, options.dry_run)?;
@@ -880,27 +888,20 @@ fn activation_owner_alive(lock: &Path) -> bool {
     }
 }
 
-fn launch_tray(tray: &Path, workspace_root: &Path, port: u16) -> Result<(), String> {
-    launch_tray_with_mode(tray, workspace_root, port, "--activate")
-}
-
-fn request_resident_replacement(
-    tray: &Path,
+fn launch_engine(
+    engine: &Path,
     workspace_root: &Path,
     port: u16,
 ) -> Result<(), String> {
-    launch_tray_with_mode(tray, workspace_root, port, "--replace")
-}
-
-fn launch_tray_with_mode(
-    tray: &Path,
-    workspace_root: &Path,
-    port: u16,
-    mode: &str,
-) -> Result<(), String> {
-    let mut command = Command::new(tray);
+    #[cfg(windows)]
+    {
+        let _ = (workspace_root, port);
+        return request_windows_supervisor(engine, workspace_root);
+    }
+    #[cfg(not(windows))]
+    {
+    let mut command = Command::new(engine);
     command
-        .arg(mode)
         .env("MEMBRANE_RUNTIME_ORIGIN", "installed")
         .env_remove("MEMBRANE_CONFIG_ROOT")
         .env_remove("MEMBRANE_DATA_ROOT")
@@ -909,36 +910,128 @@ fn launch_tray_with_mode(
         .env("MEMBRANE_STATE_ROOT", workspace_root)
         .env("MEMBRANE_PORT", port.to_string())
         .env("MEMBRANE_HTTP_PORT", port.to_string());
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-        const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
-        const DETACHED_PROCESS: u32 = 0x0000_0008;
-        command.creation_flags(CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP | DETACHED_PROCESS);
-    }
-    // DETACHED_PROCESS drops the console but not the inherited stdio handles.
-    // A resident tray that keeps the caller's stdout pipe open makes every
-    // scripted `membrane activate` hang until the tray exits — the readiness
-    // deadline expires long before the pipe closes, so the bound looks
-    // ignored. Redirecting to null fixed the hang but threw the tray's own
-    // diagnostics away with it, which hid why Blueprint failed to serve; send
-    // them to a log under the same root doctor reports instead.
+    // DETACHED_PROCESS drops console but not inherited stdio handles. Redirect
+    // engine output to installer log so activation never waits on child pipe.
     command
         .stdin(Stdio::null())
-        .stdout(tray_log_target())
-        .stderr(tray_log_target());
+        .stdout(engine_log_target())
+        .stderr(engine_log_target());
     command
         .spawn()
         .map(|_| ())
-        .map_err(|error| format!("launch installed tray {} {mode}: {error}", tray.display()))
+        .map_err(|error| format!("launch installed engine {}: {error}", engine.display()))
+    }
 }
 
-/// Append the tray's own output to `membrane-tray.log` under the Windows log
-/// root. Falls back to a discarded stream so a logging failure never stops
-/// activation — but never back to inheriting the caller's pipe, which is what
-/// made `membrane activate` hang.
-fn tray_log_target() -> Stdio {
+#[cfg(windows)]
+const WINDOWS_SUPERVISOR_TASK: &str = "Membrane Engine";
+
+#[cfg(windows)]
+fn hidden_status(program: &str, args: &[String]) -> Result<(), String> {
+    use std::os::windows::process::CommandExt;
+    let status = Command::new(program)
+        .args(args)
+        .creation_flags(0x0800_0000)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .map_err(|error| format!("run {program}: {error}"))?;
+    if status.success() { Ok(()) } else { Err(format!("{program} exited {:?}", status.code())) }
+}
+
+#[cfg(windows)]
+fn request_windows_supervisor(engine: &Path, workspace_root: &Path) -> Result<(), String> {
+    let supervision = workspace_root.join("tools/.cache/memory/engine-supervision.json");
+    if let Some(parent) = supervision.parent() { std::fs::create_dir_all(parent).map_err(|error| format!("create supervision state: {error}"))?; }
+    std::fs::write(&supervision, format!("{{\"schemaVersion\":1,\"clean\":true,\"failures\":0,\"observedAtUnixMs\":{}}}\n", now_unix_ms()))
+        .map_err(|error| format!("reset supervision state: {error}"))?;
+    let action = format!("\"{}\" --os-supervised", engine.display());
+    hidden_status("schtasks.exe", &[
+        "/Create".into(), "/TN".into(), WINDOWS_SUPERVISOR_TASK.into(),
+        "/TR".into(), action, "/SC".into(), "MINUTE".into(), "/MO".into(), "1".into(),
+        "/RL".into(), "LIMITED".into(), "/F".into(),
+    ])?;
+    let script = "$s=New-Object -ComObject 'Schedule.Service';$s.Connect();$f=$s.GetFolder('\\');$t=$f.GetTask('Membrane Engine');$d=$t.Definition;$d.Settings.MultipleInstances=2;$d.Settings.ExecutionTimeLimit='PT0S';$d.Settings.DisallowStartIfOnBatteries=$false;$d.Settings.StopIfGoingOnBatteries=$false;$d.Settings.StartWhenAvailable=$true;$null=$f.RegisterTaskDefinition('Membrane Engine',$d,6,$null,$null,3)";
+    hidden_status("powershell.exe", &["-NoLogo".into(), "-NoProfile".into(), "-NonInteractive".into(), "-Command".into(), script.into()])?;
+    hidden_status("schtasks.exe", &["/Run".into(), "/TN".into(), WINDOWS_SUPERVISOR_TASK.into()])
+}
+
+
+#[cfg(windows)]
+fn provision_mcp_credential(product_root: &Path) -> Result<(), String> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows_sys::Win32::System::Registry::{
+        RegCloseKey, RegDeleteValueW, RegOpenKeyExW, RegSetValueExW, HKEY, HKEY_CURRENT_USER,
+        KEY_SET_VALUE, REG_SZ,
+    };
+    let token_path = product_root.join("state/tools/.cache/memory/api-token");
+    let token = std::fs::read_to_string(&token_path)
+        .map_err(|error| format!("read installed MCP credential: {error}"))?;
+    let token = token.trim();
+    if token.is_empty() { return Err("installed MCP credential is empty".into()); }
+    let wide = |value: &std::ffi::OsStr| value.encode_wide().chain(Some(0)).collect::<Vec<_>>();
+    let key_name = wide(std::ffi::OsStr::new("Environment"));
+    let value_name = wide(std::ffi::OsStr::new(MCP_TOKEN_ENV));
+    let value = wide(std::ffi::OsStr::new(token));
+    let mut key: HKEY = std::ptr::null_mut();
+    let opened = unsafe { RegOpenKeyExW(HKEY_CURRENT_USER, key_name.as_ptr(), 0, KEY_SET_VALUE, &mut key) };
+    if opened != 0 { return Err(format!("open user MCP credential store: {opened}")); }
+    let written = unsafe { RegSetValueExW(key, value_name.as_ptr(), 0, REG_SZ, value.as_ptr() as *const u8, (value.len() * 2) as u32) };
+    let legacy_name = wide(std::ffi::OsStr::new("MEMBRANE_API_TOKEN"));
+    unsafe { RegDeleteValueW(key, legacy_name.as_ptr()) };
+    unsafe { RegCloseKey(key) };
+    if written != 0 { return Err(format!("write user MCP credential: {written}")); }
+    Ok(())
+}
+
+#[cfg(not(windows))]
+fn provision_mcp_credential(_product_root: &Path) -> Result<(), String> { Ok(()) }
+
+/// Legacy stop request used during explicit deactivation. Normal startup never
+/// launches tray; installed tray remains a bounded lifecycle control surface.
+fn request_resident_replacement(
+    tray: &Path,
+    workspace_root: &Path,
+    port: u16,
+) -> Result<(), String> {
+    #[cfg(windows)]
+    {
+        let _ = (tray, workspace_root, port);
+        hidden_status("schtasks.exe", &["/Change".into(), "/TN".into(), WINDOWS_SUPERVISOR_TASK.into(), "/Disable".into()])?;
+        return hidden_status("schtasks.exe", &["/End".into(), "/TN".into(), WINDOWS_SUPERVISOR_TASK.into()]);
+    }
+    #[cfg(not(windows))]
+    {
+    let mut command = Command::new(tray);
+    command
+        .arg("--replace")
+        .env("MEMBRANE_RUNTIME_ORIGIN", "installed")
+        .env_remove("MEMBRANE_CONFIG_ROOT")
+        .env_remove("MEMBRANE_DATA_ROOT")
+        .env_remove("MEMBRANE_CACHE_ROOT")
+        .env_remove("MEMBRANE_LOG_ROOT")
+        .env("MEMBRANE_STATE_ROOT", workspace_root)
+        .env("MEMBRANE_PORT", port.to_string())
+        .env("MEMBRANE_HTTP_PORT", port.to_string())
+        .stdin(Stdio::null())
+        .stdout(engine_log_target())
+        .stderr(engine_log_target());
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(0x0800_0000 | 0x0000_0200 | 0x0000_0008);
+    }
+    command
+        .spawn()
+        .map(|_| ())
+        .map_err(|error| format!("request resident stop through tray {}: {error}", tray.display()))
+    }
+}
+
+/// Append resident engine output to `membrane-engine.log` under Windows log
+/// root. Fall back to discarded stream if log setup fails.
+fn engine_log_target() -> Stdio {
     let Some(root) = std::env::var_os("MEMBRANE_LOG_ROOT")
         .map(PathBuf::from)
         .or_else(|| {
@@ -953,7 +1046,7 @@ fn tray_log_target() -> Stdio {
     std::fs::OpenOptions::new()
         .create(true)
         .append(true)
-        .open(root.join("membrane-tray.log"))
+        .open(root.join("membrane-engine.log"))
         .map(Stdio::from)
         .unwrap_or(Stdio::null())
 }
@@ -1914,6 +2007,46 @@ fn uses_config_file(client: HarnessClient) -> bool {
     )
 }
 
+fn uses_http_transport(client: HarnessClient) -> bool {
+    matches!(client, HarnessClient::Claude | HarnessClient::Codex)
+}
+
+fn installed_mcp_url() -> String {
+    let port = std::env::var("MEMBRANE_TEST_INSTALLED_PORT")
+        .ok()
+        .and_then(|value| value.parse::<u16>().ok())
+        .filter(|port| *port >= 1024)
+        .unwrap_or(INSTALLED_PORT);
+    format!("http://127.0.0.1:{port}{MCP_HTTP_PATH}")
+}
+
+fn expected_client_config(client: HarnessClient, executable: &str) -> ServerConfig {
+    if uses_http_transport(client) {
+        ServerConfig {
+            command: installed_mcp_url(),
+            args: Vec::new(),
+        }
+    } else {
+        ServerConfig {
+            command: executable.to_string(),
+            args: vec!["stdio-mcp".to_string()],
+        }
+    }
+}
+
+fn config_matches_expected(client: HarnessClient, config: &ServerConfig, executable: &str) -> bool {
+    let expected = expected_client_config(client, executable);
+    paths_equal(&config.command, &expected.command) && config.args == expected.args
+}
+
+fn registration_command(client: HarnessClient, executable: &str) -> String {
+    if uses_http_transport(client) {
+        installed_mcp_url()
+    } else {
+        executable.to_string()
+    }
+}
+
 fn client_config_path(client: HarnessClient) -> Result<PathBuf, String> {
     let home = std::env::var_os("USERPROFILE")
         .or_else(|| std::env::var_os("HOME"))
@@ -2135,12 +2268,21 @@ where
             if matches!(state, ClientState::Conflict(_)) {
                 require_command_success(client, "remove", runner(client, &remove_args(client)))?;
             }
+            let transport_args = if uses_http_transport(client) {
+                Vec::new()
+            } else {
+                vec!["stdio-mcp".to_string()]
+            };
             require_command_success(
                 client,
                 "add",
                 runner(
                     client,
-                    &add_args(client, &executable, &["stdio-mcp".to_string()]),
+                    &add_args(
+                        client,
+                        &registration_command(client, &executable),
+                        &transport_args,
+                    ),
                 ),
             )?;
             match inspect_client(client, &executable, &mut runner)? {
@@ -2180,7 +2322,7 @@ where
                 if !matches!(state, ClientState::Absent | ClientState::Conflict(_)) { continue; }
                 let _ = runner(*client, &remove_args(*client));
                 if let ClientState::Conflict(prior) = state {
-                    let _ = runner(*client, &add_args(*client, &prior.command, &prior.args));
+                    let _ = runner(*client, &prior_add_args(*client, prior));
                 }
             }
             return Err(error);
@@ -2222,9 +2364,8 @@ where
             });
             continue;
         }
-        let owned = parse_prior_config(&current.stdout).is_some_and(|config| {
-            paths_equal(&config.command, &executable) && config.args == ["stdio-mcp".to_string()]
-        });
+        let owned = parse_prior_config(&current.stdout)
+            .is_some_and(|config| config_matches_expected(client, &config, &executable));
         if owned && !dry_run {
             require_command_success(client, "remove", runner(client, &remove_args(client)))?;
             if runner(client, &get_args(client)).success() {
@@ -2263,7 +2404,7 @@ where
     if !current.success() {
         return Ok(ClientState::Absent);
     }
-    if is_expected(&current.stdout, executable) {
+    if is_expected(client, &current.stdout, executable) {
         return Ok(ClientState::AlreadyCorrect);
     }
     parse_prior_config(&current.stdout)
@@ -2299,11 +2440,7 @@ where
     };
     step(active_client, &remove_args(active_client), runner);
     if let ClientState::Conflict(prior) = active_state {
-        step(
-            active_client,
-            &add_args(active_client, &prior.command, &prior.args),
-            runner,
-        );
+        step(active_client, &prior_add_args(active_client, prior), runner);
     }
     for (client, state) in completed.iter().rev() {
         if !matches!(state, ClientState::Absent | ClientState::Conflict(_)) {
@@ -2311,7 +2448,7 @@ where
         }
         step(*client, &remove_args(*client), runner);
         if let ClientState::Conflict(prior) = state {
-            step(*client, &add_args(*client, &prior.command, &prior.args), runner);
+            step(*client, &prior_add_args(*client, prior), runner);
         }
     }
     unrestored.sort();
@@ -2347,15 +2484,52 @@ fn remove_args(client: HarnessClient) -> Vec<String> {
 
 fn add_args(client: HarnessClient, command: &str, args: &[String]) -> Vec<String> {
     let mut values = vec!["mcp".to_string(), "add".to_string()];
+    match client {
+        // Both supported native MCP hosts attach to the resident listener. The
+        // token is resolved by each host from its normal credential environment;
+        // no bearer value is placed in argv, logs, or receipts.
+        HarnessClient::Codex => {
+            values.extend([
+                "membrane".to_string(),
+                "--url".to_string(),
+                command.to_string(),
+                "--bearer-token-env-var".to_string(),
+                MCP_TOKEN_ENV.to_string(),
+            ]);
+        }
+        HarnessClient::Claude => {
+            values.extend([
+                "--scope".to_string(),
+                "user".to_string(),
+                "--transport".to_string(),
+                "http".to_string(),
+                "membrane".to_string(),
+                command.to_string(),
+                "--header".to_string(),
+                format!("Authorization: Bearer ${{{MCP_TOKEN_ENV}}}"),
+            ]);
+        }
+        HarnessClient::Cursor | HarnessClient::Windsurf | HarnessClient::Antigravity => {
+            values.extend([
+                "membrane".to_string(),
+                "--".to_string(),
+                command.to_string(),
+            ]);
+            values.extend(args.iter().cloned());
+        }
+    }
+    values
+}
+
+fn prior_add_args(client: HarnessClient, prior: &ServerConfig) -> Vec<String> {
+    // Rollback must reproduce an existing registration exactly. In particular,
+    // a legacy stdio entry must not be reinterpreted as a new HTTP URL.
+    let mut values = vec!["mcp".to_string(), "add".to_string()];
     if client == HarnessClient::Claude {
         values.extend(["--scope".to_string(), "user".to_string()]);
     }
-    values.extend([
-        "membrane".to_string(),
-        "--".to_string(),
-        command.to_string(),
-    ]);
-    values.extend(args.iter().cloned());
+    values.extend(["membrane".to_string(), "--".to_string(), prior.command.clone()]);
+    values.extend(prior.args.iter().cloned());
     values
 }
 
@@ -2384,6 +2558,8 @@ fn parse_prior_config(stdout: &str) -> Option<ServerConfig> {
                 .unwrap_or(&parsed);
             let command = config
                 .get("command")
+                .or_else(|| config.get("url"))
+                .or_else(|| config.get("serverUrl"))
                 .or_else(|| config.get("commandOrUrl"))?
                 .as_str()?
                 .to_string();
@@ -2408,6 +2584,7 @@ fn parse_labeled_client_config(stdout: &str) -> Option<ServerConfig> {
     let command = stdout.lines().find_map(|line| {
         line.trim()
             .strip_prefix("Command:")
+            .or_else(|| line.trim().strip_prefix("URL:"))
             .map(str::trim)
             .filter(|value| !value.is_empty())
             .map(str::to_string)
@@ -2434,10 +2611,15 @@ fn validate_server_config(config: ServerConfig) -> Option<ServerConfig> {
     Some(config)
 }
 
-fn is_expected(stdout: &str, executable: &str) -> bool {
+fn is_expected(client: HarnessClient, stdout: &str, executable: &str) -> bool {
     if let Some(config) = parse_prior_config(stdout) {
-        return paths_equal(&config.command, executable)
-            && config.args == ["stdio-mcp".to_string()];
+        return config_matches_expected(client, &config, executable);
+    }
+    if uses_http_transport(client) {
+        let normalized = stdout.replace("\\\\", "\\");
+        return normalized
+            .to_ascii_lowercase()
+            .contains(&installed_mcp_url().to_ascii_lowercase());
     }
     let normalized = stdout.replace("\\\\", "\\");
     let expected = normalize_windows_path(executable);
@@ -2758,18 +2940,19 @@ mod tests {
 
     #[test]
     fn codex_json_config_is_parsed_and_matched() {
-        let body = r#"{"transport":{"type":"stdio","command":"C:\\Membrane\\membrane.exe","args":["stdio-mcp"]}}"#;
+        let body = r#"{"transport":{"type":"streamable_http","url":"http://127.0.0.1:47851/mcp"}}"#;
         assert_eq!(
             parse_prior_config(body),
             Some(ServerConfig {
-                command: r"C:\Membrane\membrane.exe".to_string(),
-                args: vec!["stdio-mcp".to_string()],
+                command: "http://127.0.0.1:47851/mcp".to_string(),
+                args: vec![],
             })
         );
-        assert!(is_expected(body, r"C:\Membrane\membrane.exe"));
+        assert!(is_expected(HarnessClient::Codex, body, r"C:\Membrane\membrane.exe"));
         #[cfg(windows)]
         assert!(is_expected(
-            "Command: C:\\Membrane\\membrane.exe\nArgs: stdio-mcp",
+            HarnessClient::Codex,
+            "URL: http://127.0.0.1:47851/mcp",
             r"\\?\C:\Membrane\membrane.exe"
         ));
     }
@@ -2871,8 +3054,7 @@ mod tests {
     #[test]
     fn registration_ports_native_cli_add_and_verification_flow() {
         let membrane = Path::new(r"C:\Membrane\membrane.exe");
-        let expected =
-            r#"{"transport":{"command":"C:\\Membrane\\membrane.exe","args":["stdio-mcp"]}}"#;
+        let expected = r#"{"transport":{"type":"streamable_http","url":"http://127.0.0.1:47851/mcp"}}"#;
         let mut responses = VecDeque::from([
             result(0, "codex-cli"),
             result(1, ""),
@@ -2893,8 +3075,8 @@ mod tests {
             calls[2].1,
             add_args(
                 HarnessClient::Codex,
-                &membrane.to_string_lossy(),
-                &["stdio-mcp".to_string()]
+                &installed_mcp_url(),
+                &[]
             )
         );
     }
@@ -2903,8 +3085,7 @@ mod tests {
     fn later_failure_restores_prior_binding() {
         let membrane = Path::new(r"C:\Membrane\membrane.exe");
         let prior = r#"{"transport":{"command":"node","args":["old.mjs"]}}"#;
-        let expected =
-            r#"{"transport":{"command":"C:\\Membrane\\membrane.exe","args":["stdio-mcp"]}}"#;
+        let expected = r#"{"transport":{"type":"streamable_http","url":"http://127.0.0.1:47851/mcp"}}"#;
         let mut responses = VecDeque::from([
             result(0, "codex-cli"),
             result(0, prior),
@@ -2932,7 +3113,7 @@ mod tests {
         assert!(error.contains("claude add failed"));
         assert!(calls.iter().any(|(client, args)| {
             *client == HarnessClient::Codex
-                && *args == add_args(HarnessClient::Codex, "node", &["old.mjs".to_string()])
+                && *args == prior_add_args(HarnessClient::Codex, &ServerConfig { command: "node".into(), args: vec!["old.mjs".into()] })
         }));
     }
 
@@ -3001,8 +3182,8 @@ mod tests {
     #[test]
     fn deactivation_removes_only_exact_owned_client_binding() {
         let membrane = Path::new(r"C:\Membrane\current\membrane.exe");
-        let exact = r#"{"transport":{"command":"C:\\Membrane\\current\\membrane.exe","args":["stdio-mcp"]}}"#;
-        let foreign = r#"{"transport":{"command":"C:\\Membrane\\current\\membrane.exe","args":["stdio-mcp","--foreign"]}}"#;
+        let exact = r#"{"transport":{"type":"streamable_http","url":"http://127.0.0.1:47851/mcp"}}"#;
+        let foreign = r#"{"transport":{"type":"streamable_http","url":"http://127.0.0.1:47852/mcp"}}"#;
         let mut responses = VecDeque::from([
             result(0, "codex-cli"),
             result(0, exact),
@@ -3037,7 +3218,7 @@ mod tests {
     #[test]
     fn deactivation_dry_run_plans_owned_binding_without_remove() {
         let membrane = Path::new(r"C:\Membrane\current\membrane.exe");
-        let exact = r#"{"transport":{"command":"C:\\Membrane\\current\\membrane.exe","args":["stdio-mcp"]}}"#;
+        let exact = r#"{"transport":{"type":"streamable_http","url":"http://127.0.0.1:47851/mcp"}}"#;
         let mut responses = VecDeque::from([result(0, "codex-cli"), result(0, exact)]);
         let mut calls = Vec::new();
         let receipts = deactivate_clients(

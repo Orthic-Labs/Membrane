@@ -56,7 +56,7 @@ impl SnapshotValues {
 pub struct SnapshotUpdate {
     pub generation: u64,
     pub values: SnapshotValues,
-    /// Fenced status observed from the installed daemon's resident-holder
+    /// Fenced status observed from installed resident engine's holder
     /// authority. `None` means health/status admission failed and must never
     /// be treated as a holder.
     pub resident_holder: Option<RemoteHolderObservation>,
@@ -68,7 +68,7 @@ pub struct RemoteHolderObservation {
     pub status: ResidentHolderStatusV1,
 }
 
-/// Start one bounded poller per daemon generation. Token stays in this
+/// Start one bounded poller per attachment generation. Token stays in this
 /// in-memory worker and is used only by SDK-owned loopback HMAC signing.
 pub fn start_polling(
     endpoint: String,

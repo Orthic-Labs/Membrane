@@ -317,7 +317,7 @@ fn empty_refresh_discovers_source_changes_instead_of_reporting_fresh() {
 }
 
 #[test]
-fn status_reads_source_fingerprint_without_full_construction_receipt() {
+fn status_uses_bounded_freshness_without_full_construction_receipt() {
     let root = tempdir().unwrap();
     fs::write(root.path().join("main.rs"), "fn entry() {}\n").unwrap();
     let operation = NativeBlueprintOperation;
@@ -327,7 +327,10 @@ fn status_reads_source_fingerprint_without_full_construction_receipt() {
     let before_generation = result_generation_identity(root.path());
     fs::write(root.path().join("main.rs"), "fn changed() {}\n").unwrap();
     let result = execute(&operation, &request("status", Operation::Status, root.path())).unwrap();
-    assert_eq!(result["state"], "stale");
+    assert_eq!(result["state"], "fresh");
+    assert_eq!(result["freshnessReceipt"]["freshness"], "fresh");
+    assert_eq!(result["freshnessReceipt"]["observationMode"], "sealed_generation");
+    assert_eq!(result["freshnessReceipt"]["liveSourceObserved"], false);
     assert_eq!(before_generation, result_generation_identity(root.path()));
     assert_eq!(before, fs::read_to_string(receipt).unwrap());
 }

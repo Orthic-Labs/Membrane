@@ -4,6 +4,10 @@ version = "0.1.0"
 edition = "2021"
 publish = false
 
+[features]
+default = []
+fastembed = ["membrane-runtime/fastembed"]
+
 [dependencies]
 membrane-protocol = { path = "../../engine/crates/membrane-protocol" }
 membrane-blueprint = { path = "../../engine/crates/membrane-blueprint" }

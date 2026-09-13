@@ -57,10 +57,10 @@ const EMBED_ASSET_ROOT = process.env.MEMBRANE_EMBED_ASSET_ROOT
   ? resolve(process.env.MEMBRANE_EMBED_ASSET_ROOT)
   : resolve(hub, "../../../coderight/apps/coderight-tauri/src-tauri");
 const EXTERNAL_BINARIES = new Map([
-  ["membrane-command", "membrane"],
+  ["membrane-engine", "membrane"],
+  ["membrane-client", "membrane-client"],
   ["cortex-cli", "cortex"],
   ["membrane-tray", "membrane-tray"],
-  ["membrane-daemon", "membrane-daemon"],
 ]);
 
 function externalBinaryName(entry) {
@@ -78,8 +78,8 @@ function assertNativeRuntimePath(path, label) {
 // copying source or duplicating sidecars/icons into Tauri's resource tree.
 export const RUNTIME_SPECS = [
   { id: "membrane-tray", component: "membrane-tray", delivery: "externalBin", targets: [WINDOWS_TARGET], path: "src-tauri/binaries/membrane-tray-{target}.exe" },
-  { id: "membrane-daemon", component: "membrane-daemon", delivery: "externalBin", targets: [WINDOWS_TARGET], path: "src-tauri/binaries/membrane-daemon-{target}.exe" },
-  { id: "membrane-command", component: "membrane", delivery: "externalBin", path: "src-tauri/binaries/membrane-{target}{extension}" },
+  { id: "membrane-engine", component: "membrane-engine", delivery: "externalBin", path: "src-tauri/binaries/membrane-{target}{extension}" },
+  { id: "membrane-client", component: "membrane-client", delivery: "externalBin", path: "src-tauri/binaries/membrane-client-{target}{extension}" },
   { id: "cortex-cli", component: "cortex", delivery: "externalBin", path: "src-tauri/binaries/cortex-{target}{extension}" },
   { id: "pull-contract", component: "pull", axis: "pull", delivery: "resource", path: "../../schemas/operations/membrane-context.v1.schema.json" },
   { id: "push-contract", component: "push", axis: "push", delivery: "resource", path: "../../schemas/compression-receipt.v1.schema.json" },
@@ -110,7 +110,7 @@ function filesAt(root, extensions, { includeIgnored = false } = {}) {
 }
 function stagePath(spec, source, sourceRoot, target) {
   const local = statSync(sourceRoot).isFile() ? basename(source) : relative(sourceRoot, source);
-  if (spec.delivery === "externalBin") return `external-bin/${spec.component}`;
+  if (spec.delivery === "externalBin") return `external-bin/${externalBinaryName({ component: spec.id })}`;
   if (spec.delivery === "tauriBundle") return `tauri-assets/${spec.id}/${local}`.replaceAll("\\", "/");
   return `${spec.stageRoot ?? `resources/${spec.id}`}/${local}`.replaceAll("\\", "/");
 }
@@ -219,7 +219,7 @@ function freePort() {
 function expectHubInactive(sidecarDir) {
   return new Promise(async (resolveProbe, rejectProbe) => {
     const port = await freePort();
-    const membrane = join(sidecarDir, "membrane.exe");
+    const membrane = join(sidecarDir, "membrane-client.exe");
     const child = spawn(membrane, ["cli", "hub-snapshot"], { env: { ...process.env, MEMBRANE_PORT: String(port) }, stdio: ["ignore", "pipe", "pipe"] });
     let stdout = "", stderr = "";
     child.stdout.on("data", (chunk) => { stdout += chunk; });
@@ -239,7 +239,7 @@ function expectHubInactive(sidecarDir) {
 function nativeUnpackedProbes() {
   return {
     async nativeBootstrap({ sidecarDir }) {
-      for (const binary of ["membrane-tray.exe", "membrane-daemon.exe", "membrane.exe"]) await run(join(sidecarDir, binary), ["--help"]);
+      for (const binary of ["membrane-tray.exe", "membrane.exe", "membrane-client.exe"]) await run(join(sidecarDir, binary), ["--help"]);
       return true;
     },
     async dashboardOnDemand() {

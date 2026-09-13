@@ -10,12 +10,13 @@ function fixture() {
   const make = (file, text = file) => { mkdirSync(join(file, ".."), { recursive: true }); writeFileSync(file, text); };
   for (const name of ["pull", "push", "cortex", "ledger", "adapt"]) make(join(root, `${name}.txt`));
   make(join(root, "blueprint-contract.json"), '{"operation":"membrane_blueprint"}\n');
-  for (const name of ["membrane-x86_64-pc-windows-msvc.exe", "cortex-x86_64-pc-windows-msvc.exe"]) make(join(root, name));
+  for (const name of ["membrane-x86_64-pc-windows-msvc.exe", "membrane-client-x86_64-pc-windows-msvc.exe", "cortex-x86_64-pc-windows-msvc.exe"]) make(join(root, name));
   return { root, make, runtime: join(root, "src-tauri", "runtime") };
 }
 function specs() {
   return [
-    { id: "membrane-command", component: "membrane", delivery: "externalBin", path: "membrane-{target}.exe" },
+    { id: "membrane-engine", component: "membrane-engine", delivery: "externalBin", path: "membrane-{target}.exe" },
+    { id: "membrane-client", component: "membrane-client", delivery: "externalBin", path: "membrane-client-{target}.exe" },
     { id: "cortex-cli", component: "cortex", delivery: "externalBin", path: "cortex-{target}.exe" },
     { id: "cortex-contract", component: "cortex", axis: "cortex", delivery: "resource", path: "cortex.txt" },
     { id: "blueprint-contract", component: "blueprint", axis: "blueprint", delivery: "resource", transport: "named-pipe", path: "blueprint-contract.json" },
@@ -28,7 +29,7 @@ function specs() {
 
 test("runtime closure records native sidecars, installed Blueprint & six axes", () => {
   const ids = new Set(RUNTIME_SPECS.map((spec) => spec.id));
-  for (const id of ["membrane-tray", "membrane-daemon", "membrane-command", "cortex-cli", "blueprint-contract", "pull-contract", "push-contract", "ledger-contract", "adapt-contract", "runtime-schemas", "hub-icons"]) assert.ok(ids.has(id), id);
+  for (const id of ["membrane-tray", "membrane-engine", "membrane-client", "cortex-cli", "blueprint-contract", "pull-contract", "push-contract", "ledger-contract", "adapt-contract", "runtime-schemas", "hub-icons"]) assert.ok(ids.has(id), id);
   for (const retired of ["host-adapters", "install-workspace", "install-workspace-manifest"]) assert.ok(!ids.has(retired), retired);
   const blueprint = RUNTIME_SPECS.find((spec) => spec.id === "blueprint-contract");
   assert.equal(blueprint.delivery, "resource"); assert.equal(blueprint.transport, "named-pipe");
@@ -40,7 +41,7 @@ test("runtime closure records native sidecars, installed Blueprint & six axes", 
   assert.match(tauri, /"resources": \["runtime", "versions"\]/);
   assert.match(tauri, /"externalBin": \["binaries\/cortex", "binaries\/membrane"\]/);
   const windowsTauri = JSON.parse(readFileSync(new URL("../src-tauri/tauri.windows.conf.json", import.meta.url), "utf8"));
-  assert.deepEqual(windowsTauri.bundle.externalBin, ["binaries/cortex", "binaries/membrane", "binaries/membrane-tray", "binaries/membrane-daemon"]);
+  assert.deepEqual(windowsTauri.bundle.externalBin, ["binaries/cortex", "binaries/membrane", "binaries/membrane-client", "binaries/membrane-tray"]);
   assert.doesNotMatch(tauri, /cortex-service/);
   const main = readFileSync(new URL("../src-tauri/src/main.rs", import.meta.url), "utf8");
   const production = main.split("#[cfg(test)]")[0];
@@ -62,9 +63,9 @@ test("runtime closure records native sidecars, installed Blueprint & six axes", 
   assert.doesNotMatch(production, /startup\.json/);
   // Native tray owns resident sidecar launch; Hub inventory keeps only
   // on-demand command artifacts at its external-bin boundary.
-  const membraneSidecar = RUNTIME_SPECS.find((spec) => spec.id === "membrane-command");
+  const membraneSidecar = RUNTIME_SPECS.find((spec) => spec.id === "membrane-engine");
   assert.equal(membraneSidecar.delivery, "externalBin");
-  assert.equal(membraneSidecar.component, "membrane");
+  assert.equal(membraneSidecar.component, "membrane-engine");
   const probes = readFileSync(new URL("../scripts/runtime-inventory.mjs", import.meta.url), "utf8");
   assert.match(probes, /MEMBRANE_PORT/);
   assert.match(probes, /membrane_unavailable/);
@@ -112,14 +113,16 @@ test("runtime inventory accepts Windows x64 & macOS arm64 targets, rejecting mis
   const { root, make } = fixture();
   try {
     make(join(root, "membrane-aarch64-apple-darwin"));
+    make(join(root, "membrane-client-aarch64-apple-darwin"));
     make(join(root, "cortex-aarch64-apple-darwin"));
     const macSpecs = specs().filter((spec) => spec.delivery !== "externalBin").concat([
-      { id: "membrane-command", component: "membrane", delivery: "externalBin", path: "membrane-{target}" },
+      { id: "membrane-engine", component: "membrane-engine", delivery: "externalBin", path: "membrane-{target}" },
+      { id: "membrane-client", component: "membrane-client", delivery: "externalBin", path: "membrane-client-{target}" },
       { id: "cortex-cli", component: "cortex", delivery: "externalBin", path: "cortex-{target}" },
     ]);
     const inventory = runtimeInventory({ hubDir: root, target: "aarch64-apple-darwin", specs: macSpecs });
     assert.equal(inventory.target, "aarch64-apple-darwin");
-    assert.deepEqual(inventory.entries.filter((entry) => entry.delivery === "externalBin").map((entry) => entry.installerPath), ["cortex", "membrane"]);
+    assert.deepEqual(inventory.entries.filter((entry) => entry.delivery === "externalBin").map((entry) => entry.installerPath), ["cortex", "membrane", "membrane-client"]);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
@@ -146,6 +149,7 @@ test("unpacked artifact requires native bootstrap, on-demand dashboard, installe
     writeRuntimeInventory({ hubDir: root, runtimeDir: runtime, specs: specs(), target: "x86_64-pc-windows-msvc" });
     make(join(sidecars, "membrane.exe"), readFileSync(join(root, "membrane-x86_64-pc-windows-msvc.exe")));
     make(join(sidecars, "cortex.exe"), readFileSync(join(root, "cortex-x86_64-pc-windows-msvc.exe")));
+    make(join(sidecars, "membrane-client.exe"), readFileSync(join(root, "membrane-client-x86_64-pc-windows-msvc.exe")));
     assert.match(readFileSync(new URL("../scripts/runtime-inventory.mjs", import.meta.url), "utf8"), /function nativeUnpackedProbes/);
     const called = [];
     await verifyUnpackedArtifact({ runtimeDir: runtime, sidecarDir: sidecars, probes: Object.fromEntries(["nativeBootstrap", "dashboardOnDemand", "blueprintInstalled", "hubInactive"].map((name) => [name, async () => { called.push(name); return true; }])) });

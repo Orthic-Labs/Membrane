@@ -86,7 +86,9 @@ fn init_at(options: &InitOptions, path: &Path, injected_binding: Option<Value>) 
     object.insert("scope_id".into(), json!(options.scope_id));
     object.insert("scope_descriptor".into(), descriptor);
     object.insert("provider_config".into(), provider);
-    object.insert("grant_policy".into(), json!({"level":"read-only"}));
+    // Public Pull remains read-only, while public Push writes exact agent-authored
+    // memory. Normal enrollment must therefore admit the narrow write operation.
+    object.insert("grant_policy".into(), json!({"level":"write-proposed"}));
     for field in ["token_grant", "token_audit"] {
         if let Some(value) = prior_object.and_then(|prior| prior.get(field)) { object.insert(field.into(), value.clone()); }
     }
@@ -227,6 +229,7 @@ mod tests {
         assert_eq!(final_value["bindings"].as_object().unwrap().len(), 1);
         let binding = final_value["bindings"].as_object().unwrap().values().next().unwrap();
         assert_eq!(binding["repository_id"], "two");
+        assert_eq!(binding["grant_policy"]["level"], "write-proposed");
         assert_eq!(binding["token_grant"]["generation"], 3);
     }
 }

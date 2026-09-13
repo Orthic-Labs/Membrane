@@ -1,8 +1,8 @@
-//! Windows daemon launch primitive.
+//! Windows development-only child launch primitive.
 //!
 //! Contained processes are created suspended, assigned to their kill-on-close
-//! Job Object, then resumed. No daemon code runs before assignment; closing the
-//! tray's job handle kills every contained daemon descendant.
+//! Job Object, then resumed. Installed tray never calls this module: resident
+//! engine lifetime belongs to OS supervision, not tray UI attachment.
 
 use std::path::Path;
 

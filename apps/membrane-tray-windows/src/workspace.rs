@@ -2,7 +2,7 @@
 //!
 //! Login launches do not inherit a shell working directory or workspace
 //! environment. Resolve the same durable v3 config previously consumed by
-//! the Hub so the tray can launch its daemon against the canonical store.
+//! the Hub so the tray can attach to the canonical installed engine.
 
 use std::path::{Path, PathBuf};
 
@@ -38,6 +38,20 @@ pub struct Workspace {
 }
 
 impl Workspace {
+    /// Installed client used to request OS-managed engine activation. The
+    /// tray never launches the engine executable itself.
+    pub fn client_path(&self) -> Option<PathBuf> {
+        self.stable_current.as_ref().map(|root| {
+            root.join(if cfg!(windows) {
+                "membrane.exe"
+            } else {
+                "membrane"
+            })
+        })
+    }
+
+    /// Development-only executable retained for bounded compatibility tests.
+    /// Installed tray code must not use it as a runtime owner.
     pub fn daemon_path(&self) -> Option<PathBuf> {
         self.stable_current.as_ref().map(|root| {
             root.join(if cfg!(windows) {

@@ -147,6 +147,9 @@ fn cli_request_with_deadline(args: &[String]) -> Result<(Operation, PathBuf, Val
                 }
                 "name" | "fingerprint" => input[field] = Value::String(value.clone()),
                 "fingerprints" => input["fingerprints"] = Value::Array(value.split(',').filter(|v| !v.is_empty()).map(|v| Value::String(v.to_owned())).collect()),
+                "paths" => input["paths"] = Value::Array(value.split(',').filter(|v| !v.is_empty()).map(|v| Value::String(v.to_owned())).collect()),
+                "event-kind" => input["eventKind"] = Value::String(value.clone()),
+                "source-clock" => input["sourceClock"] = Value::from(parse_cli_u64(field, value)?),
                 "node" => input["nodeId"] = Value::String(value.clone()),
                 "seed" | "target" | "from" | "to" | "direction" => {
                     input[field] = Value::String(value.clone());
@@ -271,6 +274,20 @@ mod tests {
         assert!(cancel_before_dispatch);
         assert_eq!(input["task"], "exact");
         assert!(input.get("cancel-before-dispatch").is_none());
+    }
+
+    #[test]
+    fn cli_refresh_carries_explicit_incremental_event() {
+        let root = std::env::current_dir().unwrap().to_string_lossy().into_owned();
+        let (_, _, input, _, _) = cli_request_with_deadline(&[
+            "refresh".into(), "--repo-root".into(), root,
+            "--paths".into(), "src/a.rs,src/b.rs".into(),
+            "--event-kind".into(), "modify".into(),
+            "--source-clock".into(), "42".into(),
+        ]).unwrap();
+        assert_eq!(input["paths"], serde_json::json!(["src/a.rs", "src/b.rs"]));
+        assert_eq!(input["eventKind"], "modify");
+        assert_eq!(input["sourceClock"], 42);
     }
 
     /// LC-02: an explicit CLI `refresh` performs the same real

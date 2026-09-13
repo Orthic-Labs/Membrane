@@ -12,34 +12,42 @@ if (process.env.MEMBRANE_PUBLIC_CI_DIRECT_CARGO === "1" && process.env.GITHUB_AC
 const sidecars = [
   "src-tauri/binaries/cortex-x86_64-pc-windows-msvc.exe",
   "src-tauri/binaries/membrane-x86_64-pc-windows-msvc.exe",
+  "src-tauri/binaries/membrane-client-x86_64-pc-windows-msvc.exe",
   "src-tauri/binaries/membrane-tray-x86_64-pc-windows-msvc.exe",
-  "src-tauri/binaries/membrane-daemon-x86_64-pc-windows-msvc.exe",
 ];
 
 function prepareNativeBinaries() {
-  // `pnpm run build` writes current release identity before compiling & staging
-  // cortex/membrane. Daemon/tray then compile against that same identity.
-  run(["run", "build"]);
-  // Type-check the whole workspace first. A compile error anywhere used to
-  // surface only after this release build had linked the daemon, minutes in;
-  // check reports it up front and the release build reuses the same cache.
-  cargo(["check", "--manifest-path", "../../engine/Cargo.toml", "--workspace", "--all-targets", "--locked", "--target", "x86_64-pc-windows-msvc"]);
-  cargo(["build", "--manifest-path", "../../engine/Cargo.toml", "--release", "--target", "x86_64-pc-windows-msvc", "-p", "membrane-runtime", "--bin", "membrane-daemon", "--features", "fastembed"]);
-  cargo(["build", "--manifest-path", "../membrane-tray-windows/Cargo.toml", "--release", "--target", "x86_64-pc-windows-msvc", "--features", "membrane-runtime/fastembed"]);
-  cargo(["test", "--manifest-path", "../membrane-tray-windows/Cargo.toml", "--release", "--target", "x86_64-pc-windows-msvc", "tray::tests"]);
+  // Build engine & forwarding client in one Cargo invocation with one release
+  // profile & feature set. The frontend builder stages exact Cargo artifacts.
+  phase("engine-release-binaries", () => run(["run", "build"]));
+  phase("tray-release-binary", () => cargo(["build", "--manifest-path", "../membrane-tray-windows/Cargo.toml", "--locked", "--release", "--target", "x86_64-pc-windows-msvc", "--features", "fastembed"]));
   const hub = fileURLToPath(new URL("../", import.meta.url));
   const target = "x86_64-pc-windows-msvc";
   const engineRelease = join(resolveTargetRoot(join(hub, "../../engine/Cargo.toml")), target, "release");
   const outputs = [
     [join(engineRelease, "cortex.exe"), join(hub, "src-tauri/binaries/cortex-x86_64-pc-windows-msvc.exe")],
     [join(engineRelease, "membrane.exe"), join(hub, "src-tauri/binaries/membrane-x86_64-pc-windows-msvc.exe")],
-    [join(engineRelease, "membrane-daemon.exe"), join(hub, "src-tauri/binaries/membrane-daemon-x86_64-pc-windows-msvc.exe")],
+    [join(engineRelease, "membrane-client.exe"), join(hub, "src-tauri/binaries/membrane-client-x86_64-pc-windows-msvc.exe")],
     [join(resolveTargetRoot(join(hub, "../membrane-tray-windows/Cargo.toml")), target, "release", "membrane-tray-windows.exe"), join(hub, "src-tauri/binaries/membrane-tray-x86_64-pc-windows-msvc.exe")],
   ];
   mkdirSync(join(hub, "src-tauri/binaries"), { recursive: true });
   for (const [source, destination] of outputs) {
     if (!existsSync(source)) throw new Error(`native Windows artifact missing: ${source}`);
     cpSync(source, destination);
+  }
+}
+
+function validateNativeSources() {
+  phase("engine-source-validation", () => cargo(["check", "--manifest-path", "../../engine/Cargo.toml", "--workspace", "--all-targets", "--locked", "--target", "x86_64-pc-windows-msvc"]));
+  phase("tray-source-validation", () => cargo(["test", "--manifest-path", "../membrane-tray-windows/Cargo.toml", "--locked", "--release", "--target", "x86_64-pc-windows-msvc", "--features", "fastembed", "tray::tests"]));
+}
+
+function phase(name, action) {
+  const started = performance.now();
+  try {
+    return action();
+  } finally {
+    process.stdout.write(`${JSON.stringify({ schema: "membrane.windows-build-phase.v1", phase: name, elapsedMs: Math.round(performance.now() - started) })}\n`);
   }
 }
 
@@ -81,6 +89,11 @@ if (process.argv.includes("--prepare-only")) {
   process.exit(0);
 }
 
+if (process.argv.includes("--validate")) {
+  validateNativeSources();
+  process.exit(0);
+}
+
 // An installable build with no certificate anywhere in the path: the same
 // sidecars, the same Tauri build, the same NSIS script, no Authenticode and no
 // release chain. This is the loop for testing a change on a real desktop;
@@ -88,8 +101,8 @@ if (process.argv.includes("--prepare-only")) {
 if (process.argv.includes("--unsigned")) {
   prepareNativeBinaries();
   const unsigned = { ...process.env, MEMBRANE_UNSIGNED_INSTALLER: "1" };
-  run(["exec", "node", "scripts/build-windows-release.mjs", "raw"], unsigned);
-  run(["exec", "node", "scripts/build-windows-release.mjs", "package"], unsigned);
+  phase("hub-release-binary", () => run(["exec", "node", "scripts/build-windows-release.mjs", "raw"], unsigned));
+  phase("installer-package", () => run(["exec", "node", "scripts/build-windows-release.mjs", "package"], unsigned));
   process.exit(0);
 }
 prepareNativeBinaries();

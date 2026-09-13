@@ -1,4 +1,4 @@
-//! Pure admission contract for optional Streamable HTTP MCP.
+//! Pure admission contract for authenticated Streamable HTTP MCP.
 //!
 //! This module opens no listener.  Hosts must call `admit` before dispatching
 //! an HTTP request; stdio remains Membrane's default transport.
@@ -44,6 +44,8 @@ pub struct HttpAdmissionRequest<'a> {
     pub peer_ip: IpAddr,
     pub resolved_host_ip: IpAddr,
     pub host: &'a str,
+    /// Empty means no `Origin` header was supplied. Native MCP clients are
+    /// not browsers, so absence is valid; a supplied value is still checked.
     pub origin: &'a str,
     pub installation_id: &'a str,
     pub bearer_token: &'a str,
@@ -112,14 +114,18 @@ pub fn admit(
     {
         return HttpAdmissionReceipt::deny(HttpDenialCode::HostNotAllowed);
     }
-    if !policy
-        .allowed_origins
-        .iter()
-        .any(|value| value == request.origin)
+    if !request.origin.is_empty()
+        && !policy
+            .allowed_origins
+            .iter()
+            .any(|value| value == request.origin)
     {
         return HttpAdmissionReceipt::deny(HttpDenialCode::OriginNotAllowed);
     }
-    if policy.installation_id != request.installation_id {
+    // Installation and boot-session identity are resident-owned fencing
+    // values. They are accepted as optional compatibility claims, but native
+    // MCP clients must not be required to manufacture per-boot headers.
+    if !request.installation_id.is_empty() && policy.installation_id != request.installation_id {
         return HttpAdmissionReceipt::deny(HttpDenialCode::InstallationMismatch);
     }
     if request.bearer_token.is_empty() {
@@ -133,12 +139,12 @@ pub fn admit(
     {
         return HttpAdmissionReceipt::deny(HttpDenialCode::InvalidBearer);
     }
-    if request.session_binding.is_empty()
-        || request.session_binding.len() > 256
-        || !constant_time_eq(
-            request.session_binding.as_bytes(),
-            policy.expected_session_binding.as_bytes(),
-        )
+    if (!request.session_binding.is_empty() && request.session_binding.len() > 256)
+        || (!request.session_binding.is_empty()
+            && !constant_time_eq(
+                request.session_binding.as_bytes(),
+                policy.expected_session_binding.as_bytes(),
+            ))
     {
         return HttpAdmissionReceipt::deny(HttpDenialCode::SessionMismatch);
     }

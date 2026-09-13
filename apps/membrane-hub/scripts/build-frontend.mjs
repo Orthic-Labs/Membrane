@@ -61,14 +61,14 @@ const binaries = fileURLToPath(new URL("../src-tauri/binaries/", import.meta.url
 mkdirSync(binaries, { recursive: true });
 
 if (process.env.MEMBRANE_SIDECARS_READY === "1") {
-  for (const name of ["cortex", "membrane"]) {
+  for (const name of readySidecarNames(target)) {
     const ready = join(binaries, `${name}-${target}${target.includes("windows") ? ".exe" : ""}`);
     if (!existsSync(ready)) throw new Error(`prepared sidecar missing: ${ready}`);
   }
 } else if (target === "universal-apple-darwin") {
   const architectureTargets = ["aarch64-apple-darwin", "x86_64-apple-darwin"];
   const artifacts = new Map(architectureTargets.map((architectureTarget) => [architectureTarget, buildSidecars(architectureTarget)]));
-  for (const name of ["cortex", "membrane"]) {
+  for (const name of ["cortex", "membrane", "membrane-client"]) {
     const inputs = architectureTargets.map((architectureTarget) => stageSidecar(name, architectureTarget, artifacts.get(architectureTarget).get(name)));
     const destination = join(binaries, `${name}-${target}`);
     run("lipo", ["-create", "-output", destination, ...inputs]);
@@ -77,13 +77,13 @@ if (process.env.MEMBRANE_SIDECARS_READY === "1") {
   }
 } else {
   const artifacts = buildSidecars(target);
-  for (const name of ["cortex", "membrane"]) stageSidecar(name, target, artifacts.get(name));
+  for (const name of ["cortex", "membrane", "membrane-client"]) stageSidecar(name, target, artifacts.get(name));
 }
 
 function buildSidecars(architectureTarget) {
   const command = sidecarBuildCommand();
   const semanticFeatures = architectureTarget.includes("windows") ? ["--features", "membrane-runtime/fastembed"] : [];
-  const result = spawnSync(command.command, [...command.prefix, "build", "--manifest-path", engine, "--release", "--target", architectureTarget, "-p", "cortex", "-p", "membrane", "--bin", "cortex", "--bin", "membrane", ...semanticFeatures, "--message-format=json-render-diagnostics"], {
+  const result = spawnSync(command.command, [...command.prefix, "build", "--manifest-path", engine, "--locked", "--release", "--target", architectureTarget, "-p", "cortex", "-p", "membrane", "--bin", "cortex", "--bin", "membrane", "--bin", "membrane-client", ...semanticFeatures, "--message-format=json-render-diagnostics"], {
     cwd: repo,
     encoding: "utf8",
     shell: process.platform === "win32",
@@ -98,12 +98,16 @@ function buildSidecars(architectureTarget) {
     try { message = JSON.parse(line); } catch { continue; }
     if (message.reason !== "compiler-artifact" || !message.executable) continue;
     const name = message.target?.name;
-    if (["cortex", "membrane"].includes(name) && message.target?.kind?.includes("bin")) artifacts.set(name, message.executable);
+    if (readySidecarNames(architectureTarget).includes(name) && message.target?.kind?.includes("bin")) artifacts.set(name, message.executable);
   }
-  for (const name of ["cortex", "membrane"]) {
+  for (const name of readySidecarNames(architectureTarget)) {
     if (!artifacts.has(name)) throw new Error(`RightKit emitted no compiler artifact for ${name} (${architectureTarget})`);
   }
   return artifacts;
+}
+
+function readySidecarNames(architectureTarget) {
+  return ["cortex", "membrane", "membrane-client"];
 }
 
 function stageSidecar(name, architectureTarget, source) {

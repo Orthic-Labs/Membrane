@@ -73,10 +73,9 @@ fn run(command: &mut Command) -> Output {
 }
 
 /// No resident answers the Membrane port at all (the common case: no prior
-/// installed process, foreign or otherwise). Activation must still attempt
-/// to launch the resident tray -- and, since the fixture's tray binary is
-/// not a valid executable, must fail deterministically at that launch --
-/// while explicit installed MCP/CLI bindings are reconciled regardless.
+/// installed process, foreign or otherwise). Activation must attempt to launch
+/// installed engine directly, independent of tray/Hub, while explicit
+/// installed MCP/CLI bindings are reconciled regardless.
 #[test]
 fn failed_hub_start_preserves_installed_client_binding() {
     let fixture = setup();
@@ -93,10 +92,13 @@ fn failed_hub_start_preserves_installed_client_binding() {
     assert_eq!(receipt["service"]["port"], fixture.port);
     assert_eq!(receipt["clients"][0]["changed"], true);
 
-    assert!(!activation.status.success(), "invalid tray unexpectedly launched");
+    assert!(!activation.status.success(), "invalid resident unexpectedly launched");
     let activation_error = String::from_utf8_lossy(&activation.stderr);
-    assert!(activation_error.contains("launch installed tray"), "{activation_error}");
-    assert!(activation_error.contains("--activate"), "{activation_error}");
+    assert!(
+        activation_error.contains("launch installed engine")
+            || activation_error.contains("installed Membrane did not become healthy"),
+        "{activation_error}"
+    );
 
     let config: Value = serde_json::from_slice(&binding.expect("explicit binding survives Hub failure")).unwrap();
     assert_eq!(config["mcpServers"]["membrane"]["command"], fixture.current.join("membrane.exe").to_string_lossy().as_ref());

@@ -26,7 +26,7 @@ use membrane_runtime::background_review::{
     BackgroundReviewScheduler, BackgroundSemanticReviewInputV1,
     JsonlBackgroundReviewObservationSink, JsonlBackgroundReviewProposalAdmission,
 };
-use membrane_runtime::service::{run_hub_runtime, LifecycleControl};
+use membrane_runtime::service::{run_hub_runtime, run_installed_runtime, LifecycleControl};
 use std::{
     fs,
     io::{self, BufRead, BufReader, Read, Write},
@@ -312,6 +312,12 @@ fn configure_bundled_embedder() {
 
 fn run() -> Result<(), &'static str> {
     configure_bundled_embedder();
+    // Installer-owned OS supervision may launch the resident engine directly.
+    // This mode has no tray/Hub stdin parent and therefore never makes engine
+    // lifetime depend on a UI process or chat connection.
+    if std::env::args().any(|argument| argument == "--standalone") {
+        return run_standalone();
+    }
     let mut reader = BufReader::new(io::stdin());
     let launch_frame = read_frame(&mut reader)
         .map_err(|_| "daemon_protocol_invalid")?
@@ -412,6 +418,7 @@ fn run() -> Result<(), &'static str> {
         Some(format!("http://127.0.0.1:{ready_port}")),
         None,
     )?;
+    control.grant_background("tray_daemon");
     background_review.set_hub_active(true, now_unix_ms());
     background_review.observe_idle(now_unix_ms());
     background_executor.tick(&root, &background_review, now_unix_ms());
@@ -458,7 +465,11 @@ fn run() -> Result<(), &'static str> {
                 if now.saturating_sub(last_background_tick)
                     >= BACKGROUND_REVIEW_TICK.as_millis() as u64
                 {
-                    background_executor.tick(&root, &background_review, now);
+                    if control.background_authority_open() {
+                        background_executor.tick(&root, &background_review, now);
+                    } else {
+                        background_review.set_hub_active(false, now);
+                    }
                     emit_background_observations(&background_review, &background_observation_sink);
                     last_background_tick = now;
                 }
@@ -638,6 +649,22 @@ fn now_unix_ms() -> u64 {
         .as_millis()
         .try_into()
         .unwrap_or(u64::MAX)
+}
+
+fn run_standalone() -> Result<(), &'static str> {
+    let lifecycle = LifecycleControl::default();
+    run_installed_runtime(lifecycle).map_err(|error| {
+        eprintln!(
+            "{}",
+            serde_json::json!({
+                "event": "membrane_daemon_startup",
+                "stage": "standalone",
+                "error": error,
+                "observedAtUnixMs": now_unix_ms(),
+            })
+        );
+        "daemon_standalone_failed"
+    })
 }
 
 fn health_answers(port: u16, api_token: &str, token_path: &std::path::Path) -> bool { health_answers_inner(port, api_token, token_path).unwrap_or(false) }

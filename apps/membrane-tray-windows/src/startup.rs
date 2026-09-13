@@ -3,6 +3,7 @@
 use std::{
     fs, io,
     path::{Path, PathBuf},
+    process::{Command, Stdio},
 };
 
 pub const RUN_KEY_PATH: &str = "Software\\Microsoft\\Windows\\CurrentVersion\\Run";
@@ -19,6 +20,26 @@ pub fn quote_windows_path(path: &Path) -> String {
 /// daemon + dashboard are never registered independently.
 pub fn run_key_command(exe: &Path) -> String {
     format!("{} {LOGIN_LAUNCH_ARG}", quote_windows_path(exe))
+}
+
+/// Ask installed Membrane client/OS supervision to activate resident engine.
+/// This is a client request only: tray does not create, supervise, or stop
+/// engine process, store, planner, watcher, or subsystem runtime.
+pub fn request_activation(client: &Path, stable_current: &Path) -> io::Result<()> {
+    if !client.is_file() || !stable_current.is_dir() {
+        return Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            "installed activation client or current root missing",
+        ));
+    }
+    Command::new(client)
+        .args(["activate", "--install-root"])
+        .arg(stable_current)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .map(|_| ())
 }
 
 #[cfg(windows)]
@@ -262,5 +283,15 @@ mod tests {
     #[test]
     fn marker_policy_hides_login_launch_even_when_marker_is_absent() {
         assert!(!should_show_first_run(true));
+    }
+
+    #[test]
+    fn activation_request_refuses_uninstalled_paths() {
+        let error = request_activation(
+            Path::new(r"C:\missing\membrane.exe"),
+            Path::new(r"C:\missing\current"),
+        )
+        .unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::NotFound);
     }
 }

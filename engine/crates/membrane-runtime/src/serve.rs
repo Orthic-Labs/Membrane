@@ -2300,7 +2300,8 @@ async fn dispatch(
             Ok(request) => request,
             Err(_) => return reject(StatusCode::BAD_REQUEST, "resident holder request invalid"),
         };
-        let final_release = request.operation == membrane_protocol::ResidentHolderOperationV1::Release;
+        let operation = request.operation.clone();
+        let final_release = operation == membrane_protocol::ResidentHolderOperationV1::Release;
         let Some(identity) = state.resident_identity.clone() else {
             return reject(StatusCode::CONFLICT, "resident holder requires installed stable current");
         };
@@ -2317,7 +2318,7 @@ async fn dispatch(
             .map_err(|_| "resident holder controller unavailable".to_string())
             .and_then(|mut controller| {
                 // This is authoritative: final release/expiry closes
-                // admission while retaining this same controller mutex.
+                // background authority while retaining this controller mutex.
                 if request.operation == membrane_protocol::ResidentHolderOperationV1::Acquire
                     && !lifecycle.admission_open()
                 {
@@ -2326,12 +2327,22 @@ async fn dispatch(
                 let response = controller
                     .dispatch_authoritative(identity, now_unix_ms, request, resident_services_ready(&state))
                     .map_err(|error| error.to_string())?;
-                // Keep controller lock through admission closure. A later
-                // acquire cannot observe an empty registry then revive a
-                // runtime that this final release already drained.
-                if final_release && !response.status.controller_active {
-                    lifecycle.request_drain(Some("final_holder_release"));
+                if response.status.controller_active {
+                    lifecycle.grant_background("holder_active");
                 }
+                // Keep controller lock through authority reconciliation. A
+                // final release drains background work, never engine admission.
+                if final_release && !response.status.controller_active {
+                    lifecycle.drain_background("final_holder_release");
+                }
+                let lifecycle_event = match operation {
+                    membrane_protocol::ResidentHolderOperationV1::Acquire => "holder_acquired",
+                    membrane_protocol::ResidentHolderOperationV1::Renew => "holder_renewed",
+                    membrane_protocol::ResidentHolderOperationV1::Release => "holder_released",
+                    membrane_protocol::ResidentHolderOperationV1::Status => "holder_status",
+                    membrane_protocol::ResidentHolderOperationV1::SubscribeLoss => "holder_status",
+                };
+                crate::service::emit_lifecycle(lifecycle_event, Some("resident_holder"));
                 Ok(response)
             });
         return match response {
@@ -2719,7 +2730,11 @@ async fn detailed_health(State(state): State<AppState>, _uri: Uri) -> Response {
     let workers = Arc::clone(&state.workers);
     let workers_for_job = Arc::clone(&workers);
     let loopback_replay = Arc::clone(&state.loopback_replay);
-    let require_resident_watcher = state.resident_identity.is_some();
+    // Engine availability is independent from background authority. An idle
+    // resident remains healthy for explicit requests while no holder exists;
+    // watcher readiness is required only while a holder authorizes it.
+    let require_resident_watcher = state.resident_identity.is_some()
+        && crate::service::lifecycle_control().background_authority_open();
     let (result_sender, result_receiver) = tokio::sync::oneshot::channel();
     let job = Box::new(move || {
         let _diagnostics_permit = diagnostics_permit;
@@ -2904,9 +2919,8 @@ fn build_router_inner(
                     if controller.lock().map(|mut controller| {
                         let drain = controller.reconcile_expired(now_unix_ms()).drain_controller;
                         if drain {
-                            // Keep mutual exclusion until admission closes so
-                            // no concurrent acquire can revive this controller.
-                            lifecycle.request_drain(Some("final_holder_expired"));
+                            crate::service::emit_lifecycle("holder_expired", Some("resident_holder"));
+                            lifecycle.drain_background("final_holder_expired");
                         }
                         drain
                     }).unwrap_or(false) {
@@ -5628,6 +5642,9 @@ fn health_response_with_workers(
     payload["dailyAnalysis"] = analysis_watchdog_snapshot(&configured_analysis_directory());
     payload["serviceGeneration"] = json!(crate::release_identity::service_generation());
     payload["releaseGeneration"] = json!(crate::release_identity::release_generation());
+    payload["backgroundAuthority"] = json!({
+        "active": crate::service::lifecycle_control().background_authority_open(),
+    });
     let runtime_receipt = crate::runtime_receipt::current_snapshot();
     payload["startupGeneration"] = runtime_receipt
         .as_ref()

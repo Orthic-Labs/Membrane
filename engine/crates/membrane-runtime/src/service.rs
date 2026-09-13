@@ -4,6 +4,8 @@
 //! directly; no shell wrapper or visible console host sits between it and the resident service.
 
 use serde::Deserialize;
+use std::fs::{File, OpenOptions};
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, Mutex, OnceLock, RwLock};
@@ -19,6 +21,7 @@ const LIFECYCLE_READY_WAIT: std::time::Duration = std::time::Duration::from_secs
 pub struct LifecycleControl {
     snapshot_capability: Option<Arc<str>>,
     admission_open: Arc<AtomicBool>,
+    background_authority: Arc<AtomicBool>,
     shutdown_requested: Arc<AtomicBool>,
     ready: Arc<(Mutex<Option<u16>>, Condvar)>,
     command: Arc<Mutex<Option<String>>>,
@@ -30,6 +33,7 @@ impl Default for LifecycleControl {
         Self {
             snapshot_capability: None,
             admission_open: Arc::new(AtomicBool::new(true)),
+            background_authority: Arc::new(AtomicBool::new(false)),
             shutdown_requested: Arc::new(AtomicBool::new(false)),
             ready: Arc::new((Mutex::new(None), Condvar::new())),
             command: Arc::new(Mutex::new(None)),
@@ -82,6 +86,31 @@ impl LifecycleControl {
         self.shutdown_requested.load(Ordering::Acquire)
     }
 
+    /// Background work is independently authorized from engine admission.
+    /// Losing the final holder drains this flag while preserving explicit
+    /// request availability on the resident engine.
+    pub fn background_authority_open(&self) -> bool {
+        self.background_authority.load(Ordering::Acquire)
+    }
+
+    pub fn grant_background(&self, reason: &str) {
+        let was_open = self
+            .background_authority
+            .swap(true, Ordering::AcqRel);
+        if !was_open {
+            emit_lifecycle("background_authority_granted", Some(reason));
+        }
+    }
+
+    pub fn drain_background(&self, reason: &str) {
+        let was_open = self
+            .background_authority
+            .swap(false, Ordering::AcqRel);
+        if was_open {
+            emit_lifecycle("background_authority_drained", Some(reason));
+        }
+    }
+
     pub fn request_drain(&self, command: Option<&str>) {
         if let Some(command) = command {
             if let Ok(mut current) = self.command.lock() {
@@ -91,6 +120,7 @@ impl LifecycleControl {
             }
         }
         self.admission_open.store(false, Ordering::Release);
+        self.background_authority.store(false, Ordering::Release);
         let first_drain = !self
             .shutdown_requested
             .swap(true, Ordering::AcqRel);
@@ -99,13 +129,7 @@ impl LifecycleControl {
                 .command()
                 .or_else(|| self.failure())
                 .unwrap_or_else(|| "unspecified".to_string());
-            eprintln!(
-                "{}",
-                serde_json::json!({
-                    "event": "lifecycle_drain_requested",
-                    "reason": reason,
-                })
-            );
+            emit_lifecycle("drain_requested", Some(&reason));
         }
         self.ready.1.notify_all();
     }
@@ -132,6 +156,7 @@ impl LifecycleControl {
             *ready = Some(port);
             self.ready.1.notify_all();
         }
+        emit_lifecycle("ready", Some("transport"));
     }
 
     pub fn wait_until_ready(&self) -> Result<u16, String> {
@@ -231,10 +256,16 @@ pub fn start_resident_blueprint() -> Result<(), String> {
         .spawn(move || {
             eprintln!("{}", serde_json::json!({"event":"resident_blueprint_initialization", "stage":"started", "enrolledRepoCount": enrolled_repo_count}));
             while !supervisor_lifecycle.shutdown_requested() {
-                if !supervise_resident_repositories(&supervised) {
-                    break;
+                if supervisor_lifecycle.background_authority_open() {
+                    if !supervise_resident_repositories(&supervised) {
+                        break;
+                    }
+                    reconcile_resident_repositories(&supervised);
+                } else {
+                    // Holder loss drains automatic repository work while the
+                    // engine/listener remains available for explicit calls.
+                    drain_resident_repositories(&supervised);
                 }
-                reconcile_resident_repositories(&supervised);
                 std::thread::sleep(Duration::from_millis(250));
             }
             eprintln!("{}", serde_json::json!({"event":"resident_blueprint_initialization", "stage":"stopped"}));
@@ -545,6 +576,155 @@ pub(crate) struct Runtime {
     pub(crate) version_root: Option<PathBuf>,
 }
 
+/// OS-backed owner for the installed resident engine.  The lock is acquired
+/// before any store, embedder, watcher, or listener initialization.  A
+/// contender fails closed instead of selecting another port/store.
+pub(crate) struct EngineOwner {
+    file: File,
+    path: PathBuf,
+}
+
+impl EngineOwner {
+    pub(crate) fn acquire(runtime: &Runtime) -> Result<Self, String> {
+        let state_root = std::fs::canonicalize(&runtime.workspace_root)
+            .map_err(|error| format!("canonicalize resident state root: {error}"))?;
+        let path = state_root.join("tools/.cache/memory/membrane-engine.lock");
+        let parent = path
+            .parent()
+            .ok_or_else(|| "resident owner lock has no parent".to_string())?;
+        std::fs::create_dir_all(parent)
+            .map_err(|error| format!("create resident owner lock directory: {error}"))?;
+        let mut file = OpenOptions::new()
+            .create(true)
+            .read(true)
+            .write(true)
+            .open(&path)
+            .map_err(|error| format!("open resident owner lock {}: {error}", path.display()))?;
+        lock_exclusive(&file).map_err(|error| {
+            emit_lifecycle("owner_contended", Some("owner_lock_held"));
+            format!("membrane_engine_already_owned: {error}")
+        })?;
+        file.set_len(0)
+            .map_err(|error| format!("truncate resident owner lock: {error}"))?;
+        let metadata = serde_json::json!({
+            "schemaVersion": 1,
+            "pid": std::process::id(),
+            "stateRoot": state_root,
+            "db": runtime.db,
+            "observedAtUnixMs": std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|duration| duration.as_millis() as u64)
+                .unwrap_or_default(),
+        });
+        writeln!(file, "{metadata}")
+            .map_err(|error| format!("write resident owner metadata: {error}"))?;
+        file.flush()
+            .map_err(|error| format!("flush resident owner metadata: {error}"))?;
+        emit_lifecycle("owner_acquired", Some("resident_engine"));
+        Ok(Self { file, path })
+    }
+}
+
+impl Drop for EngineOwner {
+    fn drop(&mut self) {
+        unlock_exclusive(&self.file);
+        emit_lifecycle("owner_released", Some("resident_engine"));
+        let _ = &self.path;
+    }
+}
+
+#[cfg(unix)]
+fn lock_exclusive(file: &File) -> std::io::Result<()> {
+    use std::os::fd::AsRawFd;
+    // flock is process-owned and released by the kernel on crash/termination.
+    let result = unsafe { flock(file.as_raw_fd(), 2 | 4) };
+    if result == 0 {
+        Ok(())
+    } else {
+        Err(std::io::Error::last_os_error())
+    }
+}
+
+#[cfg(unix)]
+fn unlock_exclusive(file: &File) {
+    use std::os::fd::AsRawFd;
+    let _ = unsafe { flock(file.as_raw_fd(), 8) };
+}
+
+#[cfg(unix)]
+unsafe extern "C" {
+    fn flock(fd: std::os::raw::c_int, operation: std::os::raw::c_int) -> std::os::raw::c_int;
+}
+
+#[cfg(windows)]
+fn lock_exclusive(file: &File) -> std::io::Result<()> {
+    use std::os::windows::io::AsRawHandle;
+    let mut overlapped = std::mem::MaybeUninit::<OVERLAPPED>::zeroed();
+    let ok = unsafe {
+        LockFileEx(
+            file.as_raw_handle() as *mut _,
+            LOCKFILE_EXCLUSIVE_LOCK | LOCKFILE_FAIL_IMMEDIATELY,
+            0,
+            u32::MAX,
+            u32::MAX,
+            overlapped.as_mut_ptr(),
+        )
+    };
+    if ok != 0 {
+        Ok(())
+    } else {
+        Err(std::io::Error::last_os_error())
+    }
+}
+
+#[cfg(windows)]
+fn unlock_exclusive(file: &File) {
+    use std::os::windows::io::AsRawHandle;
+    let mut overlapped = std::mem::MaybeUninit::<OVERLAPPED>::zeroed();
+    unsafe {
+        let _ = UnlockFileEx(
+            file.as_raw_handle() as *mut _,
+            0,
+            u32::MAX,
+            u32::MAX,
+            overlapped.as_mut_ptr(),
+        );
+    }
+}
+
+#[cfg(windows)]
+const LOCKFILE_FAIL_IMMEDIATELY: u32 = 0x00000001;
+#[cfg(windows)]
+const LOCKFILE_EXCLUSIVE_LOCK: u32 = 0x00000002;
+#[cfg(windows)]
+#[repr(C)]
+struct OVERLAPPED {
+    internal: usize,
+    internal_high: usize,
+    offset: u32,
+    offset_high: u32,
+    h_event: *mut std::ffi::c_void,
+}
+
+#[cfg(windows)]
+unsafe extern "system" {
+    fn LockFileEx(
+        file: *mut std::ffi::c_void,
+        flags: u32,
+        reserved: u32,
+        low: u32,
+        high: u32,
+        overlapped: *mut OVERLAPPED,
+    ) -> i32;
+    fn UnlockFileEx(
+        file: *mut std::ffi::c_void,
+        reserved: u32,
+        low: u32,
+        high: u32,
+        overlapped: *mut OVERLAPPED,
+    ) -> i32;
+}
+
 fn build_info() -> serde_json::Value {
     serde_json::json!({
         "product_version": env!("CARGO_PKG_VERSION"),
@@ -669,6 +849,21 @@ pub(crate) fn open_installed_store() -> Result<crate::MemoryStore, String> {
         std::fs::create_dir_all(parent).map_err(|error| error.to_string())?;
     }
     crate::MemoryStore::try_open(crate::MemDb::open(&runtime.db).map_err(|error| error.to_string())?)
+}
+
+pub(crate) fn emit_lifecycle(event: &str, reason: Option<&str>) {
+    let mut value = serde_json::json!({
+        "event": event,
+        "pid": std::process::id(),
+        "observedAtUnixMs": std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|duration| duration.as_millis() as u64)
+            .unwrap_or_default(),
+    });
+    if let Some(reason) = reason {
+        value["reason"] = serde_json::Value::String(reason.to_owned());
+    }
+    eprintln!("{value}");
 }
 
 /// Foreground hook owner. Opens persisted Cortex rows without loading the
@@ -879,10 +1074,12 @@ fn runtime_from_workspace_root(workspace_root: &Path) -> Result<Runtime, String>
     })
 }
 
-/// Run the sole resident Membrane runtime inside the active Hub process.
-/// The process-wide claim rejects a second runtime before it can bind storage
-/// or a port, preserving one active Hub/runtime authority.
+/// Run the sole resident Membrane engine for a workspace. Hub may request
+/// activation, but engine ownership is independent from Hub UI lifetime.
+/// The process-wide claim and OS owner lock reject duplicates before storage
+/// or port binding.
 pub fn run_hub_runtime(workspace_root: &Path, lifecycle: LifecycleControl) -> Result<(), String> {
+    emit_lifecycle("activation_requested", Some("resident_engine"));
     let _claim = HubRuntimeClaim::acquire()?;
     install_lifecycle_control(lifecycle)?;
     let runtime = runtime_from_workspace_root(workspace_root)?;
@@ -890,6 +1087,10 @@ pub fn run_hub_runtime(workspace_root: &Path, lifecycle: LifecycleControl) -> Re
 }
 
 fn run_runtime(runtime: Runtime) -> Result<(), String> {
+    // This is intentionally the first stateful operation.  Store opening,
+    // identity minting, embedder initialization, watcher startup, and port
+    // binding all happen only after exclusive ownership is established.
+    let _owner = EngineOwner::acquire(&runtime)?;
     std::env::set_var("CORTEX_DB", &runtime.db);
     std::env::set_var("MEMBRANE_PORT", runtime.port.to_string());
     std::env::set_var("MEMBRANE_API_TOKEN_FILE", &runtime.token);
@@ -949,7 +1150,20 @@ fn run_runtime(runtime: Runtime) -> Result<(), String> {
         &claim,
     );
     stop_resident_blueprint()?;
+    emit_lifecycle("engine_stopped", Some("resident_engine"));
     result
+}
+
+/// Start the installed resident engine without requiring a tray or Hub
+/// parent. The OS supervisor may invoke this entrypoint directly; background
+/// work remains holder-authorized and explicit requests remain available.
+pub fn run_installed_runtime(lifecycle: LifecycleControl) -> Result<(), String> {
+    emit_lifecycle("activation_requested", Some("standalone_daemon"));
+    let _claim = HubRuntimeClaim::acquire()?;
+    install_lifecycle_control(lifecycle)?;
+    let exe = std::env::current_exe().map_err(|error| error.to_string())?;
+    let runtime = runtime_from_installed_exe(&exe)?;
+    run_runtime(runtime)
 }
 
 #[cfg(test)]
@@ -977,6 +1191,41 @@ mod tests {
         assert!(!control.admission_open());
         assert!(control.shutdown_requested());
         assert_eq!(control.command().as_deref(), Some("stop"));
+    }
+
+    #[test]
+    fn final_holder_drain_closes_background_authority_but_not_engine_admission() {
+        let control = LifecycleControl::default();
+        control.grant_background("test_holder");
+        assert!(control.background_authority_open());
+        control.drain_background("final_holder_release");
+        assert!(!control.background_authority_open());
+        assert!(control.admission_open());
+        assert!(!control.shutdown_requested());
+    }
+
+    #[test]
+    fn engine_owner_excludes_second_process_local_owner_before_store_init() {
+        let root = tempfile::tempdir().unwrap();
+        let runtime = Runtime {
+            workspace_root: root.path().to_path_buf(),
+            db: root.path().join("tools/.cache/memory/cortex-engine.db"),
+            token: root.path().join("tools/.cache/memory/api-token"),
+            ort: root.path().join("ort"),
+            hf_home: root.path().join("hf"),
+            port: 47_851,
+            origin: "development",
+            stable_current: None,
+            version_root: None,
+        };
+        let first = EngineOwner::acquire(&runtime).unwrap();
+        let second = EngineOwner::acquire(&runtime);
+        match second {
+            Err(error) => assert!(error.contains("membrane_engine_already_owned")),
+            Ok(_) => panic!("second owner unexpectedly acquired"),
+        }
+        drop(first);
+        assert!(EngineOwner::acquire(&runtime).is_ok());
     }
 
     #[test]

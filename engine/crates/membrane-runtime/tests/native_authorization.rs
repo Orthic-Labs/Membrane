@@ -258,6 +258,17 @@ fn mutating_action_without_task_grant_is_permitted_on_direct_path() {
     // mutating action at exactly write-proposed.
     assert_eq!(decision.effective_level, AuthorityLevel::WriteProposed);
     assert!(decision.same_root);
+
+    let memory_write = request(
+        &installation,
+        installation.caller_repository_id,
+        None,
+        "memory_write",
+    );
+    assert!(
+        authorize(&memory_write).is_ok(),
+        "normal write-capable enrollment must admit public Push memory writes"
+    );
 }
 
 #[test]

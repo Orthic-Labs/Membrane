@@ -1,11 +1,6 @@
-//! MBR-306: optional authenticated loopback Streamable HTTP for MCP clients
-//! that cannot open a stdio pipe (e.g. some browser-hosted or sandboxed
-//! agents). Stdio (`membrane_mcp::serve_stdio`, [`crate::serve::run_stdio_mcp`])
-//! remains Membrane's default MCP transport: nothing in this crate's default
-//! resident startup (`crate::service::run_service`, `crate::serve::run`)
-//! calls anything in this module. A caller must explicitly invoke
-//! [`run_mcp_streamable_http`] or [`run_mcp_streamable_http_for_resident`] to
-//! open this listener.
+//! Authenticated loopback Streamable HTTP for native MCP clients. Stdio remains
+//! available as a compatibility transport, while Claude/Codex connect directly
+//! to the resident engine over this endpoint.
 //!
 //! Every request is admitted through `membrane_mcp::http_security::admit`
 //! before it reaches [`membrane_mcp::McpServer::dispatch`], the same
@@ -34,9 +29,8 @@ use std::time::Duration;
 use membrane_federation::deadline::{Deadline, SystemClock};
 use tokio_util::sync::CancellationToken;
 
-/// The single route this transport exposes. Streamable HTTP MCP is one POST
-/// endpoint carrying line-oriented JSON-RPC, mirroring `serve_stdio`'s framing
-/// one transport up.
+/// The single route this transport exposes. POST carries JSON-RPC messages;
+/// unsupported streaming/session methods return 405 with `Allow: POST`.
 pub const MCP_HTTP_PATH: &str = "/mcp";
 
 /// Carries the caller's claimed installation id. Distinct from
@@ -102,7 +96,12 @@ fn build_mcp_http_router_with_resolver(
         resolver,
     };
     Router::new()
-        .route(MCP_HTTP_PATH, post(handle_mcp_request))
+        .route(
+            MCP_HTTP_PATH,
+            post(handle_mcp_request)
+                .get(method_not_allowed)
+                .delete(method_not_allowed),
+        )
         .layer(DefaultBodyLimit::max(DEFAULT_MAX_BODY_BYTES))
         .with_state(state)
 }
@@ -126,8 +125,19 @@ fn status_for_denial(denial: &HttpDenialCode) -> StatusCode {
     match denial {
         HttpDenialCode::BodyTooLarge => StatusCode::PAYLOAD_TOO_LARGE,
         HttpDenialCode::DeadlineTooLong => StatusCode::BAD_REQUEST,
+        HttpDenialCode::MissingBearer | HttpDenialCode::InvalidBearer => {
+            StatusCode::UNAUTHORIZED
+        }
         _ => StatusCode::FORBIDDEN,
     }
+}
+
+async fn method_not_allowed() -> Response {
+    (
+        StatusCode::METHOD_NOT_ALLOWED,
+        [(header::ALLOW, "POST")],
+    )
+        .into_response()
 }
 
 fn header_value<'a>(headers: &'a HeaderMap, name: &'static str) -> &'a str {
@@ -155,9 +165,17 @@ async fn handle_mcp_request(
         .get(header::HOST)
         .and_then(|value| value.to_str().ok())
         .unwrap_or("");
+    // Keep malformed supplied Origin distinct from absent Origin. The former
+    // is invalid and must not be treated as native-client omission.
     let origin = headers
         .get(header::ORIGIN)
-        .and_then(|value| value.to_str().ok())
+        .map(|value| {
+            value
+                .to_str()
+                .ok()
+                .filter(|origin| !origin.is_empty())
+                .unwrap_or("\u{0}")
+        })
         .unwrap_or("");
     let installation_id = header_value(&headers, INSTALLATION_HEADER);
     let session_binding = header_value(&headers, SESSION_HEADER);
@@ -189,7 +207,23 @@ async fn handle_mcp_request(
             .as_ref()
             .map(status_for_denial)
             .unwrap_or(StatusCode::FORBIDDEN);
-        return (status, axum::Json(receipt)).into_response();
+        let mut response = (status, axum::Json(receipt)).into_response();
+        if status == StatusCode::UNAUTHORIZED {
+            response.headers_mut().insert(
+                header::WWW_AUTHENTICATE,
+                axum::http::HeaderValue::from_static("Bearer"),
+            );
+        }
+        return response;
+    }
+
+    let json_content_type = headers
+        .get(header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.split(';').next())
+        .is_some_and(|value| value.trim().eq_ignore_ascii_case("application/json"));
+    if !json_content_type {
+        return StatusCode::UNSUPPORTED_MEDIA_TYPE.into_response();
     }
 
     let payload: Value = match serde_json::from_slice(&body) {
@@ -384,6 +418,52 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn native_client_without_origin_or_boot_headers_is_accepted() {
+        let app = router_with(Arc::new(FixedResolver(Some(Ipv4Addr::LOCALHOST.into()))));
+        let request = Request::builder()
+            .method("POST")
+            .uri(MCP_HTTP_PATH)
+            .header(header::HOST, "127.0.0.1:9")
+            .header(header::CONTENT_TYPE, "application/json")
+            .header(header::AUTHORIZATION, "Bearer correct-token")
+            .extension(ConnectInfo(loopback_peer()))
+            .body(Body::from(ping_payload().to_string()))
+            .unwrap();
+        let response = app.oneshot(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn unsupported_streamable_http_method_returns_standard_405() {
+        let app = router_with(Arc::new(FixedResolver(Some(Ipv4Addr::LOCALHOST.into()))));
+        let request = Request::builder()
+            .method("GET")
+            .uri(MCP_HTTP_PATH)
+            .body(Body::empty())
+            .unwrap();
+        let response = app.oneshot(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::METHOD_NOT_ALLOWED);
+        assert_eq!(response.headers().get(header::ALLOW).unwrap(), "POST");
+    }
+
+    #[tokio::test]
+    async fn non_json_post_body_returns_standard_415() {
+        let app = router_with(Arc::new(FixedResolver(Some(Ipv4Addr::LOCALHOST.into()))));
+        let mut request = full_request(
+            loopback_peer(),
+            "127.0.0.1:9",
+            "http://127.0.0.1:9",
+            "correct-token",
+        );
+        request.headers_mut().insert(
+            header::CONTENT_TYPE,
+            "text/plain".parse().unwrap(),
+        );
+        let response = app.oneshot(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::UNSUPPORTED_MEDIA_TYPE);
+    }
+
+    #[tokio::test]
     async fn non_loopback_peer_fails_closed() {
         let app = router_with(Arc::new(FixedResolver(Some(Ipv4Addr::LOCALHOST.into()))));
         let request = full_request(
@@ -443,6 +523,20 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn empty_supplied_origin_is_not_treated_as_absent() {
+        let app = router_with(Arc::new(FixedResolver(Some(Ipv4Addr::LOCALHOST.into()))));
+        let request = full_request(
+            loopback_peer(),
+            "127.0.0.1:9",
+            "",
+            "correct-token",
+        );
+        let response = app.oneshot(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+        assert_eq!(denial_of(response).await, "origin_not_allowed");
+    }
+
+    #[tokio::test]
     async fn missing_bearer_fails_closed() {
         let app = router_with(Arc::new(FixedResolver(Some(Ipv4Addr::LOCALHOST.into()))));
         let request = Request::builder()
@@ -457,7 +551,7 @@ mod tests {
             .body(Body::from(ping_payload().to_string()))
             .unwrap();
         let response = app.oneshot(request).await.unwrap();
-        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
         assert_eq!(denial_of(response).await, "missing_bearer");
     }
 
@@ -471,7 +565,7 @@ mod tests {
             "wrong-token",
         );
         let response = app.oneshot(request).await.unwrap();
-        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
         let bytes = to_bytes(response.into_body(), MAX_BODY).await.unwrap();
         let receipt: Value = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(receipt["denial"], "invalid_bearer");

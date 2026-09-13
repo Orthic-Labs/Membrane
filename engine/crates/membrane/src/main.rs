@@ -1,55 +1,80 @@
-//! Membrane — single signed binary dispatcher.
+//! Membrane singleton engine entrypoint.
 //!
-//! Real work is delegated to `membrane_runtime`. This binary's only job is to parse the mode
-//! subcommand and return the right exit code so launchers and the supervisor can act on the
-//! outcome without parsing stderr.
-//!
-//! MBR-102: create one membrane executable with mode subcommands.
+//! All stateful service ownership lives in `membrane-runtime`. The companion
+//! `membrane-client` binary is the only compatibility process for CLI, hook, or
+//! stdio callers; it does not link this crate's runtime path.
 
-use membrane::dispatch::{parse_mode, ParsedInvocation};
-use membrane::modes::{dispatch, DispatchOutcome};
+use membrane_runtime::service::{run_installed_runtime, LifecycleControl};
+
+struct SupervisionGuard {
+    path: std::path::PathBuf,
+    failures: u64,
+}
+
+impl SupervisionGuard {
+    fn begin() -> Result<Self, String> {
+        let exe = std::env::current_exe().map_err(|error| error.to_string())?;
+        let product = exe.parent().and_then(std::path::Path::parent)
+            .ok_or_else(|| "installed engine has no product root".to_string())?;
+        let path = product.join("state/tools/.cache/memory/engine-supervision.json");
+        let previous = std::fs::read_to_string(&path).ok()
+            .and_then(|raw| serde_json::from_str::<serde_json::Value>(&raw).ok());
+        let failures = if previous.as_ref().and_then(|value| value.get("clean")).and_then(serde_json::Value::as_bool) == Some(false) {
+            previous.as_ref().and_then(|value| value.get("failures")).and_then(serde_json::Value::as_u64).unwrap_or(0) + 1
+        } else { 0 };
+        if failures >= 3 {
+            disable_supervisor_task();
+            return Err("membrane_engine_restart_suppressed: three consecutive unclean exits".into());
+        }
+        write_supervision(&path, false, failures)?;
+        Ok(Self { path, failures })
+    }
+}
+
+impl Drop for SupervisionGuard {
+    fn drop(&mut self) { let _ = write_supervision(&self.path, true, 0); }
+}
+
+fn write_supervision(path: &std::path::Path, clean: bool, failures: u64) -> Result<(), String> {
+    if let Some(parent) = path.parent() { std::fs::create_dir_all(parent).map_err(|error| error.to_string())?; }
+    let observed = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_millis() as u64).unwrap_or_default();
+    std::fs::write(path, format!("{{\"schemaVersion\":1,\"clean\":{clean},\"failures\":{failures},\"observedAtUnixMs\":{observed}}}\n"))
+        .map_err(|error| error.to_string())
+}
+
+#[cfg(windows)]
+fn disable_supervisor_task() {
+    use std::os::windows::process::CommandExt;
+    let _ = std::process::Command::new("schtasks.exe")
+        .args(["/Change", "/TN", "Membrane Engine", "/Disable"])
+        .creation_flags(0x0800_0000).status();
+}
+
+#[cfg(not(windows))]
+fn disable_supervisor_task() {}
 
 fn main() {
-    let args = std::env::args_os().collect::<Vec<_>>();
-    if args.len() == 2 && args[1] == "--version" {
-        println!("membrane {}", installed_release_version());
-        std::process::exit(0);
+    let first = std::env::args().nth(1);
+    match first.as_deref() {
+        Some("--help") | Some("-h") => {
+            println!("membrane — installed singleton engine");
+            return;
+        }
+        Some("--version") | Some("-V") => {
+            println!("membrane {}", env!("CARGO_PKG_VERSION"));
+            return;
+        }
+        _ => {}
     }
-    let invocation = match parse_mode(args) {
-        Ok(invocation) => invocation,
-        Err(error) => {
-            // clap writes the formatted help to stderr and returns the error string. We add a
-            // short prefix so scripts that grep for `membrane:` can route on it.
-            eprintln!("membrane: {error}");
-            std::process::exit(2);
+    let _supervision = if first.as_deref() == Some("--os-supervised") {
+        match SupervisionGuard::begin() {
+            Ok(guard) => Some(guard),
+            Err(error) => { eprintln!("membrane: {error}"); std::process::exit(70); }
         }
-    };
-    let outcome = dispatch(&invocation);
-    match outcome {
-        DispatchOutcome::Ok => std::process::exit(0),
-        DispatchOutcome::UserError(error) => {
-            eprintln!("membrane: {error}");
-            std::process::exit(2);
-        }
-        DispatchOutcome::InternalError(error) => {
-            eprintln!("membrane: internal: {error}");
-            std::process::exit(1);
-        }
+    } else { None };
+    if let Err(error) = run_installed_runtime(LifecycleControl::default()) {
+        eprintln!("membrane: engine startup failed: {error}");
+        std::process::exit(1);
     }
-}
-
-fn installed_release_version() -> String {
-    std::env::current_exe()
-        .ok()
-        .and_then(|path| path.parent().map(|root| root.join("release.json")))
-        .and_then(|path| std::fs::read(path).ok())
-        .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok())
-        .and_then(|value| value.get("version").and_then(serde_json::Value::as_str).map(str::to_owned))
-        .filter(|value| !value.trim().is_empty())
-        .unwrap_or_else(|| env!("CARGO_PKG_VERSION").to_string())
-}
-
-/// Re-exported so integration tests can exercise the dispatcher without re-implementing it.
-pub fn dispatch_parsed(invocation: &ParsedInvocation) -> DispatchOutcome {
-    dispatch(invocation)
 }

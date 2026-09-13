@@ -4,7 +4,8 @@
 ; The installer does exactly four things and records each one:
 ;   1. copy the signed release into  $INSTDIR\versions\<version>\
 ;   2. point the stable junction      $INSTDIR\current  ->  versions\<version>
-;   3. register uninstall, Start Menu shortcut and the login-launch Run value
+;   3. register uninstall, Start Menu shortcut and installer-owned resident
+;      engine autostart (independent of Hub visibility)
 ;   4. write  $INSTDIR\logs\install-<version>.log  with one line per step
 ; Every installation reconciles explicit client hooks & PATH through installed
 ; `membrane activate --bindings-only`. Silent installs leave resident services
@@ -339,7 +340,7 @@ Section Install
   ; Silent and passive runs terminate the product; interactive runs ask.
   !insertmacro CheckIfAppIsRunning "${MAINBINARYNAME}.exe" "${PRODUCTNAME}"
   !insertmacro CheckIfAppIsRunning "membrane-tray.exe" "Membrane"
-  !insertmacro CheckIfAppIsRunning "membrane-daemon.exe" "Membrane"
+  !insertmacro CheckIfAppIsRunning "membrane-client.exe" "Membrane"
 
   CreateDirectory "$INSTDIR\logs"
   ${Log} "install ${VERSION} begin"
@@ -352,13 +353,13 @@ Section Install
   ;    step so a failure here is diagnosable from the install log alone.
   StrCpy $InstallStep "stop-running-product"
   ${If} ${FileExists} "$INSTDIR\current\membrane.exe"
-    nsExec::ExecToStack /TIMEOUT=30000 '"$INSTDIR\current\membrane.exe" deactivate --install-root "$INSTDIR\current"'
+    nsExec::ExecToStack /TIMEOUT=30000 '"$INSTDIR\current\membrane-client.exe" deactivate --install-root "$INSTDIR\current"'
     Pop $1
     ${Log} "stop-running-product deactivate exit=$1"
   ${EndIf}
   StrCpy $2 0
   stop_retry:
-    nsExec::ExecToStack /TIMEOUT=30000 'cmd /c taskkill /F /T /IM membrane-tray.exe /IM membrane-daemon.exe /IM membrane-hub.exe /IM membrane.exe /IM cortex.exe 1>nul 2>nul & exit /b 0'
+    nsExec::ExecToStack /TIMEOUT=30000 'cmd /c taskkill /F /T /IM membrane-tray.exe /IM membrane-client.exe /IM membrane-hub.exe /IM membrane.exe /IM cortex.exe 1>nul 2>nul & exit /b 0'
     Pop $1
     Pop $3
     Sleep 1500
@@ -403,6 +404,9 @@ Section Install
     StrCpy $R0 1
     Goto install_failed
   ${EndIf}
+  ; Same-version repair overlays files. Remove retired runtime owner so an
+  ; earlier installation cannot leave a second executable runtime behind.
+  Delete "$INSTDIR\versions\${VERSION}\membrane-daemon.exe"
   ${Log} "extract-version-tree ok"
 
   ; Every executable the product runs from this version must be present.
@@ -410,7 +414,7 @@ Section Install
   ${IfNot} ${FileExists} "$INSTDIR\versions\${VERSION}\membrane.exe"
   ${OrIfNot} ${FileExists} "$INSTDIR\versions\${VERSION}\${MAINBINARYNAME}.exe"
   ${OrIfNot} ${FileExists} "$INSTDIR\versions\${VERSION}\membrane-tray.exe"
-  ${OrIfNot} ${FileExists} "$INSTDIR\versions\${VERSION}\membrane-daemon.exe"
+  ${OrIfNot} ${FileExists} "$INSTDIR\versions\${VERSION}\membrane-client.exe"
   ${OrIfNot} ${FileExists} "$INSTDIR\versions\${VERSION}\cortex.exe"
     StrCpy $R0 1
     Goto install_failed
@@ -499,11 +503,13 @@ Section Install
     WriteRegDWORD HKCU "${UNINSTKEY}" "EstimatedSize" "${ESTIMATEDSIZE}"
   !endif
 
-  ; The tray starts at login. Keep an existing user decision (value present or
-  ; absent) on upgrade; write it on first install.
+  ; Installer-owned resident autostart. The activation command adopts an
+  ; already healthy installed owner or requests one through the canonical
+  ; resident controller; no Hub window or tray login decision is required.
+  ; Keep an existing user decision (value present or absent) on upgrade.
   ReadRegStr $R2 HKCU "${UNINSTKEY}" "LoginLaunchWritten"
   ${If} $R2 == ""
-    WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "Membrane" '"$INSTDIR\current\membrane-tray.exe" --login-launch'
+    WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "Membrane" '"$INSTDIR\current\membrane-client.exe" activate --install-root "$INSTDIR\current"'
     WriteRegStr HKCU "${UNINSTKEY}" "LoginLaunchWritten" "1"
   ${EndIf}
   DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "Membrane Tray"
@@ -518,7 +524,7 @@ Section Install
 
   ; Explicit access is required even when silent setup never launches Hub.
   StrCpy $InstallStep "bind-installed-clients"
-  nsExec::ExecToStack /TIMEOUT=90000 '"$INSTDIR\current\membrane.exe" activate --bindings-only --install-root "$INSTDIR\current"'
+  nsExec::ExecToStack /TIMEOUT=90000 '"$INSTDIR\current\membrane-client.exe" activate --install-root "$INSTDIR\current"'
   Pop $R0
   Pop $R2
   ClearErrors
@@ -531,26 +537,6 @@ Section Install
     Goto install_failed
   ${EndIf}
   ${Log} "bind-installed-clients ok"
-
-  ; 4. Resident activation is the product's job. Interactive installs run it here with
-  ;    the console hidden and its output captured to logs\activate.log; its
-  ;    result is recorded, never fatal, and the finish page's tray launch only
-  ;    happens after it returns. Silent installs retain explicit bindings only.
-  ${IfNot} ${Silent}
-    DetailPrint "Activating Membrane"
-    nsExec::ExecToStack /TIMEOUT=90000 '"$INSTDIR\current\membrane.exe" activate --install-root "$INSTDIR\current"'
-    Pop $R0
-    Pop $R2
-    ClearErrors
-    FileOpen $9 "$INSTDIR\logs\activate.log" w
-    ${IfNot} ${Errors}
-      FileWrite $9 "$R2"
-      FileClose $9
-    ${EndIf}
-    ${Log} "activate exit=$R0 (output in logs\activate.log)"
-  ${Else}
-    ${Log} "activate skipped (silent install)"
-  ${EndIf}
 
   ${Log} "install ${VERSION} complete"
   !ifmacrodef NSIS_HOOK_POSTINSTALL
@@ -583,13 +569,23 @@ Section Uninstall
 
   !insertmacro CheckIfAppIsRunning "${MAINBINARYNAME}.exe" "${PRODUCTNAME}"
   !insertmacro CheckIfAppIsRunning "membrane-tray.exe" "Membrane"
-  !insertmacro CheckIfAppIsRunning "membrane-daemon.exe" "Membrane"
+  !insertmacro CheckIfAppIsRunning "membrane-client.exe" "Membrane"
+
+  ; Stop & remove installer-owned OS supervision before removing its action.
+  ; Deactivation also requests this, but uninstall must remain complete when
+  ; activation state or client bindings are already damaged.
+  nsExec::ExecToStack /TIMEOUT=30000 'schtasks.exe /End /TN "Membrane Engine"'
+  Pop $R0
+  Pop $R1
+  nsExec::ExecToStack /TIMEOUT=30000 'schtasks.exe /Delete /TN "Membrane Engine" /F'
+  Pop $R0
+  Pop $R1
 
   ; Deactivation removes the product's client hooks and PATH entry. Its result
   ; is recorded, not fatal: an uninstall must always remove the files.
   ${If} ${FileExists} "$INSTDIR\current\membrane.exe"
     CreateDirectory "$INSTDIR\logs"
-    ExecWait '"$SYSDIR\cmd.exe" /d /s /c ""$INSTDIR\current\membrane.exe" deactivate --install-root "$INSTDIR\current" > "$INSTDIR\logs\deactivate.log" 2>&1"' $R0
+    ExecWait '"$SYSDIR\cmd.exe" /d /s /c ""$INSTDIR\current\membrane-client.exe" deactivate --install-root "$INSTDIR\current" > "$INSTDIR\logs\deactivate.log" 2>&1"' $R0
     DetailPrint "membrane deactivate exit=$R0"
   ${EndIf}
 
@@ -626,6 +622,7 @@ Section Uninstall
     Delete "$SMPROGRAMS\${PRODUCTNAME}.lnk"
     Delete "$DESKTOP\${PRODUCTNAME}.lnk"
     DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "Membrane"
+    DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "Membrane Engine"
     DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "Membrane Tray"
   ${EndIf}
 

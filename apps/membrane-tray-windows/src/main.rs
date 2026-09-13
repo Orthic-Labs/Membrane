@@ -164,6 +164,8 @@ fn main() -> Result<(), slint::PlatformError> {
         "tray_startup",
         serde_json::json!({"stage":"workspace_resolved", "ok": resolved_workspace.is_ok()}),
     );
+    // Development compatibility keeps its bounded child path; installed
+    // tray attaches to resident engine through status/activation client.
     let daemon_path = resolved_workspace
         .as_ref()
         .ok()
@@ -192,7 +194,7 @@ fn main() -> Result<(), slint::PlatformError> {
         http_port,
     )));
     if let Ok(workspace) = resolved_workspace.as_ref() {
-        supervisor.borrow_mut().set_origin(workspace.origin);
+        supervisor.borrow_mut().set_workspace(workspace);
     }
 
     let startup_path = resolved_workspace
@@ -232,7 +234,7 @@ fn main() -> Result<(), slint::PlatformError> {
             supervisor.borrow_mut().block_startup(reason, now);
         } else {
             supervisor.borrow_mut().start_process(now);
-            supervisor::lifecycle_event("tray_startup", serde_json::json!({"stage":"daemon_launch_requested"}));
+            supervisor::lifecycle_event("tray_startup", serde_json::json!({"stage":"resident_attachment_requested"}));
         }
         apply_observation(&popover, &supervisor.borrow(), first_run, login_enabled);
     }

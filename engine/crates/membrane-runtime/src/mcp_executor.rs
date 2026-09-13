@@ -74,16 +74,6 @@ pub struct RuntimeMcpExecutor {
 }
 
 impl RuntimeMcpExecutor {
-    fn for_explicit() -> Result<Self, String> {
-        let store = crate::service::open_installed_store()?;
-        Ok(Self {
-            ledger: Some(crate::ledger::service::open_explicit_owner()?),
-            store: store.clone(),
-            diagnostics: Mutex::new(DiagnosticsService::new().map_err(|error| error.to_string())?
-                .with_blueprint_client(Box::new(crate::providers::blueprint_findings::ExplicitFindingsClient))
-                .with_persistent_store(store).map_err(|error| error.to_string())?),
-        })
-    }
     pub fn for_hub(store: MemoryStore) -> Result<Self, String> {
         crate::ledger::service::install_daemon_owner();
         Ok(Self {
@@ -517,7 +507,7 @@ fn caller<'a>(arguments: &'a Value, operation: &str) -> Result<(&'a str, &'a str
 fn native_action_for(name: &str, arguments: &Value) -> &'static str {
     match name {
         "pull" | "membrane_context" | "membrane_blueprint" | "membrane_adapt_inspect" => "context",
-        "push" => "checkpoint",
+        "push" => "memory_write",
         "membrane_source_read" | "membrane_memory_read" | "membrane_push_prepare" | "membrane_push_resolve" => "source_read",
         "membrane_ledger" => match arguments.get("operation").and_then(Value::as_str) {
             Some("erase" | "activate") => "checkpoint",
@@ -641,9 +631,7 @@ struct HubTransportExecutor {
 }
 
 #[derive(Default)]
-struct ExplicitOperationExecutor {
-    owner: Mutex<Option<RuntimeMcpExecutor>>,
-}
+struct ExplicitOperationExecutor;
 
 /// A short excerpt of a response body for an error message. Bounded so a
 /// large or binary payload cannot flood a log line. A bare "malformed" made
@@ -685,9 +673,6 @@ impl HubTransportExecutor {
         let identity =
             crate::installation_identity::load_or_create_installation(&paths.identity, &[])
                 .map_err(|_| "membrane_unavailable { hub_inactive }".to_owned())?;
-        let session_id = identity
-            .current_service_instance_id
-            .ok_or_else(|| "membrane_unavailable { hub_inactive }".to_owned())?;
         let token = std::fs::read_to_string(&runtime.token)
             .map_err(|_| "membrane_unavailable { hub_inactive }".to_owned())?;
         let token = token.trim().to_owned();
@@ -699,28 +684,10 @@ impl HubTransportExecutor {
             installation_id: identity.installation_id,
             cortex_store_id: String::new(),
             release_generation: String::new(),
-            session_id,
+            session_id: String::new(),
             token,
             token_path: runtime.token,
         };
-        let health = executor.health()?;
-        if health.get("installationId").and_then(Value::as_str)
-            != Some(executor.installation_id.as_str())
-        {
-            return Err("Hub health installationId does not match active binding".to_owned());
-        }
-        executor.cortex_store_id = health
-            .get("cortexStoreId")
-            .and_then(Value::as_str)
-            .filter(|value| !value.trim().is_empty())
-            .ok_or_else(|| "Hub health omitted cortexStoreId".to_owned())?
-            .to_owned();
-        executor.release_generation = health
-            .get("releaseGeneration")
-            .and_then(Value::as_str)
-            .filter(|value| !value.trim().is_empty())
-            .ok_or_else(|| "Hub health omitted releaseGeneration".to_owned())?
-            .to_owned();
         Ok(executor)
     }
 
@@ -747,10 +714,11 @@ impl HubTransportExecutor {
             .set_write_timeout(Some(Duration::from_secs(2)))
             .map_err(|e| e.to_string())?;
         let host = format!("127.0.0.1:{}", self.port);
+        // This is a transport-only bridge: send the standard Streamable HTTP
+        // credential and JSON headers, never per-boot/session fencing claims.
         let request = format!(
-            "POST {path} HTTP/1.0\r\nHost: {host}\r\nOrigin: http://{host}\r\nContent-Type: application/json\r\nAuthorization: Bearer {}\r\nx-membrane-installation-id: {}\r\nx-membrane-cortex-store-id: {}\r\nx-membrane-release-generation: {}\r\nx-membrane-session: {}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
-            self.token, self.installation_id, self.cortex_store_id, self.release_generation,
-            self.session_id, payload.len(), payload,
+            "POST {path} HTTP/1.1\r\nHost: {host}\r\nAccept: application/json, text/event-stream\r\nContent-Type: application/json\r\nAuthorization: Bearer {}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+            self.token, payload.len(), payload,
         );
         stream
             .write_all(request.as_bytes())
@@ -796,7 +764,20 @@ pub(crate) fn native_operation_client() -> Box<dyn NativeMcpExecutor> {
 }
 
 fn execute_explicit(name: &str, arguments: &Value) -> Value {
-    execute_explicit_with_owner(name, arguments, &Mutex::new(None))
+    if !name.starts_with("membrane_diagnostic_") {
+        let (root, repository, scope) = match caller(arguments, name) {
+            Ok(binding) => binding,
+            Err(denial) => return denial,
+        };
+        if let Err(denial) = authorize_native_request(arguments, name, root, repository, scope) {
+            return error(name, denial.code(), denial.to_string());
+        }
+    }
+    error(
+        name,
+        "membrane_unavailable",
+        "resident Membrane engine is unavailable; transport-only forwarding cannot execute locally",
+    )
 }
 
 fn checkpoint_payload_bound(operation: &str, value: Option<&Value>) -> Result<(), Value> {
@@ -912,46 +893,8 @@ pub(crate) fn execute_installed_diagnostic(name: &str, arguments: &Value) -> Val
     ExplicitOperationExecutor::default().execute(name, arguments)
 }
 
-fn execute_explicit_with_owner(name: &str, arguments: &Value, owner: &Mutex<Option<RuntimeMcpExecutor>>) -> Value {
-    if !name.starts_with("membrane_diagnostic_") {
-        let (root, repository, scope) = match caller(arguments, name) {
-            Ok(binding) => binding,
-            Err(denial) => return denial,
-        };
-        if let Err(denial) = authorize_native_request(arguments, name, root, repository, scope) {
-            return error(name, denial.code(), denial.to_string());
-        }
-    }
-    let started = std::time::Instant::now();
-    eprintln!("{}", json!({"event":"membrane_explicit_started","operation":name}));
-    let result = (|| {
-        let mut owner = match owner.lock() {
-            Ok(owner) => owner,
-            Err(_) => return error(name, "installed_runtime_unavailable", "explicit owner lock poisoned"),
-        };
-        if owner.is_none() {
-            match RuntimeMcpExecutor::for_explicit() {
-                Ok(executor) => *owner = Some(executor),
-                Err(failure) => return error(name, "installed_runtime_unavailable", failure),
-            }
-        }
-        let executor = owner.as_ref().expect("initialized explicit owner");
-        let result = executor.execute(name, arguments);
-        match executor.diagnostics.lock() {
-            Ok(mut diagnostics) => if let Err(failure) = diagnostics.stop_explicit_providers() {
-                return error(name, "provider_shutdown_failed", failure.to_string());
-            },
-            Err(_) => return error(name, "provider_shutdown_failed", "diagnostics lock poisoned"),
-        }
-        result
-    })();
-    eprintln!("{}", json!({"event":"membrane_explicit_finished","operation":name,"elapsedMs":started.elapsed().as_millis(),"kind":result.pointer("/result/kind")}));
-    result
-}
-
 impl NativeMcpExecutor for HubTransportExecutor {
     fn execute(&self, name: &str, arguments: &Value) -> Value {
-        if name == "membrane_blueprint" { return execute_blueprint(arguments); }
         let active = match Self::active() {
             Ok(active) => active,
             Err(_) => return execute_explicit(name, arguments),
@@ -964,22 +907,10 @@ impl NativeMcpExecutor for HubTransportExecutor {
 
 impl NativeMcpExecutor for ExplicitOperationExecutor {
     fn execute(&self, name: &str, arguments: &Value) -> Value {
-        if name == "membrane_blueprint" { return execute_blueprint(arguments); }
-        if name == "membrane_diagnostic_provider" && arguments.get("operation").and_then(Value::as_str) == Some("restart") {
-            return match HubTransportExecutor::active() {
-                Ok(active) => active.post(name, arguments).unwrap_or_else(|failure| error(name, "membrane_unavailable", failure)),
-                Err(_) => error(name, "hub_inactive", "resident provider control requires active Hub"),
-            };
-        }
-        // Logical diagnostics state is canonical across CLI, stdio & Hub;
-        // explicit acquisition providers stop when each request completes.
-        if name.starts_with("membrane_diagnostic_") {
-            return execute_explicit_with_owner(name, arguments, &self.owner);
-        }
         match HubTransportExecutor::active() {
             Ok(active) => active.post(name, arguments).unwrap_or_else(|failure|
                 error(name, "membrane_unavailable", hub_inactive_message(failure))),
-            Err(_) => execute_explicit_with_owner(name, arguments, &self.owner),
+            Err(_) => execute_explicit(name, arguments),
         }
     }
 }
@@ -2821,6 +2752,15 @@ mod hub_transport_tests {
         }
     }
 
+    #[test]
+    fn explicit_transport_reports_typed_unavailability_instead_of_local_diagnostics() {
+        let result = execute_explicit(
+            "membrane_diagnostic_provider",
+            &json!({"operation": "list"}),
+        );
+        assert_eq!(result["result"]["code"], "membrane_unavailable", "{result}");
+    }
+
     /// Parity regression for legacy `mcp/working-context.mjs`'s
     /// `WorkingContextStore` (see mcp/working-context.test.mjs, test
     /// "L3 durable working context survives restart, expires, and injects
@@ -3061,14 +3001,11 @@ mod hub_transport_tests {
     }
 }
 
-/// Canonical CLI operations reuse installed storage & existing Adapt authority.
-/// Explicit work never auto-starts a resident process.
+/// CLI operations are transport-only forwards into the resident owner.
+/// They never open stores or instantiate an explicit planner.
 pub(crate) fn adapt_daemon_request(request: &Value) -> Result<Value, String> {
-    if let Ok(bound) = HubTransportExecutor::active() {
-        return bound.post_json(crate::adapt_service::OPERATOR_PATH, &request.to_string());
+    match HubTransportExecutor::active() {
+        Ok(bound) => bound.post_json(crate::adapt_service::OPERATOR_PATH, &request.to_string()),
+        Err(failure) => Err(hub_inactive_message(failure)),
     }
-    let executor = RuntimeMcpExecutor::for_explicit()?;
-    let (status, body) = crate::adapt_service::operator_response(&executor.store, &request.to_string());
-    if status != 200 { return Err(body); }
-    serde_json::from_str(&body).map_err(|error| error.to_string())
 }

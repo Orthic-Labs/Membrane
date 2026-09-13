@@ -51,7 +51,7 @@ const executables = [
   [inputRoot ? join(inputRoot, "cortex.exe") : join(hub, "src-tauri", "binaries", "cortex-x86_64-pc-windows-msvc.exe"), "cortex.exe"],
   [inputRoot ? join(inputRoot, "membrane.exe") : join(hub, "src-tauri", "binaries", "membrane-x86_64-pc-windows-msvc.exe"), "membrane.exe"],
   [inputRoot ? join(inputRoot, "membrane-tray.exe") : join(hub, "src-tauri", "binaries", "membrane-tray-x86_64-pc-windows-msvc.exe"), "membrane-tray.exe"],
-  [inputRoot ? join(inputRoot, "membrane-daemon.exe") : join(hub, "src-tauri", "binaries", "membrane-daemon-x86_64-pc-windows-msvc.exe"), "membrane-daemon.exe"],
+  [inputRoot ? join(inputRoot, "membrane-client.exe") : join(hub, "src-tauri", "binaries", "membrane-client-x86_64-pc-windows-msvc.exe"), "membrane-client.exe"],
 ];
 
 function sha256(path) {
@@ -91,7 +91,7 @@ const runtime = inputRoot ? join(inputRoot, "runtime") : join(hub, "src-tauri", 
 if (!existsSync(runtime)) throw new Error(`staged runtime missing: ${runtime}`);
 cpSync(runtime, join(payload, "runtime"), { recursive: true });
 // Stable installed command uses Membrane's bounded native process owner.
-writeFileSync(join(payload, "blueprint.cmd"), '@echo off\r\n"%~dp0membrane.exe" cli blueprint %*\r\nexit /b %ERRORLEVEL%\r\n');
+writeFileSync(join(payload, "blueprint.cmd"), '@echo off\r\n"%~dp0membrane-client.exe" cli blueprint %*\r\nexit /b %ERRORLEVEL%\r\n');
 const pluginContract = assemblePortableCore({
   outputDir: portableCore,
   pluginManifestPath: join(projectionRoot, "plugin.json"),
@@ -135,13 +135,13 @@ if (process.env.MEMBRANE_UNSIGNED_INSTALLER !== "1") {
   );
 }
 
-const membraneInfo = spawnSync(join(payload, "membrane.exe"), ["cli", "build-info"], {
+const membraneInfo = spawnSync(join(payload, "membrane-client.exe"), ["cli", "build-info"], {
   encoding: "utf8",
   windowsHide: true,
 });
 if (membraneInfo.error || membraneInfo.status !== 0) throw new Error("membrane build-info failed");
 const buildInfo = JSON.parse(membraneInfo.stdout);
-const hookAuthority = spawnSync(join(payload, "membrane.exe"), ["hook", "--help"], {
+const hookAuthority = spawnSync(join(payload, "membrane-client.exe"), ["hook", "--help"], {
   encoding: "utf8",
   windowsHide: true,
   timeout: 3_000,

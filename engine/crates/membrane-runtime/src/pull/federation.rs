@@ -213,10 +213,7 @@ fn run_federate_value(
     let (response, native_metrics, freshness) = std::thread::scope(|scope| {
         scope
             .spawn(|| {
-                tokio::runtime::Builder::new_current_thread()
-                    .enable_all()
-                    .build()
-                    .map_err(|error| format!("create native federation runtime: {error}"))?
+                native_federation::runtime()?
                     .block_on(async {
                         let bindings = if foreground && resident.is_none() {
                             federation_sources::NativeSourceBindings::with_ambient_store(&root, scope_grant_id.as_deref(), store.clone())?
@@ -486,10 +483,7 @@ pub(crate) fn native_route_response_with_deadline(
         let response = std::thread::scope(|scope| {
             scope
                 .spawn(|| {
-                    tokio::runtime::Builder::new_current_thread()
-                        .enable_all()
-                        .build()
-                        .map_err(|error| format!("create native federation runtime: {error}"))?
+                    native_federation::runtime()?
                         .block_on(
                             native.federate_until(&request, tokio_util::sync::CancellationToken::new(), deadline),
                         )

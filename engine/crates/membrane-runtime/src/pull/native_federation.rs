@@ -13,11 +13,31 @@ use membrane_federation::providers::{
 };
 use membrane_federation::{FederationConfig, FederationEngine, ProviderRegistry};
 use membrane_protocol::{FederationRequestV1, FederationResponseV1, ProviderId};
-use membrane_provider_sdk::{FreshnessSource, ProviderRegistration, SourceQuery};
+use membrane_provider_sdk::{
+    FreshnessSource, Provider, ProviderContext, ProviderError, ProviderOutput,
+    ProviderRegistration, SourceQuery,
+};
+use std::future::Future;
 use std::path::Path;
 use std::collections::HashMap;
+use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 use tokio_util::sync::CancellationToken;
+
+// Provider lanes are admitted concurrently (ten lanes in V1), while their
+// owner-backed work is moved to Tokio's bounded blocking pool. Keep a small
+// async scheduling pool for timers, cancellation, and result assembly.
+const NATIVE_FEDERATION_ASYNC_WORKERS: usize = 2;
+const NATIVE_FEDERATION_BLOCKING_WORKERS: usize = 10;
+
+pub(crate) fn runtime() -> Result<tokio::runtime::Runtime, String> {
+    tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(NATIVE_FEDERATION_ASYNC_WORKERS)
+        .max_blocking_threads(NATIVE_FEDERATION_BLOCKING_WORKERS)
+        .enable_all()
+        .build()
+        .map_err(|error| format!("create native federation runtime: {error}"))
+}
 
 /// Native engine plus immutable source handles.  No Python gateway, worker,
 /// stdio framing, or dynamic provider lookup is reachable from this type.
@@ -313,5 +333,76 @@ fn registration(
     provider: Arc<dyn membrane_provider_sdk::Provider>,
     dependencies: Vec<ProviderId>,
 ) -> ProviderRegistration {
-    ProviderRegistration::new(id, key, dependencies, provider)
+    ProviderRegistration::new(id, key, dependencies, Arc::new(BlockingProvider { inner: provider }))
+}
+
+/// Run owner-backed provider work on Tokio's bounded blocking pool. Native
+/// providers are async at their contract boundary, but their owner adapters
+/// intentionally perform synchronous filesystem, SQLite, and Blueprint work.
+/// Keeping that work off scheduler workers lets deadline timers and sibling
+/// lanes continue to make progress; the provider/source handles remain the
+/// same runtime-owned objects.
+struct BlockingProvider {
+    inner: Arc<dyn Provider>,
+}
+
+impl Provider for BlockingProvider {
+    fn provide<'life0, 'life1, 'async_trait>(
+        &'life0 self,
+        context: &'life1 ProviderContext,
+    ) -> Pin<Box<dyn Future<Output = Result<ProviderOutput, ProviderError>> + Send + 'async_trait>>
+    where
+        'life0: 'async_trait,
+        'life1: 'async_trait,
+        Self: 'async_trait,
+    {
+        let provider = Arc::clone(&self.inner);
+        let context = context.clone();
+        Box::pin(async move {
+            tokio::task::spawn_blocking(move || {
+                tokio::runtime::Handle::current().block_on(provider.provide(&context))
+            })
+            .await
+            .map_err(|error| ProviderError::Unavailable(format!("provider blocking worker: {error}")))?
+        })
+    }
+
+    fn list_capabilities(&self) -> Vec<membrane_provider_sdk::CapabilityV1> {
+        self.inner.list_capabilities()
+    }
+
+    fn readiness(&self) -> membrane_provider_sdk::provider::ProviderReadinessV1 {
+        self.inner.readiness()
+    }
+
+    fn handle_operation(
+        &self,
+        operation: &str,
+        request: &serde_json::Value,
+    ) -> Result<serde_json::Value, ProviderError> {
+        self.inner.handle_operation(operation, request)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::runtime;
+    use std::time::Duration;
+
+    #[test]
+    fn bounded_runtime_keeps_deadline_timer_live_during_blocking_work() {
+        let runtime = runtime().expect("bounded native runtime");
+        let timer_fired = runtime.block_on(async {
+            let blocking = tokio::task::spawn_blocking(|| std::thread::sleep(Duration::from_millis(40)));
+            let timer = tokio::time::timeout(
+                Duration::from_millis(20),
+                tokio::time::sleep(Duration::from_millis(2)),
+            )
+            .await
+            .is_ok();
+            blocking.await.expect("blocking worker must join");
+            timer
+        });
+        assert!(timer_fired, "blocking provider work must not starve deadline timers");
+    }
 }

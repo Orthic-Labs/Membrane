@@ -28,15 +28,22 @@ test("Windows release is signed, sealed & stays local", () => {
   assert.equal(pkg.scripts["rightkit:package:win"], "node scripts/build-windows-release.mjs");
   assert.equal(pkg.scripts["release:identity"], "node scripts/release-identity.mjs --out dist/release-identity.json");
   assert.equal(pkg.scripts["release:evidence:win"], "node scripts/write-windows-release-evidence.mjs");
-  assert.match(pkg.scripts["release:prepare:sidecars:win"], /pnpm run build/);
-  assert.match(pkg.scripts["release:prepare:sidecars:win"], /release-build-windows\.mjs --prepare-only/);
+  assert.equal(pkg.scripts["release:prepare:sidecars:win"], "node scripts/release-build-windows.mjs --prepare-only");
   assert.equal(pkg.scripts["release:build:win"], "node scripts/release-build-windows.mjs");
+  assert.equal(pkg.scripts["release:validate:win"], "node scripts/release-build-windows.mjs --validate");
   assert.match(windowsRelease, /right-release", "sign-windows", "--verify-only"/);
   assert.match(windowsRelease, /membrane-tray-x86_64-pc-windows-msvc\.exe/);
-  assert.match(windowsRelease, /membrane-daemon-x86_64-pc-windows-msvc\.exe/);
+  assert.match(windowsRelease, /membrane-client-x86_64-pc-windows-msvc\.exe/);
   assert.match(windowsRelease, /engineRelease, "cortex\.exe"/);
   assert.match(windowsRelease, /engineRelease, "membrane\.exe"/);
   assert.match(windowsRelease, /run\(\["run", "build"\]\)/);
+  assert.match(windowsRelease, /membrane\.windows-build-phase\.v1/);
+  const preparation = windowsRelease.slice(windowsRelease.indexOf("function prepareNativeBinaries"), windowsRelease.indexOf("function validateNativeSources"));
+  assert.doesNotMatch(preparation, /cargo\(\["check"/);
+  assert.doesNotMatch(preparation, /cargo\(\["test"/);
+  assert.equal((preparation.match(/cargo\(\["build"/g) ?? []).length, 1);
+  assert.match(windowsRelease, /function validateNativeSources\(\)[\s\S]*cargo\(\["check"/);
+  assert.match(windowsRelease, /function validateNativeSources\(\)[\s\S]*cargo\(\["test"[\s\S]*"--locked"[\s\S]*"--features", "fastembed"/);
   assert.match(windowsRelease, /membrane-tray-windows\.exe/);
   assert.match(windowsRelease, /MEMBRANE_SIGNED_SIDECARS_READY: "1"/);
   assert.match(windowsRelease, /right-release", "build", "--platform", "win"/);
@@ -62,7 +69,7 @@ test("Windows release is signed, sealed & stays local", () => {
   assert.equal(tauriConfig.plugins, undefined);
   assert.equal(windowsTauriConfig.bundle.windows.allowDowngrades, true);
   assert.equal(windowsTauriConfig.bundle.createUpdaterArtifacts, false);
-  assert.deepEqual(windowsTauriConfig.bundle.externalBin, ["binaries/cortex", "binaries/membrane", "binaries/membrane-tray", "binaries/membrane-daemon"]);
+  assert.deepEqual(windowsTauriConfig.bundle.externalBin, ["binaries/cortex", "binaries/membrane", "binaries/membrane-client", "binaries/membrane-tray"]);
   assert.equal(windowsTauriConfig.bundle.windows.nsis.allowDowngrades, undefined);
   assert.equal(tauriConfig.app.security.freezePrototype, true);
   assert.deepEqual(tauriConfig.app.security.capabilities, ["hub-local-ui"]);
@@ -70,13 +77,13 @@ test("Windows release is signed, sealed & stays local", () => {
   assert.match(tauriConfig.app.security.csp, /object-src 'none'/);
   assert.doesNotMatch(tauriConfig.app.security.csp, /unsafe-(?:inline|eval)/);
   assert.match(nsisTemplate, /!define INSTALLIDENTITY "Membrane Hub"/);
-  assert.match(nsisTemplate, /CurrentVersion\\Run" "Membrane" .*membrane-tray\.exe.*--login-launch/);
+  assert.match(nsisTemplate, /CurrentVersion\\Run" "Membrane" .*membrane-client\.exe.* activate /);
   assert.match(nsisTemplate, /DeleteRegValue HKCU .*CurrentVersion\\Run" "Membrane Tray"/);
   assert.match(nsisTemplate, /Function RunTray[\s\S]*RunAsUser "\$INSTDIR\\current\\membrane-tray\.exe"/);
   assert.doesNotMatch(nsisTemplate, /RunAsUser "\$INSTDIR\\\$\{MAINBINARYNAME\}\.exe"/);
   assert.match(nsisTemplate, /CreateShortcut .*\$INSTDIR\\current\\membrane-tray\.exe" "--open-dashboard"/);
   assert.match(nsisTemplate, /CheckIfAppIsRunning "membrane-tray\.exe"/);
-  assert.match(nsisTemplate, /CheckIfAppIsRunning "membrane-daemon\.exe"/);
+  assert.match(nsisTemplate, /CheckIfAppIsRunning "membrane-client\.exe"/);
   // Section Install lays versions/<v> down and points current; activation is the product's own command, never awaited by the installer.
   assert.doesNotMatch(nsisTemplate, /install\.ps1/);
   // The installer must not invoke powershell.exe at all — the runner's Windows
@@ -88,14 +95,14 @@ test("Windows release is signed, sealed & stays local", () => {
   assert.match(nsisTemplate, /mklink \/J "\$INSTDIR\\\.current-next"/);
   assert.match(nsisTemplate, /Rename "\$INSTDIR\\\.current-next" "\$INSTDIR\\current"/);
   assert.doesNotMatch(nsisTemplate, /\$"/, 'NSIS escapes a quote as $\\"; $" is not an escape and breaks every ExecWait built with it');
-  assert.equal((nsisTemplate.match(/membrane\.exe" activate --install-root/g) ?? []).length, 1);
-  assert.doesNotMatch(nsisTemplate, /ExecWait[^\n]*membrane\.exe" activate/);
+  assert.equal((nsisTemplate.match(/nsExec::ExecToStack[^\n]*membrane-client\.exe" activate --install-root/g) ?? []).length, 1);
+  assert.doesNotMatch(nsisTemplate, /ExecWait[^\n]*membrane-client\.exe" activate/);
   assert.doesNotMatch(nsisTemplate, /PLUGINSDIR\\release\\installer-release/);
   const installSection = nsisTemplate.slice(nsisTemplate.indexOf("\nSection Install"), nsisTemplate.indexOf("\nSectionEnd", nsisTemplate.indexOf("\nSection Install")));
   assert.equal((installSection.match(/ExecWait\b/g) ?? []).length, 1, "only the junction step waits on an external process");
   assert.match(nsisTemplate, /Abort "Membrane installation failed at \$InstallStep/);
   assert.doesNotMatch(nsisTemplate, /File "\$\{MAINBINARYSRCPATH\}"/);
-  assert.match(nsisTemplate, /membrane\.exe.*deactivate --install-root/);
+  assert.match(nsisTemplate, /membrane-client\.exe.*deactivate --install-root/);
   assert.match(nsisTemplate, /Function RemoveRetiredRuntimeAt/);
   assert.match(nsisTemplate, /FindFirst \$0 \$1 "\$INSTDIR\\versions\\\*"/);
   assert.match(nsisTemplate, /Push "\$INSTDIR\\runtime\\blueprint"/);
@@ -154,6 +161,8 @@ test("Windows package creates raw EXE before signing, then bundles without rebui
   assert.match(frontendBuild, /spawnSync\(command\.command, \[\.\.\.command\.prefix, "build"/);
   assert.match(frontendBuild, /shell: process\.platform === "win32"/);
   assert.match(frontendBuild, /--message-format=json-render-diagnostics/);
+  assert.match(frontendBuild, /"--locked"/);
+  assert.match(frontendBuild, /"membrane-client"/);
   assert.match(frontendBuild, /message\.reason !== "compiler-artifact"/);
   assert.doesNotMatch(frontendBuild, /--target-dir|CARGO_TARGET_DIR|resolveManagedCargoTarget/);
   assert.doesNotMatch(frontendBuild, /spawnSync\((?:process\.env\.CARGO|"cargo")/);
