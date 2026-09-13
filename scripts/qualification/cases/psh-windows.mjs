@@ -90,14 +90,14 @@ export function verifyInstalledIdentity(cli, statusPayload = undefined) {
 
 const installedIdentity = verifyInstalledIdentity;
 
-function runCli(ctx, args, options = {}) {
+export function runCli(ctx, args, options = {}) {
   const cli = resolveCli(ctx);
   const result = spawnSync(cli, args, {
     encoding: options.encoding === undefined ? "utf8" : options.encoding,
     windowsHide: true,
     timeout: options.timeoutMs ?? 15000,
     input: options.input,
-    env: options.env,
+    env: { ...process.env, ...(ctx.env || {}), ...(options.env || {}) },
   });
   return result;
 }
