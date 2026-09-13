@@ -11,11 +11,17 @@ use membrane::modes::{dispatch, DispatchOutcome};
 use membrane::supervision::SupervisionGuard;
 use membrane_runtime::service::{run_installed_runtime, LifecycleControl};
 
+/// Decisions 21/24 (2026-09-13): the engine has no OS-scheduler lifetime lane.
+/// This helper only removes a legacy per-minute task left by pre-cutover
+/// installs; it must never create or enable anything.
 #[cfg(windows)]
 fn disable_supervisor_task() {
     use std::os::windows::process::CommandExt;
     let _ = std::process::Command::new("schtasks.exe")
         .args(["/Change", "/TN", "Membrane Engine", "/Disable"])
+        .creation_flags(0x0800_0000).status();
+    let _ = std::process::Command::new("schtasks.exe")
+        .args(["/Delete", "/TN", "Membrane Engine", "/F"])
         .creation_flags(0x0800_0000).status();
 }
 

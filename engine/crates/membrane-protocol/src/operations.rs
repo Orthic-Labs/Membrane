@@ -131,6 +131,10 @@ pub struct ResidentHolderRequestV1 {
     pub loss_cursor: Option<u64>,
 }
 
+fn is_zero_u32(value: &u32) -> bool {
+    *value == 0
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ResidentHolderStatusV1 {
@@ -142,6 +146,11 @@ pub struct ResidentHolderStatusV1 {
     pub services_unavailable_reason: Option<ResidentServicesUnavailableV1>,
     pub hub_holders: u32,
     pub coderight_daemon_holders: u32,
+    /// Harness access-lifetime holders (decisions 22/24). Serializes only
+    /// when non-zero so pre-harness parsers that reject unknown fields stay
+    /// byte-compatible on the hub/coderight-only wire.
+    #[serde(default, skip_serializing_if = "is_zero_u32")]
+    pub harness_holders: u32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

@@ -390,15 +390,18 @@ Section Install
     StrCpy $R0 1
     Goto install_failed
   stop_done:
-  ; Defense in depth for the extract window: the per-minute supervisor task
-  ; must not spawn any engine while version-tree files are overwritten. Best
-  ; effort and non-fatal (the task may not exist yet): bind re-creates and
-  ; re-enables it through request_windows_supervisor, which explicitly handles
-  ; a prior Disabled state.
+  ; Defense in depth for the extract window: pre-cutover installs may still
+  ; carry a per-minute engine task that could spawn a legacy binary mid-extract.
+  ; Disable, end, and delete it — activation never re-creates it (decisions
+  ; 21/24: engine lifetime is owned by Hub/tray or harness holders, never the
+  ; OS scheduler).
   nsExec::ExecToStack /TIMEOUT=30000 'schtasks.exe /Change /TN "Membrane Engine" /Disable'
   Pop $1
   Pop $3
   nsExec::ExecToStack /TIMEOUT=30000 'schtasks.exe /End /TN "Membrane Engine"'
+  Pop $1
+  Pop $3
+  nsExec::ExecToStack /TIMEOUT=30000 'schtasks.exe /Delete /TN "Membrane Engine" /F'
   Pop $1
   Pop $3
   ${Log} "stop-running-product ok"
@@ -546,13 +549,12 @@ Section Install
     WriteRegDWORD HKCU "${UNINSTKEY}" "EstimatedSize" "${ESTIMATEDSIZE}"
   !endif
 
-  ; Installer-owned resident autostart. The activation command adopts an
-  ; already healthy installed owner or requests one through the canonical
-  ; resident controller; no Hub window or tray login decision is required.
+  ; Installer-owned login startup targets the tray, which starts and holds
+  ; Membrane (decisions 21/24). The engine binary is never a login entry.
   ; Keep an existing user decision (value present or absent) on upgrade.
   ReadRegStr $R2 HKCU "${UNINSTKEY}" "LoginLaunchWritten"
   ${If} $R2 == ""
-    WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "Membrane" '"$INSTDIR\current\membrane.exe" activate --install-root "$INSTDIR\current"'
+    WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "Membrane" '"$INSTDIR\current\membrane-tray.exe" --login-launch'
     WriteRegStr HKCU "${UNINSTKEY}" "LoginLaunchWritten" "1"
   ${EndIf}
   DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "Membrane Tray"
@@ -565,11 +567,12 @@ Section Install
   ${EndIf}
   ${Log} "register ok"
 
-  ; Explicit access is required even when silent setup never launches Hub.
-  ; Activation runs in the engine binary (installer-owned control plane),
-  ; not the transport client.
+  ; Bind registrations without lifecycle effects. Registration-only
+  ; activation must not start the engine: ownership belongs to Hub/tray or
+  ; harness holders, never to the installer. The lock was already released
+  ; after cutover, so no listener was ever blocked by this step.
   StrCpy $InstallStep "bind-installed-clients"
-  nsExec::ExecToStack /TIMEOUT=90000 '"$INSTDIR\current\membrane.exe" activate --install-root "$INSTDIR\current"'
+  nsExec::ExecToStack /TIMEOUT=90000 '"$INSTDIR\current\membrane.exe" activate --bindings-only --install-root "$INSTDIR\current"'
   Pop $R0
   Pop $R2
   ClearErrors

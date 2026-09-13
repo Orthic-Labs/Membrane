@@ -58,6 +58,7 @@ fn injected_transport_preserves_installed_identity_fence() {
                 services_unavailable_reason: None,
                 hub_holders: 0,
                 coderight_daemon_holders: 1,
+                harness_holders: 0,
             },
             loss: None,
         })

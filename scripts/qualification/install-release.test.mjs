@@ -17,12 +17,23 @@ test("installer releases the install lock before binding & suppresses the superv
   assert.ok(bind > -1, "bind step missing");
   assert.ok(lockRelease > cutover, "post-cutover lock release missing");
   assert.ok(bind > lockRelease, "bind must run after the install lock is released");
-  // The per-minute supervisor task must not spawn engines over the extract
-  // window; bind re-creates and re-enables it afterwards.
+  // Pre-cutover installs may still carry a per-minute engine task; it must
+  // be disabled before extract, and the installer deletes it — activation
+  // never re-creates it (decisions 21/24: no OS-scheduler lifetime lane).
   const extract = nsi.indexOf('"extract-version-tree"');
   const disable = nsi.indexOf('schtasks.exe /Change /TN "Membrane Engine" /Disable');
   assert.ok(extract > -1, "extract step missing");
   assert.ok(disable > -1 && disable < extract, "supervisor task must be disabled before extract begins");
+  const taskDelete = nsi.indexOf('schtasks.exe /Delete /TN "Membrane Engine" /F');
+  assert.ok(taskDelete > -1, "legacy supervisor task must be deleted during install");
+  assert.ok(!nsi.includes('schtasks.exe /Create'), "installer must never create an engine task");
+  assert.ok(!nsi.includes('schtasks.exe /Run'), "installer must never run an engine task");
+  // Login startup targets the tray (which starts and holds the engine),
+  // never the engine binary itself.
+  assert.ok(nsi.includes('membrane-tray.exe" --login-launch'), "login startup must launch the tray");
+  assert.ok(!nsi.includes('membrane.exe" activate --install-root'), "engine binary must never be a login entry");
+  // Bind is registration-only: it must not start the engine.
+  assert.ok(nsi.includes('activate --bindings-only --install-root'), "bind step must be bindings-only");
 });
 
 test("Windows installed qualification is package-only & signature-bound", () => {

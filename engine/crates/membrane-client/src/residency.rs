@@ -16,6 +16,9 @@ use membrane_protocol::{
 pub enum HolderKind {
     Hub,
     CodeRightDaemon,
+    /// Harness access lifetime (decisions 22/24): a supported harness owns
+    /// the engine exactly while its Membrane access is active.
+    Harness,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -384,6 +387,7 @@ fn protocol_holder(holder: AuthenticatedHolder) -> Result<ResidentHolderCredenti
         holder_kind: match holder.kind {
             HolderKind::Hub => "hub",
             HolderKind::CodeRightDaemon => "coderight_daemon",
+            HolderKind::Harness => "harness",
         }
         .into(),
         holder_id: holder.holder_id,
@@ -402,11 +406,12 @@ pub struct ResidencySnapshot {
     pub controller: Option<ControllerIdentity>,
     pub hub_holders: usize,
     pub coderight_daemon_holders: usize,
+    pub harness_holders: usize,
 }
 
 impl ResidencySnapshot {
     pub fn residents_required(&self) -> bool {
-        self.hub_holders + self.coderight_daemon_holders > 0
+        self.hub_holders + self.coderight_daemon_holders + self.harness_holders > 0
     }
 }
 
@@ -459,16 +464,19 @@ impl ResidencyRegistry {
     pub fn snapshot(&self) -> ResidencySnapshot {
         let mut hub_holders = 0;
         let mut coderight_daemon_holders = 0;
+        let mut harness_holders = 0;
         for kind in self.holders.keys().map(|(kind, _)| kind) {
             match kind {
                 HolderKind::Hub => hub_holders += 1,
                 HolderKind::CodeRightDaemon => coderight_daemon_holders += 1,
+                HolderKind::Harness => harness_holders += 1,
             }
         }
         ResidencySnapshot {
             controller: self.controller.clone(),
             hub_holders,
             coderight_daemon_holders,
+            harness_holders,
         }
     }
 

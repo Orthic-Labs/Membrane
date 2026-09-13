@@ -1320,6 +1320,7 @@ mod tests {
                 services_unavailable_reason: None,
                 hub_holders: 1,
                 coderight_daemon_holders: 1,
+                harness_holders: 0,
             },
         };
         supervisor.note_remote_holder(&remote);

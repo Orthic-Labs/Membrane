@@ -11,7 +11,9 @@ use serde_json::{json, Value};
 use std::collections::VecDeque;
 use std::io::{self, BufRead, IsTerminal, Read, Write};
 use std::net::{SocketAddr, TcpStream, ToSocketAddrs};
-use std::sync::{Mutex, OnceLock};
+use std::process::Command;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
 const DEFAULT_PORT: u16 = 47_851;
@@ -34,6 +36,17 @@ const CONNECT_TIMEOUT: Duration = Duration::from_millis(300);
 /// double-apply an effect. Every other client route (/cli, /mcp) may execute
 /// server-side effects and is therefore never retried after a full send.
 const HOOK_PATH: &str = "/hook";
+
+/// Harness access lifetime (decisions 22/24): persistent client sessions own
+/// the singleton engine exactly while their Membrane access is active. The
+/// lease is bounded and renewed while the session lives; a crashed client
+/// simply stops renewing and the engine drains after expiry. No OS scheduler
+/// lane ever resurrects the engine.
+const HARNESS_LEASE_TTL_MS: u64 = 30_000;
+const HARNESS_RENEW_INTERVAL_MS: u64 = 10_000;
+/// Engine-down activation is bounded: one foreground `membrane.exe activate`
+/// attempt per client session, well under any host startup budget.
+const ACTIVATION_TIMEOUT: Duration = Duration::from_secs(90);
 
 const CLIENT_HELP: &str = "membrane-client [stdio-mcp|hook|cli] [args…]\n\
     \n\
@@ -170,6 +183,15 @@ fn installed_release_metadata() -> (Value, Value) {
 }
 
 fn run(mode: &str) -> Result<(), String> {
+    // Harness access lifetime (decisions 22/24): persistent sessions own the
+    // engine while their Membrane access is active; one-shot CLI never does.
+    // The lease is dropped (released) when this process exits; a crashed
+    // client simply stops renewing and the engine drains after expiry.
+    let _lease = match mode {
+        "stdio-mcp" => harness::session_lease(),
+        "hook" => harness::keepalive_lease(),
+        _ => None,
+    };
     match mode {
         "stdio-mcp" => run_stdio_mcp(),
         "hook" => forward_stdin("/hook"),
@@ -260,6 +282,246 @@ fn write_stdout(body: &[u8]) -> Result<(), String> {
         .write_all(body)
         .and_then(|_| io::stdout().flush())
         .map_err(|error| format!("write response: {error}"))
+}
+
+// ---------------------------------------------------------------------------
+// Harness access lifetime (decisions 22/24).
+// ---------------------------------------------------------------------------
+
+/// Identity of this client's harness holder lease. `controller` is captured
+/// from the acquire response so renew/release address the same controller.
+struct HarnessLease {
+    controller: Value,
+    holder: Value,
+    stop: Arc<AtomicBool>,
+}
+
+impl Drop for HarnessLease {
+    fn drop(&mut self) {
+        // Release is best effort: the lease is bounded, so a failed release
+        // still expires server-side without leaving an orphan engine.
+        self.stop.store(true, Ordering::AcqRel);
+        let _ = holder_exchange(
+            "Release",
+            &self.controller,
+            Some(&self.holder),
+            None,
+            ACTIVATION_TIMEOUT,
+        );
+    }
+}
+
+mod harness {
+    use super::*;
+
+    /// Persistent session: acquire once, renew while alive, release on drop.
+    pub fn session_lease() -> Option<HarnessLease> {
+        acquire_with_activation("stdio-mcp", true)
+    }
+
+    /// Command hook: bounded keep-alive acquisition, no renewal thread (the
+    /// lease is one-shot; expiry handles a crashed hook).
+    pub fn keepalive_lease() -> Option<HarnessLease> {
+        acquire_with_activation("hook", false)
+    }
+
+    fn acquire_with_activation(_mode: &str, renew: bool) -> Option<HarnessLease> {
+        match acquire_lease(renew) {
+            Ok(lease) => Some(lease),
+            Err(_) => {
+                // Engine down: one bounded activation attempt through the
+                // installer-owned control binary (resolved next to this
+                // client, never from PATH), then try again. Startup belongs
+                // to an authorized access integration, never to an OS
+                // scheduler lane.
+                let activation = std::env::current_exe()
+                    .ok()
+                    .and_then(|exe| exe.parent().map(|dir| dir.join("membrane.exe")))
+                    .map(|control| {
+                        Command::new(control)
+                            .arg("activate")
+                            .stdout(std::process::Stdio::null())
+                            .stderr(std::process::Stdio::null())
+                            .status()
+                    });
+                match activation {
+                    Some(Ok(status)) if status.success() => acquire_lease(renew).ok(),
+                    _ => None,
+                }
+            }
+        }
+    }
+
+    fn acquire_lease(renew: bool) -> Result<HarnessLease, String> {
+        let (controller, holder) = holder_exchange("Acquire", None, None, Some(HARNESS_LEASE_TTL_MS), ACTIVATION_TIMEOUT)?;
+        let stop = Arc::new(AtomicBool::new(false));
+        if renew {
+            let renew_stop = Arc::clone(&stop);
+            let renew_controller = controller.clone();
+            let renew_holder = holder.clone();
+            std::thread::Builder::new()
+                .name("membrane-harness-renew".into())
+                .spawn(move || {
+                    while !renew_stop.load(Ordering::Acquire) {
+                        std::thread::sleep(Duration::from_millis(HARNESS_RENEW_INTERVAL_MS));
+                        if renew_stop.load(Ordering::Acquire) {
+                            break;
+                        }
+                        let _ = holder_exchange(
+                            "Renew",
+                            &renew_controller,
+                            Some(&renew_holder),
+                            Some(HARNESS_LEASE_TTL_MS),
+                            Duration::from_secs(5),
+                        );
+                    }
+                })
+                .map_err(|error| format!("spawn harness renewal: {error}"))?;
+        }
+        Ok(HarnessLease { controller, holder, stop })
+    }
+}
+
+/// Build and send one signed resident-holder request. `/resident-holder` is
+/// a signed loopback route (same contract the Hub's native lane uses), so
+/// bearer-only traffic is rejected: requests are signed with the installed
+/// credential and the livez identity. The engine re-verifies controller
+/// identity server-side and rejects mismatches.
+fn holder_exchange(
+    operation: &str,
+    _prior_controller: Option<&Value>,
+    prior_holder: Option<&Value>,
+    ttl_ms: Option<u64>,
+    timeout: Duration,
+) -> Result<(Value, Value), String> {
+    use membrane_client::{build_loopback_request_headers, LoopbackAuthSigner, LoopbackIdentityFields};
+
+    let identity_body = get_livez(timeout)?;
+    let identity: Value = serde_json::from_slice(&identity_body)
+        .map_err(|error| format!("livez identity invalid: {error}"))?;
+    let field = |name: &str| -> Result<Value, String> {
+        identity
+            .get(name)
+            .cloned()
+            .filter(|value| !value.is_null())
+            .ok_or_else(|| format!("livez identity lacks {name}"))
+    };
+    let loopback_identity = LoopbackIdentityFields {
+        installation_id: field("installationId")?.as_str().ok_or("livez installationId invalid")?.to_string(),
+        cortex_store_id: field("cortexStoreId")?.as_str().ok_or("livez cortexStoreId invalid")?.to_string(),
+        release_generation: field("releaseGeneration")?.as_str().ok_or("livez releaseGeneration invalid")?.to_string(),
+        startup_generation: field("startupGeneration")?.as_u64().ok_or("livez startupGeneration invalid")?,
+        stable_install_root: field("stableInstallRoot")?.as_str().ok_or("livez stableInstallRoot invalid")?.to_string(),
+    };
+    let controller = json!({
+        "installationId": loopback_identity.installation_id,
+        "cortexStoreId": loopback_identity.cortex_store_id,
+        "releaseGeneration": loopback_identity.release_generation,
+        "startupGeneration": loopback_identity.startup_generation,
+        "stableCurrent": loopback_identity.stable_install_root,
+    });
+    let holder = prior_holder.cloned().unwrap_or_else(|| json!({
+        "holderKind": "harness",
+        "holderId": format!("client-process-{}", std::process::id()),
+        "credentialId": format!("client-process-{}-credential", std::process::id()),
+    }));
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64;
+    let mut request = json!({
+        "schemaVersion": 1,
+        "operation": operation,
+        "controller": controller,
+        "holder": holder,
+        "observedAtUnixMs": now_ms,
+        "lossCursor": null,
+    });
+    if let Some(ttl) = ttl_ms {
+        request["expiresAtUnixMs"] = json!(now_ms.saturating_add(ttl));
+    }
+    let body = serde_json::to_vec(&request).map_err(|error| format!("serialize holder request: {error}"))?;
+    let token = bearer_token().ok_or("installed credential unavailable")?;
+    let signer = LoopbackAuthSigner::from_hex_token(&token)
+        .map_err(|_| "installed credential is not a valid loopback signer".to_string())?;
+    let now_secs = now_ms / 1000;
+    let expiry = LoopbackAuthSigner::bounded_expiry(now_secs, 10);
+    let nonce = LoopbackAuthSigner::generate_nonce()
+        .map_err(|_| "loopback nonce unavailable".to_string())?;
+    let headers = build_loopback_request_headers(
+        &signer,
+        &loopback_identity,
+        "POST",
+        "/resident-holder",
+        "127.0.0.1",
+        "application/json",
+        &body,
+        nonce,
+        expiry,
+    )
+    .map_err(|error| format!("sign holder request: {error}"))?;
+    let (status, response_body) = signed_post_engine("/resident-holder", &headers, &body, timeout)?;
+    if !(200..300).contains(&status) {
+        return Err(format!("resident-holder {operation} failed: HTTP {status}"));
+    }
+    let response: Value = serde_json::from_slice(&response_body)
+        .map_err(|error| format!("resident-holder {operation} response invalid: {error}"))?;
+    let active = response
+        .pointer("/status/controllerActive")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    if operation == "Acquire" && !active {
+        return Err("resident-holder acquire rejected".to_string());
+    }
+    let returned_controller = response.get("controller").cloned().unwrap_or(controller);
+    Ok((returned_controller, holder))
+}
+
+/// One signed POST over the bounded transport. Response signatures are not
+/// verified here: lease decisions only gate whether the session proceeds,
+/// every request is signed with the installed credential, and a rejected
+/// lease leaves the engine's own owner accounting authoritative.
+fn signed_post_engine(
+    path: &str,
+    headers: &[(String, String)],
+    body: &[u8],
+    timeout: Duration,
+) -> Result<(u16, Vec<u8>), String> {
+    let (host, port) = endpoint();
+    let address = resolve(&host, port)?;
+    let mut stream = connect(&address)?;
+    let mut request = format!("POST {path} HTTP/1.1\r\nHost: {host}:{port}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n", body.len());
+    for (name, value) in headers {
+        request.push_str(&format!("{name}: {value}\r\n"));
+    }
+    request.push_str("\r\n");
+    stream
+        .write_all(request.as_bytes())
+        .and_then(|_| stream.write_all(body))
+        .map_err(|error| format!("send holder request: {error}"))?;
+    let (status, response_body, _reusable) =
+        read_response(&mut stream).map_err(|error| format!("holder exchange failed: {error}"))?;
+    Ok((status, response_body))
+}
+
+/// Unsigned GET /livez (bootstrap identity hint). The engine re-verifies
+/// every controller claim server-side, so a spoofed hint only fails later.
+fn get_livez(timeout: Duration) -> Result<Vec<u8>, String> {
+    let (host, port) = endpoint();
+    let address = resolve(&host, port)?;
+    let mut stream = connect(&address)?;
+    let request = format!(
+        "GET /livez HTTP/1.1\r\nHost: {host}:{port}\r\nConnection: close\r\n\r\n"
+    );
+    stream
+        .write_all(request.as_bytes())
+        .map_err(|error| format!("send livez request: {error}"))?;
+    let (status, body, _reusable) =
+        read_response(&mut stream).map_err(|error| format!("livez unavailable: {error}"))?;
+    if !(200..300).contains(&status) {
+        return Err(format!("livez unavailable: HTTP {status}"));
+    }
+    Ok(body)
 }
 
 // ---------------------------------------------------------------------------

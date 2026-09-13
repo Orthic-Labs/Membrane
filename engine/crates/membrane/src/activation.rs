@@ -18,6 +18,7 @@ use serde::{Deserialize, Serialize};
 use sha2::Digest;
 use std::{
     ffi::OsString,
+    io::Write as IoWrite,
     net::{SocketAddr, TcpStream},
     path::{Path, PathBuf},
     process::{Command, Output, Stdio},
@@ -909,8 +910,7 @@ fn launch_engine(
 ) -> Result<(), String> {
     #[cfg(windows)]
     {
-        let _ = (workspace_root, port);
-        return request_windows_supervisor(engine, workspace_root);
+        return launch_engine_detached(engine, workspace_root, port);
     }
     #[cfg(not(windows))]
     {
@@ -938,47 +938,231 @@ fn launch_engine(
 }
 
 #[cfg(windows)]
-const WINDOWS_SUPERVISOR_TASK: &str = "Membrane Engine";
-
-#[cfg(windows)]
-fn hidden_status(program: &str, args: &[String]) -> Result<(), String> {
-    use std::os::windows::process::CommandExt;
-    let status = Command::new(program)
-        .args(args)
-        .creation_flags(0x0800_0000)
+/// Start the installed engine directly, detached from the activation caller.
+/// Lifetime ownership (decisions 21/24, 2026-09-13): there is no independent
+/// autostart and no per-minute restart task. The engine runs while a Hub/tray
+/// owner or an authorized harness holder keeps it alive; crash recovery
+/// belongs to a surviving owner (tray child supervision, holder reactivation)
+/// and never to the OS scheduler. `--os-supervised` marks this parented launch
+/// (console detach + supervision-state bookkeeping) without implying that any
+/// OS-level restart lane exists.
+fn launch_engine_detached(engine: &Path, workspace_root: &Path, port: u16) -> Result<(), String> {
+    let mut command = Command::new(engine);
+    command
+        .arg("--os-supervised")
+        .env("MEMBRANE_RUNTIME_ORIGIN", "installed")
+        .env_remove("MEMBRANE_CONFIG_ROOT")
+        .env_remove("MEMBRANE_DATA_ROOT")
+        .env_remove("MEMBRANE_CACHE_ROOT")
+        .env_remove("MEMBRANE_LOG_ROOT")
+        .env("MEMBRANE_STATE_ROOT", workspace_root)
+        .env("MEMBRANE_PORT", port.to_string())
+        .env("MEMBRANE_HTTP_PORT", port.to_string());
+    // Detached console with diagnostics to the engine log so activation never
+    // waits on a child pipe and failures stay diagnosable from disk.
+    command
         .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .map_err(|error| format!("run {program}: {error}"))?;
-    if status.success() { Ok(()) } else { Err(format!("{program} exited {:?}", status.code())) }
+        .stdout(engine_log_target())
+        .stderr(engine_log_target());
+    use std::os::windows::process::CommandExt;
+    // CREATE_NO_WINDOW | DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP.
+    command.creation_flags(0x0800_0000 | 0x0000_0200 | 0x0000_0008);
+    command
+        .spawn()
+        .map(|_| ())
+        .map_err(|error| format!("launch installed engine {}: {error}", engine.display()))
 }
 
-#[cfg(windows)]
-fn request_windows_supervisor(engine: &Path, workspace_root: &Path) -> Result<(), String> {
-    // Supported suppression reset: clear the failure counter and re-enable
-    // the task in the same activation that recreates it, so a previously
-    // suppressed restart recovers without operator surgery.
-    let product_root = workspace_root
+/// Best-effort authenticated stop of the running installed engine through its
+/// own service. Used by explicit deactivation after the scheduled-task lane is
+/// retired: an ownerless `/End` cannot address a tray- or activation-launched
+/// engine, and the operator's verified health pre-check owns foreign refusal.
+fn stop_installed_engine_service() -> Result<(), String> {
+    use membrane_client::{
+        build_loopback_request_headers, LoopbackAuthSigner, LoopbackIdentityFields,
+    };
+    use membrane_protocol::{
+        ResidentHolderCredentialV1, ResidentHolderOperationV1, ResidentHolderRequestV1,
+        ResidentHolderResponseV1, RESIDENT_HOLDER_SCHEMA_VERSION,
+    };
+
+    let port = INSTALLED_PORT;
+    let probe = TcpStream::connect_timeout(
+        &SocketAddr::from(([127, 0, 0, 1], port)),
+        Duration::from_millis(500),
+    );
+    if probe.is_err() {
+        // Nothing is listening: the engine is already stopped.
+        return Ok(());
+    }
+    // Engine exe -> `current` -> product root (same derivation as supervision).
+    let executable = std::env::current_exe().map_err(|e| format!("current executable: {e}"))?;
+    let install_root = executable
         .parent()
-        .ok_or_else(|| "installed state has no product root".to_string())?;
-    crate::supervision::reset(product_root)
-        .map_err(|error| format!("reset supervision state: {error}"))?;
-    let action = format!("\"{}\" --os-supervised", engine.display());
-    hidden_status("schtasks.exe", &[
-        "/Create".into(), "/TN".into(), WINDOWS_SUPERVISOR_TASK.into(),
-        "/TR".into(), action, "/SC".into(), "MINUTE".into(), "/MO".into(), "1".into(),
-        "/RL".into(), "LIMITED".into(), "/F".into(),
-    ])?;
-    let script = "$s=New-Object -ComObject 'Schedule.Service';$s.Connect();$f=$s.GetFolder('\\');$t=$f.GetTask('Membrane Engine');$d=$t.Definition;$d.Settings.MultipleInstances=2;$d.Settings.ExecutionTimeLimit='PT0S';$d.Settings.DisallowStartIfOnBatteries=$false;$d.Settings.StopIfGoingOnBatteries=$false;$d.Settings.StartWhenAvailable=$true;$null=$f.RegisterTaskDefinition('Membrane Engine',$d,6,$null,$null,3)";
-    hidden_status("powershell.exe", &["-NoLogo".into(), "-NoProfile".into(), "-NonInteractive".into(), "-Command".into(), script.into()])?;
-    // Re-creating a suppressed task must leave it enabled: /Create /F keeps
-    // a prior Disabled state, which would look like the suppression survived
-    // the reset above.
-    hidden_status("schtasks.exe", &["/Change".into(), "/TN".into(), WINDOWS_SUPERVISOR_TASK.into(), "/Enable".into()])?;
-    hidden_status("schtasks.exe", &["/Run".into(), "/TN".into(), WINDOWS_SUPERVISOR_TASK.into()])
+        .ok_or_else(|| "current executable has no parent".to_string())?;
+    let product_root = install_root
+        .parent()
+        .ok_or_else(|| "install root has no product root".to_string())?;
+    let token_path = product_root.join("state/tools/.cache/memory/api-token");
+    let token = std::fs::read_to_string(&token_path)
+        .map_err(|error| format!("read installed credential: {error}"))?
+        .trim()
+        .to_string();
+    // Identity comes from the engine's own signed health exchange; the engine
+    // re-verifies controller identity server-side, so a mismatched request is
+    // rejected rather than trusted.
+    let health = membrane_runtime::installed_health::probe_installed(
+        port,
+        &token,
+        Duration::from_secs(3),
+        &token_path,
+    )
+    .map_err(|error| format!("engine identity unavailable: {error}"))?;
+    let identity = LoopbackIdentityFields {
+        installation_id: health.identity.installation_id.clone(),
+        cortex_store_id: health.identity.cortex_store_id.clone(),
+        release_generation: health.identity.release_generation.clone(),
+        startup_generation: health.identity.startup_generation,
+        stable_install_root: health.identity.stable_install_root.clone(),
+    };
+    let controller = ResidentControllerIdentityV1 {
+        installation_id: identity.installation_id.clone(),
+        cortex_store_id: identity.cortex_store_id.clone(),
+        release_generation: identity.release_generation.clone(),
+        startup_generation: identity.startup_generation,
+        stable_current: identity.stable_install_root.clone(),
+    };
+    let holder = ResidentHolderCredentialV1 {
+        holder_kind: "hub".to_string(),
+        holder_id: "membrane-deactivate".to_string(),
+        credential_id: "membrane-deactivate-credential".to_string(),
+    };
+    // A holderless Release cannot stop an ownerless engine: the registry has
+    // nothing to release. Deactivation therefore acquires its own bounded
+    // lifetime holder first (existing V1 semantics), then releases it as the
+    // final owner so the engine drains and exits.
+    let acquire = ResidentHolderRequestV1 {
+        schema_version: RESIDENT_HOLDER_SCHEMA_VERSION,
+        operation: ResidentHolderOperationV1::Acquire,
+        controller: controller.clone(),
+        holder: Some(holder.clone()),
+        expires_at_unix_ms: Some(now_unix_ms().saturating_add(5_000)),
+        observed_at_unix_ms: now_unix_ms(),
+        loss_cursor: None,
+    };
+    let acquire_body = serde_json::to_vec(&acquire)
+        .map_err(|error| format!("serialize holder acquire: {error}"))?;
+    let outcome = signed_post(
+        port,
+        &identity,
+        &token,
+        "/resident-holder",
+        &acquire_body,
+        Duration::from_secs(5),
+    )?;
+    let acquire_response: ResidentHolderResponseV1 = serde_json::from_slice(&outcome.body)
+        .map_err(|error| format!("resident-holder acquire response invalid: {error}"))?;
+    if !acquire_response.status.controller_active {
+        return Err("resident-holder acquire did not establish controller".to_string());
+    }
+    let release = ResidentHolderRequestV1 {
+        schema_version: RESIDENT_HOLDER_SCHEMA_VERSION,
+        operation: ResidentHolderOperationV1::Release,
+        controller,
+        holder: Some(holder),
+        expires_at_unix_ms: None,
+        observed_at_unix_ms: now_unix_ms(),
+        loss_cursor: None,
+    };
+    let release_body = serde_json::to_vec(&release)
+        .map_err(|error| format!("serialize holder release: {error}"))?;
+    let outcome = signed_post(
+        port,
+        &identity,
+        &token,
+        "/resident-holder",
+        &release_body,
+        Duration::from_secs(5),
+    )?;
+    let release_response: ResidentHolderResponseV1 = serde_json::from_slice(&outcome.body)
+        .map_err(|error| format!("resident-holder release response invalid: {error}"))?;
+    if release_response.status.controller_active {
+        // A surviving lifetime owner legitimately holds the engine; the
+        // caller's wait_for_shutdown is authoritative on whether the
+        // listener actually went quiet.
+        return Err("engine still held by a surviving owner".to_string());
+    }
+    Ok(())
 }
 
+/// One signed loopback POST. Response signatures are not verified here: this
+/// helper only decides whether to proceed toward the caller's authoritative
+/// `wait_for_shutdown` port check, and every request is signed with the
+/// installed credential.
+fn signed_post(
+    port: u16,
+    identity: &membrane_client::LoopbackIdentityFields,
+    token: &str,
+    path: &str,
+    body: &[u8],
+    timeout: Duration,
+) -> Result<SignedPostOutcome, String> {
+    let signer = membrane_client::LoopbackAuthSigner::from_hex_token(token)
+        .map_err(|_| "loopback auth signer invalid".to_string())?;
+    let now = now_unix_ms() / 1000;
+    let expiry = membrane_client::LoopbackAuthSigner::bounded_expiry(now, 10);
+    let nonce = membrane_client::LoopbackAuthSigner::generate_nonce()
+        .map_err(|_| "loopback nonce unavailable".to_string())?;
+    let headers = build_loopback_request_headers(
+        &signer, identity, "POST", path, "127.0.0.1", "application/json", body, nonce, expiry,
+    )
+    .map_err(|error| format!("sign request: {error}"))?;
+    let mut request = format!("POST {path} HTTP/1.1\r\nHost: 127.0.0.1\r\n");
+    for (name, value) in headers {
+        request.push_str(&format!("{name}: {value}\r\n"));
+    }
+    request.push_str(&format!("content-length: {}\r\n\r\n", body.len()));
+    let mut stream = TcpStream::connect_timeout(
+        &SocketAddr::from(([127, 0, 0, 1], port)),
+        timeout,
+    )
+    .map_err(|error| format!("connect engine: {error}"))?;
+    stream
+        .set_read_timeout(Some(timeout))
+        .map_err(|error| format!("read timeout: {error}"))?;
+    stream
+        .set_write_timeout(Some(timeout))
+        .map_err(|error| format!("write timeout: {error}"))?;
+    stream
+        .write_all(request.as_bytes())
+        .map_err(|error| format!("write request: {error}"))?;
+    stream
+        .write_all(body)
+        .map_err(|error| format!("write body: {error}"))?;
+    let mut raw = Vec::new();
+    let _ = std::io::Read::read_to_end(&mut stream, &mut raw);
+    let text = String::from_utf8_lossy(&raw);
+    let status = text
+        .split_whitespace()
+        .nth(1)
+        .and_then(|value| value.parse::<u16>().ok())
+        .ok_or_else(|| "engine response invalid".to_string())?;
+    let body_start = text
+        .find("\r\n\r\n")
+        .map(|index| index + 4)
+        .unwrap_or(raw.len());
+    Ok(SignedPostOutcome {
+        success: (200..300).contains(&status),
+        status,
+        body: raw[body_start.min(raw.len())..].to_vec(),
+    })
+}
+
+struct SignedPostOutcome {
+    success: bool,
+    status: u16,
+    body: Vec<u8>,
+}
 
 #[cfg(windows)]
 fn provision_mcp_credential(product_root: &Path) -> Result<(), String> {
@@ -1020,8 +1204,21 @@ fn request_resident_replacement(
     #[cfg(windows)]
     {
         let _ = (tray, workspace_root, port);
-        hidden_status("schtasks.exe", &["/Change".into(), "/TN".into(), WINDOWS_SUPERVISOR_TASK.into(), "/Disable".into()])?;
-        return hidden_status("schtasks.exe", &["/End".into(), "/TN".into(), WINDOWS_SUPERVISOR_TASK.into()]);
+        // Decisions 21/24: no per-minute engine task exists anymore. Stop the
+        // running engine through its own authenticated service (ownerless
+        // `/End` cannot address a tray- or activation-launched engine), then
+        // remove any legacy task left by pre-cutover installs. Both steps are
+        // best effort: the caller's verified health pre-check owns foreign
+        // refusal, and the task may simply not exist.
+        let _ = stop_installed_engine_service();
+        let _ = Command::new("schtasks.exe")
+            .args(["/Delete", "/TN", "Membrane Engine", "/F"])
+            .creation_flags(0x0800_0000)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+        return Ok(());
     }
     #[cfg(not(windows))]
     {

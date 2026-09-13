@@ -25,6 +25,7 @@ path = "src/bin/cli-parity.rs"
 membrane-mcp = { path = "../membrane-mcp" }
 membrane-runtime = { path = "../membrane-runtime" }
 membrane-protocol = { path = "../membrane-protocol" }
+membrane-client = { path = "../membrane-client" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }

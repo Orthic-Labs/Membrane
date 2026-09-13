@@ -1030,6 +1030,7 @@ mod tests {
                 services_unavailable_reason: None,
                 hub_holders: 1,
                 coderight_daemon_holders: 0,
+                harness_holders: 0,
             },
             loss: None,
         }

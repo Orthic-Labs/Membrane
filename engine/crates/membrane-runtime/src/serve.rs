@@ -2331,9 +2331,12 @@ async fn dispatch(
                     lifecycle.grant_background("holder_active");
                 }
                 // Keep controller lock through authority reconciliation. A
-                // final release drains background work, never engine admission.
+                // final release drains background work and, per decisions
+                // 21/24, stops the engine: bounded drain then exits the
+                // resident process; a later owner reactivates it.
                 if final_release && !response.status.controller_active {
                     lifecycle.drain_background("final_holder_release");
+                    lifecycle.request_drain(Some("final_holder_release"));
                 }
                 let lifecycle_event = match operation {
                     membrane_protocol::ResidentHolderOperationV1::Acquire => "holder_acquired",
@@ -2965,7 +2968,11 @@ fn build_router_inner(
                         let drain = controller.reconcile_expired(now_unix_ms()).drain_controller;
                         if drain {
                             crate::service::emit_lifecycle("holder_expired", Some("resident_holder"));
+                            // Final lease expiry is owner loss: drain background
+                            // work and stop the engine. Owner-bound recovery
+                            // belongs to surviving owners, never a task.
                             lifecycle.drain_background("final_holder_expired");
+                            lifecycle.request_drain(Some("final_holder_expired"));
                         }
                         drain
                     }).unwrap_or(false) {

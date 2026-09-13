@@ -45,7 +45,7 @@ fn ok_response(request: &membrane_protocol::ResidentHolderRequestV1) -> Resident
         controller: request.controller.clone(),
         status: ResidentHolderStatusV1 {
             controller_active: true, services_ready: true, services_unavailable_reason: None,
-            hub_holders: 0, coderight_daemon_holders: 1,
+            hub_holders: 0, coderight_daemon_holders: 1, harness_holders: 0,
         },
         loss: None,
     }

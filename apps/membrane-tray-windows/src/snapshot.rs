@@ -513,6 +513,7 @@ mod tests {
             services_unavailable_reason: Some(ResidentServicesUnavailableV1::BlueprintWatcherUnavailable),
             hub_holders: 1,
             coderight_daemon_holders: 0,
+            harness_holders: 0,
         };
         let endpoint = spawn_holder_fixture(status.clone(), false);
         let observation = fetch_remote_holder_status(&endpoint, &"a".repeat(64)).unwrap();
@@ -528,6 +529,7 @@ mod tests {
             services_unavailable_reason: None,
             hub_holders: 1,
             coderight_daemon_holders: 0,
+            harness_holders: 0,
         };
         let endpoint = spawn_holder_fixture(status, true);
         assert_eq!(

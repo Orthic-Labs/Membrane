@@ -194,6 +194,7 @@ impl ResidentController {
                 services_unavailable_reason: Some(ResidentServicesUnavailableV1::BlueprintWatcherUnavailable),
                 hub_holders: snapshot.hub_holders.try_into().unwrap_or(u32::MAX),
                 coderight_daemon_holders: snapshot.coderight_daemon_holders.try_into().unwrap_or(u32::MAX),
+                harness_holders: snapshot.harness_holders.try_into().unwrap_or(u32::MAX),
             },
             loss: (operation == ResidentHolderOperationV1::SubscribeLoss)
                 .then(|| self.last_loss.clone())
@@ -227,6 +228,7 @@ fn required_holder(value: Option<ResidentHolderCredentialV1>) -> Result<Authenti
     let kind = match value.holder_kind.as_str() {
         "hub" => HolderKind::Hub,
         "coderight_daemon" => HolderKind::CodeRightDaemon,
+        "harness" => HolderKind::Harness,
         _ => return Err(ResidencyError::InvalidHolder),
     };
     Ok(AuthenticatedHolder { kind, holder_id: value.holder_id, credential_id: value.credential_id })

@@ -203,7 +203,7 @@ struct ActivateArgs {
     #[arg(long, value_name = "codex|claude|cursor|windsurf|antigravity")]
     client: Vec<String>,
     /// Bounded resident readiness deadline.
-    #[arg(long, default_value_t = 35_000)]
+    #[arg(long, default_value_t = 300_000)]
     timeout_ms: u64,
     /// Inspect requested action without launching, stopping, or mutating configuration.
     #[arg(long, default_value_t = false)]
