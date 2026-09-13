@@ -161,7 +161,10 @@ pub(crate) fn run(command:&LedgerCmd)->Result<(),String> {
         },
     };
     let response=client.execute(tool,&args);
-    println!("{}",serde_json::to_string(&response).map_err(|e|e.to_string())?);
+    crate::cli::emit_stdout(format_args!(
+        "{}",
+        serde_json::to_string(&response).map_err(|e| e.to_string())?
+    ));
     if response.pointer("/result/kind").and_then(Value::as_str)!=Some("success") {
         return Err(response.pointer("/result/code").and_then(Value::as_str).unwrap_or("ledger_operation_failed").into());
     }

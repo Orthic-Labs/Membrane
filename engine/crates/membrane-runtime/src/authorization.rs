@@ -671,10 +671,11 @@ pub fn authorize(
         return Err(AuthorizationDenial::new(
             AuthorizationGate::CallerTargetBinding,
             format!(
-                "caller identity ({}, {}) does not match the installation registry binding for {}; expected ({}, {}) with scope descriptor {}",
+                "caller identity ({}, {}) does not match the installation registry binding for {}; expected ({}, {}) with scope descriptor {}; registry {}",
                 request.caller_repository_id, request.caller_scope_id, request.caller_root,
                 caller_binding.repository_id, caller_binding.scope_id,
-                binding_descriptor(caller_binding)
+                binding_descriptor(caller_binding),
+                default_registry_path().map(|path| path.display().to_string()).unwrap_or_default()
             ),
         ));
     }

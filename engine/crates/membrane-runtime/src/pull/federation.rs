@@ -139,10 +139,10 @@ pub fn run_federate(
     // returns far faster; this ceiling only bounds the cold one-shot.
     let payload = run_federate_value(task, repo, max_tokens, packet_char_budget_override, packet_char_budget_model,
         client, session, anchors, scope_grant_id, accepted_receipt_versions, 180_000, "explicit", None, None)?;
-    println!(
+    crate::cli::emit_stdout(format_args!(
         "{}",
         serde_json::to_string_pretty(&payload).map_err(|e| format!("serialize: {e}"))?
-    );
+    ));
     Ok(())
 }
 
@@ -1905,10 +1905,10 @@ pub fn run_memory_candidates(
         max_candidates,
         Some(&canonical_repo),
     );
-    println!(
+    crate::cli::emit_stdout(format_args!(
         "{}",
         serde_json::to_string_pretty(&payload).map_err(|e| format!("serialize: {e}"))?
-    );
+    ));
     Ok(())
 }
 

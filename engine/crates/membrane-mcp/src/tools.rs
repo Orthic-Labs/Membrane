@@ -85,6 +85,7 @@ fn schema(name: &str) -> Value {
                 "caller":caller(),
                 "requestId":{"type":"string","minLength":1,"maxLength":256},
                 "callerId":{"type":"string","minLength":1,"maxLength":256},
+                "taskGrantLevel":{"type":"string","enum":["read-only","write-proposed","write-trusted","admin"]},
                 "body":{"type":"string","minLength":1,"maxLength":8388608,"description":"Exact UTF-8 body stored as immutable Cortex source bytes."},
                 "keywords":{"type":"array","items":{"type":"string","minLength":1,"maxLength":256},"maxItems":64,"uniqueItems":true},
                 "lifecycle":{"type":"object"}
@@ -408,6 +409,18 @@ mod tool_result_tests {
             .unwrap()
             .contains(selected));
         assert_eq!(serialized.to_string().matches(selected).count(), 1);
+    }
+
+    #[test]
+    fn public_push_accepts_declared_task_grant_for_executor_authorization() {
+        let arguments = json!({
+            "repository": "repo",
+            "caller": {"root": "C:/repo", "repositoryId": "repo", "scopeId": "scope"},
+            "requestId": "request",
+            "body": "durable memory",
+            "taskGrantLevel": "write-proposed"
+        });
+        validate_arguments("push", &arguments).expect("declared task grant reaches executor");
     }
 }
 

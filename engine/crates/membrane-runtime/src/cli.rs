@@ -223,6 +223,10 @@ fn emit_skill_resolved(ws: &Path, name: &str, body_hash: &str, source: &str, byt
 }
 
 fn write_skill_body(name: &str, body: &str) -> Result<(), String> {
+    if CAPTURED_IO.with(|slot| slot.borrow().is_some()) {
+        emit_stdout_fragment(format_args!("{}", body), false);
+        return Ok(());
+    }
     let stdout = std::io::stdout();
     let mut handle = stdout.lock();
     handle
@@ -4451,9 +4455,14 @@ fn run_push(command: PushCmd) -> Result<(), String> {
                     crate::push::recovery::now_ms(),
                 )
                 .map_err(|e| e.to_string())?;
-            std::io::stdout()
-                .write_all(&resolved.bytes().map_err(|e| e.to_string())?)
-                .map_err(|e| e.to_string())?;
+            let bytes = resolved.bytes().map_err(|e| e.to_string())?;
+            if CAPTURED_IO.with(|slot| slot.borrow().is_some()) {
+                let text = std::str::from_utf8(&bytes)
+                    .map_err(|_| "binary output is unsupported by JSON CLI transport".to_string())?;
+                emit_stdout_fragment(format_args!("{}", text), false);
+            } else {
+                std::io::stdout().write_all(&bytes).map_err(|e| e.to_string())?;
+            }
             Ok(())
         }
     }
@@ -9243,6 +9252,19 @@ mod qualification_cli_tests {
             result.get("terminal").and_then(serde_json::Value::as_bool),
             Some(true)
         );
+    }
+
+    #[test]
+    fn captured_cli_memory_candidates_returns_json() {
+        let root = tempfile::tempdir().unwrap();
+        let db = root.path().join("capture.sqlite");
+        let result = super::run_cli_captured(
+            &["membrane".into(), "--db".into(), db.to_string_lossy().into_owned(),
+              "pull".into(), "memory-candidates".into(), "--task".into(), "capture".into(),
+              "--repo".into(), root.path().to_string_lossy().into_owned()], &[],
+        );
+        assert_eq!(result.exit_code, 0, "{}", result.stderr);
+        assert!(serde_json::from_str::<serde_json::Value>(&result.stdout).is_ok(), "{}", result.stdout);
     }
 
     #[test]

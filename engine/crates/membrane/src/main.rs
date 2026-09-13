@@ -1,9 +1,11 @@
 //! Membrane singleton engine entrypoint.
 //!
 //! All stateful service ownership lives in `membrane-runtime`. The companion
-//! `membrane-client` binary is the only compatibility process for CLI, hook, or
-//! stdio callers; it does not link this crate's runtime path.
+//! `membrane-client` binary owns compatibility transport for CLI, hook, and
+//! stdio callers; this engine only dispatches its private hook worker.
 
+use membrane::dispatch::parse_mode;
+use membrane::modes::{dispatch, DispatchOutcome};
 use membrane_runtime::service::{run_installed_runtime, LifecycleControl};
 
 struct SupervisionGuard {
@@ -54,6 +56,28 @@ fn disable_supervisor_task() {
 #[cfg(not(windows))]
 fn disable_supervisor_task() {}
 
+fn dispatch_hook_invocation() -> ! {
+    let invocation = match parse_mode(std::env::args_os()) {
+        Ok(invocation) => invocation,
+        Err(error) => {
+            eprintln!("membrane: {error}");
+            std::process::exit(membrane::EXIT_USER_ERROR);
+        }
+    };
+    let outcome = dispatch(&invocation);
+    match outcome {
+        DispatchOutcome::Ok => std::process::exit(membrane::EXIT_OK),
+        DispatchOutcome::UserError(error) => {
+            eprintln!("membrane: {error}");
+            std::process::exit(membrane::EXIT_USER_ERROR);
+        }
+        DispatchOutcome::InternalError(error) => {
+            eprintln!("membrane: internal: {error}");
+            std::process::exit(membrane::EXIT_INTERNAL_ERROR);
+        }
+    }
+}
+
 fn main() {
     let first = std::env::args().nth(1);
     match first.as_deref() {
@@ -66,6 +90,12 @@ fn main() {
             return;
         }
         _ => {}
+    }
+    // HookHost's contained child invokes the engine directly. Keep this path
+    // ahead of resident startup so `hook-module` reaches the existing native
+    // module entry point instead of recursively starting a resident engine.
+    if first.as_deref() == Some("hook-module") {
+        dispatch_hook_invocation();
     }
     let _supervision = if first.as_deref() == Some("--os-supervised") {
         match SupervisionGuard::begin() {

@@ -32,6 +32,14 @@ fn every_mode_round_trips_through_parse_mode() {
 }
 
 #[test]
+fn hook_module_parses_as_private_hook_worker() {
+    let invocation = parse_mode(["membrane", "hook-module", "--id", "diagnostics-fence"])
+        .expect("private hook module invocation parses");
+    assert_eq!(invocation.mode, MembraneMode::Hook);
+    assert_eq!(invocation.cli_tail, vec!["diagnostics-fence"]);
+}
+
+#[test]
 fn activation_defaults_to_inspection_safe_client_projection() {
     let inv = parse_mode(["membrane", "activate", "--dry-run"].iter().copied())
         .expect("activate dry-run parses");

@@ -63,9 +63,10 @@ fn push_schema_is_cortex_memory_write() {
     assert_eq!(push["inputSchema"]["required"], json!(["repository", "caller", "requestId", "body"]));
     assert_eq!(push["inputSchema"]["properties"]["body"]["maxLength"], 8_388_608);
     assert_eq!(push["inputSchema"]["properties"]["body"]["description"], "Exact UTF-8 body stored as immutable Cortex source bytes.");
+    assert_eq!(push["inputSchema"]["properties"]["taskGrantLevel"]["enum"], json!(["read-only", "write-proposed", "write-trusted", "admin"]));
     validate_arguments("push", &json!({
         "repository":"repo", "caller":{"root":"C:/repo","repositoryId":"repo","scopeId":"scope"},
-        "requestId":"request", "body":"durable memory"
+        "requestId":"request", "body":"durable memory", "taskGrantLevel":"write-proposed"
     })).unwrap();
 }
 
