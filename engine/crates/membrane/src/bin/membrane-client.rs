@@ -20,6 +20,18 @@ fn main() {
         println!("membrane-client {}", env!("CARGO_PKG_VERSION"));
         return;
     }
+    // Transport modes never enter Membrane's command dispatcher: they only
+    // forward to the authenticated installed engine. Activation remains here
+    // as installer-owned control-plane work, not a resident runtime path.
+    if args.get(1).and_then(|arg| arg.to_str()).is_some_and(|mode| {
+        matches!(mode, "stdio-mcp" | "hook" | "cli")
+    }) {
+        if let Err(error) = run() {
+            eprintln!("membrane-client: {error}");
+            std::process::exit(1);
+        }
+        return;
+    }
     let invocation = match parse_mode(args) {
         Ok(invocation) => invocation,
         Err(error) => {
