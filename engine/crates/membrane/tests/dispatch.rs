@@ -32,11 +32,16 @@ fn every_mode_round_trips_through_parse_mode() {
 }
 
 #[test]
-fn hook_module_parses_as_private_hook_worker() {
-    let invocation = parse_mode(["membrane", "hook-module", "--id", "diagnostics-fence"])
-        .expect("private hook module invocation parses");
-    assert_eq!(invocation.mode, MembraneMode::Hook);
-    assert_eq!(invocation.cli_tail, vec!["diagnostics-fence"]);
+fn hook_module_worker_is_gone_and_fails_closed() {
+    // No `hook-module` child exists anymore: ordinary dispatch runs every
+    // module in-process under a deadline with a bounded leaf scope. The
+    // private worker subcommand is rejected as a genuine parse error.
+    let error = parse_mode(["membrane", "hook-module", "--id", "diagnostics-fence"])
+        .expect_err("hook-module must not parse");
+    assert!(
+        error.contains("hook-module") || error.contains("unrecognized"),
+        "unexpected parse error: {error}"
+    );
 }
 
 #[test]

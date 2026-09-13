@@ -54,11 +54,22 @@ impl DispatchOutcome {
 
 /// Run one parsed invocation. Returns the outcome so the binary's `main` can decide the exit
 /// code; it never panics across this boundary.
+///
+/// Compat transport modes (`hook`, `stdio-mcp`) are rejected here: ordinary
+/// dispatch lives in the resident engine behind its `/hook` and `/mcp`
+/// routes, and the transport-only `membrane-client` is the single process
+/// that forwards them there. The engine binary never constructs compat
+/// transport state locally, so a request-created runtime cannot shadow the
+/// installer-owned singleton.
 pub fn dispatch(invocation: &ParsedInvocation) -> DispatchOutcome {
     match invocation.mode {
         MembraneMode::Cli => dispatch_cli(&invocation.cli_tail),
-        MembraneMode::StdioMcp => dispatch_stdio_mcp(),
-        MembraneMode::Hook => if invocation.cli_tail.is_empty() { dispatch_hook() } else { dispatch_hook_module(&invocation.cli_tail[0]) },
+        MembraneMode::StdioMcp => DispatchOutcome::UserError(
+            "stdio-mcp is resident transport: use membrane-client stdio-mcp to reach the installed engine".to_string(),
+        ),
+        MembraneMode::Hook => DispatchOutcome::UserError(
+            "hook is resident transport: use membrane-client hook to reach the installed engine".to_string(),
+        ),
         MembraneMode::Install => match invocation.install.as_ref() {
             Some(invocation) => dispatch_install(invocation),
             // The parser refuses to construct a `ParsedInvocation` whose
@@ -1150,53 +1161,16 @@ fn run_doctor_paths(args: &[String]) -> DispatchOutcome {
     }
 }
 
-fn dispatch_stdio_mcp() -> DispatchOutcome {
-    match membrane_runtime::serve::run_stdio_mcp() {
-        Ok(()) => DispatchOutcome::Ok,
-        Err(error) => DispatchOutcome::InternalError(error.to_string()),
-    }
-}
-
-/// Run exactly one native HookHost envelope. HookHost launches this binary once
-/// per event, so stdin is bounded by process lifetime & stdout contains only its
-/// single JSON response. Malformed input stays in-band: the runtime converts it
-/// to a deterministic safe-degradation response rather than granting a fence.
-fn dispatch_hook() -> DispatchOutcome {
-    use std::io::Write;
-
-    let payload = read_hook_payload();
-    let response = membrane_runtime::hook::run_hook_payload(payload);
-    let encoded = match serde_json::to_string(&response) {
-        Ok(encoded) => encoded,
-        Err(error) => return DispatchOutcome::InternalError(format!("hook response serialize: {error}")),
-    };
-    match writeln!(std::io::stdout(), "{encoded}") {
-        Ok(()) => DispatchOutcome::Ok,
-        Err(error) => DispatchOutcome::InternalError(format!("hook response write: {error}")),
-    }
-}
-
-/// Private one-module worker. Its parent owns deadline, kill, and reaping;
-/// this path never calls the public hook dispatcher, so recursion is impossible.
-fn dispatch_hook_module(id: &str) -> DispatchOutcome {
-    use std::io::Write;
-
-    let payload = read_hook_payload();
-    let result = membrane_runtime::hook::run_hook_module_payload(id, payload);
-    let Ok(encoded) = serde_json::to_string(&result) else { return DispatchOutcome::InternalError("hook module serialize".to_owned()); };
-    writeln!(std::io::stdout(), "{encoded}").map(|_| DispatchOutcome::Ok).unwrap_or_else(|error| DispatchOutcome::InternalError(error.to_string()))
-}
-
 /// HookHost input has a strict transport cap. Read at most one sentinel byte
 /// past it, then stop immediately: hostile stdin can never grow this process
 /// or keep it draining. Null enters the runtime's content-free typed invalid
 /// payload path, with no source bytes reflected into output or diagnostics.
+///
+/// The parser stays for the unit contract below even though compat transport
+/// dispatch itself lives in the resident engine: the engine binary rejects
+/// `hook`/`stdio-mcp` modes (see [`dispatch`]) and never reads HookHost
+/// stdin locally.
 const MAX_HOOK_STDIN_BYTES: usize = 2 * 1024 * 1024;
-
-fn read_hook_payload() -> serde_json::Value {
-    let stdin = std::io::stdin();
-    parse_bounded_hook_payload(stdin.lock())
-}
 
 fn parse_bounded_hook_payload(mut reader: impl std::io::Read) -> serde_json::Value {
     let mut bytes = Vec::with_capacity(MAX_HOOK_STDIN_BYTES.saturating_add(1));
@@ -1540,6 +1514,31 @@ mod tests {
     fn hook_stdin_accepts_bounded_json() {
         let payload = parse_bounded_hook_payload(std::io::Cursor::new(br#"{"event":"Stop"}"#));
         assert_eq!(payload["event"], "Stop");
+    }
+
+    #[test]
+    fn compat_transport_modes_are_rejected_for_the_client() {
+        // The engine binary never constructs compat transport state locally:
+        // `hook` and `stdio-mcp` fail closed here and the transport-only
+        // `membrane-client` forwards them to the resident engine instead.
+        for mode in [MembraneMode::Hook, MembraneMode::StdioMcp] {
+            let outcome = dispatch(&crate::dispatch::ParsedInvocation {
+                mode,
+                cli_tail: Vec::new(),
+                framing: String::new(),
+                port: 0,
+                install: None,
+                uninstall: None,
+                activation: None,
+                migration: None,
+                init: None,
+            });
+            assert!(
+                matches!(outcome, DispatchOutcome::UserError(_)),
+                "compat transport must fail closed, not dispatch locally"
+            );
+            assert_eq!(outcome.exit_code(), EXIT_USER_ERROR);
+        }
     }
 
     #[test]

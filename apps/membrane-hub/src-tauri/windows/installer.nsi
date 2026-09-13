@@ -340,10 +340,18 @@ Section Install
   ; Silent and passive runs terminate the product; interactive runs ask.
   !insertmacro CheckIfAppIsRunning "${MAINBINARYNAME}.exe" "${PRODUCTNAME}"
   !insertmacro CheckIfAppIsRunning "membrane-tray.exe" "Membrane"
-  !insertmacro CheckIfAppIsRunning "membrane-client.exe" "Membrane"
+  !insertmacro CheckIfAppIsRunning "membrane.exe" "Membrane"
 
   CreateDirectory "$INSTDIR\logs"
   ${Log} "install ${VERSION} begin"
+
+  ; Claim the installer lock before touching any file: a supervisor trigger
+  ; firing mid-install must see it and exit quietly instead of mapping fresh
+  ; images (locking them) or counting a failure. Stale locks from a crashed
+  ; installer are cleared here; the engine independently ignores locks older
+  ; than one hour. Released on completion and on failure below.
+  RMDir /r "$INSTDIR\.install-lock"
+  CreateDirectory "$INSTDIR\.install-lock"
 
   ; 0. Stop the running product before touching its files. Windows refuses to
   ;    replace a running executable, so an upgrade on a live machine failed at
@@ -353,7 +361,12 @@ Section Install
   ;    step so a failure here is diagnosable from the install log alone.
   StrCpy $InstallStep "stop-running-product"
   ${If} ${FileExists} "$INSTDIR\current\membrane.exe"
-    nsExec::ExecToStack /TIMEOUT=30000 '"$INSTDIR\current\membrane-client.exe" deactivate --install-root "$INSTDIR\current"'
+    ; Install/activation control lives in the engine binary: the transport
+    ; client (membrane-client.exe) owns no installer control and rejects
+    ; these modes. Deactivate marks supervision clean before stopping the
+    ; engine so this explicit stop never feeds the restart-suppression
+    ; counter (exit 70).
+    nsExec::ExecToStack /TIMEOUT=30000 '"$INSTDIR\current\membrane.exe" deactivate --install-root "$INSTDIR\current"'
     Pop $1
     ${Log} "stop-running-product deactivate exit=$1"
   ${EndIf}
@@ -391,8 +404,14 @@ Section Install
   ;    are already rooted at versions\<version>\..., so with $OUTDIR at the
   ;    product root each File lands in its final path: no staging copy, no
   ;    MAX_PATH doubling. Same-version repair overwrites in place.
+  ;    Locks are transient: a dying resident releases image handles seconds
+  ;    after its listener goes quiet, and rapid one-shot probes briefly map
+  ;    the same files. Deactivate already waited for release; retry the
+  ;    overlay a bounded number of times before failing the install.
   StrCpy $InstallStep "extract-version-tree"
   SetOutPath "$INSTDIR"
+  StrCpy $2 0
+  extract_retry:
   ClearErrors
   {{#each resources_dirs}}
     CreateDirectory "$INSTDIR\\{{this}}"
@@ -401,6 +420,11 @@ Section Install
     File /a "/oname={{this.[1]}}" "{{no-escape @key}}"
   {{/each}}
   ${If} ${Errors}
+    IntOp $2 $2 + 1
+    ${If} $2 < 6
+      Sleep 5000
+      Goto extract_retry
+    ${EndIf}
     StrCpy $R0 1
     Goto install_failed
   ${EndIf}
@@ -509,7 +533,7 @@ Section Install
   ; Keep an existing user decision (value present or absent) on upgrade.
   ReadRegStr $R2 HKCU "${UNINSTKEY}" "LoginLaunchWritten"
   ${If} $R2 == ""
-    WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "Membrane" '"$INSTDIR\current\membrane-client.exe" activate --install-root "$INSTDIR\current"'
+    WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "Membrane" '"$INSTDIR\current\membrane.exe" activate --install-root "$INSTDIR\current"'
     WriteRegStr HKCU "${UNINSTKEY}" "LoginLaunchWritten" "1"
   ${EndIf}
   DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "Membrane Tray"
@@ -523,8 +547,10 @@ Section Install
   ${Log} "register ok"
 
   ; Explicit access is required even when silent setup never launches Hub.
+  ; Activation runs in the engine binary (installer-owned control plane),
+  ; not the transport client.
   StrCpy $InstallStep "bind-installed-clients"
-  nsExec::ExecToStack /TIMEOUT=90000 '"$INSTDIR\current\membrane-client.exe" activate --install-root "$INSTDIR\current"'
+  nsExec::ExecToStack /TIMEOUT=90000 '"$INSTDIR\current\membrane.exe" activate --install-root "$INSTDIR\current"'
   Pop $R0
   Pop $R2
   ClearErrors
@@ -539,6 +565,7 @@ Section Install
   ${Log} "bind-installed-clients ok"
 
   ${Log} "install ${VERSION} complete"
+  RMDir /r "$INSTDIR\.install-lock"
   !ifmacrodef NSIS_HOOK_POSTINSTALL
     !insertmacro NSIS_HOOK_POSTINSTALL
   !endif
@@ -546,6 +573,7 @@ Section Install
 
   install_failed:
     ${Log} "$InstallStep exit=$R0"
+    RMDir /r "$INSTDIR\.install-lock"
     Abort "Membrane installation failed at $InstallStep (exit $R0). See ${INSTALLLOG}"
   install_done:
 SectionEnd
@@ -567,9 +595,15 @@ Section Uninstall
     !insertmacro NSIS_HOOK_PREUNINSTALL
   !endif
 
+  ; Claim the installer lock first: trigger-fired supervised starts during
+  ; removal must exit quietly instead of mapping images being deleted. The
+  ; lock vanishes with the product root below; no release step is needed.
+  RMDir /r "$INSTDIR\.install-lock"
+  CreateDirectory "$INSTDIR\.install-lock"
+
   !insertmacro CheckIfAppIsRunning "${MAINBINARYNAME}.exe" "${PRODUCTNAME}"
   !insertmacro CheckIfAppIsRunning "membrane-tray.exe" "Membrane"
-  !insertmacro CheckIfAppIsRunning "membrane-client.exe" "Membrane"
+  !insertmacro CheckIfAppIsRunning "membrane.exe" "Membrane"
 
   ; Stop & remove installer-owned OS supervision before removing its action.
   ; Deactivation also requests this, but uninstall must remain complete when
@@ -585,7 +619,7 @@ Section Uninstall
   ; is recorded, not fatal: an uninstall must always remove the files.
   ${If} ${FileExists} "$INSTDIR\current\membrane.exe"
     CreateDirectory "$INSTDIR\logs"
-    ExecWait '"$SYSDIR\cmd.exe" /d /s /c ""$INSTDIR\current\membrane-client.exe" deactivate --install-root "$INSTDIR\current" > "$INSTDIR\logs\deactivate.log" 2>&1"' $R0
+    ExecWait '"$SYSDIR\cmd.exe" /d /s /c ""$INSTDIR\current\membrane.exe" deactivate --install-root "$INSTDIR\current" > "$INSTDIR\logs\deactivate.log" 2>&1"' $R0
     DetailPrint "membrane deactivate exit=$R0"
   ${EndIf}
 

@@ -23,7 +23,7 @@
 
 ## 0. Executive decision
 
-**Lifecycle corrections (2026-09-07 & 2026-09-08):** [Explicit execution & resident lifecycle](execution-lifecycle-boundary.md) supersedes daemon-only, tray-off refusal & Hub-only residency statements throughout this document. Explicit operations remain available with Hub off through bounded installed execution; background work and auto-refresh require an active Hub or CodeRight daemon holder. Hub or CodeRight daemon holds one installed Membrane controller for full background services; only final holder loss drains them. CodeRight requires installer-owned Membrane, installs it when absent, & never consumes development runtime.
+**Lifecycle correction (2026-09-13):** [Decisions 21 & 24](adr/2026-09-12-context-system-decisions.md) & [execution lifecycle](execution-lifecycle-boundary.md) govern this document. Hub on always starts/adopts & holds one installed Membrane engine. An accessing harness can also start/adopt & hold that same engine. With Hub off & no harness accessing, final owner loss drains & stops engine. Optional login startup launches Hub, which launches Membrane; independent engine autostart or scheduled restart is forbidden. Background work requires a separate eligible holder grant. CodeRight consumes installer-owned Membrane, installs it when absent, & never consumes development runtime.
 
 Membrane does not need a larger architecture. It needs a sharper one.
 
@@ -50,13 +50,12 @@ Ledger owns source-bound Markdown/document projections in its SQLite index and r
 Adapt turns experience into reviewed Taste and Insights proposals for Cortex durable admission; it is not a direct Pull/context provider and never bypasses Cortex durable admission.
 Pull performs faithful reduction & recovery; the Membrane planner retains final attention and representation policy.
 Other providers own their evidence.  
-One Membrane controller owns automatic work through its OS-coupled child daemon. Hub & CodeRight daemon hold independent lifetimes of that controller. Explicit operations across all six subsystems remain available without either holder through bounded installed execution. No ordinary request starts an orphanable daemon or automatic watcher.
+One installed Membrane engine owns runtime execution. Hub & accessing harnesses hold its lifetime; final owner loss drains & stops it. Explicit operations across all six subsystems remain available with Hub off through harness-owned access to that same engine. Access alone does not authorize automatic watchers.
 
 Blueprint is **independently usable but not independently resident**. Its
-continuous watcher/freshness role runs inside the shared controller-owned runtime. With no resident holder, the
-persisted Blueprint graph remains explicitly queryable through bounded one-shot
-Blueprint operations that never daemonize, never start the tray/daemon runtime, and never register an
-OS service.
+continuous watcher/freshness role runs inside shared Membrane runtime under an eligible background grant. With Hub off,
+persisted Blueprint graph remains explicitly queryable through harness-owned access to that engine.
+Final access release stops engine when Hub is also off; no subsystem becomes independently resident.
 Legion / OmniRouter / hosts own agent execution and orchestration.  
 Membrane owns context policy and is the parent system for the six named subsystems.
 
@@ -66,7 +65,7 @@ The product objective is:
 
 ### 0.1 Physical co-location does not imply semantic ownership
 
-Blueprint is a named Membrane subsystem at the product/system level, while remaining independently usable and separately bounded at package, protocol, storage, testing, and responsibility layers. Independently usable is not independently resident: its watcher runs inside the shared Membrane controller's runtime, held by Hub or CodeRight daemon. With neither holder, explicit access uses bounded one-shot execution.
+Blueprint is a named Membrane subsystem at the product/system level, while remaining independently usable and separately bounded at package, protocol, storage, testing, and responsibility layers. Independently usable is not independently resident: its watcher runs inside shared Membrane runtime under an eligible background grant. Hub or an accessing harness holds engine lifetime; neither means no engine after bounded drain.
 
 Blueprint and Membrane share one repository so their seam can evolve atomically. The parent/subsystem relationship does not authorize direct internal coupling.
 
@@ -1176,7 +1175,7 @@ Membrane
 → RecallCircuit
 ```
 
-Requests may reuse active Blueprint services. With neither resident holder active or repository absent from watcher enrollment, explicit requests use bounded Blueprint-owned execution. Pull retains source evidence through the same request path. Transport unavailability never disables an otherwise authorized explicit operation; schema/generation failures remain typed & closed.
+Requests use Blueprint services inside shared Membrane engine. With Hub off, trusted harness integration starts/adopts engine & holds access lifetime; repository absence from watcher enrollment does not revoke explicit authorization. Pull retains source evidence through this request path. Transport failure uses bounded activation/reconnect or a typed unavailable result, never a second local runtime; schema/generation failures remain typed & closed.
 
 An incomplete path cannot masquerade as exact complete evidence.
 
@@ -1486,15 +1485,13 @@ It does not own network transport.
 
 Native Hub owns:
 
-- start-at-login;
+- optional start-at-login, which launches Hub & therefore Membrane;
 - its own lifetime holder and visible status surface;
 - installed activation/update requests.
 
-One installed Membrane controller owns resident restart/backoff, drain and shutdown. It launches one headless child daemon with
-OS-enforced lifetime coupling. Hub or CodeRight daemon holds full resident services; losing one holder preserves the other, and final holder loss drains the child tree. Controller crash still terminates its children. Explicit operations also execute through bounded installed owners when no holder exists.
-Daemon owns service identity, ports, readiness, and runtime execution. Hub dashboard is on demand and owns neither independent lifecycle nor
-runtime. Blueprint owns its package, protocol, store, watcher semantics, and query behavior, while
-Membrane controller owns their resident lifetime. Cortex may expose durable-memory library and CLI operations to daemon, but it does
+One installed Membrane engine owns service identity, ports, readiness, runtime execution, drain & shutdown. Hub always starts/adopts & holds it while on; accessing harnesses independently start/adopt & hold that same engine. Losing one owner preserves other owners; final owner loss drains & stops engine. Recovery may restart engine only while a valid owner remains. No independent engine login startup, periodic scheduled restart, or ownerless supervisor is permitted.
+Hub dashboard is on demand; closing dashboard does not release Hub ownership while tray remains on. Blueprint owns its package, protocol, store, watcher semantics, and query behavior, while
+Membrane engine owns their runtime lifetime. Background authorization is separate from harness access ownership. Cortex may expose durable-memory library and CLI operations to engine, but it does
 not claim a resident service, service identity, port, lease, or process
 lifecycle.
 
@@ -2282,7 +2279,7 @@ from subsystem canons.
 - Generation mismatch fails closed for Blueprint.
 - A `no_relevant_seed` Blueprint result emits no fake repository context.
 - Code anchor relocation/re-anchoring is delegated to Blueprint.
-- Blueprint recall uses the shared resident client while Hub or CodeRight daemon holds it; authorized explicit requests use bounded one-shot execution when no resident service exists.
+- Blueprint recall uses shared installed engine; with Hub off, authorized harness access starts/adopts & holds that engine until access ends. No ordinary recall opens a second runtime.
 - Membrane contains no duplicate structural re-anchor implementation.
 - Unsupported/ambiguous/missing are not collapsed.
 - Repository evidence remains `data_only`.
@@ -2418,6 +2415,6 @@ PERSIST
 
 The core ownership rule is:
 
-> **Membrane is the parent context system with six axes: Pull, Push, Cortex, Blueprint, Ledger, and Adapt. Blueprint determines repository evidence and repository truth. Cortex preserves durable knowledge. Ledger owns source-bound Markdown/document projections, registers and navigates indexed documents, and supplies direct Pull evidence. Adapt learns user-backed Taste preferences and evidence-backed Insights failures/gotchas for Cortex admission. Pull performs faithful reduction and recovery; public Push writes durable memory through Cortex. Membrane planner determines what deserves agent attention now, in what form, under whose authority, and records why. One installed controller owns watchers, schedulers & background processes while Hub or CodeRight daemon holds its lifetime. Hub UI is optional for CodeRight. All six subsystems support explicit bounded operations without residency through canonical installed owners.**
+> **Membrane is the parent context system with six axes: Pull, Push, Cortex, Blueprint, Ledger, and Adapt. Blueprint determines repository evidence and repository truth. Cortex preserves durable knowledge. Ledger owns source-bound Markdown/document projections, registers and navigates indexed documents, and supplies direct Pull evidence. Adapt learns user-backed Taste preferences and evidence-backed Insights failures/gotchas for Cortex admission. Pull performs faithful reduction and recovery; public Push writes durable memory through Cortex. Membrane planner determines what deserves agent attention now, in what form, under whose authority, and records why. Hub or an accessing harness starts/adopts & holds one installed engine; with neither, engine drains & stops. Hub always holds engine while on. All six subsystems remain explicitly accessible with Hub off through harness-owned engine access; automatic work requires separate background authorization.**
 
 That is the canonical shape.

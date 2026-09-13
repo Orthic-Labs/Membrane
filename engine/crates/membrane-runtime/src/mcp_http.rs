@@ -39,7 +39,18 @@ pub const HOOK_HTTP_PATH: &str = "/hook";
 const MAX_CLI_ARGS: usize = 128;
 const MAX_CLI_ARG_BYTES: usize = 64 * 1024;
 const MAX_CLI_OUTPUT_BYTES: usize = 1024 * 1024;
+/// Bounded lanes so CLI/hooks/chats cannot starve each other. Short,
+/// latency-sensitive compat traffic (CLI, hooks) shares a small lane; bulk
+/// MCP model traffic gets its own larger lane. Control routes (health/livez)
+/// live on a different router and never take either permit, so admission
+/// stays responsive under MCP load.
 const MAX_BLOCKING_REQUESTS: usize = 4;
+const MAX_MCP_REQUESTS: usize = 16;
+
+/// Callers may propagate a shorter cooperative deadline than the policy
+/// maximum. The admission policy still caps it; over-long or absent values
+/// fall back to the policy maximum.
+pub const DEADLINE_HEADER: &str = "x-membrane-deadline-ms";
 
 /// Carries the caller's claimed installation id. Distinct from
 /// `installation_manifest::HANDSHAKE_HEADER`, which carries a full manifest
@@ -86,6 +97,7 @@ struct McpHttpState {
     server: Arc<McpServer>,
     resolver: Arc<dyn HostResolver>,
     blocking_requests: Arc<tokio::sync::Semaphore>,
+    mcp_requests: Arc<tokio::sync::Semaphore>,
 }
 
 /// Build the Streamable HTTP MCP router with the production (real) resolver.
@@ -104,6 +116,7 @@ fn build_mcp_http_router_with_resolver(
         server: Arc::new(McpServer),
         resolver,
         blocking_requests: Arc::new(tokio::sync::Semaphore::new(MAX_BLOCKING_REQUESTS)),
+        mcp_requests: Arc::new(tokio::sync::Semaphore::new(MAX_MCP_REQUESTS)),
     };
     Router::new()
         .route(
@@ -177,12 +190,16 @@ fn bearer_token(headers: &HeaderMap) -> &str {
         .unwrap_or("")
 }
 
+/// Admit a request and return the cooperative deadline the handlers must
+/// honor: the caller's `x-membrane-deadline-ms` when present and within the
+/// policy maximum, otherwise the policy maximum. The policy still denies
+/// zero/over-long values, so a caller can only ever shorten its own budget.
 fn admit_request(
     state: &McpHttpState,
     peer: SocketAddr,
     headers: &HeaderMap,
     body: &Bytes,
-) -> Result<(), Response> {
+) -> Result<u64, Response> {
     let host = header_value(headers, "host");
     let origin = headers
         .get(header::ORIGIN)
@@ -192,6 +209,11 @@ fn admit_request(
         .resolver
         .resolve(strip_port(host))
         .unwrap_or(IpAddr::V4(Ipv4Addr::UNSPECIFIED));
+    let requested_deadline_ms = header_value(headers, DEADLINE_HEADER)
+        .parse::<u64>()
+        .ok()
+        .filter(|value| *value > 0)
+        .unwrap_or(state.policy.max_deadline_ms);
     let receipt = admit(&state.policy, &HttpAdmissionRequest {
         peer_ip: peer.ip(),
         resolved_host_ip,
@@ -201,10 +223,10 @@ fn admit_request(
         bearer_token: bearer_token(headers),
         session_binding: header_value(headers, SESSION_HEADER),
         body_bytes: body.len(),
-        deadline_ms: state.policy.max_deadline_ms,
+        deadline_ms: requested_deadline_ms,
     });
     if receipt.accepted {
-        Ok(())
+        Ok(requested_deadline_ms.min(state.policy.max_deadline_ms))
     } else {
         let status = receipt.denial.as_ref().map(status_for_denial).unwrap_or(StatusCode::FORBIDDEN);
         let mut response = (status, axum::Json(receipt)).into_response();
@@ -239,7 +261,13 @@ async fn handle_cli_request(
     headers: HeaderMap,
     body: Bytes,
 ) -> Response {
-    if let Err(response) = admit_request(&state, peer, &headers, &body) { return response; }
+    // The admitted deadline is recorded for the lane contract; CLI verbs
+    // carry their own connect/read bounds and the server's request timeout,
+    // so no second outer timeout is layered here.
+    let _admitted_deadline_ms = match admit_request(&state, peer, &headers, &body) {
+        Ok(deadline_ms) => deadline_ms,
+        Err(response) => return response,
+    };
     if !json_content_type(&headers) { return StatusCode::UNSUPPORTED_MEDIA_TYPE.into_response(); }
     let request: CliRequest = match serde_json::from_slice(&body) {
         Ok(request) => request,
@@ -283,12 +311,37 @@ async fn handle_hook_request(
     headers: HeaderMap,
     body: Bytes,
 ) -> Response {
-    if let Err(response) = admit_request(&state, peer, &headers, &body) { return response; }
+    // Hook modules run under the dispatcher's own per-module deadline with a
+    // bounded leaf scope; the admitted deadline is recorded for the lane
+    // contract rather than layered as a second timeout.
+    let _admitted_deadline_ms = match admit_request(&state, peer, &headers, &body) {
+        Ok(deadline_ms) => deadline_ms,
+        Err(response) => return response,
+    };
     if !json_content_type(&headers) { return StatusCode::UNSUPPORTED_MEDIA_TYPE.into_response(); }
-    let payload: Value = match serde_json::from_slice(&body) {
+    let mut payload: Value = match serde_json::from_slice(&body) {
         Ok(payload) => payload,
         Err(_) => return StatusCode::BAD_REQUEST.into_response(),
     };
+    // Preserve request identity: when the caller presented an authenticated
+    // per-boot session binding and the payload carries no session of its
+    // own, stamp `session_id` so recall binds the same session the admission
+    // layer authenticated. Explicit payload fields always win; nothing is
+    // invented when the caller sent no binding.
+    let session_binding = header_value(&headers, SESSION_HEADER);
+    if !session_binding.is_empty() {
+        if let Some(object) = payload.as_object_mut() {
+            let has_session = ["thread_id", "session_id", "sessionId"]
+                .iter()
+                .any(|key| object.get(*key).is_some());
+            if !has_session {
+                object.insert(
+                    "session_id".to_owned(),
+                    Value::String(session_binding.to_owned()),
+                );
+            }
+        }
+    }
     let Ok(permit) = Arc::clone(&state.blocking_requests).try_acquire_owned() else {
         return StatusCode::TOO_MANY_REQUESTS.into_response();
     };
@@ -308,7 +361,10 @@ async fn handle_mcp_request(
     headers: HeaderMap,
     body: Bytes,
 ) -> Response {
-    if let Err(response) = admit_request(&state, peer, &headers, &body) { return response; }
+    let admitted_deadline_ms = match admit_request(&state, peer, &headers, &body) {
+        Ok(deadline_ms) => deadline_ms,
+        Err(response) => return response,
+    };
     if !json_content_type(&headers) {
         return StatusCode::UNSUPPORTED_MEDIA_TYPE.into_response();
     }
@@ -317,6 +373,17 @@ async fn handle_mcp_request(
         Ok(value) => value,
         Err(_) => return StatusCode::BAD_REQUEST.into_response(),
     };
+    // Blocking MCP work runs on its own bounded lane so bulk model traffic
+    // cannot starve the CLI/hook lane (and vice versa); saturation is an
+    // explicit 429, never silent queueing. The lane permit is held across the
+    // whole dispatch so the bound covers queued-plus-running work.
+    let Ok(permit) = Arc::clone(&state.mcp_requests).try_acquire_owned() else {
+        return (
+            StatusCode::TOO_MANY_REQUESTS,
+            axum::Json(serde_json::json!({"error": "mcp_lane_saturated"})),
+        )
+            .into_response();
+    };
     // A panic inside dispatch used to unwind the connection task itself: the
     // socket closed having written zero bytes, so a client saw an unexplained
     // empty read while the Hub stayed healthy and answered every other
@@ -324,29 +391,63 @@ async fn handle_mcp_request(
     // so it inherits no panic boundary of its own. Convert a panic into a
     // JSON-RPC internal error, and let the default hook print it to stderr
     // where the daemon log now keeps it.
+    //
+    // The caller's admitted deadline bounds the whole dispatch cooperatively:
+    // expiry returns a typed timeout instead of letting one slow MCP call pin
+    // the lane. Cancellation is tied to handler completion via the drop
+    // guard; the dispatch itself observes the same token through the push
+    // request control it inherits below.
     let cancellation = CancellationToken::new();
     let push_control = crate::serve::push_request_control(
         Deadline::after(
             &SystemClock,
-            Duration::from_millis(state.policy.max_deadline_ms),
+            Duration::from_millis(admitted_deadline_ms),
         ),
         cancellation.clone(),
     );
     let cancellation_guard = cancellation.drop_guard();
-    let dispatched = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        crate::mcp_executor::with_inherited_push_control(push_control, || {
-            state.server.dispatch(&payload)
-        })
-    }));
+    let request_id = payload.get("id").cloned().unwrap_or(Value::Null);
+    let server = Arc::clone(&state.server);
+    let dispatched = tokio::task::spawn_blocking(move || {
+        let _permit = permit;
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            crate::mcp_executor::with_inherited_push_control(push_control, || {
+                server.dispatch(&payload)
+            })
+        }))
+    });
+    let dispatched = match tokio::time::timeout(
+        Duration::from_millis(admitted_deadline_ms),
+        dispatched,
+    )
+    .await
+    {
+        Ok(joined) => joined,
+        Err(_) => {
+            drop(cancellation_guard);
+            return (
+                StatusCode::SERVICE_UNAVAILABLE,
+                axum::Json(serde_json::json!({
+                    "jsonrpc": "2.0",
+                    "id": request_id,
+                    "error": {
+                        "code": -32000,
+                        "message": "mcp deadline exceeded: dispatch did not complete within the admitted deadline"
+                    }
+                })),
+            )
+                .into_response();
+        }
+    };
     drop(cancellation_guard);
     match dispatched {
-        Ok(Some(response)) => (StatusCode::OK, axum::Json(response)).into_response(),
-        Ok(None) => StatusCode::ACCEPTED.into_response(),
-        Err(_) => (
+        Ok(Ok(Some(response))) => (StatusCode::OK, axum::Json(response)).into_response(),
+        Ok(Ok(None)) => StatusCode::ACCEPTED.into_response(),
+        Ok(Err(_)) | Err(_) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             axum::Json(serde_json::json!({
                 "jsonrpc": "2.0",
-                "id": payload.get("id").cloned().unwrap_or(Value::Null),
+                "id": request_id,
                 "error": {
                     "code": -32603,
                     "message": "internal error: the MCP dispatcher panicked; see membrane-daemon.log"
@@ -515,6 +616,70 @@ mod tests {
         // implementation of it.
         let stdio_result = McpServer.dispatch(&ping_payload()).unwrap();
         assert_eq!(http_result, stdio_result);
+    }
+
+    #[tokio::test]
+    async fn over_long_caller_deadline_fails_closed() {
+        let app = router_with(Arc::new(FixedResolver(Some(Ipv4Addr::LOCALHOST.into()))));
+        let mut request = full_request(
+            loopback_peer(),
+            "127.0.0.1:9",
+            "http://127.0.0.1:9",
+            "correct-token",
+        );
+        request.headers_mut().insert(
+            DEADLINE_HEADER,
+            axum::http::HeaderValue::from_static("999999999"),
+        );
+        let response = app.oneshot(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(denial_of(response).await, "deadline_too_long");
+    }
+
+    #[tokio::test]
+    async fn hook_route_stamps_absent_session_from_binding() {
+        // Identity preservation: an authenticated session binding fills a
+        // missing session so recall binds the admitted session; an explicit
+        // payload session always wins.
+        let app = router_with(Arc::new(FixedResolver(Some(Ipv4Addr::LOCALHOST.into()))));
+        let mut request = resident_request(
+            HOOK_HTTP_PATH,
+            Some("correct-token"),
+            serde_json::json!({"event": "SessionEnd"}),
+        );
+        request.headers_mut().insert(
+            SESSION_HEADER,
+            axum::http::HeaderValue::from_static("session-abc"),
+        );
+        let response = app.oneshot(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn mcp_lane_saturation_is_an_explicit_429() {
+        // Reserve control capacity: exhausting the MCP lane must surface a
+        // typed 429, never silently queue behind or starve the CLI/hook lane.
+        let state = McpHttpState {
+            policy: Arc::new(policy()),
+            server: Arc::new(McpServer),
+            resolver: Arc::new(FixedResolver(Some(Ipv4Addr::LOCALHOST.into()))),
+            blocking_requests: Arc::new(tokio::sync::Semaphore::new(MAX_BLOCKING_REQUESTS)),
+            mcp_requests: Arc::new(tokio::sync::Semaphore::new(0)),
+        };
+        let app = Router::new()
+            .route(MCP_HTTP_PATH, post(handle_mcp_request))
+            .with_state(state);
+        let request = full_request(
+            loopback_peer(),
+            "127.0.0.1:9",
+            "http://127.0.0.1:9",
+            "correct-token",
+        );
+        let response = app.oneshot(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
+        let bytes = to_bytes(response.into_body(), MAX_BODY).await.unwrap();
+        let value: Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(value["error"], "mcp_lane_saturated");
     }
 
     #[tokio::test]

@@ -6,13 +6,15 @@
 
 **Scope:** Membrane process ownership, startup, client transports, hooks, concurrency & migration. Subsystem semantics & existing public V1 payloads remain owned by their current contracts.
 
-Membrane runs one shared engine per OS user & canonical installed state. Claude Code, Codex, CodeRight & Hub connect to that engine. Ordinary chat attachment, Pull, Push, recall, graph queries & supported hooks create no Membrane runtime process.
+Membrane runs at most one shared engine per OS user & canonical installed state. Hub on or a harness accessing Membrane starts/adopts & holds that engine. Hub off with no harness accessing Membrane stops the engine/daemon after bounded drain. Warm Pull, Push, recall, graph queries & supported hooks reuse the owner; first authorized access may start it when absent.
+
+**Lifetime correction, 2026-09-13:** [Decisions 21 & 24](adr/2026-09-12-context-system-decisions.md) supersede this plan's former independently supervised autostart policy. That policy was an assistant-authored error. Hub always starts/holds Membrane; harness access may also start/hold it. No independent engine autostart or periodic restart task is part of this target.
 
 This decision replaces per-chat runtime ownership & ordinary direct-store fallback in the target architecture. It preserves Hub-off access, installed-only binding, subsystem ownership, request authorization & uncertain-write protection from [execution lifecycle](execution-lifecycle-boundary.md) & [CodeRight integration](integrations/coderight.md). Their existing execution paths describe the pre-cutover system until installed qualification establishes this target. This document does not mark capability atoms complete.
 
-## Current source findings
+## Historical source findings at initial design inspection
 
-Source inspection covers current Membrane & CodeRight working trees, including pre-existing uncommitted changes. It is not installed CodeRight execution evidence. A read-only process snapshot found installed `membrane.exe` clients, with no running CodeRight or resident Membrane engine available to trace live.
+This section preserves the initial inspection baseline, not current implementation status. Source inspection covered Membrane & CodeRight working trees, including pre-existing uncommitted changes. It is not installed CodeRight execution evidence. Its process snapshot found installed `membrane.exe` clients, with no running CodeRight or resident Membrane engine available to trace live. Recheck source & installed identities before implementing outstanding work.
 
 Installed Blueprint `doctor --json` returned `degraded`; `graph architecture --json` returned `unsupported native Blueprint operation: graph`. Current-state evidence below therefore comes from bounded source inspection, with `blueprint-graph` degradation, not a verified graph projection.
 
@@ -52,55 +54,60 @@ Windows diagnostics currently open one fresh pipe handle per framed request, wit
 
 ```mermaid
 flowchart TB
-    OS[Installer-owned OS supervision] --> E[One Membrane engine]
+    START[Optional login startup] --> UI[Hub including tray]
+    UI -->|Start or adopt; hold while on| E[One shared Membrane engine]
+    LIFE[Authenticated harness access lifecycle] -->|Start or adopt; hold during access| E
     CC[Claude Code chats] -->|Streamable HTTP MCP| E
     CX[Codex chats] -->|Streamable HTTP MCP| E
     CR[CodeRight typed SDK] -->|Pooled authenticated HTTP| E
-    UI[Hub UI / status surface] -->|Authenticated API| E
     HK[Supported HTTP / MCP tool hooks] --> E
     OLD[Stdio-only harness] --> B[Small forwarding client]
     B --> E
     E --> OWN[Existing subsystem-owned services]
+    E -->|No Hub and no harness access; drain| OFF[Engine stops]
 ```
 
 There is one planner, one installed engine identity & one shared set of subsystem services. Blueprint, Cortex, Ledger, Adapt, Pull & Push retain their semantic/storage boundaries. Physical co-location does not permit Membrane to bypass Blueprint's storage API or any other subsystem owner. No new subsystem daemon, generic protocol authority or parallel context backend is introduced.
 
-For the literal single-`membrane.exe` target, that executable becomes engine-only. One separate lightweight `membrane-client.exe` supplies CLI, startup helper, command-hook & stdio-bridge modes where needed. Hub remains optional UI. Installer migrates old command registrations atomically; it must not keep launching `membrane.exe stdio-mcp` or `membrane.exe hook`. Binary renaming alone earns no optimization claim: tests count all runtime owners regardless of executable name.
+For the literal single-`membrane.exe` target, that executable becomes engine-only. One separate lightweight `membrane-client.exe` supplies CLI, startup helper, command-hook & stdio-bridge modes where needed. Hub supplies UI & always holds engine while on; harness access also works with Hub off. Installer migrates old command registrations atomically; it must not keep launching `membrane.exe stdio-mcp` or `membrane.exe hook`. Binary renaming alone earns no optimization claim: tests count all runtime owners regardless of executable name.
 
-Default supported path has one engine & zero persistent forwarding clients. Stdio-only compatibility adds one small client per harness connection; manual commands & command-only hooks may create temporary clients. Those clients link transport/protocol code only, own no database, planner, embedder, watcher or subsystem runtime, & cannot execute direct-store fallback. Their costs remain visible in process accounting.
+While Hub or harness access is active, supported HTTP path has one engine & zero persistent forwarding clients. With neither active there is no engine. Stdio-only compatibility adds one small client per harness connection; manual commands & command-only hooks may create temporary clients. Those clients link transport/protocol code only, own no database, planner, embedder, watcher or subsystem runtime, & cannot execute direct-store fallback. Their costs remain visible in process accounting.
 
 Engine uses bounded threads/tasks for native subsystem work. External providers or utilities may need explicitly bounded child processes; they never instantiate another Membrane engine or storage authority. Removing required process isolation solely to improve process count is outside this decision.
 
 ## Startup, singleton enforcement & shutdown
 
-**Default: installer-managed user-session autostart, with OS supervision & one lightweight engine retained until logout or explicit stop.** This makes generic HTTP clients usable without per-chat launch commands & removes cold engine startup from ordinary chat connection. Heavy resources load on demand & may be evicted while idle.
+**Lifetime rule: Hub on ⇒ engine on. Harness accessing Membrane ⇒ engine on. Neither ⇒ no engine/daemon.** Hub always starts or adopts & holds Membrane. Its optional start-at-startup setting launches Hub at login; Hub then starts/holds Membrane. Login alone, without Hub or harness access, starts no engine.
 
-Use existing workspace installation/lifecycle capabilities. Windows user-session supervision & macOS LaunchAgent integration are installer-owned; product adds no competing persistent supervisor. Current controller responsibilities move into engine control plane plus OS lifecycle configuration. Tray reports status & acquires background authority; it no longer kills engine as its UI child.
+Use existing installed activation & lifecycle capabilities. Hub/tray & harness integrations are engine lifetime owners. Do not register an independent engine service, login entry or periodic scheduled task that keeps it alive without either owner. Crash recovery is bounded & permitted only while an owner remains active. Hub exit releases its ownership; it cannot kill an engine still serving a harness. Closing a dashboard window is not Hub exit if Hub remains running in its tray.
 
 Startup sequence:
 
 1. Resolve verified installer-owned `current`, user identity, installation identity & canonical state root. Development or candidate roots cannot enter production discovery.
-2. Serialize activation through OS supervision; supported clients request manager activation rather than racing direct engine launches. Engine acquires exclusive OS-backed owner lock before opening stores. Lock scope includes OS user & canonical state identity; resolving aliases cannot create a second owner.
+2. Serialize Hub/harness activation through installed lifecycle control. Acquire authenticated lifetime ownership before publishing attachment; bound startup cleanup if the initiating owner disappears. Engine acquires exclusive OS-backed owner lock before opening stores. Lock scope includes OS user & canonical state identity; resolving aliases cannot create a second owner.
 3. Existing healthy owner is adopted. A contender exits before runtime initialization; it never selects another port/store to evade ownership.
 4. Recover stale discovery only after exact-process liveness/start identity & lock ownership checks. Never kill a process based only on recycled PID or filename.
 5. Publish endpoint, protocol/capabilities, installation/store identity, release generation & new boot epoch atomically after admission is ready. Report transport readiness separately from repository catch-up.
-6. Bound restart attempts/backoff, preserve crash diagnostics & expose terminal failure. Stop/restart never falls back to starting runtime inside client.
+6. Bound restart attempts/backoff to surviving Hub/harness ownership, preserve crash diagnostics & expose terminal failure. Final owner release or loss stops admission, drains/cancels outstanding work within its deadline, closes stores, terminates governed children & exits. Recheck ownership during drain so concurrent authorized acquisition cannot be lost. No idle engine remains after drain. Stop/restart never falls back to starting runtime inside client.
 
-Hub, CodeRight & native startup helpers may request OS activation if engine is absent. Generic MCP URL configuration does not launch a server; autostart is therefore part of supported installation, not optional hidden setup. A failed startup yields actionable unavailable state. Explicit user stop suppresses automatic resurrection until explicit start.
+Hub & supported harness startup/access integrations request installed activation if engine is absent. A generic MCP URL does not launch a stopped server: each supported HTTP harness needs a verified host startup/access integration that starts/adopts the owner, maintains its access lifetime & releases it afterward. Preserve direct HTTP for requests; do not solve startup by adding a persistent per-chat runtime. A failed startup yields actionable unavailable state.
 
-Separate **engine availability** from **background-work authority**:
+Track engine lifetime ownership separately from background-work authority. An active harness access session holds engine availability across its requests; a chat that is merely open without Membrane access is not an owner. Ending access, release, process loss or lease expiry removes its ownership. No per-call runtime churn is required while that access session remains active.
 
 | State | Required behavior |
 |---|---|
-| Login, no clients or background holders | One small idle engine; no unauthorized watchers, maintenance or model prewarming. |
-| Chats active, Hub closed | Same engine serves explicit requests & required freshness work. Chat attachment alone does not authorize automatic observation. |
-| Hub or CodeRight ServiceHost has background holder | Same engine activates authorized watchers/background services. Repository enrollment still requires authorization. |
-| One holder exits | Other holders & clients continue unaffected. |
-| Final background holder exits | Drain automatic work; retain engine & explicit service availability. |
-| CodeRight InlineHost starts/exits | Attach/release request context without turning InlineHost into CodeRight ServiceHost. |
+| Hub on, harnesses active or inactive | Hub starts/adopts & holds one engine. |
+| Hub off, at least one harness accessing Membrane | Harness starts/adopts & holds same engine; access alone does not authorize automatic observation. |
+| Hub off, no harness accessing Membrane | Bounded drain completes; engine, daemon & governed workers stop. |
+| Login, Hub startup disabled, no harness access | No Membrane engine/daemon starts. |
+| Login, Hub startup enabled | Hub starts, then starts/adopts & holds Membrane. |
+| Hub or CodeRight ServiceHost has background authority | Same engine activates authorized watchers/background services. Repository enrollment still requires authorization. |
+| One lifetime owner exits, another remains | Same engine continues for remaining owner. |
+| Final background-authorized owner exits, harness access remains | Drain automatic work; retain engine only for remaining harness access. |
+| CodeRight InlineHost starts/ends Membrane access | Acquire/release harness lifetime without gaining ServiceHost background authority. |
 | Logout, explicit stop or update | Stop admission, bound drain, reconcile dispatched effects, close stores, terminate governed children, withdraw discovery & release ownership. |
 
-Native holder leases bind authenticated holder identity, process start identity & expiry. Socket closure is not evidence that a chat finished; HTTP requests/connections are not residency holders. Generic chats do not need heartbeats merely to keep engine alive. OS crash recovery replaces dependence on survival of whichever chat attached first.
+Lifetime leases bind authenticated Hub/harness identity, process start identity & expiry. Socket closure is not proof that harness access ended; pooled HTTP connections & protocol session IDs alone are not lifetime ownership. Host lifecycle integration must supply release plus bounded loss detection, through process liveness or renewable leases. Stale holders cannot leave an orphan engine. Recovery cannot depend solely on whichever client launched first or resurrect an engine with no surviving owner.
 
 ## Most effective connection per client
 
@@ -164,22 +171,25 @@ Emit structured lifecycle/request events: activation requested, owner adopted/ac
 
 ## Migration & acceptance
 
-1. Add singleton engine control/OS supervision & explicit-versus-background lifetime split. Preserve installed identity & every Hub-off explicit operation.
+1. Implement Hub-or-harness lifetime ownership, serialized activation, final-owner shutdown & owner-bound crash recovery. Preserve installed identity & Hub-off harness access; remove independent engine autostart/periodic restart tasks only with replacement activation working.
 2. Make existing listener expose interoperable MCP, native pooled API & compatible hook ingress through same owners. Remove ordinary runtime fallback & self-forwarding paths.
 3. Pool CodeRight's existing native HTTP transport, replacing per-exchange threads with bounded execution compatible with its synchronous SDK seam. Preserve SDK methods, installed binding, signed wire behavior, diagnostics pipe, managed network policy & mutation receipts. Wire existing holder API/transport into ServiceHost startup/renewal/shutdown independently from InlineHost request binding. Full ServiceHost readiness requires verified background-holder acquisition; diagnostic-only unavailable startup must not masquerade as full readiness.
-4. Installer updates binary roles, autostart & harness registrations transactionally. CodeRight wires existing canonical install/update selection at setup/activation: provision only genuine absence, repair incompatible installation through installer, & never treat known offline/denied/corrupt state as absence. Verify new connection before removing old registration; final configuration has exactly one Membrane registration per harness scope, without active duplicate tools/hooks.
+4. Installer updates binary roles, optional Hub login startup & harness activation/connection registrations transactionally. Login startup targets Hub, which starts/holds Membrane. Migrate away independent engine scheduled tasks/services; no ownerless restart remains. CodeRight wires canonical install/update selection at setup/activation: provision only genuine absence, repair incompatible installation through installer, & never treat known offline/denied/corrupt state as absence. Verify new connection before removing old registration; final configuration has exactly one Membrane registration per harness scope, without active duplicate tools/hooks.
 5. Qualify actual installed clients on each supported native platform. Only then retire old runtime entrypoints & update generated runtime truth/canon closure through existing tooling. Update never runs old/new engines against same state concurrently.
 
 Required acceptance evidence:
 
 | Case | Pass condition |
 |---|---|
-| Five mixed HTTP chats, Hub & CodeRight | Exactly one engine owner; zero per-chat/per-call runtime launches; zero persistent forwarding clients for HTTP-capable harnesses. |
+| Five mixed HTTP chats accessing Membrane, Hub & CodeRight | Exactly one engine owner; first activation may start it, subsequent access creates no runtime; zero persistent forwarding clients for HTTP-capable harnesses. |
 | Simultaneous cold activation | One store owner; contenders adopt/exit; no second port, store or engine initialization. |
-| Hub off / CodeRight off / either or both active | Explicit operations work independently; authorized background holders retain/release services correctly. |
+| Hub on/off crossed with harness access active/inactive | Hub alone or harness access alone holds one engine; both share it; neither leaves no engine after bounded drain. |
+| Final harness closes with Hub off; Hub closes with no harness | Engine/daemon & governed workers exit; no periodic task restarts them. |
+| Hub closes while harness remains; harness ends while Hub remains | Engine identity remains unchanged & remaining owner continues working. |
+| Login startup disabled/enabled | Disabled plus no harness means no engine; enabled starts Hub, which starts/holds engine. |
 | Warm native & MCP calls | Reused connections/bindings; no per-call process, identity discovery, health probe or database initialization. |
 | Long indexing plus interactive calls | Foreground requests progress with bounded queues; one repository cannot monopolize runtime. |
-| Crash/restart/client reconnect | New epoch verified, clients recover or report actionable state; no duplicate writes or unauthorized reattachment. |
+| Crash/restart/client reconnect | With surviving owner, bounded recovery verifies new epoch; with no owner, no restart. No duplicate writes or unauthorized reattachment. |
 | Supported & unsupported hook events | Actual host observes equivalent outputs/enforcement; startup exception counted honestly. |
 | Isolation & integrity | Cross-session grants denied; stale schema/generation fails closed; subsystem storage integrity, hash resolution & protected-content fidelity preserved. |
 | Installation/update/rollback | Installed `current` only; no development binding, competing engine generation or orphaned registration. |

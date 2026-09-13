@@ -1,0 +1,2 @@
+{"event":"UserPromptSubmit","session_id":"e2e-session-001","cwd":"C:\\Users\\adrds\\AppData\\Local\\Temp\\membrane-e2e-090e8d4f21cc4ad39e9ba83c3026fae7","prompt":"What is the uniquely known E2E marker?","client":"claude_code"}
+{"hookSpecificOutput":{"hookEventName":"UserPromptSubmit","additionalContext":""},"membraneHook":{"schemaVersion":1,"event":"UserPromptSubmit","status":"ok","results":[{"id":"membrane.memory-recall","status":"ok","output":{"schemaVersion":1,"kind":"membrane.hook.status","state":"unavailable","reason":"memory_unavailable","detail":null}}]}}

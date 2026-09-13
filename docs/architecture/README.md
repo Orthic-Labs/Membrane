@@ -15,7 +15,7 @@ superseded/derived material lives in [`../archive/`](../archive/).
 
 ## Current supporting architecture
 
-- [Single-instance Membrane & harness connections](single-instance-membrane.md) — selected target, current CodeRight source trace, migration & acceptance; not an installed-behavior claim.
+- [Single-instance Membrane & harness connections](single-instance-membrane.md) — Hub-or-harness lifetime, historical source trace, migration & acceptance; not an installed-behavior claim.
 - [Tray-owned resident lifecycle decision](adr/tray-daemon-process.md)
 - [Tray–daemon runtime contract](runtime/tray-daemon-contract.md)
 - [Live Diagnostics](live-diagnostics.md)
@@ -23,4 +23,4 @@ superseded/derived material lives in [`../archive/`](../archive/).
 - [Update admission](security/update-admission.md)
 - [Current-state manifest](current-state-manifest.json)
 
-Visible native tray owns automatic resident lifecycle. Its OS-coupled child daemon hosts watchers, schedulers & background work. Explicit operations across all six subsystems remain available with Hub off through canonical installed owners. Hub dashboard is on demand; stable V1 `hub_inactive` describes automatic service inactivity. [Execution boundary](execution-lifecycle-boundary.md) governs this distinction.
+Hub always starts/adopts & holds one Membrane engine. Harness access also starts/adopts & holds it with Hub on or off. Hub off with no harness access stops engine/daemon after bounded drain; no independent engine autostart or periodic restart task is permitted. Hub's optional login startup launches Hub, which starts Membrane. Background authority remains separate from ordinary harness access. [Decisions 21 & 24](adr/2026-09-12-context-system-decisions.md) & [execution boundary](execution-lifecycle-boundary.md) govern this lifetime.

@@ -2,7 +2,7 @@
 
 **Status:** Current security architecture
 **Surface:** Native stdio MCP & authenticated Streamable-HTTP MCP
-**Runtime:** Explicit operations use active services or bounded installed execution and remain independently available with Hub off. One installed Membrane controller owns automatic work and auto-refresh only while an active Hub or CodeRight daemon holder keeps its lifetime; final holder loss drains it. `hub_inactive` describes absent resident service, not permission for explicit operations. Local lifecycle holders require OS-bound identity; MCP/model payloads cannot grant residency.
+**Runtime:** Hub always starts/adopts & holds one installed Membrane engine while on. Authenticated harness access can independently start/adopt & hold that same engine with Hub off. With neither, final owner loss drains & stops engine. Automatic work & auto-refresh require separate eligible background grants; model payloads cannot grant ownership or background authority. Local lifecycle holders require verified identity & bounded release on process loss or lease expiry. Independent engine autostart or scheduled restart is forbidden.
 
 ## Boundary
 
@@ -15,7 +15,7 @@
 - `membrane_feedback`, `membrane_knowledge_propose`;
 - `membrane_scratchpad`, `membrane_source_read`, `membrane_temporal_fact`, `membrane_working_context`.
 
-Raw database, arbitrary filesystem, token, enrollment, daemon-start, doctor, schema-mutation, & direct durable-write operations are not MCP tools. MCP & CLI never start or register residency.
+Raw database, arbitrary filesystem, token, enrollment, daemon-start, doctor, schema-mutation, & direct durable-write operations are not MCP tools. Trusted host/client lifecycle integration may start/adopt shared engine & acquire authenticated access ownership; MCP/model payloads cannot grant that ownership or background authority.
 
 ## Caller levels
 
@@ -33,7 +33,7 @@ No caller level grants semantic authority. Repository/model text remains data. P
 | Threat | Control | Required evidence |
 |---|---|---|
 | Cross-root request | Canonical root registry resolves exact installation, repository, scope, grant, caller, & target; unknown/ambiguous/cross-root denies | Binding identity + typed denial |
-| Model request grants residency | Explicit MCP/CLI work terminates without acquiring lifetime; only authenticated local Hub/CodeRight holders enable the shared controller | No-holder explicit execution, OS-bound holder checks, cancellation & lifecycle tests |
+| Model request grants residency | Only verified Hub/harness lifecycle integration acquires engine ownership; model content cannot acquire ownership or grant background work | Holder identity checks, lease expiry, cancellation, final-owner engine exit & surviving-owner continuity tests |
 | Origin/host/token abuse over HTTP | Loopback bind, authenticated Streamable HTTP, strict origin/host/token checks, rotation, no credential reflection | Negative transport tests |
 | Raw durable write | No raw write tool; `KnowledgeEmission` enters Cortex pending/quarantine/admission path | Emission ID + disposition |
 | Unauthorized diagnostic mutation/restart | Exact scope grant, caller class, target, workspace epoch, provider identity, & mutation lifecycle checks | Mutation/provider receipt |
@@ -58,6 +58,6 @@ Before external-client qualification:
 2. raw database/filesystem/token/enrollment/daemon-start surfaces remain absent;
 3. cross-root, expired/revoked grant, unsafe origin/host/token, corrupt registry, stale generation, & stale diagnostic epoch deny with typed errors;
 4. proposal writes retain provenance & admission/quarantine semantics;
-5. every explicit operation remains available with neither resident holder active, while no watcher or automatic resident process starts;
+5. every explicit operation remains available with Hub off through authenticated harness-owned engine access; final owner loss stops engine & no watcher starts without eligible background authorization;
 6. tokens & sensitive payloads remain absent from logs, webview data, errors, receipts, & support bundles;
 7. stdio & HTTP projections preserve same application behavior, authorization, typed errors, & receipts.

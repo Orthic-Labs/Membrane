@@ -7,7 +7,7 @@
 **Scope:** CodeRight harness events, Membrane capability binding, Adapt evidence flow, Cortex/Ledger persistence boundaries, generic eval/trace infrastructure, and the closed improvement loop  
 **Companion documents:** revised Adapt canon, Ledger indexing canon, Membrane cross-subsystem improvement plan, native-Rust migration specification
 
-**Selected process/transport target, 2026-09-13:** [Single-instance Membrane & harness connections](../single-instance-membrane.md) records current CodeRight production wiring & final singleton connections. Current memory/federation callers select native signed HTTP; bounded explicit SDK described below is not evidence that production selects subprocess execution. Singleton target preserves semantic contracts here while replacing pre-cutover process/lifetime assumptions.
+**Corrected process/lifetime target, 2026-09-13:** [Decisions 21 & 24](../adr/2026-09-12-context-system-decisions.md) & [single-instance Membrane](../single-instance-membrane.md) require Hub on or harness access to hold one engine; neither means engine/daemon stops. Hub always starts/holds Membrane. CodeRight is a harness owner while accessing it. Native signed HTTP remains the request transport; the bounded explicit SDK described below is pre-cutover migration context, not authorization for a second runtime or ordinary local fallback.
 
 ## Executive decision
 
@@ -56,15 +56,15 @@ There are distinct data classes and owners:
 [Explicit execution & resident lifecycle](../execution-lifecycle-boundary.md) governs every subsystem & client:
 
 - Explicit agent operations remain available with Hub on or off through installed product services.
-- One Membrane controller owns resident processes. Hub & CodeRight daemon hold independent lifetimes; either enables watchers & automatic services, & only final holder loss drains them.
+- Hub & each harness accessing Membrane hold one shared engine. CodeRight ServiceHost/InlineHost acquire & release access ownership; ServiceHost background authority is separate. Final lifetime-owner loss stops engine/daemon & governed workers.
 - MCP, CLI & CodeRight reuse canonical authorization, storage owners, freshness, generation/schema checks & request budgets.
-- With neither Hub nor CodeRight daemon active, explicit execution is bounded & leaves no automatic process behind. CodeRight daemon activation acquires full Membrane residency without requiring Hub UI.
+- With Hub off & no harness accessing Membrane, no engine remains. CodeRight access activates/adopts it without Hub; another active harness also keeps it alive. CodeRight daemon background work still requires its authorized background holder.
 - A failed response after dispatch must not silently replay a possibly completed write.
 - CodeRight consumes installed Membrane operations; it does not implement another backend.
 
 The bounded SDK path is `membrane_client::explicit::InstalledExplicitClient`, with `MemoryBackendClient::from_explicit` preserving typed memory/federation methods. It supplies explicit operations independently of resident lifetime. It binds `ExplicitOwnerBindingV1`, whose `bounded_explicit` mode identifies installation, Cortex store, release, installed startup epoch, compatibility & embedder dimension. It has no resident service identity or service generation. `identity()` remains empty on this client; `explicit_binding()` provides its distinct owner identity. This binding alone does not satisfy CodeRight daemon startup: daemon readiness requires an independently verified resident lifetime with full background services.
 
-CodeRight daemon must acquire its Membrane lifetime before publishing full readiness, retain & renew it while running, & release it through its single shutdown path. Membrane validates OS-bound holder identity & reports service loss explicitly. Hub acquisition must adopt the same runtime; Hub exit cannot drain it while CodeRight remains active, & CodeRight exit cannot drain it while Hub remains active. Controller crash still drains its child process tree. Background readiness means required services are active; each repository reports catch-up or degradation separately.
+CodeRight daemon must acquire its Membrane lifetime before publishing full readiness, retain & renew it while accessing Membrane, & release it when access ends or through shutdown. InlineHost holds access lifetime without acquiring ServiceHost background privileges. Membrane validates OS-bound holder identity & reports service loss explicitly. Hub acquisition adopts the same runtime; Hub exit cannot drain it while CodeRight or another harness retains access, & CodeRight exit cannot drain it while Hub or another harness remains. Final owner release/loss stops the engine & governed children. Background readiness means required services are active; each repository reports catch-up or degradation separately.
 
 The SDK selects closed operations & frames one request for exact installed `current/membrane[.exe] cli explicit-call`. CodeRight injects its governed child transport: close stdin after the frame, cap output, honor supplied absolute `CallOptions`, terminate & reap the complete child tree, & report whether action input was dispatched. SDK owns response validation & `CommitUnknown` classification; unknown dispatched effects are never replayed. Each logical host request supplies one `with_call_options` view, including all follow-up record reads; construction defaults expire after 30 seconds. The installed owner rejects changed binding before dispatch & delegates to existing memory, federation & diagnostics handlers. Provider restart keeps its resident lifecycle gate.
 
@@ -881,7 +881,7 @@ does not prescribe rollout phases.
 - tray quits mid-session — CodeRight lifetime retains the same resident Membrane services;
   uncertain in-flight writes remain unknown, with no fallback store or replay;
 - CodeRight daemon exits while Hub remains — Hub retains resident services;
-- final holder exits — all automatic workers stop; bounded explicit requests remain available;
+- final lifetime owner exits with Hub off & no other harness access — engine/daemon & all governed workers stop; subsequent authorized access starts one canonical owner again;
 - compatible installed Membrane coexists with a development checkout — only installed executable/assets are used;
 - development checkout exists without installed Membrane — canonical installer runs; checkout never supplies runtime;
 - truly absent installed dependency — installer result is rediscovered & verified before full readiness;

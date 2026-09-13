@@ -28,7 +28,7 @@ Resident Membrane work runs in a controller-owned child daemon with OS-enforced 
 
 MCP, CLI & host surfaces dispatch to Ledger-owned services. Explicit registration, indexing, search & resolution remain available with Hub off using canonical installed storage & unchanged grants, transaction rules & budgets. No transport opens Ledger tables directly. Status inspection does not authorize indexing, and no explicit operation starts a replacement daemon or watcher.
 
-All six subsystems support explicit execution independently of Hub. All continuous Ledger update work uses active daemon scheduling & cancellation; final resident holder loss stops automatic work while preserving explicit access.
+All six subsystems support explicit execution with Hub off through harness-owned access to one shared installed engine. Hub always holds engine while on; accessing harnesses hold it independently. With neither, final owner loss drains & stops engine. Continuous Ledger update work requires separate background authorization & uses shared engine scheduling & cancellation.
 
 ---
 

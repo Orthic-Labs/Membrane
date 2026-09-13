@@ -14,6 +14,7 @@ pub mod migration;
 pub mod native_init;
 pub mod modes;
 pub mod serve;
+pub mod supervision;
 pub mod uninstall;
 pub mod update;
 

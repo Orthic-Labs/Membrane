@@ -40,9 +40,9 @@ The final improvement plan is the execution companion. It records source finding
 [Explicit execution & resident lifecycle](../execution-lifecycle-boundary.md) governs every subsystem & client:
 
 - Explicit agent operations remain available with Hub on or off through installed product services.
-- One installed Membrane controller owns background processes; Hub or CodeRight daemon holds its lifetime, & only final holder loss drains it.
+- Hub always starts/adopts & holds one installed Membrane engine while on; accessing harnesses independently hold that same engine. Final owner loss drains & stops it.
 - MCP, CLI & CodeRight reuse canonical authorization, storage owners, freshness, generation/schema checks & request budgets.
-- With neither resident holder active, explicit execution is bounded & leaves no automatic process behind. CodeRight daemon holds full residency independently of Hub UI.
+- With Hub off & no harness accessing, no engine remains after bounded drain. Harness access can activate engine without Hub; background authorization remains separate. Independent engine scheduled restart or autostart is forbidden.
 - A failed response after dispatch must not silently replay a possibly completed write.
 - CodeRight consumes installed Membrane operations; it does not implement another backend.
 

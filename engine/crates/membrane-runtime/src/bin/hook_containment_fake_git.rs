@@ -1,14 +1,14 @@
-// Test-support binary for engine/crates/membrane/tests/hook_containment.rs
+// Test-support binary for engine/crates/membrane-runtime/tests/hook_leaf_containment.rs
 // ONLY. It stands in for `git.exe` on PATH inside a temp, non-repo
-// directory so `bounded_git`'s `Command::new("git")` (Windows resolves a
-// bare program name to `<name>.exe` via CreateProcess, never `.cmd`/`.bat`)
-// actually spawns this binary instead of the real system git.
+// directory so the diagnostics fence's bounded leaf `Command::new("git")`
+// (Windows resolves a bare program name to `<name>.exe` via CreateProcess,
+// never `.cmd`/`.bat`) actually spawns this binary instead of the real
+// system git.
 //
-// It must never ship: packaging (apps/membrane-hub/scripts/
-// package-portable-windows.mjs) copies the release payload by explicit
-// source filename (only "membrane.exe"), so this bin is excluded from any
-// shipped payload the same way the existing `cli-parity` dev bin already is
-// - no additional opt-out mechanism was invented or is needed.
+// It must never ship: packaging copies the release payload by explicit
+// source filename, so this bin is excluded from any shipped payload the
+// same way dev-only bins already are - no additional opt-out mechanism was
+// invented or is needed.
 use std::{env, process::{Command, Stdio}, thread, time::Duration};
 
 /// Spawns a detached grandchild that sleeps ~4s then writes "late" to the

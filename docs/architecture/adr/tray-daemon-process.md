@@ -1,6 +1,6 @@
 # Decision: Membrane process architecture and tray ownership
 
-**Status:** DECIDED by Adrian, 2026-08-27 · binding on all Hub/tray work
+**Status:** Historical decision, 2026-08-27. Process lifetime sections are superseded by [decisions 21 & 24](2026-09-12-context-system-decisions.md) as corrected 2026-09-13: Hub always starts/holds Membrane; harness access can also start/hold the same engine; neither means engine stops. Tray-only visibility, unconditional parent-death shutdown & restart restrictions below describe the earlier design, not current lifetime requirements. Unrelated UI decisions remain applicable.
 **Supersedes:** the single-process model currently implemented in `apps/membrane-hub`
 **Doctrine status:** reconciled — see §7
 

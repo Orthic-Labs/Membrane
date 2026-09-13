@@ -2,22 +2,29 @@
 
 use std::{fs, io::{Read, Write}, net::TcpListener, process::{Command, Stdio}, thread, time::{Duration, SystemTime, UNIX_EPOCH}};
 
-/// Exercises installed-binary `hook` -> private `hook-module` containment.
+/// Exercises in-process hook dispatch with a bounded leaf scope (no
+/// `membrane.exe hook-module` child is ever spawned).
 ///
 /// Routing matters here: only `fence()` (invoked from `PreToolUse`/`Stop`)
 /// ever shells out to `git` (see `hook_diagnostics.rs::fence` calling
-/// `changed_paths_from_git` -> `bounded_git` -> `Command::new("git")`).
+/// `changed_paths_from_git` -> `bounded_git`, a tracked leaf helper under
+/// strict Job/process-group containment).
 /// `observe_mutation()` (the `PostToolUse` module) deliberately derives
 /// changed paths from the patch payload alone and never spawns a process, so
-/// driving this scenario through `PostToolUse` would never exercise
-/// descendant containment at all. This test instead sends a `Stop` event,
-/// which dispatches to `DiagnosticsCompletionFence` -> `fence(completion:
-/// true)`, so the planted fake `git.cmd` is genuinely spawned inside the
-/// contained `hook-module` child.
+/// driving this scenario through `PostToolUse` would never exercise leaf
+/// containment at all. This test instead sends a `Stop` event, which
+/// dispatches to `DiagnosticsCompletionFence` -> `fence(completion: true)`,
+/// so the planted fake `git.exe` is genuinely spawned as a tracked leaf of
+/// the in-process module worker.
 ///
 /// The fake git command starts a delayed descendant write then blocks past
-/// the module deadline. Job-object teardown must prevent that late write
-/// before HookHost can return and begin its next public invocation.
+/// the module deadline. Scope teardown must prevent that late write before
+/// HookHost can return and begin its next public invocation.
+///
+/// The driver binary reads one payload from stdin and runs the same
+/// `run_hook_payload` dispatcher the resident `/hook` route uses, so the
+/// test can plant a hostile environment (fake git on PATH, stub resident)
+/// per child without mutating the test process itself.
 #[test]
 fn hook_timeout_reaps_delayed_descendant_before_next_module() {
     let unique = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
@@ -53,7 +60,7 @@ fn hook_timeout_reaps_delayed_descendant_before_next_module() {
     });
 
     let payload = br#"{"event":"Stop"}"#;
-    let executable = env!("CARGO_BIN_EXE_membrane");
+    let executable = env!("CARGO_BIN_EXE_hook_test_driver");
     let hook_env = |command: &mut Command| {
         command.env("WORKSPACE_ROOT", &root)
             .env("MEMBRANE_DIAGNOSTICS_ENFORCE", "1")
@@ -64,7 +71,6 @@ fn hook_timeout_reaps_delayed_descendant_before_next_module() {
     };
     let started = std::time::Instant::now();
     let mut command = Command::new(executable);
-    command.arg("hook");
     hook_env(&mut command);
     let mut output = command.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null()).spawn().unwrap();
     output.stdin.as_mut().unwrap().write_all(payload).unwrap();
@@ -76,16 +82,19 @@ fn hook_timeout_reaps_delayed_descendant_before_next_module() {
     let diagnostics = response.pointer("/membraneHook/results").and_then(serde_json::Value::as_array)
         .and_then(|results| results.iter().find(|entry| entry["id"] == "membrane.diagnostics-completion-fence"))
         .expect("diagnostics completion-fence result");
-    assert_eq!(diagnostics["error"], "module_deadline_exceeded", "fake git must cross contained module deadline");
-    let mut next = Command::new(executable).arg("hook").env("WORKSPACE_ROOT", &root)
+    assert_eq!(diagnostics["error"], "module_deadline_exceeded", "fake git must cross the in-process module deadline");
+    let mut next_command = Command::new(executable);
+    hook_env(&mut next_command);
+    let mut next = next_command
+        .env("WORKSPACE_ROOT", &root)
         .stdin(Stdio::piped()).stdout(Stdio::null()).stderr(Stdio::null()).spawn().unwrap();
     next.stdin.as_mut().unwrap().write_all(br#"{"event":"FutureHostEvent"}"#).unwrap();
     drop(next.stdin.take());
     assert!(next.wait().unwrap().success(), "next hook invocation begins only after timeout containment returns");
     thread::sleep(Duration::from_secs(2));
-    assert!(!late.exists(), "Job containment must reap delayed descendant before next public hook invocation");
+    assert!(!late.exists(), "leaf-scope teardown must reap delayed descendant before next public hook invocation");
     let mut early_command = Command::new(executable);
-    early_command.arg("hook").env("MEMBRANE_HOOK_EARLY_EXIT", "1");
+    early_command.env("MEMBRANE_HOOK_EARLY_EXIT", "1");
     hook_env(&mut early_command);
     let mut early = early_command.stdin(Stdio::piped()).stdout(Stdio::null()).stderr(Stdio::null()).spawn().unwrap();
     early.stdin.as_mut().unwrap().write_all(payload).unwrap();
@@ -99,13 +108,13 @@ fn hook_timeout_reaps_delayed_descendant_before_next_module() {
     let _ = fs::remove_dir_all(root);
 }
 
-/// LC-06 negative control: "Hook that executes an interpreter fails." The
+/// Negative control: "Hook that executes an interpreter fails." The
 /// installed `hook` surface must service the module directly through the
 /// native binary; it must never shell out to a `python`/`node`/`sh`
 /// interpreter to service a host event. Stripping `PATH` down to a
 /// directory containing none of those interpreters and confirming the
-/// installed binary still returns a typed, successful hook response proves
-/// no interpreter dependency exists on this path — a shim-routed
+/// driver still returns a typed, successful hook response proves no
+/// interpreter dependency exists on this path — a shim-routed
 /// implementation would fail to spawn once the interpreter is unreachable.
 #[test]
 fn hook_module_services_event_without_any_interpreter_on_path() {
@@ -113,9 +122,8 @@ fn hook_module_services_event_without_any_interpreter_on_path() {
     let root = std::env::temp_dir().join(format!("membrane-hook-no-interpreter-{unique}"));
     fs::create_dir_all(&root).unwrap();
     let payload = r#"{"event":"PostToolUse","tool_name":"apply_patch","tool_input":{"patch":"*** Begin Patch\n*** Update File: changed.rs\n"}}"#;
-    let executable = env!("CARGO_BIN_EXE_membrane");
+    let executable = env!("CARGO_BIN_EXE_hook_test_driver");
     let mut child = Command::new(executable)
-        .arg("hook")
         .env("WORKSPACE_ROOT", &root)
         .env("PATH", "/__membrane_no_interpreters__")
         .env_remove("PYTHONPATH")

@@ -117,7 +117,7 @@ test("Blueprint qualification uses supported native CLI & proves typed negative 
 });
 
 test("qualification binds all four native sidecars", () => {
-  for (const sidecar of ["membrane-tray", "membrane-daemon", "membrane-command", "cortex-cli"]) {
+  for (const sidecar of ["membrane-tray", "membrane-client", "membrane-engine", "cortex-cli"]) {
     assert.match(lower, new RegExp(sidecar.replace('.', '\\.'), 'i'), sidecar);
   }
 });

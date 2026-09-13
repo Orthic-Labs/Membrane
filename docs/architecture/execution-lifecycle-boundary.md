@@ -1,23 +1,25 @@
 # Explicit execution & resident lifecycle
 
-**Status:** Normative user corrections, 2026-09-07 & 2026-09-08. Source implementation & installed acceptance are tracked in `audit/remediation/README.md`. Internal Windows delivery uses local RightKit builds & installed checks; CI does not gate that loop.
+**Status:** Normative user corrections, 2026-09-07, 2026-09-08 & 2026-09-13. Source implementation & installed acceptance are tracked separately in `audit/remediation/README.md`. Internal Windows delivery uses local RightKit builds & installed checks; CI does not gate that loop.
 
-**Selected replacement target, 2026-09-13:** [Single-instance Membrane & harness connections](single-instance-membrane.md) consolidates ordinary execution in one installed engine, separates engine availability from background holders, & removes per-chat direct-store fallback. This document retains pre-cutover lifecycle requirements & their safety guarantees; target selection alone does not establish installed behavior.
+**Corrected lifetime target, 2026-09-13:** [Decisions 21 & 24](adr/2026-09-12-context-system-decisions.md) & [single-instance Membrane](single-instance-membrane.md) govern startup & shutdown: Hub on or harness accessing Membrane keeps one engine on; neither means engine/daemon stops. Independent OS autostart/periodic engine supervision was an erroneous plan addition & is not authorized lifetime policy. Documentation correction alone does not establish installed behavior.
 
-This contract supersedes any statement that tray-off or Hub-off disables explicit Membrane operations, that MCP/CLI must only forward to a daemon, or that Blueprint is the only subsystem permitted bounded execution. It applies to all six subsystems & every installed agent integration, including CodeRight.
+This contract preserves explicit Membrane access with Hub off across all six subsystems & every installed agent integration, including CodeRight. Harness access starts/adopts the single installed engine & holds it for that access lifetime. It supersedes both Hub-only refusal & ordinary direct-store/one-shot-runtime fallback; no client creates a second runtime owner.
 
-Membrane owns one installed resident controller. Explicit operations available with Hub off remain bounded & independently available when neither holder exists. Automatic work requires Hub or CodeRight daemon holder. An active holder keeps controller lifetime & activates full Membrane background services, including Blueprint watchers and auto-refresh. Hub UI is optional when CodeRight daemon is active. Releasing or losing one holder preserves services required by another; final holder loss drains every resident worker.
+Hub always starts/adopts & holds Membrane, whether harnesses are active or not. Each harness accessing Membrane starts/adopts & holds that same engine, whether Hub is on or not. Releasing or losing one lifetime owner preserves service for others; final owner loss bounds drain, stops every resident worker & exits the engine/daemon. A harness access session spans its requests until access ends; a merely open chat is not an owner. Background work requires separate Hub/CodeRight authority & repository enrollment; ordinary harness access does not grant watchers or auto-refresh.
+
+Hub's optional start-at-startup setting launches Hub, which starts/holds Membrane. With Hub off & no harness access, login starts no engine. No periodic scheduled task, independent service or restart loop may keep or resurrect an ownerless engine. Supported harness lifecycle integration must acquire, maintain & release access ownership; pooled HTTP connections alone cannot prove it. Owner loss uses authenticated process identity/lease expiry, not just socket closure.
 
 CodeRight treats Membrane as a required installed dependency. It adopts a compatible installer-owned installation, invokes the canonical installer when genuinely absent, & routes incompatible installations through canonical update/repair before full daemon readiness. A known offline installation is not absence. Every runtime binding, bootstrap, executable, asset & lifecycle request targets verified stable `current` and its active installed generation. Development checkouts, CWD, PATH guesses, workspace overrides, staging directories & copied developer binaries cannot supply runtime authority. Installation & durable state remain owned by Membrane.
 
-| Hub holder | CodeRight daemon holder | Required behavior |
+| Hub on | Harness accessing Membrane | Required behavior |
 |---|---|---|
-| Absent | Absent | Bounded explicit operations; no automatic workers |
-| Active | Absent | Full resident Membrane |
-| Absent | Active | Full resident Membrane; Hub UI optional |
-| Active | Active | Same controller, runtime & storage owners; either holder may leave independently |
+| No | No | No engine/daemon after bounded drain; new access must acquire ownership & start it |
+| Yes | No | Hub starts/adopts & holds one engine |
+| No | Yes | Harness starts/adopts & holds one engine; background authority remains separate |
+| Yes | Yes | Same engine & storage owners; either owner may leave without stopping the other |
 
-| Subsystem | Explicit operations available without a resident holder | Automatic work requires Hub or CodeRight daemon holder |
+| Subsystem | Explicit operations available with Hub off through harness ownership | Automatic work requires eligible Hub or CodeRight background grant |
 |---|---|---|
 | Pull | Context retrieval, planning, fusion & receipts | Scheduled retrieval or prewarming |
 | Blueprint | Graph inspection, initial build, refresh, rebuild, search, traversal, analysis, verification & export | Auto-refresh watchers & scheduled analysis |
@@ -26,13 +28,13 @@ CodeRight treats Membrane as a required installed dependency. It adopts a compat
 | Adapt | Inspection, feedback & authorized proposal operations | Automatic observation, review & proposal generation |
 | Push | Explicit agent-to-Cortex durable-memory write; legacy prepare/resolution where consumed | Automatic interception or background reduction |
 
-Explicit execution uses installed product entry points, bounded process lifetime & existing subsystem services. It preserves repository authorization, caller identity, grants, freshness, generation/schema validation, transaction semantics & concurrency control. It never starts Hub, installs a service, enrolls a watcher or leaves a resident process behind. This contract does not authorize bypassing another subsystem's storage owner or protected effects.
+Explicit execution uses installed product entry points & existing subsystem services inside the shared engine. Harness access acquires bounded lifetime ownership, starting the engine when needed, & releases it when access ends. It preserves repository authorization, caller identity, grants, freshness, generation/schema validation, transaction semantics & concurrency control. It never implicitly starts Hub, installs an independent service, enrolls a watcher or leaves an ownerless resident process. This contract does not authorize bypassing another subsystem's storage owner or protected effects.
 
-With either resident holder active, requests may reuse resident services. With neither active, equivalent explicit requests execute on demand. Automatic subscriptions report inactivity only when no resident holder exists; ordinary explicit requests must not fail solely with `hub_inactive`.
+Requests reuse shared services while Hub or harness ownership remains active. With neither active, a new harness access starts/adopts the engine through installed activation; failure is typed unavailability, never local runtime fallback. Automatic subscriptions require their own background authority; Hub absence alone cannot reject an authorized harness request.
 
-Resident execution receives the caller's full remaining deadline, not a shorter readiness-probe timeout. Fallback subtracts elapsed time from both its transport budget & wire deadline. A resident timeout never replays a possibly dispatched mutation through one-shot execution.
+Shared-engine execution receives caller's full remaining deadline, not a shorter readiness-probe timeout. Activation/reconnect subtracts elapsed time from both transport budget & wire deadline. An engine timeout never replays a possibly dispatched mutation through one-shot execution.
 
-CLI connection refusal or connection timeout before a stream exists permits bounded canonical execution. Windows can report either when Hub is stopped. Errors after connection or request dispatch remain ambiguous & never authorize direct mutation replay.
+Connection refusal or timeout before dispatch permits bounded owner-bound activation/reconnect, not a one-shot local runtime. Timeout means unreachable within budget, not proof of absence. Errors after request dispatch remain ambiguous & never authorize direct mutation replay.
 
 Manual refresh must ingest current source & make changed truth queryable with Hub or watcher on or off. A successful acknowledgement with an unchanged stale graph is failure. With watching enabled under either resident holder, relevant source edits, additions & deletions must become queryable automatically within bounded indexing latency, without manual refresh. Verify these as separate installed acceptance cases.
 
@@ -44,7 +46,7 @@ Diagnostics workspace epochs, mutations, snapshots & baselines persist through c
 
 Installation reconciles stable-path MCP bindings & CLI access before resident startup. Silent Windows setup executes installed `activate --bindings-only`, restoring bindings removed during upgrade without starting Hub or resident services; failed binding reconciliation fails setup. A failed Hub launch must not remove those explicit entry points. Pull freshness reads use the same bounded Blueprint transport as explicit graph operations; diagnostics preserve enrolled scope descriptors when authorizing CLI calls. Cold Blueprint initialization preserves repository source files unless the caller explicitly requests documentation changes.
 
-Local CLI invocation carries its OS caller's explicit repository scope; watcher enrollment is never its admission list. Remote adapters retain their caller/root authorization. Native explicit builds reuse an available resident owner or fall back to bounded local execution. Findings explanation & evidence packs use their canonical sealed-generation service when no daemon is reachable.
+Local CLI invocation carries its OS caller's explicit repository scope; watcher enrollment is never its admission list. Remote adapters retain their caller/root authorization. Native explicit builds, findings explanation & evidence packs use canonical services inside shared engine. If absent, trusted access integration starts/adopts engine under verified access ownership; failed activation returns typed unavailability instead of local runtime fallback.
 
 Resident explicit builds & refreshes stop the resident watcher, finish the bounded write, then restart the authenticated watcher. The service parent serializes actual workers through this handoff; cancellation of a client waiter cannot restart a watcher while its shared build still writes. Full builds acquire the canonical store lease before writing any side artifact. Independent Windows requests own separate unnamed Job Objects; terminating one request cannot terminate another, & forced termination never reports success.
 
@@ -62,17 +64,19 @@ After a coalesced automatic update, the watcher publishes its source observation
 
 For each installed public operation, verify discovery & execution across all four holder states above. Compare semantic results & authorized effects against identical input state. Include first-use initialization, changed-source refresh, durable writes followed by reads, concurrent requests, cancellation & process exit. Retain negative tests for authorization, schema/generation mismatch & storage consistency.
 
-Verify release, crash, expiry & restart independently for both holders. Losing either holder must retain services used by the other; losing the final holder must stop every watcher, scheduler & automatic process while explicit operations remain callable. Verify cold CodeRight startup with no Hub UI, simultaneous acquire without duplicate runtime, & truthful per-repository catch-up. Test installed-plus-development coexistence, development-only refusal, genuinely missing installation, incompatible installation update, & rejection of development executable or asset substitution.
+Verify release, crash, expiry & restart for Hub & each harness. Losing one owner must retain services for remaining owners; losing the final owner must stop engine/daemon, watchers, schedulers & governed children. New access must start the same canonical owner afresh. Verify Hub-only, harness-only, both & neither; final harness closure; Hub closure while harness remains; login with Hub startup enabled/disabled; crash recovery only with surviving ownership; simultaneous acquire without duplicate runtime; & truthful repository catch-up. Test installed-plus-development coexistence, development-only refusal, genuinely missing installation, incompatible installation update, & rejection of development executable or asset substitution.
 
-## Enforced ownership sites
+## Ownership implementation & migration sites
+
+These locations include pre-cutover paths. Their existence is not permission to retain one-shot runtime ownership; qualify their migration to decisions 21 & 24 before claiming implementation complete.
 
 Membrane is harness-agnostic. Codex, Claude Code & other MCP hosts consume the same installed subsystem owners that native SDK consumers such as CodeRight use. Native integration changes transport, not subsystem scope, authority, durable state, or Hub-off availability. Installed acceptance must cover both MCP-host & native-SDK paths; one consumer's success does not establish another's execution binding.
 
 - `engine/crates/membrane-runtime/src/explicit_client.rs` & `engine/crates/membrane-client/src/explicit.rs`: closed installed CLI requests & distinct bounded-owner SDK binding, with absolute request options & no replay of uncertain effects. No resident health response is synthesized.
 
-- `engine/crates/membrane-runtime/src/mcp_executor.rs`: request/session owner executes explicit operations when no resident service is available; dispatched writes are never replayed after uncertain transport failure.
-- `engine/crates/membrane-runtime/src/freshness.rs`: Pull & diagnostics read Blueprint through resident-or-one-shot transport.
-- `engine/crates/membrane/src/activation.rs`: explicit agent bindings precede Hub startup; `tests/activation_hub_off.rs` checks startup failure preserves them.
+- `engine/crates/membrane-runtime/src/mcp_executor.rs`: shared owner executes explicit operations after authenticated access activation; dispatched writes are never replayed after uncertain transport failure.
+- `engine/crates/membrane-runtime/src/freshness.rs`: Pull & diagnostics must read Blueprint through its canonical owner inside shared-engine execution.
+- `engine/crates/membrane/src/activation.rs`: Hub/harness activation adopts or starts one engine; registrations remain available for later authorized access after final-owner shutdown.
 - `docs/architecture/membrane.md`: all six subsystems permit explicit bounded execution with Hub off.
 - `docs/architecture/subsystems/ledger.md`: explicit indexing uses canonical Ledger owner independently of Hub.
 - `docs/architecture/subsystems/adapt.md`, `cross-subsystem-evidence.md` & `integrations/coderight.md`: canonical installed owners serve explicit operations; automatic processes require Hub or CodeRight daemon lifetime.

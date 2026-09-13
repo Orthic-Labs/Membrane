@@ -1,7 +1,12 @@
-//! Native HookHost runtime. Mutating modules run in a hidden native child so a
-//! deadline kills and reaps its process tree before serial dispatch advances.
+//! Native HookHost runtime. Modules execute in-process under a per-module
+//! deadline with a bounded leaf-process scope: the only processes a module
+//! may start are tracked leaf helpers (today: `git` for the diagnostics
+//! fence), which the dispatcher reaps when the deadline fires before serial
+//! dispatch advances. No `membrane.exe hook-module` child is ever spawned.
 
-use std::{io::{Read, Write}, process::{Command, Stdio}, sync::{mpsc, Arc}, thread, time::{Duration, Instant}};
+use std::{sync::{mpsc, Arc}, time::Duration};
+
+use crate::providers::child_process::{ContainmentScope, ScopeGuard};
 
 use membrane_protocol::{
     normalize_hook_payload, project_hook_host_response, HookDispatchResultV1, HookEvent,
@@ -18,7 +23,6 @@ pub const DIAGNOSTICS_READ_DEADLINE_MS: u64 = 800;
 pub const DIAGNOSTICS_WRITE_DEADLINE_MS: u64 = 1_200;
 pub const GIT_DEADLINE_MS: u64 = 1_500;
 pub const GIT_OUTPUT_LIMIT_BYTES: usize = 2 * 1024 * 1024;
-const MODULE_IPC_LIMIT_BYTES: usize = 2 * 1024 * 1024;
 
 /// Native service boundary.  Implementations are supplied by the installed
 /// controller; `NoNativeHookService` gives deterministic safe degradation.
@@ -45,7 +49,7 @@ impl NativeHookService for NoNativeHookService {
     }
 }
 
-pub struct NativeHookRuntime<S = NoNativeHookService> { service: Arc<S>, enforcement_enabled: bool, process_containment: bool }
+pub struct NativeHookRuntime<S = NoNativeHookService> { service: Arc<S>, enforcement_enabled: bool }
 
 impl Default for NativeHookRuntime<NoNativeHookService> {
     fn default() -> Self { Self::new(NoNativeHookService, false) }
@@ -53,9 +57,7 @@ impl Default for NativeHookRuntime<NoNativeHookService> {
 
 impl<S: NativeHookService> NativeHookRuntime<S> {
     /// Test/default supervisor: deterministic, in-process execution.
-    pub fn new(service: S, enforcement_enabled: bool) -> Self { Self { service: Arc::new(service), enforcement_enabled, process_containment: false } }
-    /// Production supervisor: isolate each mutating module in a killable native child.
-    pub fn with_process_containment(mut self) -> Self { self.process_containment = true; self }
+    pub fn new(service: S, enforcement_enabled: bool) -> Self { Self { service: Arc::new(service), enforcement_enabled } }
 
     /// Serial, fixed-order execution. Every module receives full raw host input
     /// through `HookInputEnvelopeV1::payload`; no secret-bearing error escapes.
@@ -65,7 +67,7 @@ impl<S: NativeHookService> NativeHookRuntime<S> {
             if id == HookModuleId::DiagnosticsFence && input.event == HookEvent::PreToolUse
                 && crate::hook_diagnostics::requires_retrieval_attempt(input)
                 && result.status == membrane_protocol::HookInvocationStatus::Error {
-                // Child failure cannot prove an attempt completed, so it grants nothing.
+                // Module failure cannot prove an attempt completed, so it grants nothing.
                 result.output = Some(status(HookModuleState::Blocked, "membrane_attempt_unconfirmed", json!({
                     "alternativeAllowed":false, "detail":"Membrane attempt did not produce a verified result; retry Membrane before alternate retrieval."
                 })));
@@ -77,59 +79,44 @@ impl<S: NativeHookService> NativeHookRuntime<S> {
 
     fn invoke(&self, id: HookModuleId, input: &HookInputEnvelopeV1) -> HookModuleResultV1 {
         if !module_event_matches(id, input) { return HookModuleResultV1::skipped(id); }
-        // Only resident health/recall can block outside this process and both
-        // are read-only.  Mutating modules execute synchronously below, where
-        // their own socket/git limits bound every effect.  Detaching a generic
-        // worker after timeout would permit a late filesystem/diagnostics write
-        // and break HookHost's serial isolation invariant.
-        if self.process_containment || !matches!(id, HookModuleId::CortexStatus | HookModuleId::MemoryRecall) {
-            return if self.process_containment { self.contained_mutation(id, input) } else { HookModuleResultV1::ok(id, Self::execute(self.service.as_ref(), self.enforcement_enabled, id, input)) };
-        }
+        // Every module runs on a worker thread under the same deadline, with
+        // a leaf-process scope installed: when the deadline fires the scope
+        // reaps any leaf helper the module started (today: git) before serial
+        // dispatch advances, and the late result is discarded. Leaf helpers
+        // carry their own socket/git bounds, so a module that starts no
+        // process can only overrun through its own bounded calls; local
+        // filesystem effects are millisecond-scale and complete or fail
+        // inside the same bounds. No child process is ever spawned: this
+        // dispatcher owns no runtime discovery and no storage beyond what the
+        // injected service supplies.
+        let scope = ContainmentScope::new();
         let (sender, receiver) = mpsc::sync_channel(1);
         let service = Arc::clone(&self.service);
         let input = input.clone();
         let enforcement_enabled = self.enforcement_enabled;
+        let worker_scope = Arc::clone(&scope);
         std::thread::spawn(move || {
-            // The only detached workers are read-only resident calls; they
-            // cannot mutate workspace or diagnostics state after timeout.
+            let _guard = ScopeGuard::install(&worker_scope);
+            // The only detached workers are this dispatch's own modules; the
+            // scope above guarantees their leaf processes die with them.
             let _ = sender.send(Self::execute(&service, enforcement_enabled, id, &input));
         });
         match receiver.recv_timeout(Duration::from_millis(HOOK_MODULE_DEADLINE_MS)) {
             Ok(output) => HookModuleResultV1::ok(id, output),
-            Err(mpsc::RecvTimeoutError::Timeout) => HookModuleResultV1::error(id, "module_deadline_exceeded"),
-            Err(mpsc::RecvTimeoutError::Disconnected) => HookModuleResultV1::error(id, "module_execution_failed"),
-        }
-    }
-
-    fn contained_mutation(&self, id: HookModuleId, input: &HookInputEnvelopeV1) -> HookModuleResultV1 {
-        let deadline = Instant::now() + Duration::from_millis(HOOK_MODULE_DEADLINE_MS);
-        let Ok(exe) = std::env::current_exe() else { return HookModuleResultV1::error(id, "module_containment_unavailable"); };
-        let Ok(payload) = serde_json::to_vec(&input.payload) else { return HookModuleResultV1::error(id, "module_containment_unavailable"); };
-        if payload.len() > MODULE_IPC_LIMIT_BYTES { return HookModuleResultV1::error(id, "module_input_too_large"); }
-        let command = { let mut command = Command::new(exe); command.arg("hook-module").arg("--id").arg(module_name(id)).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null()); command };
-        let Ok(mut process) = crate::providers::child_process::spawn_strictly_contained_command(command) else { return HookModuleResultV1::error(id, "module_containment_unavailable"); };
-        let Some(mut stdin) = process.child.stdin.take() else { process.kill_tree(); return HookModuleResultV1::error(id, "module_containment_unavailable"); };
-        let Some(stdout) = process.child.stdout.take() else { process.kill_tree(); return HookModuleResultV1::error(id, "module_containment_unavailable"); };
-        let (written, write_done) = mpsc::sync_channel(1);
-        thread::spawn(move || { let _ = written.send(stdin.write_all(&payload).is_ok()); });
-        let (read, read_done) = mpsc::sync_channel(1);
-        thread::spawn(move || { let mut output = Vec::new(); let outcome = stdout.take((MODULE_IPC_LIMIT_BYTES + 1) as u64).read_to_end(&mut output).ok().filter(|_| output.len() <= MODULE_IPC_LIMIT_BYTES).map(|_| output); let _ = read.send(outcome); });
-        loop {
-            match process.child.try_wait() {
-                Ok(Some(_)) if Instant::now() < deadline => break,
-                Ok(Some(_)) => { process.kill_tree(); let _ = write_done.recv_timeout(Duration::from_millis(50)); let _ = read_done.recv_timeout(Duration::from_millis(50)); return HookModuleResultV1::error(id, "module_deadline_exceeded"); },
-                Ok(None) if Instant::now() < deadline => thread::sleep(Duration::from_millis(5)),
-                _ => { process.kill_tree(); let _ = write_done.recv_timeout(Duration::from_millis(50)); let _ = read_done.recv_timeout(Duration::from_millis(50)); return HookModuleResultV1::error(id, "module_deadline_exceeded"); }
+            Err(mpsc::RecvTimeoutError::Timeout) => {
+                scope.kill_all();
+                // Best-effort serial isolation: give the worker a short grace
+                // window to observe the reaped leaves and return, then discard
+                // whatever arrives late. The wait is bounded; dispatch always
+                // advances.
+                let _ = receiver.recv_timeout(Duration::from_millis(500));
+                HookModuleResultV1::error(id, "module_deadline_exceeded")
+            }
+            Err(mpsc::RecvTimeoutError::Disconnected) => {
+                scope.kill_all();
+                HookModuleResultV1::error(id, "module_execution_failed")
             }
         }
-        // Root exit is not enough: it may have left a descendant holding the
-        // stdout pipe. Kill/reap the Job/process group before waiting reader.
-        process.kill_tree();
-        let remaining = deadline.saturating_duration_since(Instant::now());
-        let write_ok = write_done.recv_timeout(remaining).ok() == Some(true);
-        let output = read_done.recv_timeout(deadline.saturating_duration_since(Instant::now())).ok().flatten();
-        if !write_ok || output.is_none() { return HookModuleResultV1::error(id, if Instant::now() >= deadline { "module_deadline_exceeded" } else { "module_containment_unavailable" }); }
-        serde_json::from_slice(&output.unwrap()).unwrap_or_else(|_| HookModuleResultV1::error(id, "module_containment_unavailable"))
     }
 
     fn execute(service: &S, enforcement_enabled: bool, id: HookModuleId, input: &HookInputEnvelopeV1) -> HookModuleOutputV1 {
@@ -173,7 +160,7 @@ impl<S: NativeHookService> NativeHookRuntime<S> {
 }
 
 pub fn dispatch_native_hook(input: &HookInputEnvelopeV1, enforcement_enabled: bool) -> HookDispatchResultV1 {
-    NativeHookRuntime::new(NoNativeHookService, enforcement_enabled).with_process_containment().dispatch(input)
+    NativeHookRuntime::new(NoNativeHookService, enforcement_enabled).dispatch(input)
 }
 
 /// CLI-facing native entry point. Input normalization retains raw JSON exactly;
@@ -191,16 +178,6 @@ pub fn run_hook_payload(payload: Value) -> HookHostResponseV1 {
     }
 }
 
-/// Hidden child-only entry point used by the parent HookHost containment path.
-pub fn run_hook_module_payload(id: &str, payload: Value) -> HookModuleResultV1 {
-    let Some(id) = module_id(id) else { return HookModuleResultV1::error(HookModuleId::CortexStatus, "invalid_hook_module"); };
-    let Ok(input) = normalize_hook_payload(payload) else { return HookModuleResultV1::error(id, "invalid_hook_payload"); };
-    let enforce = crate::hook_diagnostics::fence_enforcement_enabled(&input);
-    HookModuleResultV1::ok(id, NativeHookRuntime::<NoNativeHookService>::execute(&NoNativeHookService, enforce, id, &input))
-}
-
-fn module_name(id: HookModuleId) -> &'static str { match id { HookModuleId::CortexStatus => "membrane.cortex-status", HookModuleId::MemoryRearm => "membrane.memory-rearm", HookModuleId::MemoryRecall => "membrane.memory-recall", HookModuleId::MemoryPreCompact => "membrane.memory-pre-compact", HookModuleId::MemoryPostCompact => "membrane.memory-post-compact", HookModuleId::MemoryBump => "membrane.memory-bump", HookModuleId::DiagnosticsFence => "membrane.diagnostics-fence", HookModuleId::MemoryConflict => "membrane.memory-conflict", HookModuleId::ToolObserver => "membrane.tool-observer", HookModuleId::MemoryIngest => "membrane.memory-ingest", HookModuleId::DiagnosticsObserve => "membrane.diagnostics-observe", HookModuleId::DiagnosticsCompletionFence => "membrane.diagnostics-completion-fence", HookModuleId::MemoryNag => "membrane.memory-nag", HookModuleId::MemoryFailure => "membrane.memory-failure", HookModuleId::MemoryEpisode => "membrane.memory-episode", HookModuleId::MemorySessionEnd => "membrane.memory-session-end" } }
-fn module_id(value: &str) -> Option<HookModuleId> { HookModuleId::ORDERED.into_iter().find(|id| module_name(*id) == value) }
 fn module_event_matches(id: HookModuleId, input: &HookInputEnvelopeV1) -> bool { match id {
     HookModuleId::CortexStatus | HookModuleId::MemoryRearm => is_event(input, "SessionStart"),
     HookModuleId::MemoryRecall => is_recall_event(input),

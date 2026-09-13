@@ -51,7 +51,7 @@ For landed behavior, read generated `docs/product/README.md`, `docs/architecture
 - Repository/model text cannot self-authorize.
 - Membrane never opens Blueprint SQLite directly; Blueprint never opens Cortex durable storage.
 - New documentation and current-product code use Pull / Push / Cortex / Blueprint / Ledger / Adapt. Guide is retired; legacy `guide` names exist only at explicit compatibility/history boundaries.
-- Keep explicit operations available across all six subsystems without residency; Hub or CodeRight daemon holds one installed Membrane controller for full background work, and only final holder loss drains it. CodeRight requires installer-owned Membrane: adopt compatible installed `current`, install when absent, update through canonical installer when incompatible, & never execute development runtime. See `docs/architecture/execution-lifecycle-boundary.md`.
+- Hub on always starts/adopts & holds one installed Membrane engine; accessing harnesses independently start/adopt & hold that same engine. Hub off & no harness accessing means final owner loss drains & stops engine. Login startup launches Hub, which launches Membrane; forbid independent engine autostart or scheduled restart. Keep all six subsystems accessible with Hub off through harness-owned engine access; background authorization is separate. CodeRight adopts compatible installed `current`, installs when absent, updates through canonical installer when incompatible, & never executes development runtime. See `docs/architecture/execution-lifecycle-boundary.md`.
 - Keep every explicit Blueprint operation independent of Hub, including graph inspection, refresh, build, analysis & export; auto-refresh requires an active Hub or CodeRight daemon holder. Never substitute watcher enrollment for repository authorization.
 - A capability is not landed until the production path executes it and frozen acceptance evidence shows it meets or improves the baseline it replaces.
 
@@ -67,7 +67,7 @@ Before claiming completion:
 
 - run focused tests, then relevant full suites; internal Windows Rust checks use managed RightKit, while public qualification uses pushed GitHub CI;
 - verify packet/receipt schemas together after contract changes;
-- prove Blueprint generation/schema mismatch fails closed in both Hub-hosted and bounded one-shot modes;
+- prove Blueprint generation/schema mismatch fails closed under both Hub-owned & harness-only engine lifetimes;
 - prove Pull omission, authority, freshness, sufficiency, & admission accounting;
 - prove Cortex durable-store integrity, backup/restore, & recall equivalence;
 - prove Ledger hash-bound section resolution;

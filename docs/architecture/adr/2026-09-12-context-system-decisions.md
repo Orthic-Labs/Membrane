@@ -23,11 +23,17 @@
 18. `push` is reserved as the agent-to-Membrane write operation. Initially it accepts durable memory writes only & routes them to Cortex; later typed write destinations require separate accepted decisions. Blueprint changes arise from repository edits, Ledger changes arise from document edits & Adapt remains an internal mining pipeline.
 19. A pushed memory preserves the agent-submitted body byte-for-byte in an immutable source/admission record. Cortex may add embeddings, metadata, scope, authority, lifecycle state & derived representations, but none replaces the original body. A user-directed memory write is stored as a memory rather than mislabeled as a pending proposal; Cortex still owns storage integrity, provenance, conflict & lifecycle behavior.
 20. Membrane runs one shared resident engine per OS user & canonical installed state. Chats, Hub, CodeRight, hooks & CLI clients never create another planner, store owner, watcher, embedder or subsystem runtime.
-21. Installer-owned OS supervision keeps that engine available independently of Hub or any chat. Hub & CodeRight background-holder leases authorize background work; they do not own engine lifetime.
+21. Membrane engine exists only while Hub is on or at least one harness is accessing Membrane. Hub always starts or adopts & holds the same engine, whether harnesses are active or not. A harness starts or adopts & holds that engine while accessing Membrane, whether Hub is on or not. With Hub off & no harness accessing Membrane, final owner release drains work & stops the engine/daemon. No independent engine autostart, periodic scheduled task or ownerless restart is permitted. Hub's start-at-startup option launches Hub, which always starts/holds Membrane.
 22. Claude Code & Codex connect directly to the resident engine through authenticated Streamable HTTP MCP. A stdio-only harness may use a thin forwarding client that owns no Membrane runtime or direct-store fallback.
 23. CodeRight reuses its signed native HTTP integration through a bounded connection pool, removes redundant per-operation health exchanges while preserving identity fencing & keeps its existing Windows mutation-diagnostics pipe into the same engine.
-24. Client startup may request OS activation, adopt the verified healthy owner or return typed unavailability. It never starts an alternate engine, selects another store/port or executes an ordinary operation through a one-shot local runtime.
-25. Implementation & qualification follow [single-instance Membrane](../single-instance-membrane.md), selected by Adrian on 2026-09-13. Architecture selection does not claim current runtime delivery or benchmark qualification.
+24. Hub startup & supported harness access acquire authenticated lifetime ownership through installed activation, starting the single engine only when absent or adopting its verified owner. Harness integration releases ownership when access ends; process loss/lease expiry also releases it. Closing one owner never stops an engine still held by another. Transport socket reuse is not lifetime ownership. Failed activation returns typed unavailability; it never starts an alternate engine, selects another store/port or executes an ordinary operation through a one-shot local runtime. Background-work authorization remains separate from harness access.
+25. Implementation & qualification follow [single-instance Membrane](../single-instance-membrane.md), with lifetime governed by decisions 21 & 24. The prior independently supervised, always-available lifetime wording was an assistant-authored error, not Adrian's requirement; it is superseded by this correction on 2026-09-13. Architecture correction does not claim current runtime delivery or benchmark qualification.
+
+| Hub on | Harness accessing Membrane | Required engine state |
+|---|---|---|
+| Yes | Yes or no | On: Hub starts/adopts & holds it |
+| No | Yes | On: harness starts/adopts & holds it |
+| No | No | Off after bounded shutdown; no engine/daemon remains |
 
 ## Historical decisions preserved
 

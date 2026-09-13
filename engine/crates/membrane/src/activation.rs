@@ -612,8 +612,22 @@ fn deactivate_with_residency(
         .then(|| acquire_lock(product_root))
         .transpose()?;
     if !options.dry_run && would_stop {
+        // Explicit-stop semantics: this operator-requested shutdown is not a
+        // crash. Mark supervision clean before terminating the engine so the
+        // next supervised start does not count it toward suppression.
+        // Dry runs never touch supervision state.
+        crate::supervision::mark_clean(product_root)
+            .map_err(|error| format!("mark explicit stop clean: {error}"))?;
         request_resident_replacement(&tray, &workspace_root, port)?;
         wait_for_shutdown(port, &expected_generation, options.timeout)?;
+        // Port-quiet is not handle-quiet: a dying resident closes its
+        // listener before a large process image finishes tearing down, and
+        // Windows refuses to replace an executable (or a loaded DLL) with
+        // open handles. Wait for the installed tree to become replaceable
+        // (bounded) so the installer's extract phase cannot race a lingering
+        // image — and so rapid one-shot probes cannot hold files open
+        // across the cutover either.
+        wait_for_tree_release(&version_root, options.timeout)?;
     }
 
     let clients = deactivate_clients(&membrane_client, &options.clients, options.dry_run, run_client)?;
@@ -942,9 +956,13 @@ fn hidden_status(program: &str, args: &[String]) -> Result<(), String> {
 
 #[cfg(windows)]
 fn request_windows_supervisor(engine: &Path, workspace_root: &Path) -> Result<(), String> {
-    let supervision = workspace_root.join("tools/.cache/memory/engine-supervision.json");
-    if let Some(parent) = supervision.parent() { std::fs::create_dir_all(parent).map_err(|error| format!("create supervision state: {error}"))?; }
-    std::fs::write(&supervision, format!("{{\"schemaVersion\":1,\"clean\":true,\"failures\":0,\"observedAtUnixMs\":{}}}\n", now_unix_ms()))
+    // Supported suppression reset: clear the failure counter and re-enable
+    // the task in the same activation that recreates it, so a previously
+    // suppressed restart recovers without operator surgery.
+    let product_root = workspace_root
+        .parent()
+        .ok_or_else(|| "installed state has no product root".to_string())?;
+    crate::supervision::reset(product_root)
         .map_err(|error| format!("reset supervision state: {error}"))?;
     let action = format!("\"{}\" --os-supervised", engine.display());
     hidden_status("schtasks.exe", &[
@@ -954,6 +972,10 @@ fn request_windows_supervisor(engine: &Path, workspace_root: &Path) -> Result<()
     ])?;
     let script = "$s=New-Object -ComObject 'Schedule.Service';$s.Connect();$f=$s.GetFolder('\\');$t=$f.GetTask('Membrane Engine');$d=$t.Definition;$d.Settings.MultipleInstances=2;$d.Settings.ExecutionTimeLimit='PT0S';$d.Settings.DisallowStartIfOnBatteries=$false;$d.Settings.StopIfGoingOnBatteries=$false;$d.Settings.StartWhenAvailable=$true;$null=$f.RegisterTaskDefinition('Membrane Engine',$d,6,$null,$null,3)";
     hidden_status("powershell.exe", &["-NoLogo".into(), "-NoProfile".into(), "-NonInteractive".into(), "-Command".into(), script.into()])?;
+    // Re-creating a suppressed task must leave it enabled: /Create /F keeps
+    // a prior Disabled state, which would look like the suppression survived
+    // the reset above.
+    hidden_status("schtasks.exe", &["/Change".into(), "/TN".into(), WINDOWS_SUPERVISOR_TASK.into(), "/Enable".into()])?;
     hidden_status("schtasks.exe", &["/Run".into(), "/TN".into(), WINDOWS_SUPERVISOR_TASK.into()])
 }
 
@@ -1073,6 +1095,55 @@ fn wait_for_shutdown(
         }
         std::thread::sleep(POLL_INTERVAL);
     }
+}
+
+/// Wait until every file under the installed version tree can be opened for
+/// writing (bounded), i.e. no lingering process — resident or rapid one-shot
+/// probe — still holds an image or DLL handle that would make the
+/// installer's extract phase fail. Fails closed on timeout so deactivation
+/// never reports a stop it did not fully achieve. Missing files are already
+/// replaceable; running images and loaded DLLs deny write sharing on
+/// Windows, which is exactly the signal probed here.
+fn wait_for_tree_release(root: &Path, timeout: Duration) -> Result<(), String> {
+    let deadline = Instant::now() + timeout;
+    loop {
+        match first_locked_file(root) {
+            None => return Ok(()),
+            Some(path) if Instant::now() >= deadline => {
+                return Err(format!(
+                    "installed tree still locked after {}ms: {}",
+                    timeout.as_millis(),
+                    path.display()
+                ));
+            }
+            _ => std::thread::sleep(POLL_INTERVAL),
+        }
+    }
+}
+
+fn first_locked_file(root: &Path) -> Option<PathBuf> {
+    let mut stack = vec![root.to_path_buf()];
+    while let Some(current) = stack.pop() {
+        let Ok(metadata) = std::fs::symlink_metadata(&current) else {
+            continue;
+        };
+        if metadata.file_type().is_symlink() {
+            continue;
+        }
+        if metadata.is_dir() {
+            let Ok(entries) = std::fs::read_dir(&current) else {
+                continue;
+            };
+            stack.extend(entries.filter_map(|entry| entry.ok().map(|entry| entry.path())));
+            continue;
+        }
+        if metadata.is_file()
+            && std::fs::OpenOptions::new().write(true).open(&current).is_err()
+        {
+            return Some(current);
+        }
+    }
+    None
 }
 
 fn wait_for_health(
@@ -1789,18 +1860,23 @@ const CODEX_HOOK_EVENTS: &[&str] = &[
 
 fn reconcile_owned_hook_events(
     hooks: &mut serde_json::Map<String, serde_json::Value>,
-    events: &[&str], command: &str, codex: bool,
+    events: &[&str], command: &str, legacy_command: &str, codex: bool,
 ) -> Result<(), String> {
     for &event in events {
         let entries = hooks.entry(event).or_insert_with(|| serde_json::json!([])).as_array_mut()
             .ok_or_else(|| format!("{event} hooks must be an array"))?;
         replace_legacy_hook_commands(entries, command);
-        // Remove only this installed command, including stale matchers/timeouts.
-        // Recreate one complete owned group; foreign items/metadata survive.
+        // Remove the current installed command (including stale
+        // matchers/timeouts) and the obsolete engine-direct command from the
+        // transport migration. Recreate one complete owned group; foreign
+        // items/metadata survive.
         entries.retain_mut(|entry| {
             if let Some(items) = entry.get_mut("hooks").and_then(serde_json::Value::as_array_mut) {
                 let before = items.len();
-                items.retain(|item| item.get("command").and_then(serde_json::Value::as_str) != Some(command));
+                items.retain(|item| {
+                    let current = item.get("command").and_then(serde_json::Value::as_str);
+                    current != Some(command) && current != Some(legacy_command)
+                });
                 if before != items.len() && items.is_empty() {
                     return !entry.as_object().is_some_and(|object| object.keys().all(|key| matches!(key.as_str(), "hooks" | "matcher")));
                 }
@@ -1818,8 +1894,9 @@ fn reconcile_owned_hook_events(
 }
 
 fn reconcile_codex_hooks_at(path: &Path, install_root: &Path) -> Result<(), String> {
-    require_file(&install_root.join(executable_name("membrane")), "installed native Codex hook executable")?;
+    require_file(&install_root.join(executable_name("membrane-client")), "installed transport Codex hook executable")?;
     let command = installed_hook_command(install_root);
+    let legacy = legacy_engine_hook_command(install_root);
     let mut config: serde_json::Value = if path.is_file() {
         serde_json::from_slice(&std::fs::read(path).map_err(|e| format!("read Codex hooks: {e}"))?)
             .map_err(|e| format!("parse Codex hooks: {e}"))?
@@ -1827,7 +1904,7 @@ fn reconcile_codex_hooks_at(path: &Path, install_root: &Path) -> Result<(), Stri
     let root = config.as_object_mut().ok_or_else(|| "Codex hooks root must be an object".to_string())?;
     let hooks = root.entry("hooks").or_insert_with(|| serde_json::json!({})).as_object_mut()
         .ok_or_else(|| "Codex hooks must be an object".to_string())?;
-    reconcile_owned_hook_events(hooks, CODEX_HOOK_EVENTS, &command, true)?;
+    reconcile_owned_hook_events(hooks, CODEX_HOOK_EVENTS, &command, &legacy, true)?;
     let parent = path.parent().ok_or_else(|| "Codex hooks path has no parent".to_string())?;
     std::fs::create_dir_all(parent).map_err(|e| format!("create Codex hooks directory: {e}"))?;
     let staged = path.with_extension(format!("json.{}.partial", std::process::id()));
@@ -1841,7 +1918,8 @@ fn remove_codex_hooks(install_root: &Path, dry_run: bool) -> Result<usize, Strin
     if !path.is_file() { return Ok(0); }
     let original = std::fs::read(&path).map_err(|e| format!("read Codex hooks: {e}"))?;
     let mut config: serde_json::Value = serde_json::from_slice(&original).map_err(|e| format!("parse Codex hooks: {e}"))?;
-    let removed = remove_exact_hook_items(&mut config, &installed_hook_command(install_root));
+    let removed = remove_exact_hook_items(&mut config, &installed_hook_command(install_root))
+        + remove_exact_hook_items(&mut config, &legacy_engine_hook_command(install_root));
     if removed == 0 || dry_run { return Ok(removed); }
     let staged = path.with_extension(format!("json.{}.partial", std::process::id()));
     std::fs::write(&staged, serde_json::to_vec_pretty(&config).map_err(|e| format!("serialize Codex hooks: {e}"))?)
@@ -1867,10 +1945,11 @@ fn reconcile_claude_hooks_at(settings_path: &Path, install_root: &Path) -> Resul
         serde_json::json!({})
     };
     require_file(
-        &install_root.join(executable_name("membrane")),
-        "installed native Claude hook executable",
+        &install_root.join(executable_name("membrane-client")),
+        "installed transport Claude hook executable",
     )?;
     let command = installed_hook_command(install_root);
+    let legacy = legacy_engine_hook_command(install_root);
     let root = settings
         .as_object_mut()
         .ok_or_else(|| "Claude settings root must be an object".to_string())?;
@@ -1879,7 +1958,7 @@ fn reconcile_claude_hooks_at(settings_path: &Path, install_root: &Path) -> Resul
         .or_insert_with(|| serde_json::json!({}))
         .as_object_mut()
         .ok_or_else(|| "Claude settings hooks must be an object".to_string())?;
-    reconcile_owned_hook_events(hooks, CLAUDE_HOOK_EVENTS, &command, false)?;
+    reconcile_owned_hook_events(hooks, CLAUDE_HOOK_EVENTS, &command, &legacy, false)?;
     let parent = settings_path
         .parent()
         .ok_or_else(|| "Claude settings path has no parent".to_string())?;
@@ -1896,7 +1975,19 @@ fn reconcile_claude_hooks_at(settings_path: &Path, install_root: &Path) -> Resul
         .map_err(|error| format!("promote Claude settings: {error}"))
 }
 
+/// Ordinary hook dispatch lives in the resident engine behind `/hook`; hosts
+/// invoke it through the transport-only `membrane-client`, which forwards one
+/// HookHost envelope per process and never constructs runtime state. The
+/// engine binary is never a host hook binding.
 fn installed_hook_command(install_root: &Path) -> String {
+    let client = install_root.join(executable_name("membrane-client"));
+    format!("\"{}\" hook", client.display())
+}
+
+/// Obsolete host binding from before hook dispatch moved behind the resident
+/// `/hook` route. Reconcile removes it wherever the current client command is
+/// installed; deactivation removes both.
+fn legacy_engine_hook_command(install_root: &Path) -> String {
     let membrane = install_root.join(executable_name("membrane"));
     format!("\"{}\" hook", membrane.display())
 }
@@ -1959,7 +2050,8 @@ fn remove_claude_hooks_at(
         .map_err(|error| format!("read Claude settings {}: {error}", settings_path.display()))?;
     let mut settings: serde_json::Value = serde_json::from_slice(&original)
         .map_err(|error| format!("parse Claude settings {}: {error}", settings_path.display()))?;
-    let removed = remove_exact_hook_items(&mut settings, &installed_hook_command(install_root));
+    let removed = remove_exact_hook_items(&mut settings, &installed_hook_command(install_root))
+        + remove_exact_hook_items(&mut settings, &legacy_engine_hook_command(install_root));
     if removed == 0 || dry_run {
         return Ok(removed);
     }
@@ -2918,6 +3010,24 @@ mod tests {
     }
 
     #[test]
+    fn tree_release_treats_missing_and_idle_trees_as_replaceable() {
+        // Missing trees are vacuously replaceable.
+        wait_for_tree_release(
+            Path::new(r"C:\__membrane_no_such_tree__"),
+            Duration::from_millis(50),
+        )
+        .expect("missing tree must be replaceable");
+        // An idle temp tree with plain files opens for writing everywhere.
+        let directory = tempfile::tempdir().unwrap();
+        std::fs::write(directory.path().join("a.txt"), b"x").unwrap();
+        std::fs::create_dir(directory.path().join("sub")).unwrap();
+        std::fs::write(directory.path().join("sub/b.txt"), b"y").unwrap();
+        wait_for_tree_release(directory.path(), Duration::from_millis(500))
+            .expect("idle tree must be replaceable");
+        assert!(first_locked_file(directory.path()).is_none());
+    }
+
+    #[test]
     fn startup_lock_rejects_live_owner_and_recovers_abandoned_owner() {
         let root = std::env::temp_dir().join(format!(
             "membrane-activation-lock-test-{}-{}",
@@ -2962,11 +3072,13 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let install = directory.path().join("current");
         std::fs::create_dir_all(&install).unwrap();
-        std::fs::write(install.join(executable_name("membrane")), b"native").unwrap();
+        std::fs::write(install.join(executable_name("membrane-client")), b"native").unwrap();
         let path = directory.path().join("hooks.json");
         let foreign = r#"C:\Other\hook.exe hook"#;
+        let legacy = legacy_engine_hook_command(&install);
         let config = serde_json::json!({"hooks":{"UserPromptSubmit":[
             {"hooks":[{"type":"command","command":foreign}]},
+            {"hooks":[{"type":"command","command":legacy}]},
             {"hooks":[{"type":"command","command":installed_hook_command(&install)}]},
             {"hooks":[{"type":"command","command":installed_hook_command(&install)}]}
         ]}});
@@ -2978,6 +3090,9 @@ mod tests {
         let owned = entries.iter().flat_map(|entry| entry["hooks"].as_array().into_iter().flatten())
             .filter(|item| item["command"] == installed_hook_command(&install)).count();
         assert_eq!(owned, 1);
+        // The obsolete engine-direct hook binding is migrated away, never kept.
+        assert!(!entries.iter().flat_map(|entry| entry["hooks"].as_array().into_iter().flatten())
+            .any(|item| item["command"] == legacy));
         assert!(entries.iter().any(|entry| entry["hooks"].as_array().unwrap().iter().any(|item| item["command"] == foreign)));
         for &event in CODEX_HOOK_EVENTS {
             let owned: Vec<_> = after["hooks"][event].as_array().unwrap().iter()
@@ -2996,7 +3111,7 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let install = directory.path().join("current");
         std::fs::create_dir_all(&install).unwrap();
-        std::fs::write(install.join(executable_name("membrane")), b"native").unwrap();
+        std::fs::write(install.join(executable_name("membrane-client")), b"native").unwrap();
         let path = directory.path().join("settings.json");
         let foreign = r#"C:\Other\hook.exe hook"#;
         let command = installed_hook_command(&install);

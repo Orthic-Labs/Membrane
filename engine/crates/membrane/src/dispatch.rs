@@ -105,10 +105,9 @@ enum Command {
     /// JSON-RPC over stdio for MCP clients.
     StdioMcp(StdioArgs),
     /// Run one HookHost event from stdin & emit one HookHost response on stdout.
+    /// Ordinary dispatch runs every module in-process; no private worker
+    /// subcommand exists because no `hook-module` child is ever spawned.
     Hook,
-    /// Private process-containment worker; never installed as a host binding.
-    #[command(hide = true)]
-    HookModule(HookModuleArgs),
     /// MBR-203: transactional install against a scratch `MEMBRANE_ROOT`.
     Install(InstallArgs),
     /// MBR-205: ownership-safe uninstall. The default plan is to refuse
@@ -141,12 +140,6 @@ struct StdioArgs {
     /// JSON-RPC, which is what every MCP client expects today.
     #[arg(long, default_value = "jsonl")]
     framing: String,
-}
-
-#[derive(Debug, clap::Args)]
-struct HookModuleArgs {
-    #[arg(long)]
-    id: String,
 }
 
 /// MBR-203: install subcommand arguments. The binary accepts an optional
@@ -461,12 +454,6 @@ where
             uninstall: None,
             activation: None,
             migration: None, init: None,
-        },
-        Command::HookModule(args) => ParsedInvocation {
-            mode: MembraneMode::Hook,
-            cli_tail: vec![args.id],
-            framing: String::new(), port: 0, install: None, uninstall: None,
-            activation: None, migration: None, init: None,
         },
         Command::Install(args) => ParsedInvocation {
             mode: MembraneMode::Install,

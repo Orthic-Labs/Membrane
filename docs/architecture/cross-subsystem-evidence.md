@@ -28,9 +28,9 @@ The main decisions are:
 [Explicit execution & resident lifecycle](execution-lifecycle-boundary.md) governs every subsystem & client:
 
 - Explicit agent operations remain available with Hub on or off through installed product services.
-- One installed Membrane controller owns background processes; Hub or CodeRight daemon holds its lifetime, & only final holder loss drains it.
+- Hub always starts/adopts & holds one installed Membrane engine while on; accessing harnesses can independently hold that same engine. Only final owner loss drains & stops it.
 - MCP, CLI & CodeRight reuse canonical authorization, storage owners, freshness, generation/schema checks & request budgets.
-- With neither resident holder active, explicit execution is bounded & leaves no automatic process behind. CodeRight daemon holds full residency independently of Hub UI.
+- With Hub off & no harness accessing, no Membrane engine remains after bounded drain. Harness access can activate engine without Hub; background authorization remains separate. Login startup launches Hub, which launches Membrane; no independent engine scheduled restart or autostart is permitted.
 - A failed response after dispatch must not silently replay a possibly completed write.
 - CodeRight consumes installed Membrane operations; it does not implement another backend.
 
@@ -659,18 +659,22 @@ These motivate hypotheses and workflow patterns. Membrane's own frozen evaluatio
 
 # Appendix A — Runtime lifecycle test matrix (required)
 
-This matrix is a hard gate for the tray-daemon/Blueprint lifecycle. Every row is an
+This matrix is a hard gate for Hub/harness-owned engine & Blueprint lifecycle. Every row is an
 installed-artifact test, not a unit test.
 
 | Scenario | Required result |
 |---|---|
-| Tray off, agent invokes Membrane | explicit operation executes through installed service owners & bounded work; no automatic resident process starts |
-| Tray on | visible tray plus one headless child daemon; Hub dashboard optional and on demand |
-| Tray quits | daemon disappears with tray; no orphan, no restart |
-| Agent launches stdio MCP | adapter accepts explicit work; request-scoped execution may run, but never starts watchers or a replacement daemon |
-| Tray off, explicit Blueprint query | bounded one-shot operation runs, reports generation + freshness, exits |
-| Tray off, normal Membrane context request | planner returns authorized context using canonical storage & bounded Blueprint evidence retrieval |
+| Hub off, harness accesses Membrane | trusted integration starts/adopts & holds one installed engine for access lifetime; access alone does not authorize background watchers |
+| Hub on, harness absent or present | Hub always holds one engine; all harnesses attach to it; dashboard remains on demand |
+| Hub quits, harness still accessing | same engine stays alive under harness ownership |
+| Final harness releases, Hub still on | same engine stays alive under Hub ownership |
+| Hub off, final harness access ends | bounded drain completes & engine exits; no ownerless restart |
+| Agent launches stdio MCP | transport-only adapter acquires verified harness access & forwards to shared engine; it owns no subsystem runtime or stores |
+| Hub off, explicit Blueprint query | query uses harness-owned shared engine, reports generation + freshness; final owner release stops engine |
+| Hub off, normal Membrane context request | planner returns authorized context inside harness-owned shared engine |
 | Tray on, one-shot Blueprint writer attempted | routes through the owner or fails `resident_owner_active`; never a second writer |
-| Crashed tray or daemon | stale lease metadata cannot permanently lock the Blueprint store; OS lock semantics release it |
+| Crashed Hub or harness | process loss or bounded lease expiry releases its ownership; surviving owners retain engine; final owner loss stops it |
+| Crashed engine | OS singleton lock releases; surviving owner can restart once; no owner means no restart |
 | Blueprint graph queried after source changed | freshness reports `changed_since_generation`, not silent success |
-| OS login with tray disabled | no Membrane and no Blueprint resident processes exist |
+| OS login with Hub startup disabled & no harness access | no Membrane engine or Blueprint resident processes exist |
+| OS login with Hub startup enabled | login launches Hub; Hub launches & holds one engine |

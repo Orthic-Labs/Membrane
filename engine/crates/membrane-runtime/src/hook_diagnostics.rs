@@ -23,15 +23,11 @@ use sha2::{Digest, Sha256};
 const STATUS_DEADLINE_MS: u64 = 800;
 const WRITE_DEADLINE_MS: u64 = 1_200;
 // Must stay strictly above membrane_protocol::hook::HOOK_MODULE_DEADLINE_MS
-// (3_000ms). `bounded_git`'s own timeout only calls a plain `Child::kill()`
-// with no job-object/process-group containment, so it cannot reap a
-// detached descendant holding the piped stdout open. If this inner bound
-// were shorter than (or equal to) the outer per-module deadline, the git
-// subprocess would always be killed and return first, and the outer
-// module-level timeout-and-reap path in membrane-runtime/src/hook.rs would
-// never fire for git-based fences -- leaving leaked descendants unreaped.
-// Keeping this bound longer lets the outer deadline win the race so the
-// Job-tree-wide reap in the outer path remains reachable in production.
+// (3_000ms). The outer per-module deadline in membrane-runtime/src/hook.rs
+// wins the race and reaps the leaf scope (Job-object/process-group wide), so
+// a git-based fence that overruns is terminated with its descendants before
+// serial dispatch advances. This inner bound only covers a git that outlives
+// even that path.
 const GIT_DEADLINE_MS: u64 = 8_500;
 const GIT_OUTPUT_LIMIT_BYTES: usize = 2 * 1024 * 1024;
 const _GIT_DEADLINE_STAYS_BELOW_MODULE_DEADLINE_FOR_OUTER_REAP: () =
@@ -558,11 +554,41 @@ fn changed_paths_from_git(root: &Path) -> Option<Vec<String>> {
     Some(paths.into_iter().collect())
 }
 fn bounded_git(root: &Path, args: &[&str]) -> Option<Vec<u8>> {
-    let mut child = Command::new("git").args(args).current_dir(root).stdin(Stdio::null()).stderr(Stdio::null()).stdout(Stdio::piped()).spawn().ok()?;
-    let mut stdout = child.stdout.take()?;
-    let reader = thread::spawn(move || { let mut bytes = Vec::new(); let mut limited = stdout.by_ref().take((GIT_OUTPUT_LIMIT_BYTES + 1) as u64); limited.read_to_end(&mut bytes).ok().filter(|_| bytes.len() <= GIT_OUTPUT_LIMIT_BYTES).map(|_| bytes) });
+    // Bounded leaf helper: the git child joins this thread's active leaf
+    // scope (when hook dispatch installed one) under strict Job/process-group
+    // containment, so a module-deadline reap terminates the whole tree —
+    // including detached descendants holding the piped stdout open. No
+    // `membrane.exe` re-entry is involved: this helper owns no runtime and no
+    // storage, only the child handle plus the deadline below.
+    let mut command = Command::new("git");
+    command.args(args).current_dir(root).stdin(Stdio::null()).stderr(Stdio::null()).stdout(Stdio::piped());
+    let shared = crate::providers::child_process::spawn_tracked_contained_command(command).ok()?;
+    let stdout = { shared.lock().ok()?.child.stdout.take()? };
+    let reader = thread::spawn(move || { let mut bytes = Vec::new(); let mut limited = stdout.take((GIT_OUTPUT_LIMIT_BYTES + 1) as u64); limited.read_to_end(&mut bytes).ok().filter(|_| bytes.len() <= GIT_OUTPUT_LIMIT_BYTES).map(|_| bytes) });
     let deadline = Instant::now() + Duration::from_millis(GIT_DEADLINE_MS);
-    loop { match child.try_wait() { Ok(Some(status)) if status.success() => break, Ok(Some(_)) | Err(_) => { let _ = child.kill(); let _ = reader.join(); return None; }, Ok(None) if Instant::now() < deadline => thread::sleep(Duration::from_millis(5)), Ok(None) => { let _ = child.kill(); let _ = child.wait(); let _ = reader.join(); return None; } } }
+    loop {
+        let status = match shared.lock() {
+            Ok(mut guard) => guard.child.try_wait(),
+            Err(poison) => poison.into_inner().child.try_wait(),
+        };
+        match status {
+            Ok(Some(status)) if status.success() => break,
+            Ok(Some(_)) | Err(_) => {
+                if let Ok(mut guard) = shared.lock() { guard.kill_tree(); }
+                let _ = reader.join();
+                crate::providers::child_process::untrack_contained_command(&shared);
+                return None;
+            }
+            Ok(None) if Instant::now() < deadline => thread::sleep(Duration::from_millis(5)),
+            Ok(None) => {
+                if let Ok(mut guard) = shared.lock() { guard.kill_tree(); }
+                let _ = reader.join();
+                crate::providers::child_process::untrack_contained_command(&shared);
+                return None;
+            }
+        }
+    }
+    crate::providers::child_process::untrack_contained_command(&shared);
     reader.join().ok().flatten()
 }
 fn normalize_changed_path(_root: &Path, candidate: &str) -> Option<String> {

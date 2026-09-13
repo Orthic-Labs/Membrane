@@ -1,0 +1,5 @@
+codex --version => codex-cli 0.154.0
+resolved executable => C:\Users\adrds\AppData\Local\OpenAI\Codex\bin\7ac07f4ce733f89a\codex.exe
+config => C:\Users\adrds\.codex\config.toml
+Membrane registration => [mcp_servers.membrane], command=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\current\membrane.exe, args=["stdio-mcp"]
+hook/lifecycle key search => no match

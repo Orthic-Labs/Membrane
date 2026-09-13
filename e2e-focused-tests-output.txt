@@ -1,0 +1,44 @@
+✔ BM09: extracts exactly eight descriptor blocks from well-formed source (0.8935ms)
+✔ BM09: passes when all eight points carry every required field (0.9526ms)
+✔ BM09 negative control Z17: a descriptor lacking when_not_to_use fails (0.4136ms)
+✔ BM09 negative control Z18: a point missing freshness/budget/dedup/suppression/receipt fails (0.2804ms)
+✔ BM09 negative control: a missing injection point (fewer than eight) fails (0.2683ms)
+✔ BM11: passes on a well-formed minimal corpus (15.3618ms)
+✔ BM11 negative control Z20: corpus fixture path undefined fails (0.3667ms)
+✔ BM11 negative control: a task without matching expected evidence fails (3.0156ms)
+✔ BM11 negative control: empty correctnessCriteria fails (no independently authored evidence) (8.6403ms)
+✔ BM11 negative control: invalid primaryMetric (inferred/unsupported causality shape) fails (7.7001ms)
+✔ BM11: the real fixture corpus at its frozen path passes structurally (0.5228ms)
+✔ BM09: the real membrane-protocol hook.rs source passes structurally (0.4712ms)
+✔ BM09: configured installed probe is required and fails closed when binary is absent (0.4355ms)
+✔ BM11: configured installed probe is required and fails closed when binary is absent (0.6355ms)
+✔ MEM registry coverage: every windows-acceptance mem-windows row has a named export (0.1346ms)
+✔ MEM installed binding requires release manifest/hash/generation/target agreement (14.4879ms)
+✔ MEM installed binding rejects non-canonical checkout paths (1.4175ms)
+✔ MEM installed binding rejects a build from a different source revision (1.7508ms)
+✔ MEM installed row probe binds native MCP discovery to one installed identity (2.1375ms)
+✔ MEM-004 installed probe requires typed denial for an unenrolled caller (2.2592ms)
+ok - registry declares the six canonical clients
+ok - every client has a non-empty, lowercase snake_case id
+ok - every client declares a transport and a discovery_method
+ok - (a) every client is discoverable through at least one transport
+ok - (b) every supported_operations reference resolves to a real operation
+ok - (b) every degraded_operations reference resolves to a real operation
+ok - no operation appears in both supported_operations and degraded_operations for the same client
+ok - every client declares an authority_grant with max_level and loopback_only
+ok - (c) the generated matrix is byte-stable across two runs
+ok - (c) the generated matrix has the cartesian product cells
+ok - (c) the artifacts written to disk match the in-memory build
+ok - matrix clients and operations arrays match the registry and the index
+client-matrix self-test: 12/12 passed
+✔ tests\clients\client-matrix.test.mjs (73.4841ms)
+✔ passes only a matching complete Mac receipt (13.4912ms)
+✔ fails closed on stale generation, duplicate traces, or missing archive (12.179ms)
+ℹ tests 23
+ℹ suites 0
+ℹ pass 23
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 148.1491

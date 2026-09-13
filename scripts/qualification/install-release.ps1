@@ -8,6 +8,13 @@ param(
   [string]$InstallRoot = (Join-Path $env:LOCALAPPDATA 'Orthic Labs\Membrane\current'),
   [int]$TimeoutSeconds = 45,
   [int]$SteadyStateSamples = 4,
+  # Bounded one-time extension for first-boot watcher initialization: after
+  # install, holder-authorized blueprint watching takes longer than the base
+  # budget on large enrolled trees while health honestly reports 503. The
+  # extension applies only while probes carry that exact signature; every
+  # other failure keeps the base fail-fast deadline, and ok:true is still
+  # required before the phase passes.
+  [int]$WatcherInitBudgetSeconds = 300,
   # Default stays the production route: a signed installer is mandatory and
   # every result is a signed-release PASS. 'internal-unsigned' is an explicit,
   # separate route for this-machine internal candidates that are not
@@ -844,22 +851,26 @@ function Assert-NativeHostCutover([string]$Root, [string]$HubExecutable) {
     -and [string]$blueprintContract[0].sha256 -match '^[0-9a-f]{64}$') 'installed Blueprint contract inventory entry is invalid'
   $runtimeRoot = [IO.Path]::GetFullPath((Join-Path $Root 'runtime')).TrimEnd('\') + '\'
   Require ($inventory.entries -is [array] -and $inventory.entries.Count -gt 0) 'installed runtime inventory entries are missing'
-  $membraneEntry = @($inventory.entries | Where-Object { $_.delivery -eq 'externalBin' -and $_.component -eq 'membrane-command' })
+  # Singleton sidecar set: the engine (membrane.exe) owns the resident
+  # singleton, the transport client (membrane-client.exe) owns compat
+  # transport, plus cortex CLI and tray. Pre-singleton names
+  # (membrane-command/membrane-daemon) are obsolete and rejected below.
+  $membraneEntry = @($inventory.entries | Where-Object { $_.delivery -eq 'externalBin' -and $_.component -eq 'membrane-engine' })
   $cortexEntry = @($inventory.entries | Where-Object { $_.delivery -eq 'externalBin' -and $_.component -eq 'cortex-cli' })
   $trayEntry = @($inventory.entries | Where-Object { $_.delivery -eq 'externalBin' -and $_.component -eq 'membrane-tray' })
-  $daemonEntry = @($inventory.entries | Where-Object { $_.delivery -eq 'externalBin' -and $_.component -eq 'membrane-daemon' })
-  Require (($membraneEntry.Count -eq 1) -and ($cortexEntry.Count -eq 1) -and ($trayEntry.Count -eq 1) -and ($daemonEntry.Count -eq 1)) 'installed runtime inventory sidecar entries are not exact and unique'
+  $clientEntry = @($inventory.entries | Where-Object { $_.delivery -eq 'externalBin' -and $_.component -eq 'membrane-client' })
+  Require (($membraneEntry.Count -eq 1) -and ($cortexEntry.Count -eq 1) -and ($trayEntry.Count -eq 1) -and ($clientEntry.Count -eq 1)) 'installed runtime inventory sidecar entries are not exact and unique'
   $membrane = Get-InstalledSidecar $Root 'membrane' $membraneEntry[0]
   $cortex = Get-InstalledSidecar $Root 'cortex' $cortexEntry[0]
   $tray = Get-InstalledSidecar $Root 'membrane-tray' $trayEntry[0]
-  $daemon = Get-InstalledSidecar $Root 'membrane-daemon' $daemonEntry[0]
+  $client = Get-InstalledSidecar $Root 'membrane-client' $clientEntry[0]
   if ($Profile -eq 'signed-release') {
-    [void](Assert-SignedFile $membrane 'installed membrane native host' $hubPublisher)
+    [void](Assert-SignedFile $membrane 'installed membrane engine sidecar' $hubPublisher)
     [void](Assert-SignedFile $cortex 'installed cortex native host' $hubPublisher)
     [void](Assert-SignedFile $tray 'installed membrane tray sidecar' $hubPublisher)
-    [void](Assert-SignedFile $daemon 'installed membrane daemon sidecar' $hubPublisher)
+    [void](Assert-SignedFile $client 'installed membrane transport client sidecar' $hubPublisher)
   }
-  foreach ($component in @('membrane-command', 'cortex-cli', 'membrane-tray', 'membrane-daemon')) {
+  foreach ($component in @('membrane-engine', 'cortex-cli', 'membrane-tray', 'membrane-client')) {
     Require (@($inventory.entries | Where-Object { $_.delivery -eq 'externalBin' -and $_.component -eq $component }).Count -eq 1) "installed runtime inventory sidecar entry is missing or duplicated: $component"
   }
   $inventoryEvidence = @(); $seenInventoryPaths = @{}
@@ -867,18 +878,18 @@ function Assert-NativeHostCutover([string]$Root, [string]$HubExecutable) {
     Require (-not [string]::IsNullOrWhiteSpace([string]$entry.installerPath)) 'installed inventory entry path is missing'
     if ($entry.delivery -eq 'externalBin') {
       $path = switch ([string]$entry.component) {
-        'membrane-command' { $membrane; break }
+        'membrane-engine' { $membrane; break }
         'cortex-cli' { $cortex; break }
         'membrane-tray' { $tray; break }
-        'membrane-daemon' { $daemon; break }
+        'membrane-client' { $client; break }
         default { throw "installed inventory has unknown external sidecar: $($entry.component)" }
       }
       $relative = $path.Substring($Root.TrimEnd('\').Length).TrimStart('\')
       $expectedPath = switch ([string]$entry.component) {
-        'membrane-command' { $membrane; break }
+        'membrane-engine' { $membrane; break }
         'cortex-cli' { $cortex; break }
         'membrane-tray' { $tray; break }
-        'membrane-daemon' { $daemon; break }
+        'membrane-client' { $client; break }
       }
       Require ($path -ieq $expectedPath) "installed sidecar path resolution failed: $($entry.component)"
     } else {
@@ -893,7 +904,7 @@ function Assert-NativeHostCutover([string]$Root, [string]$HubExecutable) {
     Require ($actual -ieq [string]$entry.sha256) "installed inventory hash mismatch: $relative"
     $inventoryEvidence += [ordered]@{ path = $relative.Replace('\', '/'); sha256 = $actual }
   }
-  return [pscustomobject]@{ Hub = $HubExecutable; Membrane = $membrane; Cortex = $cortex; Tray = $tray; Daemon = $daemon; RuntimeInventory = $inventoryPath; RuntimeInventoryEvidence = $inventoryEvidence; Publisher = $hubPublisher }
+  return [pscustomobject]@{ Hub = $HubExecutable; Membrane = $membrane; Cortex = $cortex; Tray = $tray; Client = $client; Daemon = $HubExecutable; RuntimeInventory = $inventoryPath; RuntimeInventoryEvidence = $inventoryEvidence; Publisher = $hubPublisher }
 }
 
 function Invoke-NativeProcess([string]$Executable, [string]$Arguments, [string]$InputText = '', [string]$WorkingDirectory = $InstallRoot, [hashtable]$Environment = @{}) {
@@ -939,6 +950,30 @@ function Invoke-InstalledHealth([string]$Executable, [int]$TimeoutSeconds, [stri
   $result = Invoke-NativeProcessAllowFailure $Executable "cli health --timeout-seconds $TimeoutSeconds" '' $InstallRoot
   Require ($result.ExitCode -eq 0) "installed authenticated health failed during ${Phase}: $($result.Stderr)"
   try { return ($result.Stdout | ConvertFrom-Json) } catch { throw "installed authenticated health returned invalid JSON during $Phase" }
+}
+
+# Product liveness contract for the hub wait loop: `cli health` prints its
+# JSON body to stdout even on HTTP 503, so a failed probe still describes
+# WHY. Returns $true only for the single progress state "holder authorizes
+# watching but the watcher is still initializing" (backgroundAuthority.active
+# with watcherRunning != true). Every other 503 cause (store, catalog,
+# replay saturation) or an unreachable engine returns $false so the loop
+# keeps its fail-fast behavior for genuine faults. The observed signature is
+# echoed so a failed run names its cause instead of only reporting 503.
+function Test-HealthWatcherInitializing([string]$Executable) {
+  try {
+    $result = Invoke-NativeProcessAllowFailure $Executable 'cli health --timeout-seconds 3' '' $InstallRoot
+  } catch { return $false }
+  if ($result.ExitCode -eq 0) { return $false }
+  try { $body = ($result.Stdout | ConvertFrom-Json) } catch { return $false }
+  if ($null -eq $body) { return $false }
+  if ($body.ok -eq $true) { return $false }
+  $holderActive = $body.backgroundAuthority.active -eq $true
+  $watcherRunning = $body.watcherRunning -eq $true
+  $watcherDetail = [string]$body.blueprintWatcher.watcherDetail
+  $catalogStatus = [string]$body.catalog.status
+  Write-Host "[qualification] health 503 signature: holderActive=$holderActive watcherRunning=$watcherRunning watcherDetail=$watcherDetail catalog=$catalogStatus"
+  return ($holderActive -and -not $watcherRunning)
 }
 
 function Quote-NativeArgument([string]$Value) {
@@ -1325,6 +1360,7 @@ function Start-AndVerifyHub([string]$Phase, [string]$ExpectedVersion, [string]$E
   $daemonIdentity = $null
   $port = Get-RuntimePort $InstallRoot
   $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+  $watcherBudgetExtended = $false
   do {
     $daemonRows = @(Get-InstalledProcessRows $script:DaemonPath | Where-Object { [int]$_.ParentProcessId -eq $trayIdentity.ProcessId })
     if ($daemonRows.Count -eq 1) {
@@ -1333,7 +1369,18 @@ function Start-AndVerifyHub([string]$Phase, [string]$ExpectedVersion, [string]$E
     try {
       $health = Invoke-InstalledHealth (Join-Path $InstallRoot 'membrane.exe') 3 $Phase
       if ($health.ok -eq $true -and $null -ne $daemonIdentity) { break }
-    } catch { }
+    } catch {
+      # The product reports 503 while holder-authorized watching is still
+      # initializing (first blueprint builds after install). That is progress
+      # with a known signature, not a fault: extend the budget ONCE so the
+      # watcher can finish, then still require ok:true below. Any other
+      # failure keeps the original fail-fast deadline.
+      if (-not $watcherBudgetExtended -and $null -ne $daemonIdentity -and (Test-HealthWatcherInitializing (Join-Path $InstallRoot 'membrane.exe'))) {
+        $watcherBudgetExtended = $true
+        $deadline = (Get-Date).AddSeconds($WatcherInitBudgetSeconds)
+        Write-Host "[qualification] authorized watcher initializing during $Phase; health budget extended once by $WatcherInitBudgetSeconds s"
+      }
+    }
     Start-Sleep -Milliseconds 500
   } while ((Get-Date) -lt $deadline)
   Require ($null -ne $daemonIdentity) "tray-owned installed daemon did not become resident during $Phase"

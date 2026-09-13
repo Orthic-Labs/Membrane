@@ -143,6 +143,105 @@ pub struct SanitizedProcess {
     job: Option<windows_job::WindowsJob>,
 }
 
+/// Bounded leaf-process scope for hook dispatch and other latency-sensitive
+/// callers.
+///
+/// Ordinary hook dispatch runs in-process (no `membrane.exe hook-module`
+/// re-entry). The only processes a hook module may start are bounded leaf
+/// helpers (today: `git` for the diagnostics fence). Each leaf spawned
+/// through [`spawn_tracked_contained_command`] joins the calling thread's
+/// active scope when one is set; the dispatcher kills the scope when the
+/// module deadline fires, so a timed-out module's descendants are reaped
+/// before serial dispatch advances. The scope owns no runtime state and no
+/// storage: it holds process handles plus a deadline, nothing else.
+pub struct ContainmentScope {
+    live: std::sync::Mutex<Vec<std::sync::Arc<std::sync::Mutex<SanitizedProcess>>>>,
+}
+
+impl ContainmentScope {
+    /// Create a scope the dispatcher holds across one module invocation.
+    pub fn new() -> std::sync::Arc<Self> {
+        std::sync::Arc::new(Self {
+            live: std::sync::Mutex::new(Vec::new()),
+        })
+    }
+
+    /// Terminate every tracked process tree. Safe to call after normal
+    /// completion (the scope is then empty) and safe to call twice.
+    pub fn kill_all(&self) {
+        let mut live = self.live.lock().unwrap_or_else(|poison| poison.into_inner());
+        for process in live.drain(..) {
+            if let Ok(mut guard) = process.lock() {
+                guard.kill_tree();
+            }
+        }
+    }
+}
+
+std::thread_local! {
+    static ACTIVE_SCOPE: std::cell::RefCell<Option<std::sync::Arc<ContainmentScope>>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+/// Run `body` with `scope` installed as this thread's active leaf scope.
+/// Nested guards stack correctly: the previous scope is restored on drop.
+pub struct ScopeGuard {
+    previous: Option<std::sync::Arc<ContainmentScope>>,
+}
+
+impl ScopeGuard {
+    pub fn install(scope: &std::sync::Arc<ContainmentScope>) -> Self {
+        let previous = ACTIVE_SCOPE.with(|slot| slot.borrow().clone());
+        ACTIVE_SCOPE.with(|slot| *slot.borrow_mut() = Some(std::sync::Arc::clone(scope)));
+        Self { previous }
+    }
+}
+
+impl Drop for ScopeGuard {
+    fn drop(&mut self) {
+        let previous = self.previous.take();
+        ACTIVE_SCOPE.with(|slot| *slot.borrow_mut() = previous);
+    }
+}
+
+/// Spawn a strictly contained leaf command and track it in this thread's
+/// active [`ContainmentScope`] when one is installed. The returned shared
+/// handle lets the owner poll or terminate the tree; the scope's
+/// [`ContainmentScope::kill_all`] terminates it from another thread when a
+/// deadline fires. Strictness matches
+/// [`spawn_strictly_contained_command`]: an ungoverned child fails the spawn
+/// instead of running free.
+pub fn spawn_tracked_contained_command(
+    command: Command,
+) -> std::io::Result<std::sync::Arc<std::sync::Mutex<SanitizedProcess>>> {
+    let process = spawn_strictly_contained_command(command)?;
+    let shared = std::sync::Arc::new(std::sync::Mutex::new(process));
+    ACTIVE_SCOPE.with(|slot| {
+        if let Some(scope) = slot.borrow().as_ref() {
+            if let Ok(mut live) = scope.live.lock() {
+                // The registry is a reap list, not a leak: entries are
+                // drained by kill_all and pruned below on completion.
+                if live.len() < 64 {
+                    live.push(std::sync::Arc::clone(&shared));
+                }
+            }
+        }
+    });
+    Ok(shared)
+}
+
+/// Drop a completed leaf from this thread's active scope so the reap list
+/// stays proportional to genuinely live children.
+pub fn untrack_contained_command(process: &std::sync::Arc<std::sync::Mutex<SanitizedProcess>>) {
+    ACTIVE_SCOPE.with(|slot| {
+        if let Some(scope) = slot.borrow().as_ref() {
+            if let Ok(mut live) = scope.live.lock() {
+                live.retain(|entry| !std::sync::Arc::ptr_eq(entry, process));
+            }
+        }
+    });
+}
+
 impl SanitizedProcess {
     /// Terminate the entire process tree: TERM then KILL on Unix, Job Object
     /// termination on Windows, always followed by the direct-child kill/wait
