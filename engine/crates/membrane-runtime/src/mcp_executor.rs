@@ -633,6 +633,14 @@ struct HubTransportExecutor {
 #[derive(Default)]
 struct ExplicitOperationExecutor;
 
+struct InstalledOperationClient(Arc<dyn NativeMcpExecutor>);
+
+impl NativeMcpExecutor for InstalledOperationClient {
+    fn execute(&self, name: &str, arguments: &Value) -> Value {
+        self.0.execute(name, arguments)
+    }
+}
+
 /// A short excerpt of a response body for an error message. Bounded so a
 /// large or binary payload cannot flood a log line. A bare "malformed" made
 /// an empty read, a truncated body, and a wrong listener indistinguishable.
@@ -760,6 +768,9 @@ impl HubTransportExecutor {
 }
 
 pub(crate) fn native_operation_client() -> Box<dyn NativeMcpExecutor> {
+    if let Some(executor) = NATIVE_EXECUTOR.get().cloned() {
+        return Box::new(InstalledOperationClient(executor));
+    }
     Box::new(ExplicitOperationExecutor::default())
 }
 
@@ -2666,6 +2677,24 @@ pub fn install_native_mcp_transport() -> Result<(), String> {
 mod hub_transport_tests {
     use super::*;
     use std::net::TcpListener;
+
+    struct MockNativeExecutor;
+
+    impl NativeMcpExecutor for MockNativeExecutor {
+        fn execute(&self, name: &str, arguments: &Value) -> Value {
+            json!({"name": name, "arguments": arguments})
+        }
+    }
+
+    #[test]
+    fn installed_operation_client_delegates_to_hub_executor() {
+        let client = InstalledOperationClient(Arc::new(MockNativeExecutor));
+        let arguments = json!({"operation": "status"});
+        assert_eq!(
+            client.execute("membrane_ledger", &arguments),
+            json!({"name": "membrane_ledger", "arguments": arguments})
+        );
+    }
 
     #[test]
     fn workspace_budget_shares_are_deterministic_and_conserve_the_global_budget() {
