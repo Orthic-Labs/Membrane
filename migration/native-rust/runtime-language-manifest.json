@@ -1,7 +1,7 @@
 {
  "schemaVersion": 1,
  "artifact": "membrane.runtime-language-manifest",
- "generatedAt": "2026-09-13T16:59:59.080Z",
+ "generatedAt": "2026-09-13T22:16:31.238Z",
  "enforcementMode": "sealed",
  "policyDigest": "d633549377c620dfae700ed9f6dabfbbb5f5e78821b206b10b68dc0d823245ff",
  "totals": {
@@ -667,7 +667,7 @@
     "engine/crates/membrane-client/tests/memory_backend.rs",
     "engine/crates/membrane-client/tests/residency.rs"
    ],
-   "content_digest": "ce2a3b118b5bf00ce95a4bda7a6deac1bd675a1c738f6ad0280d68608163efbd"
+   "content_digest": "39552754a2e05ccf5c77cebd73d90b74c78704f14c8b51c6444b8cb353ff1668"
   },
   {
    "id": "engine-membrane-updater-engine/crates/membrane-updater",
@@ -830,7 +830,7 @@
     "engine/crates/membrane/tests/dispatch.rs",
     "engine/crates/membrane/tests/identifier_contracts.rs"
    ],
-   "content_digest": "e6e6742b0dc3b5a2cbb85442bcba09f841d29df3a19e073d327fe58a817521ac"
+   "content_digest": "40ab30ec5fb984805db3b2f9ba991b59f17e184624fd7d90f86705251c35a800"
   },
   {
    "id": "engine-production-crates-engine/crates/membrane-adapt",
@@ -1132,7 +1132,7 @@
     "engine/crates/membrane-protocol/tests/resident_holder_contract.rs",
     "engine/crates/membrane-protocol/tests/roundtrip.rs"
    ],
-   "content_digest": "336721707e1210d8b4604bec01a47efb73bb4a8b88408316ab524b28f6eed171"
+   "content_digest": "ef3343886316879337d302d3929edee45c19183e4fe1c8bdbf1ec194b8504eae"
   },
   {
    "id": "engine-production-crates-engine/crates/membrane-provider-sdk",
@@ -1373,7 +1373,7 @@
     "engine/crates/membrane-runtime/tests/singleton_architecture_qualification.rs",
     "engine/crates/membrane-runtime/tests/windows_acl_isolation.rs"
    ],
-   "content_digest": "9d60e8997044bd0149093783ad844a8747489af9ef2f5caf819b098697054ed8"
+   "content_digest": "486c83cfd52934ff9a8315f0ddf0b786f224a546d0072eac6430b8ac74a6f21f"
   },
   {
    "id": "engine-production-crates-engine/crates/membrane-transcript",
@@ -1476,7 +1476,7 @@
     "apps/membrane-hub/src-tauri/src/workspace.rs",
     "apps/membrane-hub/src-tauri/src/workspace_contract_tests.rs"
    ],
-   "content_digest": "3ee32bc620f2cb3fd4fde94213b60340f2f4fa99fb715ccb9ed5c193dbff59cd"
+   "content_digest": "5cebaecbb24e5d07ab419a3523be7a4d30aa4365acae5dbaa05722cf96b2bb11"
   },
   {
    "id": "hub-rest-hub-rest",
@@ -1734,7 +1734,7 @@
     "scripts/tools/productization/generate-support-matrix.test.mjs",
     "scripts/tools/productization/render-docs.mjs"
    ],
-   "content_digest": "3787c7b50f16632b1e93a27c3d2899ccf8fcdf978003c656c0b0347830436d78"
+   "content_digest": "6fe463f12cd995866c22d900dca9545e4c8c9d069a60573c0087c65c3436a04d"
   },
   {
    "id": "surface-extraction-tool-surface-extraction-tool",
@@ -1876,7 +1876,7 @@
     "apps/membrane-tray-windows/src/tray.rs",
     "apps/membrane-tray-windows/src/workspace.rs"
    ],
-   "content_digest": "c6f5d5916253771454442d0d8e6b163e76a2c2c2d8192adcb1ab279a6322a83d"
+   "content_digest": "32fb8fc8da7b76911755e0452ea18003d11b5467d7057c3c4134b882b32122bf"
   }
  ]
 }
