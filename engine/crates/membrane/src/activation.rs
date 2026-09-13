@@ -982,8 +982,8 @@ fn stop_installed_engine_service() -> Result<(), String> {
         build_loopback_request_headers, LoopbackAuthSigner, LoopbackIdentityFields,
     };
     use membrane_protocol::{
-        ResidentHolderCredentialV1, ResidentHolderOperationV1, ResidentHolderRequestV1,
-        ResidentHolderResponseV1, RESIDENT_HOLDER_SCHEMA_VERSION,
+        ResidentControllerIdentityV1, ResidentHolderCredentialV1, ResidentHolderOperationV1,
+        ResidentHolderRequestV1, ResidentHolderResponseV1, RESIDENT_HOLDER_SCHEMA_VERSION,
     };
 
     let port = INSTALLED_PORT;
@@ -1107,6 +1107,7 @@ fn signed_post(
     body: &[u8],
     timeout: Duration,
 ) -> Result<SignedPostOutcome, String> {
+    use membrane_client::build_loopback_request_headers;
     let signer = membrane_client::LoopbackAuthSigner::from_hex_token(token)
         .map_err(|_| "loopback auth signer invalid".to_string())?;
     let now = now_unix_ms() / 1000;
