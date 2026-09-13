@@ -2716,11 +2716,7 @@ async fn detailed_health(State(state): State<AppState>, _uri: Uri) -> Response {
     let test_control = Arc::clone(&state.test_control);
     let diagnostics_permit = match Arc::clone(&state.workers.diagnostics).try_acquire_owned() {
         Ok(permit) => permit,
-        Err(_) => {
-            return state
-                .workers
-                .reject_overload(StatusCode::TOO_MANY_REQUESTS, "diagnostics_busy")
-        }
+        Err(_) => return degraded_health_response(&state, "diagnostics_busy"),
     };
     let store = Arc::clone(&state.store);
     let catalog = state.catalog.clone();
@@ -2765,12 +2761,61 @@ async fn detailed_health(State(state): State<AppState>, _uri: Uri) -> Response {
             StatusCode::from_u16(status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
             payload,
         ),
-        Ok(Err(_)) => workers.reject_overload(
-            StatusCode::SERVICE_UNAVAILABLE,
-            "diagnostics_executor_unavailable",
-        ),
-        Err(_) => workers.reject_overload(StatusCode::SERVICE_UNAVAILABLE, "diagnostics_timeout"),
+        Ok(Err(_)) => degraded_health_response(&state, "diagnostics_executor_unavailable"),
+        Err(_) => degraded_health_response(&state, "diagnostics_timeout"),
     }
+}
+
+/// Health must stay answerable while the diagnostics lane is busy. During
+/// holder-authorized watcher catch-up the single diagnostics worker is the
+/// contended resource, so a generic overload body hides WHY the engine is
+/// degraded exactly when observers need that answer. This fallback is built
+/// only from cheap synchronous state — no lane, no SQLite: the engine
+/// answered, so engine availability is real; watcher state comes from the
+/// resident status reader. Typed fields mirror health_response_with_workers
+/// so installed qualification can distinguish "watcher initializing" (one
+/// bounded extension) from genuine faults (fail fast).
+fn degraded_health_payload(store: &MemoryStore, reason: &str) -> (u16, String) {
+    let blueprint_watcher = crate::service::resident_blueprint_status();
+    let payload = json!({
+        "ok": false,
+        "readiness": "DiagnosticsLaneBusy",
+        "degraded": true,
+        "reason": reason,
+        "serviceId": "membrane-hub",
+        "installationId": store.installation_id(),
+        "cortexStoreId": store.cortex_store_id(),
+        "protocolVersion": 1,
+        "schemaVersion": 1,
+        "nativeOnly": true,
+        "runtimeOrigin": runtime_origin(),
+        "subsystems": ["pull", "push", "cortex", "blueprint", "ledger", "adapt"],
+        "capabilities": ["memory", "diagnostics"],
+        "serviceGeneration": crate::release_identity::service_generation(),
+        "releaseGeneration": crate::release_identity::release_generation(),
+        "watcherRunning": blueprint_watcher.get("watcherRunning").cloned().unwrap_or(json!(false)),
+        "enrolledRepoCount": blueprint_watcher.get("enrolledRepoCount").cloned().unwrap_or(json!(0)),
+        "subsystemStatus": { "blueprint": blueprint_watcher.clone() },
+        "blueprintWatcher": blueprint_watcher,
+        "backgroundAuthority": {
+            "active": crate::service::lifecycle_control().background_authority_open(),
+        },
+    });
+    (StatusCode::SERVICE_UNAVAILABLE.as_u16(), payload.to_string())
+}
+
+fn degraded_health_response(state: &AppState, reason: &str) -> Response {
+    state
+        .workers
+        .diagnostics_rejections
+        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let (_, payload) = degraded_health_payload(&state.store, reason);
+    (
+        StatusCode::SERVICE_UNAVAILABLE,
+        [(header::RETRY_AFTER, "1")],
+        payload,
+    )
+        .into_response()
 }
 
 #[cfg(test)]
@@ -8275,13 +8320,32 @@ mod tests {
         assert_eq!(health.status(), StatusCode::SERVICE_UNAVAILABLE);
         assert_eq!(health.headers()[header::RETRY_AFTER], "1");
 
+        // While the diagnostics lane is busy, health must still answer with
+        // the typed degraded body (engine identity + watcher state) so
+        // installed observers can distinguish "watcher initializing" from a
+        // genuine fault instead of seeing a bare overload response.
         let busy = app
             .clone()
             .oneshot(Request::get("/health").body(Body::empty()).unwrap())
             .await
             .unwrap();
-        assert_eq!(busy.status(), StatusCode::TOO_MANY_REQUESTS);
+        assert_eq!(busy.status(), StatusCode::SERVICE_UNAVAILABLE);
         assert_eq!(busy.headers()[header::RETRY_AFTER], "1");
+        let busy_payload: Value = serde_json::from_slice(
+            &to_bytes(busy.into_body(), MAX_BODY_BYTES).await.unwrap(),
+        )
+        .unwrap();
+        assert_eq!(busy_payload["ok"], false);
+        assert_eq!(busy_payload["degraded"], true);
+        assert_eq!(busy_payload["reason"], "diagnostics_busy");
+        assert_eq!(busy_payload["serviceId"], "membrane-hub");
+        assert_eq!(busy_payload["protocolVersion"], 1);
+        assert_eq!(busy_payload["schemaVersion"], 1);
+        assert!(busy_payload["installationId"].is_string());
+        assert!(busy_payload["cortexStoreId"].is_string());
+        assert!(busy_payload["releaseGeneration"].is_string());
+        assert!(busy_payload["blueprintWatcher"].is_object());
+        assert!(busy_payload["backgroundAuthority"]["active"].is_boolean());
 
         let livez = app
             .clone()
