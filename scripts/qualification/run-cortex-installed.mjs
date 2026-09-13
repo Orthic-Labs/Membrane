@@ -9,6 +9,8 @@ import { dirname, isAbsolute, relative, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
+const COMMAND_TIMEOUT_MS = 35_000;
+const RESTART_TIMEOUT_MS = 60_000;
 const nonEmpty = (value) => typeof value === "string" && value.trim().length > 0;
 const asJson = (value, label) => {
   try { return JSON.parse(value); } catch (error) { throw new Error(`${label} is not valid JSON: ${error.message}`); }
@@ -21,7 +23,8 @@ function argsFromEnv(name, fallback = []) {
 
 function command(bin, args, label, json = true) {
   if (!nonEmpty(bin)) throw new Error(`${label} executable is required`);
-  const output = execFileSync(bin, args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+  const timeout = /restart/iu.test(label) ? RESTART_TIMEOUT_MS : COMMAND_TIMEOUT_MS;
+  const output = execFileSync(bin, args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout, killSignal: "SIGKILL", windowsHide: true });
   if (!json) return output.trim();
   const text = output.trim();
   try { return JSON.parse(text); } catch (error) { throw new Error(`${label} did not emit JSON: ${error.message}`); }
@@ -29,7 +32,8 @@ function command(bin, args, label, json = true) {
 
 function failedCommand(bin, args, label) {
   if (!nonEmpty(bin)) throw new Error(`${label} executable is required`);
-  const result = spawnSync(bin, args, { encoding: "utf8" });
+  const result = spawnSync(bin, args, { encoding: "utf8", timeout: COMMAND_TIMEOUT_MS, killSignal: "SIGKILL", windowsHide: true });
+  if (result.error?.code === "ETIMEDOUT") throw new Error(`${label} timed out after ${COMMAND_TIMEOUT_MS}ms`);
   if (result.status === 0) throw new Error(`${label} unexpectedly succeeded`);
   const lines = `${String(result.stdout || "")}\n${String(result.stderr || "")}`.split(/\r?\n/u).map((line) => line.trim()).filter(Boolean).reverse();
   for (const line of lines) { try { return JSON.parse(line); } catch { /* inspect next emitted line */ } }

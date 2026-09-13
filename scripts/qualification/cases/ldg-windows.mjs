@@ -58,10 +58,17 @@ function ledgerCommand(cli, args, env = process.env) {
 }
 
 function enrolledRepo(cli, context) {
-  const repo = context.enrolledRoot || context.repoRoot || context.repo || REPO_ROOT;
-  const status = ledgerCommand(cli, ['status', '--repo', repo]);
-  if (status.enrolled !== true) throw new Error(`repository is not enrolled: ${repo}`);
-  return { repo, status };
+  const repo = context.enrolledRoot || context.workspaceRoot || context.repoRoot || context.repo;
+  if (!repo) throw new Error('explicit isolated enrolled qualification repository is required');
+  const resolved = realpathSync(repo);
+  const temporaryRoot = realpathSync(tmpdir());
+  const relativeToTemp = path.relative(temporaryRoot, resolved);
+  if (relativeToTemp.startsWith('..') || path.isAbsolute(relativeToTemp)) {
+    throw new Error(`qualification repository must be isolated under temporary root: ${resolved}`);
+  }
+  const status = ledgerCommand(cli, ['status', '--repo', resolved]);
+  if (status.enrolled !== true) throw new Error(`repository is not enrolled: ${resolved}`);
+  return { repo: resolved, status };
 }
 
 function installedIdentity(cli, context) {
@@ -167,8 +174,8 @@ function nativeLedgerQualification(cli, id, identity) {
 }
 
 function probeBm12Installed(cli, context) {
-  const root = context.enrolledRoot || context.workspaceRoot || context.repoRoot || REPO_ROOT;
-  if (!path.isAbsolute(root) || !existsSync(root)) {
+  const root = context.enrolledRoot || context.workspaceRoot || context.repoRoot;
+  if (!root || !path.isAbsolute(root) || !existsSync(root)) {
     return { status: 'failed', evidenceKind: 'installed', detail: { id: 'BM12', root }, reason: 'enrolled qualification workspace root is unavailable' };
   }
   const fixtureName = `.bm12-${process.pid}-${Date.now()}.md`;

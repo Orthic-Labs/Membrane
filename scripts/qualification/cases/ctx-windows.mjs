@@ -123,10 +123,18 @@ function nativeQualificationCli(options = {}, id) {
 // for their stronger acceptance requirement.
 function isolatedCortexWorkflow(options = {}, body) {
   const cli = options.cliPath || process.env.MEMBRANE_CLI_PATH || "membrane";
-  // Force this throwaway DB through direct mode. An installed resident may
-  // otherwise accept put through its canonical DB, leaving relation probes
-  // reading a different empty file.
-  const env = { ...process.env, ...(options.env || {}), MEMBRANE_PORT: options.isolatedPort || "1" };
+  // Route every operation to one explicitly isolated service. Child-local
+  // registry variables cannot isolate canonical resident process state.
+  const isolatedEndpoint = options.isolatedEndpoint || options.env?.MEMBRANE_QUALIFICATION_ISOLATED_ENDPOINT;
+  if (!isolatedEndpoint) {
+    return { available: false, reason: "isolated Cortex workflow requires an explicit isolated service endpoint" };
+  }
+  const env = {
+    ...process.env,
+    ...(options.env || {}),
+    MEMBRANE_ENDPOINT: isolatedEndpoint,
+    MEMBRANE_QUALIFICATION_ISOLATED_ENDPOINT: isolatedEndpoint,
+  };
   const version = spawnSync(cli, ["--version"], { encoding: "utf8", windowsHide: true, timeout: 15000, env });
   if (version.error || version.status !== 0) {
     return { available: false, reason: "installed Membrane CLI --version probe failed" };
@@ -569,7 +577,7 @@ export function BM06(options) {
     // against the SAME installed binary the other verbs used; on the
     // pinned older install (no `baseline` verb yet) it fails typed, which
     // this case reports rather than papering over.
-    const baselineResult = spawnSync(cli, ["cli", "--db", db, "baseline", "--scope", scope, "-k", "10"], { encoding: "utf8", windowsHide: true, timeout: 35000 });
+    const baselineResult = spawnSync(cli, ["cli", "--db", db, "baseline", "--scope", scope, "-k", "10"], { encoding: "utf8", windowsHide: true, timeout: 35000, env });
     if (baselineResult.error || baselineResult.status !== 0 || !String(baselineResult.stdout || "").trim()) {
       return { baselineAvailable: false, baselineReason: String(baselineResult.stderr || baselineResult.error?.message || "installed CLI has no `baseline` verb").trim() };
     }

@@ -201,11 +201,30 @@ fn request_engine(path: &str, body: &[u8]) -> Result<(u16, Vec<u8>), String> {
 }
 
 fn endpoint() -> (String, u16) {
+    // A fixture registry belongs to an isolated engine started with that same
+    // registry. Never let child-local fixture state fall through to resident
+    // canonical service.
+    if std::env::var_os("MEMBRANE_PROJECT_REGISTRY").is_some() {
+        let value = std::env::var("MEMBRANE_QUALIFICATION_ISOLATED_ENDPOINT")
+            .unwrap_or_else(|_| {
+                eprintln!("membrane-client: fixture registry requires MEMBRANE_QUALIFICATION_ISOLATED_ENDPOINT");
+                std::process::exit(2);
+            });
+        let endpoint = parse_endpoint(&value).unwrap_or_else(|| {
+            eprintln!("membrane-client: invalid isolated qualification endpoint");
+            std::process::exit(2);
+        });
+        if endpoint == ("127.0.0.1".to_owned(), DEFAULT_PORT)
+            || endpoint == ("localhost".to_owned(), DEFAULT_PORT)
+        {
+            eprintln!("membrane-client: qualification endpoint resolves to canonical resident service");
+            std::process::exit(2);
+        }
+        return endpoint;
+    }
     if let Some(value) = std::env::var_os("MEMBRANE_ENDPOINT") {
-        if let Some((host, port)) = value.to_string_lossy().rsplit_once(':') {
-            if let Ok(port) = port.trim_end_matches('/').parse() {
-                return (host.trim_start_matches("http://").to_owned(), port);
-            }
+        if let Some(endpoint) = parse_endpoint(&value.to_string_lossy()) {
+            return endpoint;
         }
     }
     if let Ok(port) = std::env::var("MEMBRANE_PORT") {
@@ -214,6 +233,13 @@ fn endpoint() -> (String, u16) {
         }
     }
     ("127.0.0.1".into(), DEFAULT_PORT)
+}
+
+fn parse_endpoint(value: &str) -> Option<(String, u16)> {
+    let (host, port) = value.rsplit_once(':')?;
+    let host = host.trim_start_matches("http://").trim_start_matches("https://");
+    let port = port.trim_end_matches('/').parse().ok()?;
+    Some((host.to_owned(), port))
 }
 
 fn bearer_token() -> Option<String> {
