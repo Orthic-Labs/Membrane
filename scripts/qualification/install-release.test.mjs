@@ -4,6 +4,26 @@ import test from "node:test";
 
 const source = readFileSync(new URL("./install-release.ps1", import.meta.url), "utf8");
 const lower = source.toLowerCase();
+const nsi = readFileSync(new URL("../../apps/membrane-hub/src-tauri/windows/installer.nsi", import.meta.url), "utf8");
+
+test("installer releases the install lock before binding & suppresses the supervisor task during extract", () => {
+  // Binding runs full activation, which requests a resident start; a fresh
+  // engine refuses to start while .install-lock is held, so bind-under-lock
+  // can only time out. The lock must be released at cutover, before bind.
+  const cutover = nsi.indexOf('"cutover-current ok"');
+  const bind = nsi.indexOf('"bind-installed-clients"');
+  const lockRelease = nsi.indexOf('RMDir /r "$INSTDIR\\.install-lock"', cutover);
+  assert.ok(cutover > -1, "cutover marker missing");
+  assert.ok(bind > -1, "bind step missing");
+  assert.ok(lockRelease > cutover, "post-cutover lock release missing");
+  assert.ok(bind > lockRelease, "bind must run after the install lock is released");
+  // The per-minute supervisor task must not spawn engines over the extract
+  // window; bind re-creates and re-enables it afterwards.
+  const extract = nsi.indexOf('"extract-version-tree"');
+  const disable = nsi.indexOf('schtasks.exe /Change /TN "Membrane Engine" /Disable');
+  assert.ok(extract > -1, "extract step missing");
+  assert.ok(disable > -1 && disable < extract, "supervisor task must be disabled before extract begins");
+});
 
 test("Windows installed qualification is package-only & signature-bound", () => {
   for (const term of [

@@ -390,6 +390,17 @@ Section Install
     StrCpy $R0 1
     Goto install_failed
   stop_done:
+  ; Defense in depth for the extract window: the per-minute supervisor task
+  ; must not spawn any engine while version-tree files are overwritten. Best
+  ; effort and non-fatal (the task may not exist yet): bind re-creates and
+  ; re-enables it through request_windows_supervisor, which explicitly handles
+  ; a prior Disabled state.
+  nsExec::ExecToStack /TIMEOUT=30000 'schtasks.exe /Change /TN "Membrane Engine" /Disable'
+  Pop $1
+  Pop $3
+  nsExec::ExecToStack /TIMEOUT=30000 'schtasks.exe /End /TN "Membrane Engine"'
+  Pop $1
+  Pop $3
   ${Log} "stop-running-product ok"
 
   ; 1. Remove the exact retired Blueprint payload before a same-version overlay.
@@ -507,6 +518,14 @@ Section Install
     RMDir "$INSTDIR\.current-previous"
   ${EndIf}
   ${Log} "cutover-current ok"
+
+  ; Release the install lock before binding. Binding runs full activation,
+  ; which requests a resident start through the supervisor task; a fresh
+  ; engine refuses to start while the lock is held (it must not map images
+  ; during file replacement), so binding under the lock can only time out
+  ; waiting for a listener the lock itself prevents. The old tree is fully
+  ; cut over at this point: no file replacement is pending anymore.
+  RMDir /r "$INSTDIR\.install-lock"
 
   ; 3. Registration: uninstall entry, Start Menu shortcut, login launch.
   StrCpy $InstallStep "register"
