@@ -25,6 +25,15 @@ const POOL_MAX_CONNS: usize = 4;
 /// A pooled connection is retried at most once per request: if the reused
 /// socket proves stale, exactly one fresh connection is attempted.
 const MAX_ATTEMPTS_PER_REQUEST: usize = 2;
+/// Bounded connect budget for reaching the singleton engine. A refused or
+/// black-holed loopback connect must fail in well under a host hook budget;
+/// established-socket I/O keeps IO_TIMEOUT.
+const CONNECT_TIMEOUT: Duration = Duration::from_millis(300);
+/// Hook route served by the engine. It is read-shaped: recall retrieves
+/// context and records bounded observations, and a re-executed hook cannot
+/// double-apply an effect. Every other client route (/cli, /mcp) may execute
+/// server-side effects and is therefore never retried after a full send.
+const HOOK_PATH: &str = "/hook";
 
 const CLIENT_HELP: &str = "membrane-client [stdio-mcp|hook|cli] [args…]\n\
     \n\
@@ -78,6 +87,25 @@ fn main() {
         }
         [mode, ..] if mode == "stdio-mcp" || mode == "hook" || mode == "cli" => {
             if let Err(error) = run(mode) {
+                if mode == "hook" {
+                    // Hosts consume stdout JSON. An engine-down hook must
+                    // remain a valid typed response instead of stderr noise:
+                    // no hookSpecificOutput is emitted (the host schema
+                    // rejects unknown event variants), the reason is typed,
+                    // and enforcement decisions stay server-side — this
+                    // transport never fabricates a block.
+                    let response = json!({
+                        "membraneHook": {
+                            "schemaVersion": 1,
+                            "event": "engine_unreachable",
+                            "status": "error",
+                            "results": [],
+                            "detail": {"reason": "engine_unavailable", "error": error}
+                        }
+                    });
+                    println!("{response}");
+                    std::process::exit(0);
+                }
                 eprintln!("membrane-client: {error}");
                 std::process::exit(1);
             }
@@ -249,7 +277,11 @@ fn request_engine(path: &str, body: &[u8]) -> Result<(u16, Vec<u8>), String> {
     let token = bearer_token();
     // At most one stale pooled socket plus one fresh connection: a reused
     // socket that died while idle surfaces as a failed first exchange, which
-    // is retried exactly once before the error reaches the caller.
+    // is retried exactly once before the error reaches the caller. Effectful
+    // routes never take the retry once the request was fully sent: the first
+    // attempt may already have executed server-side, and a silent retry could
+    // double-apply it.
+    let effectful = !path.eq_ignore_ascii_case(HOOK_PATH);
     let mut stream = take_pooled(&address).or_else(|| connect(&address).ok());
     let mut last_error = String::new();
     for _ in 0..MAX_ATTEMPTS_PER_REQUEST {
@@ -268,9 +300,16 @@ fn request_engine(path: &str, body: &[u8]) -> Result<(u16, Vec<u8>), String> {
                 }
                 return Ok((status, response_body));
             }
-            Err(error) => {
-                last_error = error;
-                // `current` is dropped here; the next iteration connects fresh.
+            Err(failure) => {
+                last_error = failure.error;
+                if failure.request_sent && effectful {
+                    return Err(format!(
+                        "engine request outcome uncertain after full send (not retried): {last_error}"
+                    ));
+                }
+                // Read-shaped route, or the request never fully reached the
+                // engine: `current` is dropped here; the next iteration
+                // connects fresh and one retry is safe.
             }
         }
     }
@@ -306,7 +345,7 @@ fn resolve(host: &str, port: u16) -> Result<SocketAddr, String> {
 }
 
 fn connect(address: &SocketAddr) -> Result<TcpStream, String> {
-    let stream = TcpStream::connect_timeout(address, IO_TIMEOUT)
+    let stream = TcpStream::connect_timeout(address, CONNECT_TIMEOUT)
         .map_err(|error| format!("connect to singleton engine: {error}"))?;
     stream
         .set_read_timeout(Some(IO_TIMEOUT))
@@ -319,6 +358,16 @@ fn connect(address: &SocketAddr) -> Result<TcpStream, String> {
 /// the status, body, and whether the socket may be reused for a later
 /// request (only when both sides agreed to keep the connection alive and the
 /// body was length-framed).
+/// Failure of one exchange attempt. `request_sent` records whether the
+/// complete request (headers plus full length-framed body) reached the
+/// engine, which decides whether a retry could double-execute it. A partial
+/// send cannot dispatch server-side: handlers parse a complete body before
+/// executing.
+struct ExchangeFailure {
+    error: String,
+    request_sent: bool,
+}
+
 fn exchange(
     stream: &mut TcpStream,
     host: &str,
@@ -326,7 +375,7 @@ fn exchange(
     path: &str,
     body: &[u8],
     token: Option<&str>,
-) -> Result<(u16, Vec<u8>, bool), String> {
+) -> Result<(u16, Vec<u8>, bool), ExchangeFailure> {
     let mut request = format!(
         "POST {path} HTTP/1.1\r\nHost: {host}:{port}\r\nAccept: application/json\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: keep-alive\r\n",
         body.len()
@@ -335,11 +384,10 @@ fn exchange(
         request.push_str(&format!("Authorization: Bearer {token}\r\n"));
     }
     request.push_str("\r\n");
-    stream
-        .write_all(request.as_bytes())
-        .and_then(|_| stream.write_all(body))
-        .map_err(|error| format!("send engine request: {error}"))?;
-    read_response(stream)
+    if let Err(error) = stream.write_all(request.as_bytes()).and_then(|_| stream.write_all(body)) {
+        return Err(ExchangeFailure { error: format!("send engine request: {error}"), request_sent: false });
+    }
+    read_response(stream).map_err(|error| ExchangeFailure { error, request_sent: true })
 }
 
 fn read_response(stream: &mut TcpStream) -> Result<(u16, Vec<u8>, bool), String> {
@@ -604,5 +652,42 @@ mod tests {
         // engine/crates/membrane/tests/client_transport_boundary.rs enforces
         // the same rule against source drift.
         let _ = MAX_ATTEMPTS_PER_REQUEST;
+    }
+
+    #[test]
+    fn failure_after_full_send_is_recorded_as_sent() {
+        // The server accepts, lets the client finish writing, then closes
+        // without responding. The complete request may already have executed
+        // server-side, so the exchange failure must carry request_sent=true —
+        // the signal request_engine uses to suppress retries on effectful
+        // routes.
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        std::thread::spawn(move || {
+            let (mut socket, _) = listener.accept().unwrap();
+            let mut buffer = [0_u8; 1024];
+            let _ = socket.read(&mut buffer);
+            std::thread::sleep(Duration::from_millis(150));
+            drop(socket);
+        });
+        let mut stream = TcpStream::connect(address).unwrap();
+        stream.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+        stream.set_write_timeout(Some(Duration::from_secs(5))).unwrap();
+        let failure = exchange(&mut stream, "127.0.0.1", address.port(), "/cli", b"{}", None).unwrap_err();
+        assert!(failure.request_sent, "failure after full send must be marked sent: {}", failure.error);
+        assert!(
+            failure.error.contains("engine closed connection mid-response")
+                || failure.error.contains("read engine response"),
+            "unexpected failure mode: {}", failure.error
+        );
+    }
+
+    #[test]
+    fn hook_path_is_the_retry_safe_route() {
+        // The /hook route is read-shaped by engine contract; the retry guard
+        // keys off exactly this constant so a renamed route cannot silently
+        // lose (or gain) retry safety.
+        assert_eq!(HOOK_PATH, "/hook");
+        assert!(HOOK_PATH.eq_ignore_ascii_case("/hook"));
     }
 }

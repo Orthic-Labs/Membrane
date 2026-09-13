@@ -152,31 +152,56 @@ pub(crate) fn recall_attempt(input: &HookInputEnvelopeV1, task: &str) -> RecallO
     // holder is reachable.  Failure here is not a verdict on Membrane.
     // A resident miss is only a transport miss.  The one-shot path is part of
     // this same Membrane attempt and must always be tried when needed.
-    if let Some((port, token)) = resident_endpoint(&root) {
+    let mut stages = serde_json::Map::new();
+    stages.insert("envelope_ms".to_owned(), json!(started.elapsed().as_millis() as u64));
+    let resident = resident_endpoint(&root);
+    stages.insert("credential_ms".to_owned(), json!(started.elapsed().as_millis() as u64));
+    if let Some((port, token)) = resident {
         let mut body = json!({"task": task, "repo": root, "maxTokens": max_tokens, "client": client, "session": session, "budgetPolicy": if observed_ceiling.is_some() { "host_observed" } else { "configured_cap" }, "maxWaitMs": RECALL_RESIDENT_BUDGET_MS});
         if let Some(ceiling) = observed_ceiling.as_ref() {
             body["remainingContextCeiling"] = serde_json::to_value(ceiling).unwrap_or(Value::Null);
         }
-        if let Some(response) = authenticated_json_at(port, "/federate", body, &token, RECALL_RESIDENT_BUDGET_MS) {
+        let resident_started = Instant::now();
+        let response = authenticated_json_at(port, "/federate", body, &token, RECALL_RESIDENT_BUDGET_MS);
+        stages.insert("resident_exchange_ms".to_owned(), json!(resident_started.elapsed().as_millis() as u64));
+        if let Some(response) = response {
             if response.get("packet").is_some() {
-                let outcome = outcome_from_response(&response, "resident");
+                let outcome = with_stage_timings(outcome_from_response(&response, "resident"), stages, started);
                 return if is_session_start(input) { startup_outcome(input, outcome, &response) } else { outcome };
             }
         }
+    } else {
+        // No resident credential: record the skip explicitly so a
+        // zero-resident receipt is explainable rather than silent.
+        stages.insert("resident_exchange_ms".to_owned(), json!("skipped_no_credential"));
     }
     // Bounded ambient federation in this process under the configured cap,
     // with the remaining module budget as its deadline.
+    let one_shot_started = Instant::now();
     match crate::pull::federation::hook_mode_federate_with_observation(task, &root, max_tokens, client, session, recall_one_shot_budget_ms(started.elapsed()), observed_ceiling) {
         Ok(response) => {
-            let outcome = outcome_from_response(&response, "one_shot");
+            stages.insert("one_shot_ms".to_owned(), json!(one_shot_started.elapsed().as_millis() as u64));
+            let outcome = with_stage_timings(outcome_from_response(&response, "one_shot"), stages, started);
             if is_session_start(input) { startup_outcome(input, outcome, &response) } else { outcome }
         }
         Err(error) => {
+            stages.insert("one_shot_ms".to_owned(), json!(one_shot_started.elapsed().as_millis() as u64));
             if env::var_os("MEMBRANE_HOOK_DEBUG").is_some() { eprintln!("membrane hook federate: {}", error.chars().take(400).collect::<String>()); }
-            RecallOutcome { context: None, sufficient: false, reason: "membrane_retrieval_failed",
-                detail: json!({"transport":"one_shot", "error":error.chars().take(200).collect::<String>()}) }
+            let outcome = RecallOutcome { context: None, sufficient: false, reason: "membrane_retrieval_failed",
+                detail: json!({"transport":"one_shot", "error":error.chars().take(200).collect::<String>()}) };
+            with_stage_timings(outcome, stages, started)
         }
     }
+}
+
+/// Attach cumulative stage timings to a recall outcome receipt. Timings are
+/// content-free (durations only) and cumulative from attempt start, so a
+/// receipt explains where the hook budget went without recording task text.
+fn with_stage_timings(mut outcome: RecallOutcome, stages: serde_json::Map<String, Value>, started: Instant) -> RecallOutcome {
+    let mut stages = stages;
+    stages.insert("total_ms".to_owned(), json!(started.elapsed().as_millis() as u64));
+    outcome.detail["stages"] = Value::Object(stages);
+    outcome
 }
 
 fn outcome_from_response(response: &Value, transport: &str) -> RecallOutcome {

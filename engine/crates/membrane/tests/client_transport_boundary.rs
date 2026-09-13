@@ -66,6 +66,15 @@ fn transport_client_keeps_bounded_reuse_and_local_probes() {
         "print_build_info",
         "client_release_identity_generated",
         "installer-owned control",
+        // Effectful-route retry guard: a fully-sent request on /cli or /mcp
+        // must never be silently retried (possible double execution).
+        "ExchangeFailure",
+        "request_sent",
+        "outcome uncertain after full send",
+        "HOOK_PATH",
+        // Bounded engine-down behavior for hosts: typed response, no hang.
+        "CONNECT_TIMEOUT",
+        "engine_unavailable",
     ] {
         assert!(
             source.contains(required),
