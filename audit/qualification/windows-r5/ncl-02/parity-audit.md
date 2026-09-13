@@ -1,9 +1,35 @@
 # Blueprint legacy-JS vs native-Rust parity audit (AUDIT1, read-only)
 
+> Reconciliation 2026-09-13 (source inspection, Blueprint lane, completed
+> row-by-row): current counts are **45 `EXECUTED-NATIVELY`, 0
+> `PORTED-NOT-WIRED`, 3 `MISSING`, 4 `SPLIT` (52 rows)**. Moved to
+> `EXECUTED-NATIVELY` since AUDIT1: reanchor fallback (`query.rs:688`),
+> recall orientation + stale suppression (`query.rs:379-381,477-488,558-564`),
+> impact risk + test recommendations (`query.rs:795,810,821`), flows view
+> (`architecture_views.rs:240,403`), changes view via engine store path
+> (`engine.rs:131-132,1113`; query-path refusal is an intentional typed store
+> boundary pinned by test), federate on all three entrypoints (MCP
+> `mcp_executor.rs:996`, engine `engine.rs:130`, CLI `cli.rs:207`), CLI
+> init/update/doctor/repair engine arms (`engine.rs:39-42`), resident watcher
+> via runtime supervisor (`service.rs:320`), delta-store on all incremental
+> paths (`engine.rs:353,484,569`), analytics + framework-intelligence
+> (`query.rs:795,810`, `graph.rs:443`), and `modules/*` resolvers
+> (`graph.rs:799-800`). SPLIT rows: CLI batch (explore dev-only),
+> static-provider (helpers wired, module superseded), providers
+> (registry wired; plugin-loader/live-verifier intentionally unported),
+> git-source-observation (overlay observation intentionally unwired per
+> decision 6). Remaining MISSING: live-verifier cross-check (no shipped
+> caller), blueprint-install + launchers (dead-in-legacy, deletion-scoped).
+> CLI `uninstall` routed this turn (`blueprint_one_shot.rs:85`); CLI
+> `service` spelling superseded by decisions 20–24 (repair served under
+> `repair`). The body below is the historical AUDIT1 record; per-row
+> corrections live in `parity-audit.json`, and any "zero callers" /
+> "not_wired" wording there is obsolete where the JSON says reconciled.
+
 Full detail: `parity-audit.json` (52 rows: 16 `service.mjs` public operations expanded into their
 sub-behaviors, CLI/launcher surface, and the legacy graph algorithm modules named in the audit brief).
 
-## Counts by classification
+## Counts by classification (AUDIT1 historical; see note above for current)
 
 | Classification | Count |
 |---|---|

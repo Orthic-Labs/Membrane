@@ -79,6 +79,10 @@ fn run_legacy_alias(args: &[String]) -> Result<Option<Value>, String> {
             let name = args.get(2).filter(|v| !v.starts_with('-')).ok_or("snapshot create requires a name")?;
             membrane_blueprint::cli::snapshot_create(root, name.clone()).map(Some).map_err(|e| e.to_string())
         }
+        // Native `blueprint uninstall` (CLI parity, commands.mjs case
+        // "uninstall"): repo-local, non-resident; never touches resident
+        // engine lifecycle (decisions 20-24 own that).
+        "uninstall" => Ok(Some(membrane_blueprint::cli::uninstall(root))),
         _ => Ok(None),
     }
 }
@@ -340,8 +344,13 @@ mod tests {
         assert!(languages.get("languages").is_some());
         let root = tempfile::tempdir().unwrap();
         let root_arg = root.path().to_string_lossy().into_owned();
-        let doctor = run_legacy_alias(&["doctor".into(), "--repo-root".into(), root_arg]).unwrap().unwrap();
+        let doctor = run_legacy_alias(&["doctor".into(), "--repo-root".into(), root_arg.clone()]).unwrap().unwrap();
         assert_eq!(doctor["schemaVersion"], 1);
         assert_eq!(doctor["state"], "missing");
+        // CLI parity (commands.mjs case "uninstall"): repo-local uninstall
+        // routes through the native helper without resident ownership.
+        let uninstall = run_legacy_alias(&["uninstall".into(), "--repo-root".into(), root_arg]).unwrap().unwrap();
+        assert_eq!(uninstall["schemaVersion"], 1);
+        assert_eq!(uninstall["action"], "uninstalled");
     }
 }

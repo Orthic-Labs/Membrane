@@ -1,19 +1,19 @@
 {
  "schemaVersion": 1,
  "artifact": "membrane.runtime-language-manifest",
- "generatedAt": "2026-09-10T21:56:23.351Z",
+ "generatedAt": "2026-09-13T16:59:59.080Z",
  "enforcementMode": "sealed",
- "policyDigest": "7547c188550e51aa529e96a3b173e30765aa70566baa0b19955445b601e53a14",
+ "policyDigest": "d633549377c620dfae700ed9f6dabfbbb5f5e78821b206b10b68dc0d823245ff",
  "totals": {
-  "files": 1085,
-  "rows": 39,
+  "files": 1097,
+  "rows": 40,
   "byRuntime": {
    "python": 7,
-   "node": 8,
+   "node": 9,
    "rust": 24
   },
   "byDisposition": {
-   "dev-only": 18,
+   "dev-only": 19,
    "migration-oracle": 4,
    "native-port": 17
   },
@@ -286,6 +286,30 @@
    "content_digest": "83130f0f94f23c1f355208fb79406ba6ed119971d9d345bff485ca00e7a33108"
   },
   {
+   "id": "docs-research-probes-docs-research-probes",
+   "rule": "docs-research-probes",
+   "runtime": "node",
+   "kind": "research-probe",
+   "product_surface": "research",
+   "production_reachable": false,
+   "packaged": false,
+   "target_disposition": "dev-only",
+   "owner": null,
+   "exception": null,
+   "parity_fixture": null,
+   "deletion_or_exclusion_proof": "Point-in-time assessment probes; release content manifest permits only compiled Hub assets, native sidecars, schemas and declarative metadata. Package manifest and installed qualification verify exclusion.",
+   "seal_blocker_note": null,
+   "notes": "Preserved research material, never production. Fresh invocation-graph build from the current tree proves production_reachable=false for all five probe files with zero edges crossing the probe boundary (verified 2026-09-13).",
+   "files": [
+    "docs/research/2026-09-08-coderight-membrane-assessment/probes/fixed/recall-circuit.mjs",
+    "docs/research/2026-09-08-coderight-membrane-assessment/probes/fixed/seed-resolver.mjs",
+    "docs/research/2026-09-08-coderight-membrane-assessment/probes/provider-ab.mjs",
+    "docs/research/2026-09-08-coderight-membrane-assessment/probes/recall-ab.mjs",
+    "docs/research/2026-09-08-coderight-membrane-assessment/probes/recall-stage.mjs"
+   ],
+   "content_digest": "0be1fe08b280df3f0acb484017b1c9e8693d1f09fe7e048a6a981335ca0be569"
+  },
+  {
    "id": "engine-cortex-bin-crate-engine/crates/cortex",
    "rule": "engine-cortex-bin-crate",
    "runtime": "rust",
@@ -316,7 +340,7 @@
     "engine/crates/cortex/tests/public_api_signature.rs",
     "engine/crates/cortex/tests/skill_read_test.rs"
    ],
-   "content_digest": "0096f9365622bafd1d74874813d73ab661e9bb8d1526c8f0302c98275fb3aeba"
+   "content_digest": "cc2d3b3571f8b75f5a060f1200568218f182ccc2dba0188951083693aab91094"
   },
   {
    "id": "engine-dev-rust-engine-dev-rust",
@@ -481,6 +505,7 @@
     "engine/crates/membrane-blueprint/tests/generation_store.rs",
     "engine/crates/membrane-blueprint/tests/graph.rs",
     "engine/crates/membrane-blueprint/tests/identity.rs",
+    "engine/crates/membrane-blueprint/tests/incremental_hot_path.rs",
     "engine/crates/membrane-blueprint/tests/migrations.rs",
     "engine/crates/membrane-blueprint/tests/native_engine.rs",
     "engine/crates/membrane-blueprint/tests/native_service.rs",
@@ -608,7 +633,7 @@
     "engine/crates/membrane-blueprint/tests/service.rs",
     "engine/crates/membrane-blueprint/tests/watch.rs"
    ],
-   "content_digest": "ec87c4096bd8d79db57a826887750dd892c12751c6954455847994995c8ffdc0"
+   "content_digest": "65f06e8e14200484685751aa37c610c9b9f72e0c492c8fd645a3693857de7013"
   },
   {
    "id": "engine-membrane-client-engine/crates/membrane-client",
@@ -705,7 +730,7 @@
     "engine/crates/cortex-core/tests/absorbed_records.rs",
     "engine/crates/cortex-core/tests/fts5_hybrid.rs"
    ],
-   "content_digest": "61a4ebbac556236f9f2560391d1e974cebef4f4017117fbf6cc63d9f494ca4a6"
+   "content_digest": "a11baf95928a90e8aba5dc30c3df0409f88dfbbe5e5b50efa6ef94e411b648ca"
   },
   {
    "id": "engine-production-crates-engine/crates/cortex-format",
@@ -761,7 +786,7 @@
     "engine/crates/cortex-store/src/transcript.rs",
     "engine/crates/cortex-store/tests/temporal_validity.rs"
    ],
-   "content_digest": "a3827514c91bb78b433c9eda71890d5c18bf518d49030070cd9fab4f803ec1c2"
+   "content_digest": "fe64b9562bb0f14b15fc96ff7ab1e5decbe2f5d64bed8e7d91340332f5ceb159"
   },
   {
    "id": "engine-production-crates-engine/crates/membrane",
@@ -784,7 +809,7 @@
     "engine/crates/membrane/scripts/generate-cli-subcommands.test.mjs",
     "engine/crates/membrane/src/activation.rs",
     "engine/crates/membrane/src/bin/cli-parity.rs",
-    "engine/crates/membrane/src/bin/hook_containment_fake_git.rs",
+    "engine/crates/membrane/src/bin/membrane-client.rs",
     "engine/crates/membrane/src/cli.rs",
     "engine/crates/membrane/src/cli_parity.rs",
     "engine/crates/membrane/src/dispatch.rs",
@@ -796,15 +821,16 @@
     "engine/crates/membrane/src/modes.rs",
     "engine/crates/membrane/src/native_init.rs",
     "engine/crates/membrane/src/serve.rs",
+    "engine/crates/membrane/src/supervision.rs",
     "engine/crates/membrane/src/uninstall.rs",
     "engine/crates/membrane/src/update.rs",
     "engine/crates/membrane/tests/activation_hub_off.rs",
     "engine/crates/membrane/tests/adapt_installed.rs",
+    "engine/crates/membrane/tests/client_transport_boundary.rs",
     "engine/crates/membrane/tests/dispatch.rs",
-    "engine/crates/membrane/tests/hook_containment.rs",
     "engine/crates/membrane/tests/identifier_contracts.rs"
    ],
-   "content_digest": "5044c59ce1845f2baf850e8da9625f7e470b7c087b23b4678fc4dde1b313f34c"
+   "content_digest": "e6e6742b0dc3b5a2cbb85442bcba09f841d29df3a19e073d327fe58a817521ac"
   },
   {
    "id": "engine-production-crates-engine/crates/membrane-adapt",
@@ -972,7 +998,7 @@
     "engine/crates/membrane-federation/tests/requirements_contract.rs",
     "engine/crates/membrane-federation/tests/shadow_diff.rs"
    ],
-   "content_digest": "d93f5cc565d6739b9c17452880abf7a872a4e6ee4476c711463f4c0d6e047349"
+   "content_digest": "08869339123fa00a3d26857f3eff99b13fc31157bbe8e32bc1310ed99a87da49"
   },
   {
    "id": "engine-production-crates-engine/crates/membrane-grammars-vendored",
@@ -1049,7 +1075,7 @@
     "engine/crates/membrane-mcp/tests/prompts.rs",
     "engine/crates/membrane-mcp/tests/resources.rs"
    ],
-   "content_digest": "524c92a9d057f49facb7e5ca66e366d82b5e8ecfa48c341e5bd7412bb6e08ac1"
+   "content_digest": "79d8c287429ddfc6182c3e4be8731841ea0615a4710f10014a6ed8652c398e39"
   },
   {
    "id": "engine-production-crates-engine/crates/membrane-protocol",
@@ -1087,6 +1113,7 @@
     "engine/crates/membrane-protocol/src/lease.rs",
     "engine/crates/membrane-protocol/src/lib.rs",
     "engine/crates/membrane-protocol/src/membrane_status.rs",
+    "engine/crates/membrane-protocol/src/memory_push.rs",
     "engine/crates/membrane-protocol/src/observable_event.rs",
     "engine/crates/membrane-protocol/src/operations.rs",
     "engine/crates/membrane-protocol/src/portable_pack.rs",
@@ -1105,7 +1132,7 @@
     "engine/crates/membrane-protocol/tests/resident_holder_contract.rs",
     "engine/crates/membrane-protocol/tests/roundtrip.rs"
    ],
-   "content_digest": "d65fcce65d0da47711ef8cc174c83ebaf0c5e00bf55859f51e2a3dcd8548208a"
+   "content_digest": "336721707e1210d8b4604bec01a47efb73bb4a8b88408316ab524b28f6eed171"
   },
   {
    "id": "engine-production-crates-engine/crates/membrane-provider-sdk",
@@ -1162,7 +1189,6 @@
     "engine/crates/membrane-runtime/src/adapt_efficiency_qualification.rs",
     "engine/crates/membrane-runtime/src/adapt_lifecycle_qualification.rs",
     "engine/crates/membrane-runtime/src/adapt_observations.rs",
-    "engine/crates/membrane-runtime/src/adapt_path_tests.rs",
     "engine/crates/membrane-runtime/src/adapt_service.rs",
     "engine/crates/membrane-runtime/src/admission_producer.rs",
     "engine/crates/membrane-runtime/src/agent_adapter_producer.rs",
@@ -1170,6 +1196,8 @@
     "engine/crates/membrane-runtime/src/authorization.rs",
     "engine/crates/membrane-runtime/src/background_review.rs",
     "engine/crates/membrane-runtime/src/background_review_input.rs",
+    "engine/crates/membrane-runtime/src/bin/hook_containment_fake_git.rs",
+    "engine/crates/membrane-runtime/src/bin/hook_test_driver.rs",
     "engine/crates/membrane-runtime/src/bin/membrane-daemon.rs",
     "engine/crates/membrane-runtime/src/blueprint_explore.rs",
     "engine/crates/membrane-runtime/src/blueprint_one_shot.rs",
@@ -1301,6 +1329,7 @@
     "engine/crates/membrane-runtime/tests/diagnostics_authorization.rs",
     "engine/crates/membrane-runtime/tests/fixtures/blueprint-production-boundary/src/lib.rs",
     "engine/crates/membrane-runtime/tests/fixtures/ledger-eval-v1/build_corpus.py",
+    "engine/crates/membrane-runtime/tests/hook_leaf_containment.rs",
     "engine/crates/membrane-runtime/tests/hub_snapshot_cli_contract.rs",
     "engine/crates/membrane-runtime/tests/installation_manifest.rs",
     "engine/crates/membrane-runtime/tests/ledger_donor_mechanisms.rs",
@@ -1341,9 +1370,10 @@
     "engine/crates/membrane-runtime/tests/request_time_h8.rs",
     "engine/crates/membrane-runtime/tests/residency_holders.rs",
     "engine/crates/membrane-runtime/tests/session_projection.rs",
+    "engine/crates/membrane-runtime/tests/singleton_architecture_qualification.rs",
     "engine/crates/membrane-runtime/tests/windows_acl_isolation.rs"
    ],
-   "content_digest": "73739b936cb984c0b4640501d6a7af5392657df766f4acc5aa48c212a843457b"
+   "content_digest": "9d60e8997044bd0149093783ad844a8747489af9ef2f5caf819b098697054ed8"
   },
   {
    "id": "engine-production-crates-engine/crates/membrane-transcript",
@@ -1497,7 +1527,7 @@
     "apps/membrane-hub/tests/windows-release-evidence.test.mjs",
     "apps/membrane-hub/tests/windows-release.test.mjs"
    ],
-   "content_digest": "deeaeb771650888dd5e671d4dbc88147369b2adccb695cecd9ed8c616daee7a1"
+   "content_digest": "fde4bad39820b2617b660911988efe5b6bbf6188eee52277e9fc064857ceb107"
   },
   {
    "id": "hub-scripts-hub-scripts",
@@ -1543,7 +1573,7 @@
     "apps/membrane-hub/scripts/write-release-manifest.mjs",
     "apps/membrane-hub/scripts/write-windows-release-evidence.mjs"
    ],
-   "content_digest": "f5d4052b408755418f7b92b1f3940da0b4d5ead129bf2e8ced4d38b6da6502cb"
+   "content_digest": "d19aae763c16f19f74b2bf0a4957b29cf8b6434d8b1597d01b5a864b6df3b7bb"
   },
   {
    "id": "membrane-testkit-engine/crates/membrane-testkit/src/lib.rs",
@@ -1648,6 +1678,7 @@
     "scripts/qualification/cases/ncl-windows.test.mjs",
     "scripts/qualification/cases/pkg-windows.mjs",
     "scripts/qualification/cases/pkg-windows.test.mjs",
+    "scripts/qualification/cases/psh-windows-isolation.test.mjs",
     "scripts/qualification/cases/psh-windows.mjs",
     "scripts/qualification/cases/psh-windows.test.mjs",
     "scripts/qualification/cases/pul-windows.mjs",
@@ -1703,7 +1734,7 @@
     "scripts/tools/productization/generate-support-matrix.test.mjs",
     "scripts/tools/productization/render-docs.mjs"
    ],
-   "content_digest": "d5505ea80d8512a9b47ba66318eeaffc9bdb5b322937dae143f5d16655a2eb5b"
+   "content_digest": "3787c7b50f16632b1e93a27c3d2899ccf8fcdf978003c656c0b0347830436d78"
   },
   {
    "id": "surface-extraction-tool-surface-extraction-tool",
@@ -1795,7 +1826,7 @@
     "tests/team/team-policy.test.mjs",
     "tests/toolsets/toolsets.test.mjs"
    ],
-   "content_digest": "ba868231a25878b0016b29269c94e086c842a911e2a230189e6177eb74b80b1f"
+   "content_digest": "f05edd86e111995700822abd2b39ab2f729ab056791b8cc1c8e89823f594ecef"
   },
   {
    "id": "tray-build-script-apps/membrane-tray-windows/build.rs",
@@ -1845,7 +1876,7 @@
     "apps/membrane-tray-windows/src/tray.rs",
     "apps/membrane-tray-windows/src/workspace.rs"
    ],
-   "content_digest": "f58dc9ebfd5100d85e17b976629972ef9878e35d4cf7fd610c76ead461e42131"
+   "content_digest": "c6f5d5916253771454442d0d8e6b163e76a2c2c2d8192adcb1ab279a6322a83d"
   }
  ]
 }

@@ -684,6 +684,20 @@
       "exception": null,
       "deletion_or_exclusion_proof": "Repository audit tooling and fixtures; excluded from release payload roots. Package manifest and installed qualification verify exclusion.",
       "notes": "Evidence harness only; not production implementation or qualification."
+    },
+    {
+      "id": "docs-research-probes",
+      "pattern": "^docs/research/2026-09-08-coderight-membrane-assessment/probes/",
+      "groupBy": "all",
+      "runtime": "node",
+      "kind": "research-probe",
+      "product_surface": "research",
+      "production_reachable": false,
+      "packaged": false,
+      "target_disposition": "dev-only",
+      "exception": null,
+      "deletion_or_exclusion_proof": "Point-in-time assessment probes; release content manifest permits only compiled Hub assets, native sidecars, schemas and declarative metadata. Package manifest and installed qualification verify exclusion.",
+      "notes": "Preserved research material, never production. Fresh invocation-graph build from the current tree proves production_reachable=false for all five probe files with zero edges crossing the probe boundary (verified 2026-09-13)."
     }
   ]
 }
