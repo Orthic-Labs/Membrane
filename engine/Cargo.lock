@@ -2522,6 +2522,7 @@ dependencies = [
  "clap",
  "hex",
  "membrane-adapt",
+ "membrane-client",
  "membrane-mcp",
  "membrane-protocol",
  "membrane-runtime",
