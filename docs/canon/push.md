@@ -1,3 +1,47 @@
+# Retired Push — historical aliases & preserved evidence
+
+Push context-reduction subsystem is retired by accepted decisions 16–19. This file is historical only: no capability, group, implementation or qualification below contributes to current totals. Public `push` is MEM-068, writing through Cortex; it is unrelated to these historical reduction IDs.
+
+## Current migration map
+
+Each historical ID resolves to exactly one current capability. Merges retain complete source behavior, implementation history & qualification obligations; mapped acceptance is required in addition to destination acceptance. Runtime migration remains unproven.
+
+| Historical ID | Current capability | Owner | Disposition |
+|---|---|---|---|
+| PSH-001 | MEM-070 | Membrane | MOVE |
+| PSH-002 | PUL-043 | Pull | MOVE |
+| PSH-003 | PUL-044 | Pull | MOVE |
+| PSH-004 | PUL-045 | Pull | MOVE |
+| PSH-005 | PUL-046 | Pull | MOVE |
+| PSH-006 | PUL-047 | Pull | MOVE |
+| PSH-007 | PUL-048 | Pull | MOVE |
+| PSH-008 | MEM-071 | Membrane | MOVE |
+| PSH-009 | PUL-049 | Pull | MOVE |
+| PSH-010 | PUL-027 | Pull | MERGE |
+| PSH-011 | PUL-027 | Pull | MERGE |
+| PSH-012 | PUL-050 | Pull | MOVE |
+| PSH-013 | PUL-051 | Pull | MOVE |
+| PSH-014 | PUL-052 | Pull | MOVE |
+| PSH-015 | PUL-053 | Pull | MOVE |
+| PSH-016 | PUL-028 | Pull | MERGE |
+| PSH-017 | PUL-032 | Pull | MERGE |
+| PSH-018 | MEM-072 | Membrane | MOVE |
+| PSH-019 | PUL-031 | Pull | MERGE |
+| PSH-020 | MEM-073 | Membrane | MOVE |
+| PSH-021 | MEM-074 | Membrane | MOVE |
+| PSH-022 | PUL-054 | Pull | MOVE |
+| PSH-023 | PUL-055 | Pull | MOVE |
+| PSH-024 | PUL-056 | Pull | MOVE |
+| PSH-025 | PUL-042 | Pull | MERGE |
+| PSH-026 | PUL-057 | Pull | MOVE |
+| PSH-027 | PUL-058 | Pull | MOVE |
+| PSH-028 | PUL-059 | Pull | MOVE |
+| PSH-029 | PUL-060 | Pull | MOVE |
+
+## Preserved pre-migration canon — historical only
+
+All following wording & proof describe pre-migration state. Accepted decisions & current destination canons supersede subsystem/ownership claims. Original text is retained verbatim for historical comparison.
+
 # Push atomic capability canon — legacy compatibility
 
 > Push's context-reduction subsystem identity is retired. Pull owns reduction, recovery, & publication; public `push` is reserved for agent-to-Cortex durable-memory writes. This file records `membrane_push_*` compatibility while a real consumer remains.

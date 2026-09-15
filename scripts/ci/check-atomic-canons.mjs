@@ -15,7 +15,6 @@ const legacyAtomRevision = "c6cfbca96e5be1d0f8de8cb9614d6158f57cc948";
 const canons = Object.freeze([
   { owner: "Membrane", file: "membrane.md", prefix: "MEM", boundary: "RELEASED" },
   { owner: "Pull", file: "pull.md", prefix: "PUL", boundary: "RELEASED" },
-  { owner: "Push", file: "push.md", prefix: "PSH", boundary: "RELEASED" },
   { owner: "Cortex", file: "cortex.md", prefix: "CTX", boundary: "RELEASED" },
   { owner: "Blueprint", file: "blueprint.md", prefix: "BPT", boundary: "RELEASED" },
   { owner: "Ledger", file: "ledger.md", prefix: "LDG", boundary: "RELEASED" },
@@ -34,6 +33,7 @@ const headers = Object.freeze({
   reconciliation: ["Capability", "State", "Exact source", "Exact consumer", "Residual"],
   focusedVerification: ["Capability targets", "Focused command", "Direct test evidence", "Result", "Run identity/time"],
   comparison: ["Atom", "Scope", "Competitive disposition", "Best mechanism", "Current evidence", "Donor evidence", "Gap / action"],
+  historicalAlias: ["Historical ID", "Current capability", "Owner", "Disposition"],
 });
 
 const enums = Object.freeze({
@@ -92,6 +92,34 @@ function recordsByHeader(markdown, expected) {
     if (row.length !== expected.length) throw new Error(`table: expected ${expected.length} fields, got ${row.length}`);
     return Object.fromEntries(expected.map((name, index) => [name, row[index]]));
   });
+}
+function validateHistoricalAliases(capabilityIds, qualifications = []) {
+  const markdown = readFileSync(path.join(atomDir, "push.md"), "utf8");
+  const rows = recordsByHeader(markdown, headers.historicalAlias);
+  const historicalQualifications = records(markdown, "## Qualification ledger", headers.qualification);
+  const expected = new Set(Array.from({ length: 29 }, (_, index) => `PSH-${String(index + 1).padStart(3, "0")}`));
+  if (rows.length !== expected.size) throw new Error(`push.md historical alias table must contain ${expected.size} rows`);
+  const aliases = new Map();
+  for (const row of rows) {
+    if (!/^PSH-\d{3}$/.test(row["Historical ID"]) || !expected.has(row["Historical ID"])) throw new Error(`push.md: invalid historical ID ${row["Historical ID"]}`);
+    if (aliases.has(row["Historical ID"])) throw new Error(`push.md: duplicate historical ID ${row["Historical ID"]}`);
+    const targetsForAlias = targets(row["Current capability"]);
+    if (targetsForAlias.length !== 1 || !capabilityIds.has(targetsForAlias[0])) throw new Error(`push.md:${row["Historical ID"]}: current capability must resolve to one live capability`);
+    if (!new Set(["Pull", "Membrane"]).has(row.Owner)) throw new Error(`push.md:${row["Historical ID"]}: invalid live owner ${row.Owner}`);
+    const prefixOwner = targetsForAlias[0].startsWith("PUL-") ? "Pull" : targetsForAlias[0].startsWith("MEM-") ? "Membrane" : null;
+    if (prefixOwner !== row.Owner) throw new Error(`push.md:${row["Historical ID"]}: owner does not match live target`);
+    if (!row.Disposition || /\b(?:active|current)\b/i.test(row.Disposition)) throw new Error(`push.md:${row["Historical ID"]}: historical alias has active disposition`);
+    aliases.set(row["Historical ID"], targetsForAlias[0]);
+  }
+  for (const id of expected) if (!aliases.has(id)) throw new Error(`push.md: missing historical ID ${id}`);
+  const owners = [...aliases.values()].reduce((counts, id) => { const owner = id.startsWith("PUL-") ? "Pull" : "Membrane"; counts[owner] += 1; return counts; }, { Pull: 0, Membrane: 0 });
+  if (owners.Pull !== 24 || owners.Membrane !== 5) throw new Error(`push.md historical alias ownership must be Pull=24, Membrane=5`);
+  for (const [historicalId, liveId] of aliases) {
+    const inherited = qualifications.find((row) => targets(row["Capability targets"]).includes(liveId));
+    const historical = historicalQualifications.find((row) => targets(row["Capability targets"]).includes(historicalId));
+    if (!inherited || !historical || !inherited["Acceptance boundary"].includes(historical["Acceptance boundary"])) throw new Error(`push.md:${historicalId}: inherited acceptance is missing from ${liveId} qualification`);
+  }
+  return aliases;
 }
 function comparisonEvidence(value) {
   const match = /^Receipt: ([^;]+)@([0-9a-f]{40}); Atom: ([A-Z]{3}-\d{3}); Compared: ([0-9a-f]{40})$/.exec(value);
@@ -202,7 +230,7 @@ function similarity(a, b) {
   const union = new Set([...left, ...right]).size;
   return union ? intersection / union : 0;
 }
-function validateIdentity(parsed) {
+function validateIdentity(parsed, aliases = new Map()) {
   const everyId = new Set();
   const capabilityIds = new Set(parsed.flatMap((canon) => canon.capabilities).map((row) => row.ID));
   for (const canon of parsed) {
@@ -229,7 +257,7 @@ function validateIdentity(parsed) {
     if (!canon.groups[0]["Derived rollup"].includes(`${committedCount} committed capabilities`)) throw new Error(`${canon.file}: group rollup has stale committed count`);
     if (exploratoryCount && !canon.groups[0]["Derived rollup"].includes(`${exploratoryCount} exploratory capability`)) throw new Error(`${canon.file}: group rollup has stale exploratory count`);
     for (const row of canon.decisions) for (const target of targets(row["Capability targets"])) {
-      if (!capabilityIds.has(target)) throw new Error(`${canon.file}:${row.ID}: unresolved target ${target}`);
+      if (!capabilityIds.has(target) && !aliases.has(target)) throw new Error(`${canon.file}:${row.ID}: unresolved target ${target}`);
     }
   }
   return { everyId, capabilityIds };
@@ -284,7 +312,7 @@ function validateRevisionLocators(value, label, revision) {
     }
   }
 }
-function validateReceiptReferences(parsed) {
+function validateReceiptReferences(parsed, aliases = new Map()) {
   const receipts = new Map();
   const proofReceiptByCapability = new Map();
   for (const canon of parsed) for (const row of canon.capabilities) {
@@ -333,7 +361,10 @@ function validateReceiptReferences(parsed) {
     if (ids.length !== 1) throw new Error("focused verification receipt must have exactly one capability per row");
     const id = ids[0];
     const capability = capabilityById.get(id);
-    if (!capability) throw new Error(`focused verification receipt targets unknown capability ${id}`);
+    if (!capability) {
+      if (aliases.has(id)) continue;
+      throw new Error(`focused verification receipt targets unknown capability ${id}`);
+    }
     if (capability.Verification !== "FOCUSED_PASS") continue;
     if (proofReceiptByCapability.get(id) !== row.receipt) continue;
     if (focusedById.has(id)) throw new Error(`focused verification receipt duplicates ${id}`);
@@ -381,6 +412,7 @@ function behavior(byId, id) {
 function validateSemanticOwnership(parsed) {
   const capabilities = parsed.flatMap((canon) => canon.capabilities), byId = new Map(capabilities.map((row) => [row.ID, row]));
   const requireWords = (id, pattern, message) => { if (!pattern.test(behavior(byId, id))) throw new Error(message); };
+  const requireAll = (id, patterns, message) => { const text = behavior(byId, id); if (patterns.some((pattern) => !pattern.test(text))) throw new Error(message); };
   const rejectWords = (id, pattern, message) => { if (pattern.test(behavior(byId, id))) throw new Error(message); };
   requireWords("PUL-015", /admit|invok/i, "PUL-015 must own provider admission/invocation");
   rejectWords("PUL-015", /materializ/i, "PUL-015 overlaps LDG-022 materialization");
@@ -397,7 +429,28 @@ function validateSemanticOwnership(parsed) {
   requireWords("MEM-052", /generic|daemon jobs|admit/i, "MEM-052 must own generic daemon scheduling/admission");
   rejectWords("MEM-052", /learner|proposal sink/i, "MEM-052 overlaps ADP-035 learner semantics");
   requireWords("ADP-035", /learner|proposal sink/i, "ADP-035 must own learner semantics/proposal sink");
-  requireWords("MEM-016", /tray-owned daemon|wire compatibility/i, "MEM-016 must distinguish tray daemon from hub_inactive wire compatibility");
+  requireWords("ADP-035", /Cortex|admission boundary/i, "ADP-035 must route proposals through Cortex");
+  requireAll("MEM-016", [/single-engine|engine/i, /readiness|health|owner lease/i, /drain|shutdown|typed activation failure/i], "MEM-016 must own single-engine lifecycle readiness and typed activation failure");
+  rejectWords("MEM-016", /(?:tray[- ]exclusive|requires?\s+(?:a\s+)?tray|only\s+(?:the\s+)?tray)/i, "MEM-016 must not require tray-owned residency");
+  requireAll("MEM-055", [/one shared engine/i, /Hub|harness/i, /lifetime ownership|lease/i, /restart/i], "MEM-055 must own Hub/harness shared-engine lifetime ownership");
+  requireWords("MEM-055", /only while.*valid owner remains/i, "MEM-055 recovery requires a remaining valid owner");
+  rejectWords("MEM-055", /tray[- ]exclusive|requires?\s+(?:a\s+)?tray|(?:allow|permit|enable)\s+(?:an?\s+)?ownerless/i, "MEM-055 must reject tray-exclusive or ownerless restart");
+  requireAll("MEM-056", [/final Hub\/harness owner/i, /release|closing/i, /drain|stop/i, /another owner/i], "MEM-056 must own final-owner drain and shutdown");
+  rejectWords("MEM-056", /(?:allow|permit|enable)\s+(?:an?\s+)?ownerless|tray[- ]exclusive/i, "MEM-056 must not permit ownerless restart");
+  requireAll("MEM-068", [/public `?push/i, /durable-memory/i, /byte-exact|submitted body.*bytes/i, /Cortex/i], "MEM-068 must route public push memory writes through Cortex");
+  requireAll("MEM-068", [/grant-bound/i, /write only/i, /reject non-memory destinations/i, /typed/i], "MEM-068 must restrict authorized public push to typed Cortex memory writes");
+  rejectWords("MEM-068", /(?:Push|Membrane).*(?:stores?|admit(?:s)?).*(?:memory|body)|direct.*(?:store|memory)/i, "MEM-068 must not make Push or Membrane the memory store");
+  requireAll("CTX-043", [/authorized public `?push/i, /byte-for-byte/i, /immutable/i, /source\/admission/i, /body/i], "CTX-043 must preserve immutable exact submitted bodies");
+  requireAll("CTX-043", [/never replace original body/i, /user-directed.*stored as memory rather than pending proposal/i], "CTX-043 must retain original bytes and admit user-directed memory");
+  for (const id of ["MEM-025", "MEM-026"]) requireWords(id, /five active subsystems/i, `${id} must count five active subsystems`);
+  requireAll("BPT-021", [/valid graph incrementally/i, /add\/remove\/rename\/move/i, /full construction.*absent|absent.*full construction/i, /corrupt|unrecoverable/i], "BPT-021 must preserve incremental graph validity");
+  rejectWords("BPT-021", /always.*(?:rebuild|construct)|rebuild.*(?:every|all) change/i, "BPT-021 must not rebuild graph for every change");
+  requireAll("BPT-056", [/corruption.*unrecoverable/i, /newer/i, /incompatible/i, /migration|typed rejection/i], "BPT-056 must distinguish corruption from newer/incompatible graphs");
+  rejectWords("BPT-056", /treat(?:s)?\s+(?:newer|incompatible).*as corruption/i, "BPT-056 must not treat incompatible graphs as corruption");
+  requireAll("BPT-072", [/read-only/i, /never.*(?:construct|update|mutat).*graph/i], "BPT-072 must keep Blueprint reads non-mutating");
+  rejectWords("BPT-072", /reads?\s+(?:construct|update|mutat)|refresh.*on read/i, "BPT-072 must not mutate graphs during reads");
+  requireAll("ADP-029", [/Cortex/i, /admission boundary/i], "ADP-029 must route accepted Adapt data through Cortex");
+  requireWords("ADP-035", /learner|proposal sink/i, "ADP-035 must own learner semantics/proposal sink");
   if (byId.get("PUL-001")?.Implementation !== "PARTIAL") throw new Error("PUL-001 must remain PARTIAL until deterministic requirement detail lands");
   if (byId.get("PUL-015")?.Implementation !== "PARTIAL") throw new Error("PUL-015 must remain PARTIAL while only shadow activation exists");
   if (byId.get("MEM-024")?.Implementation !== "PARTIAL") throw new Error("MEM-024 must remain PARTIAL until receipt/verdict resolution is correct");
@@ -410,7 +463,7 @@ function validateSemanticOwnership(parsed) {
   }
 }
 
-function validatePreservation(everyId, capabilityIds) {
+function validatePreservation(everyId, capabilityIds, aliases = new Map()) {
   const markdown = readFileSync(preservationPath, "utf8");
   const rows = records(markdown, "# Atomic canon preservation map", headers.preservation);
   const legacyAtoms = rows.filter((row) => row["Legacy key"].startsWith("ATOM-"));
@@ -426,7 +479,7 @@ function validatePreservation(everyId, capabilityIds) {
     if (oldIds.has(row["Old ID"])) throw new Error(`preservation map: duplicate old ID ${row["Old ID"]}`);
     keys.add(row["Legacy key"]); oldIds.add(row["Old ID"]);
     if (!["CAPABILITY", "IMPLEMENTATION", "REFERENCE", "BACKLOG", "EXCLUSION"].includes(row["New kind"])) throw new Error(`preservation map:${row["Legacy key"]}: invalid kind ${row["New kind"]}`);
-    for (const target of targets(row["Target/parent"])) if (!everyId.has(target)) throw new Error(`preservation map:${row["Legacy key"]}: unresolved target ${target}`);
+    for (const target of targets(row["Target/parent"])) if (!everyId.has(target) && !aliases.has(target)) throw new Error(`preservation map:${row["Legacy key"]}: unresolved target ${target}`);
   }
   const mapped = new Set(legacyAtoms.flatMap((row) => targets(row["Target/parent"])));
   for (const row of legacyAtoms) {
@@ -482,6 +535,11 @@ function validatePreservation(everyId, capabilityIds) {
   for (const id of expectedSplitIds) if (!introduced.has(id)) throw new Error(`atomic split register: missing introduced atom ${id}`);
   for (const row of introductions) {
     const id = row["Introduced ID"];
+    if (aliases.has(id)) {
+      if (introduced.has(id) || !row.Origin || !row["Observable behavior"] || !row["Authority/evidence"]) throw new Error(`new capability register: invalid historical introduction ${id}`);
+      introduced.add(id);
+      continue;
+    }
     if (!capabilityIds.has(id) || frozenAtomIds.has(id) || introduced.has(id)) throw new Error(`new capability register: invalid introduced atom ${id}`);
     if (introduced.has(id)) throw new Error(`new capability register: duplicate introduced atom ${id}`);
     if (!row.Origin || !row["Observable behavior"] || !row["Authority/evidence"] || /pending|unknown/i.test(row["Authority/evidence"])) throw new Error(`new capability register:${id}: incomplete authority`);
@@ -521,7 +579,8 @@ function pendingMarkdown(parsed, inventory) {
     for (const row of rows) lines.push(`| [${row.ID}](../canon/${canon.file}) | ${row.Competitive} | ${safeCell(row.Action)} | ${safeCell(`implementation=${row.Implementation}; verification=${row.Verification}; qualification=${row.Qualification}; delivery=${row.Delivery}/${canon.boundary}; evidence=${row.Evidence}`)} |`);
     lines.push("");
   }
-  lines.push("## Preserved supporting specifications", "", "Supporting files retain detail; only this generated file indexes pending state.", "", "| Specification | Canon target |", "|---|---|", "| [Unified implementation & closure plan](MEMBRANE-UNIFIED-IMPLEMENTATION-PLAN.md) | All 340 committed rows across `MEM`, `PUL`, `PSH`, `CTX`, `BPT`, `LDG`, & `ADP`; lifecycle qualification tracked separately |", "| [Adapt harness efficiency](capabilities/adapt/harness-efficiency.md) | `ADP-036`, `ADP-038`, `ADP-040`, `ADP-043`–`ADP-071` |", "| [Blueprint findings lane](capabilities/blueprint/findings-lane.md) | `BPT-049`, `BPT-050`, `BPT-051`, `BPT-052`, `BPT-065`, `BPT-066`, `BPT-067` |", "| [Pull ambient injection loop](capabilities/pull/ambient-injection-loop.md) | Hook-host delivery of federated context (`PUL-001`, `PUL-002`, `PUL-004`, `PUL-012` wiring); installed-product blockers & acceptance path |", "| [Semantic context advisor](experiments/semantic-context-advisor.md) | `MEM-D003` |", "| [Membrane brand identity](design/membrane-brand-identity.md) | `MEM-D004` |", "| [Hub visual reference](design/hub/hub-mockup.html) | `MEM-D005` |", "", "## Unclassified preserved work", "", inventory.unclassified.length ? `${inventory.unclassified.length} rows require classification.` : "None.", "");
+  const activeCommitted = committed.length;
+  lines.push("## Preserved supporting specifications", "", "Supporting files retain detail; only this generated file indexes pending state.", "", "| Specification | Canon target |", "|---|---|", `| [Unified implementation & closure plan](MEMBRANE-UNIFIED-IMPLEMENTATION-PLAN.md) | All ${activeCommitted} committed rows across active Membrane, Pull, Cortex, Blueprint, Ledger, & Adapt canons; retired Push history remains in [push.md](../canon/push.md); lifecycle qualification tracked separately |`, "| [Adapt harness efficiency](capabilities/adapt/harness-efficiency.md) | `ADP-036`, `ADP-038`, `ADP-040`, `ADP-043`–`ADP-071` |", "| [Blueprint findings lane](capabilities/blueprint/findings-lane.md) | `BPT-049`, `BPT-050`, `BPT-051`, `BPT-052`, `BPT-065`, `BPT-066`, `BPT-067` |", "| [Pull ambient injection loop](capabilities/pull/ambient-injection-loop.md) | Hook-host delivery of federated context (`PUL-001`, `PUL-002`, `PUL-004`, `PUL-012` wiring); installed-product blockers & acceptance path |", "| [Semantic context advisor](experiments/semantic-context-advisor.md) | `MEM-D003` |", "| [Membrane brand identity](design/membrane-brand-identity.md) | `MEM-D004` |", "| [Hub visual reference](design/hub/hub-mockup.html) | `MEM-D005` |", "", "## Unclassified preserved work", "", inventory.unclassified.length ? `${inventory.unclassified.length} rows require classification.` : "None.", "");
   return lines.join("\n");
 }
 function atomReadmeMarkdown(parsed, inventory) {
@@ -529,7 +588,7 @@ function atomReadmeMarkdown(parsed, inventory) {
   const exploratory = parsed.reduce((sum, canon) => sum + canon.capabilities.filter((row) => row.Scope === "EXPLORATORY").length, 0);
   const competitiveClosedCount = parsed.reduce((sum, canon) => sum + canon.capabilities.filter(competitivelyClosed).length, 0);
   const lifecycleClosedCount = parsed.reduce((sum, canon) => sum + canon.capabilities.filter((row) => closed(row, canon.boundary)).length, 0);
-  const lines = ["# Membrane atomic capability canons", "", "<!-- GENERATED by scripts/ci/check-atomic-canons.mjs --write. Do not hand-edit. -->", "", "Each named subsystem owns one atomic canon. Competitive comparison & lifecycle qualification remain separate; only current-best committed atoms are competitively closed.", "", "## Current inventory", "", "| Canon | Boundary | Committed | Exploratory | Current best/closed | Competitive pending | Lifecycle closed |", "|---|---|---:|---:|---:|---:|---:|"];
+  const lines = ["# Membrane atomic capability canons", "", "<!-- GENERATED by scripts/ci/check-atomic-canons.mjs --write. Do not hand-edit. -->", "", "Membrane parent & five active subsystems own current canons. [Retired Push](push.md) preserves historical aliases only. Competitive comparison & lifecycle qualification remain separate; only current-best committed atoms are competitively closed.", "", "## Current inventory", "", "| Canon | Boundary | Committed | Exploratory | Current best/closed | Competitive pending | Lifecycle closed |", "|---|---|---:|---:|---:|---:|---:|"];
   for (const canon of parsed) {
     const count = canon.capabilities.filter((row) => row.Scope === "COMMITTED").length, canonCompetitiveClosed = canon.capabilities.filter(competitivelyClosed).length, canonLifecycleClosed = canon.capabilities.filter((row) => closed(row, canon.boundary)).length;
     const canonExploratory = canon.capabilities.filter((row) => row.Scope === "EXPLORATORY").length;
@@ -552,16 +611,20 @@ function validatePendingSupport(markdown) {
   if (JSON.stringify(observed) !== JSON.stringify([...required].sort())) throw new Error(`pending supporting-document inventory differs: ${observed.join(", ")}`);
 }
 
-export const atomicCanonTestHooks = Object.freeze({ proofEvidence, comparisonEvidence, focusedProofLooksExact, closed, competitivelyClosed, similarity, parseCanon });
+export const atomicCanonTestHooks = Object.freeze({ proofEvidence, comparisonEvidence, focusedProofLooksExact, closed, competitivelyClosed, similarity, parseCanon, validateHistoricalAliases, validateSemanticOwnership });
 export function validateAtomicCanons({ write = false } = {}) {
-  const canonFiles = readdirSync(atomDir).filter((file) => file.endsWith(".md") && file !== "README.md").sort();
+  const canonFiles = readdirSync(atomDir).filter((file) => file.endsWith(".md") && !["README.md", "push.md"].includes(file)).sort();
   const expectedCanonFiles = canons.map((canon) => canon.file).sort();
   if (JSON.stringify(canonFiles) !== JSON.stringify(expectedCanonFiles)) throw new Error(`atomic canon inventory differs: ${canonFiles.join(", ")}`);
-  const parsed = canons.map(parseCanon), { everyId, capabilityIds } = validateIdentity(parsed);
-  validateReceiptReferences(parsed);
+  const parsed = canons.map(parseCanon);
+  const capabilityIds = new Set(parsed.flatMap((canon) => canon.capabilities).map((row) => row.ID));
+  if ([...capabilityIds].some((id) => /^PSH-\d{3}$/.test(id))) throw new Error("PSH capabilities must remain historical aliases");
+  const aliases = validateHistoricalAliases(capabilityIds, parsed.flatMap((canon) => canon.qualifications));
+  const { everyId } = validateIdentity(parsed, aliases);
+  validateReceiptReferences(parsed, aliases);
   validateComparisonReferences(parsed);
   validateSemanticOwnership(parsed);
-  const inventory = validatePreservation(everyId, capabilityIds), expectedPending = pendingMarkdown(parsed, inventory), expectedReadme = atomReadmeMarkdown(parsed, inventory);
+  const inventory = validatePreservation(everyId, capabilityIds, aliases), expectedPending = pendingMarkdown(parsed, inventory), expectedReadme = atomReadmeMarkdown(parsed, inventory);
   validatePendingSupport(expectedPending);
   if (write) { writeFileSync(pendingPath, expectedPending, "utf8"); writeFileSync(atomReadmePath, expectedReadme, "utf8"); }
   else {
