@@ -30,13 +30,13 @@
     "release:build:win:unsigned": "node scripts/release-build-windows.mjs --unsigned"
   },
   "dependencies": {
-    "@rightkit/platform-ui": "0.1.0",
-    "@tauri-apps/api": "^2.0.0",
+    "@rightkit/platform-ui": "0.1.1",
+    "@tauri-apps/api": "^2.11.1",
     "@tauri-apps/plugin-os": "2.3.2"
   },
   "devDependencies": {
-    "@rightkit/ax": "0.2.1",
-    "@rightkit/release": "0.2.103",
+    "@rightkit/ax": "0.2.4",
+    "@rightkit/release": "0.2.104",
     "@tauri-apps/cli": "2.11.4"
   }
 }

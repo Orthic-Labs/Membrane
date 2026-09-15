@@ -23,6 +23,10 @@
     "check:host-contracts": "node scripts/generate-host-contracts.mjs --check",
     "test:mcp": "node scripts/ci/test-native-mcp.mjs",
     "test:fable": "node scripts/ci/test-native-mcp.mjs",
+    "deps:cargo:outdated": "node scripts/cargo-dependencies.mjs outdated",
+    "deps:cargo:upgrade": "node scripts/cargo-dependencies.mjs upgrade",
+    "deps:pnpm:outdated": "node scripts/pnpm-dependencies.mjs outdated",
+    "deps:pnpm:upgrade": "node scripts/pnpm-dependencies.mjs upgrade",
     "rightkit:git:sync": "right-git sync .",
     "rightkit:git:drift": "right-git drift .",
     "release:candidate:build": "node scripts/release/right-git-candidate.mjs build",
@@ -41,11 +45,11 @@
     "rightkit:ax:conformance": "right-ax ax conformance ."
   },
   "dependencies": {
-    "@rightkit/hooks": "0.1.0"
+    "@rightkit/hooks": "0.1.1"
   },
   "devDependencies": {
-    "@rightkit/ax": "0.2.1",
+    "@rightkit/ax": "0.2.4",
     "@rightkit/git": "0.2.24",
-    "@rightkit/release": "0.2.102"
+    "@rightkit/release": "0.2.104"
   }
 }

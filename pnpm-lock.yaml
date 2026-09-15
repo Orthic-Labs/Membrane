@@ -9,43 +9,43 @@ importers:
   .:
     dependencies:
       '@rightkit/hooks':
-        specifier: 0.1.0
-        version: 0.1.0
+        specifier: 0.1.1
+        version: 0.1.1
     devDependencies:
       '@rightkit/ax':
-        specifier: 0.2.1
-        version: 0.2.1
+        specifier: 0.2.4
+        version: 0.2.4
       '@rightkit/git':
         specifier: 0.2.24
         version: 0.2.24
       '@rightkit/release':
-        specifier: 0.2.102
-        version: 0.2.102
+        specifier: 0.2.104
+        version: 0.2.104
 
 packages:
 
-  '@rightkit/ax@0.2.1':
-    resolution: {integrity: sha512-7iBNWoO2LmZLw38mVmHu/56O0Pn4lQrnnmbf26knnpyjPVE7XFUou3tJ9r607HRMmFvNJGEGk/WbVEL5x3AIyg==}
+  '@rightkit/ax@0.2.4':
+    resolution: {integrity: sha512-bI1eU4+lYKl7q+RCHWyYXi3QOSFX32t3pArnoOnQDNBtYuU3VV/HS/3wDQEHi8QzIgxrhql+eggfDmWzVbAbCQ==}
     hasBin: true
 
   '@rightkit/git@0.2.24':
     resolution: {integrity: sha512-jVAIZLWYU5tyEwB0exA6AJDTX5lbuxcEsSGmA2hisGYSvqXDfTNymId8aMu3n+YIAD2GEA4RE3QvBWYNJQI0Ag==}
     hasBin: true
 
-  '@rightkit/hooks@0.1.0':
-    resolution: {integrity: sha512-6+SjBp5YABYqxMH6l2BC0ZTrIdDmTBSzvpuHyHvw3mT8Sf5FSgCYo1zVo28AQ+BsHfWkJN+S4JlirIrhTIc0mg==}
+  '@rightkit/hooks@0.1.1':
+    resolution: {integrity: sha512-Z8AOe4eRJN90k98D9DB6XgKjSmjNTeQNcpHuTBIJRk0xmFyO7jqzV9AmO7jxFJOSg9YkzEuftra0UhfYLbGXRA==}
     hasBin: true
 
-  '@rightkit/release@0.2.102':
-    resolution: {integrity: sha512-sEYxja9yhGc1adXyyxh2AWDlODmsve5lUtRL7Jq7BkjlaFHnPYRpbVXB6PI7E8SauDH6ebZrMuXWIN79QC1tAA==}
+  '@rightkit/release@0.2.104':
+    resolution: {integrity: sha512-h25mPtQ011jAjhe3hX4Z2DBR7SnOnrm4tNpSOz+mLdNn0MY1MglLEAO4Fc3XjY9Nic79Upgma0+8gl0XRghjIQ==}
     hasBin: true
 
 snapshots:
 
-  '@rightkit/ax@0.2.1': {}
+  '@rightkit/ax@0.2.4': {}
 
   '@rightkit/git@0.2.24': {}
 
-  '@rightkit/hooks@0.1.0': {}
+  '@rightkit/hooks@0.1.1': {}
 
-  '@rightkit/release@0.2.102': {}
+  '@rightkit/release@0.2.104': {}

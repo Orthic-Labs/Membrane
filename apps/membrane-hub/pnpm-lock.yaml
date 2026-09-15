@@ -9,39 +9,39 @@ importers:
   .:
     dependencies:
       '@rightkit/platform-ui':
-        specifier: 0.1.0
-        version: 0.1.0(@tauri-apps/plugin-os@2.3.2)(react@19.2.8)
+        specifier: 0.1.1
+        version: 0.1.1(@tauri-apps/plugin-os@2.3.2)(react@19.2.8)
       '@tauri-apps/api':
-        specifier: ^2.0.0
+        specifier: ^2.11.1
         version: 2.11.1
       '@tauri-apps/plugin-os':
         specifier: 2.3.2
         version: 2.3.2
     devDependencies:
       '@rightkit/ax':
-        specifier: 0.2.1
-        version: 0.2.1
+        specifier: 0.2.4
+        version: 0.2.4
       '@rightkit/release':
-        specifier: 0.2.103
-        version: 0.2.103
+        specifier: 0.2.104
+        version: 0.2.104
       '@tauri-apps/cli':
         specifier: 2.11.4
         version: 2.11.4
 
 packages:
 
-  '@rightkit/ax@0.2.1':
-    resolution: {integrity: sha512-7iBNWoO2LmZLw38mVmHu/56O0Pn4lQrnnmbf26knnpyjPVE7XFUou3tJ9r607HRMmFvNJGEGk/WbVEL5x3AIyg==}
+  '@rightkit/ax@0.2.4':
+    resolution: {integrity: sha512-bI1eU4+lYKl7q+RCHWyYXi3QOSFX32t3pArnoOnQDNBtYuU3VV/HS/3wDQEHi8QzIgxrhql+eggfDmWzVbAbCQ==}
     hasBin: true
 
-  '@rightkit/platform-ui@0.1.0':
-    resolution: {integrity: sha512-kI5ukPTCCowVvWiQf2HgPEZkv9w97gdwTbQzBvZal7eEEziz+vENgXjVczeEemz50TxbG3slCH7BIuX3PPf8MA==}
+  '@rightkit/platform-ui@0.1.1':
+    resolution: {integrity: sha512-1IPcgfiV/LAASS/lORttbFW5W+HMEEevTCh55pG4Ffcj7izrwdXyWq9/b5SJDPytUBNke7vhNCfKmmCxLgCqWQ==}
     peerDependencies:
       '@tauri-apps/plugin-os': '>=2 <3'
       react: '>=18 <20'
 
-  '@rightkit/release@0.2.103':
-    resolution: {integrity: sha512-UpU84GXZkHnpiiNJ6hob97c4TkkBj/4Xdu/60WPgSDbmP09BGpurdedGwuslxSNtgbN91gjJyi3EbbsmSAUt7g==}
+  '@rightkit/release@0.2.104':
+    resolution: {integrity: sha512-h25mPtQ011jAjhe3hX4Z2DBR7SnOnrm4tNpSOz+mLdNn0MY1MglLEAO4Fc3XjY9Nic79Upgma0+8gl0XRghjIQ==}
     hasBin: true
 
   '@tauri-apps/api@2.11.1':
@@ -132,14 +132,14 @@ packages:
 
 snapshots:
 
-  '@rightkit/ax@0.2.1': {}
+  '@rightkit/ax@0.2.4': {}
 
-  '@rightkit/platform-ui@0.1.0(@tauri-apps/plugin-os@2.3.2)(react@19.2.8)':
+  '@rightkit/platform-ui@0.1.1(@tauri-apps/plugin-os@2.3.2)(react@19.2.8)':
     dependencies:
       '@tauri-apps/plugin-os': 2.3.2
       react: 19.2.8
 
-  '@rightkit/release@0.2.103': {}
+  '@rightkit/release@0.2.104': {}
 
   '@tauri-apps/api@2.11.1': {}
 
