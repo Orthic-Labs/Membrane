@@ -1,7 +1,7 @@
 {
  "schemaVersion": 1,
  "artifact": "membrane.runtime-language-manifest",
- "generatedAt": "2026-09-13T22:16:31.238Z",
+ "generatedAt": "2026-09-14T08:27:29.966Z",
  "enforcementMode": "sealed",
  "policyDigest": "d633549377c620dfae700ed9f6dabfbbb5f5e78821b206b10b68dc0d823245ff",
  "totals": {
@@ -667,7 +667,7 @@
     "engine/crates/membrane-client/tests/memory_backend.rs",
     "engine/crates/membrane-client/tests/residency.rs"
    ],
-   "content_digest": "39552754a2e05ccf5c77cebd73d90b74c78704f14c8b51c6444b8cb353ff1668"
+   "content_digest": "34bc57b2b5c31473be4380c8d87c3e36ae78266bbc9ff208dbdd5cc03cb08c9d"
   },
   {
    "id": "engine-membrane-updater-engine/crates/membrane-updater",
@@ -830,7 +830,7 @@
     "engine/crates/membrane/tests/dispatch.rs",
     "engine/crates/membrane/tests/identifier_contracts.rs"
    ],
-   "content_digest": "40ab30ec5fb984805db3b2f9ba991b59f17e184624fd7d90f86705251c35a800"
+   "content_digest": "f6090822062ad3016c80a8d7803059e700f65b64afa57aa3538472eb94cfa323"
   },
   {
    "id": "engine-production-crates-engine/crates/membrane-adapt",
@@ -1373,7 +1373,7 @@
     "engine/crates/membrane-runtime/tests/singleton_architecture_qualification.rs",
     "engine/crates/membrane-runtime/tests/windows_acl_isolation.rs"
    ],
-   "content_digest": "486c83cfd52934ff9a8315f0ddf0b786f224a546d0072eac6430b8ac74a6f21f"
+   "content_digest": "1c7d1bf6dd3899b73cf3972f80c25777cf627b3975ebe8879a98c5a2b36826e0"
   },
   {
    "id": "engine-production-crates-engine/crates/membrane-transcript",
@@ -1734,7 +1734,7 @@
     "scripts/tools/productization/generate-support-matrix.test.mjs",
     "scripts/tools/productization/render-docs.mjs"
    ],
-   "content_digest": "6fe463f12cd995866c22d900dca9545e4c8c9d069a60573c0087c65c3436a04d"
+   "content_digest": "f80cc98a45968088aac7ae452e392172bc29e73b418803f20cbd02c9ed7578b1"
   },
   {
    "id": "surface-extraction-tool-surface-extraction-tool",
@@ -1876,7 +1876,7 @@
     "apps/membrane-tray-windows/src/tray.rs",
     "apps/membrane-tray-windows/src/workspace.rs"
    ],
-   "content_digest": "32fb8fc8da7b76911755e0452ea18003d11b5467d7057c3c4134b882b32122bf"
+   "content_digest": "83bd93d96cba328569f9f79b1329b0093fd9c1d7554d353f2950447960e0610f"
   }
  ]
 }

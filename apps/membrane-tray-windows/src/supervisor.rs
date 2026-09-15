@@ -1349,6 +1349,7 @@ mod tests {
                 services_unavailable_reason,
                 hub_holders,
                 coderight_daemon_holders,
+                harness_holders: 0,
             },
         }
     }

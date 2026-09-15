@@ -1,0 +1,25 @@
+{
+  "schema": "membrane.release-evidence.v1",
+  "product": "Membrane Hub",
+  "profile": "internal-unsigned",
+  "sourceCommit": "3dbb0d8bcfe6e077e4c3a4146fbf10d1a731157b",
+  "dirty": true,
+  "release": {
+    "tag": "v0.1.24",
+    "version": "0.1.24",
+    "commit": "3dbb0d8bcfe6e077e4c3a4146fbf10d1a731157b",
+    "tree": "ac44820f5b90dc16b573cba5fccca5e27525ae8c98f451261b98b030f2af40c1",
+    "generation": "ac44820f5b90dc16b573cba5fccca5e27525ae8c98f451261b98b030f2af40c1",
+    "target": "windows-x86_64",
+    "artifact_sha256": "7b4927e7539ba316795f69c5ab3c39375acc1ca7f0d433a3b610bcdc88747701"
+  },
+  "artifact": {
+    "path": "Membrane_Hub_0.1.24_x64-setup.exe",
+    "sha256": "7b4927e7539ba316795f69c5ab3c39375acc1ca7f0d433a3b610bcdc88747701",
+    "size": 205362705
+  },
+  "signing": {
+    "status": "unsigned",
+    "reason": "internal_local_unsigned_route"
+  }
+}

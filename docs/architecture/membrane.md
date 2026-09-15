@@ -1608,8 +1608,9 @@ stable path, and require exact installed-origin health plus harness bindings.
 
 Membrane ships a product-specific Agent Plugins 1.0 core rooted at
 `plugin.json`, with `mcp.json` and only public Membrane skills when such skills
-exist. Private or personal workspace material is prohibited. `mcp.json` invokes
-stable-path `membrane stdio-mcp`. Agent Plugins owns portable skills and MCP
+exist. Private or personal workspace material is prohibited. `mcp.json` declares
+the authenticated Streamable HTTP binding; stdio-only host projections invoke
+stable-path `membrane-client stdio-mcp`. Agent Plugins owns portable skills and MCP
 description only; bootstrap and `membrane activate` own installation, updates,
 enablement, UI, and reconciliation.
 

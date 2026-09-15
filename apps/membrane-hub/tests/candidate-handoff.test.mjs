@@ -23,10 +23,10 @@ test("candidate handoff accepts exact archive & rejects changed bytes", { skip: 
     const payload = join(root, "payload");
     mkdirSync(payload);
     const bytes = Buffer.from("unsigned-native-candidate\n");
-    for (const name of ["membrane-hub.exe", "cortex.exe", "membrane.exe", "membrane-tray.exe", "membrane-daemon.exe"]) writeFileSync(join(payload, name), bytes);
+    for (const name of ["membrane-hub.exe", "cortex.exe", "membrane.exe", "membrane-tray.exe", "membrane-daemon.exe", "membrane-client.exe"]) writeFileSync(join(payload, name), bytes);
     // Node is only a deterministic test double for native `hook --help`;
-    // production candidates must contain the compiled membrane.exe authority.
-    copyFileSync(process.execPath, join(payload, "membrane.exe"));
+    // production candidates must contain the compiled membrane-client.exe authority.
+    copyFileSync(process.execPath, join(payload, "membrane-client.exe"));
     writeFileSync(join(payload, "hook"), "process.exit(0);\n");
     mkdirSync(join(payload, "runtime"));
     writeFileSync(join(payload, "runtime", "runtime.json"), bytes);

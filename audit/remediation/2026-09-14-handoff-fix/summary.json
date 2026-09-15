@@ -1,0 +1,27 @@
+{
+  "firstMs": [
+    5185,
+    5199,
+    5200,
+    5214,
+    5228
+  ],
+  "repeatMs": [
+    2759,
+    2759,
+    2775,
+    2774,
+    2774
+  ],
+  "firstRecovery": {
+    "forcedPid": 254412,
+    "recovered": true,
+    "finalOwnerStopped": true
+  },
+  "repeatRecovery": {
+    "forcedPid": 169688,
+    "recovered": true,
+    "finalOwnerStopped": true
+  },
+  "remainingProcesses": 0
+}

@@ -1,6 +1,6 @@
 {
   "name": "membrane",
-  "version": "0.1.15",
+  "version": "0.1.24",
   "author": "Orthic Labs",
   "description": "Membrane is a local-first context service for repository evidence, durable knowledge, document navigation, learning, and reversible reduction.",
   "license": "SEE LICENSE IN LICENSE",

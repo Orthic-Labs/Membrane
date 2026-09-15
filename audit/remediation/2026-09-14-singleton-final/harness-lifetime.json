@@ -1,0 +1,74 @@
+{
+  "schemaVersion": 1,
+  "installedRoot": "C:\\Users\\adrds\\AppData\\Local\\Orthic Labs\\Membrane\\current",
+  "stages": {
+    "harnessOnly": {
+      "clients": 5,
+      "initialProcessCount": 6,
+      "livez": {
+        "cortexStoreId": "sha256:038c42b7457f5a69e4f841209a3dc68ba40a14fe17fce8b1d6583570d15c8942",
+        "installationId": "610af348-f3ee-45f0-a8c8-9664953cd737",
+        "ok": true,
+        "releaseGeneration": "sha256:efb52b21fc331f38aa5770e29b860e00ac35c10ace979d8563a5c1763182961b",
+        "runtimeOrigin": "installed",
+        "serviceGeneration": "sha256:77c2dcdf30cf7e5f83eb807de2eeedbfcc33595c8696f39f1aaab58e9a46215d",
+        "stableInstallRoot": "C:\\Users\\adrds\\AppData\\Local\\Orthic Labs\\Membrane\\current",
+        "startupGeneration": 385,
+        "workers": {
+          "detachedRunning": 0,
+          "diagnostics": {
+            "available": 1,
+            "max": 1
+          },
+          "general": {
+            "available": 32,
+            "max": 32
+          },
+          "ingress": {
+            "available": 32,
+            "max": 32
+          },
+          "model": {
+            "available": 8,
+            "executionAvailable": 1,
+            "executionMax": 1,
+            "max": 8
+          },
+          "overloadRejections": {
+            "diagnostics": 0,
+            "general": 0,
+            "ingress": 0,
+            "model": 0,
+            "total": 0
+          }
+        }
+      }
+    }
+  },
+  "benchmark": {},
+  "startedAt": "2026-09-14T02:19:00.108Z",
+  "error": "timeout waiting for survivor recovery",
+  "stderr": [
+    {
+      "slot": 0,
+      "output": ""
+    },
+    {
+      "slot": 1,
+      "output": ""
+    },
+    {
+      "slot": 2,
+      "output": ""
+    },
+    {
+      "slot": 3,
+      "output": ""
+    },
+    {
+      "slot": 4,
+      "output": ""
+    }
+  ],
+  "finishedAt": "2026-09-14T02:19:50.656Z"
+}

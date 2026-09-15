@@ -73,7 +73,7 @@ fn authoritative_final_release_reports_inactive_while_peer_release_stays_ready()
             operation: ResidentHolderOperationV1::Acquire,
             controller: controller_identity.clone(),
             holder: Some(membrane_protocol::ResidentHolderCredentialV1 {
-                holder_kind: match holder.kind { HolderKind::Hub => "hub", HolderKind::CodeRightDaemon => "coderight_daemon" }.into(),
+                holder_kind: match holder.kind { HolderKind::Hub => "hub", HolderKind::CodeRightDaemon => "coderight_daemon", HolderKind::Harness => "harness" }.into(),
                 holder_id: holder.holder_id.clone(),
                 credential_id: holder.credential_id.clone(),
             }),
@@ -89,7 +89,7 @@ fn authoritative_final_release_reports_inactive_while_peer_release_stays_ready()
             operation: ResidentHolderOperationV1::Release,
             controller: controller_identity.clone(),
             holder: Some(membrane_protocol::ResidentHolderCredentialV1 {
-                holder_kind: match holder.kind { HolderKind::Hub => "hub", HolderKind::CodeRightDaemon => "coderight_daemon" }.into(),
+                holder_kind: match holder.kind { HolderKind::Hub => "hub", HolderKind::CodeRightDaemon => "coderight_daemon", HolderKind::Harness => "harness" }.into(),
                 holder_id: holder.holder_id,
                 credential_id: holder.credential_id,
             }),

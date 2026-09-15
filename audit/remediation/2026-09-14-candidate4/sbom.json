@@ -1,0 +1,24 @@
+{
+  "schema": "membrane.sbom.v1",
+  "signing": {
+    "status": "unsigned",
+    "reason": "internal_local_unsigned_route"
+  },
+  "artifact": {
+    "path": "Membrane_Hub_0.1.24_x64-setup.exe",
+    "sha256": "7b4927e7539ba316795f69c5ab3c39375acc1ca7f0d433a3b610bcdc88747701",
+    "size": 205362705
+  },
+  "package": {
+    "name": "membrane-hub",
+    "version": "0.1.24",
+    "target": "windows-x86_64"
+  },
+  "components": [
+    {
+      "name": "Membrane Hub Windows installer",
+      "type": "application",
+      "sha256": "7b4927e7539ba316795f69c5ab3c39375acc1ca7f0d433a3b610bcdc88747701"
+    }
+  ]
+}

@@ -71,7 +71,8 @@ if (!new Set(["raw", "package"]).has(phase)) {
 const hubRoot = fileURLToPath(new URL("../", import.meta.url));
 const triple = "x86_64-pc-windows-msvc";
 const packageJson = JSON.parse(readFileSync(join(hubRoot, "package.json"), "utf8"));
-const managedRelease = join(resolveTargetRoot(join(hubRoot, "src-tauri", "Cargo.toml")), triple, "release");
+const rawArtifactReceipt = join(hubRoot, "dist", "windows-raw-artifact.json");
+let managedRelease = join(resolveTargetRoot(join(hubRoot, "src-tauri", "Cargo.toml")), triple, "release");
 const sealedRelease = join(hubRoot, "src-tauri", "target", triple, "release");
 const rawRelative = "membrane-hub.exe";
 const generatedInstallerRelative = join("bundle", "nsis", `Membrane Hub_${packageJson.version}_x64-setup.exe`);
@@ -88,7 +89,7 @@ function mirror(source, destination, label) {
   cpSync(source, destination);
 }
 
-function run(command, args, { sidecarsReady = false } = {}) {
+function run(command, args, { sidecarsReady = false, capture = false } = {}) {
   const env = { ...process.env, TAURI_ENV_TARGET_TRIPLE: "x86_64-pc-windows-msvc" };
   if (sidecarsReady) env.MEMBRANE_SIDECARS_READY = "1";
   else delete env.MEMBRANE_SIDECARS_READY;
@@ -97,11 +98,17 @@ function run(command, args, { sidecarsReady = false } = {}) {
     cwd: new URL("../", import.meta.url),
     env,
     shell: executable.endsWith(".cmd"),
-    stdio: "inherit",
+    stdio: capture ? "pipe" : "inherit",
+    encoding: capture ? "utf8" : undefined,
     windowsHide: true,
   });
+  if (capture) {
+    if (result.stdout) process.stdout.write(result.stdout);
+    if (result.stderr) process.stderr.write(result.stderr);
+  }
   if (result.error) throw result.error;
   if (result.status !== 0) throw new Error(`${executable} exited ${result.status}`);
+  return capture ? `${result.stdout ?? ""}\n${result.stderr ?? ""}` : "";
 }
 
 if (phase === "raw") {
@@ -122,9 +129,19 @@ if (phase === "raw") {
   mkdirSync(join(hubRoot, "src-tauri", "versions", packageJson.version), { recursive: true });
   run("pnpm", ["run", "build"], { sidecarsReady: true });
   run("node", ["scripts/stage-runtime.mjs"], { sidecarsReady: true });
-  run("pnpm", ["exec", "tauri", "build", "--target", triple, "--no-bundle", "--config", "src-tauri/tauri.windows.conf.json"], { sidecarsReady: true });
-  mirror(join(managedRelease, rawRelative), join(sealedRelease, rawRelative), "managed raw Hub executable");
+  const buildOutput = run("pnpm", ["exec", "tauri", "build", "--target", triple, "--no-bundle", "--config", "src-tauri/tauri.windows.conf.json"], { sidecarsReady: true, capture: true });
+  const built = buildOutput.match(/Built application at:\s*([^\r\n]+membrane-hub\.exe)/i)?.[1]?.trim();
+  if (!built || !existsSync(built)) throw new Error("Tauri did not report a usable raw Hub artifact");
+  managedRelease = dirname(built);
+  writeFileSync(rawArtifactReceipt, `${JSON.stringify({ schema: "membrane.windows-raw-artifact.v1", path: built })}\n`);
+  mirror(built, join(sealedRelease, rawRelative), "managed raw Hub executable");
 } else {
+  if (!existsSync(rawArtifactReceipt)) throw new Error(`raw Hub artifact receipt is missing: ${rawArtifactReceipt}`);
+  const receipt = JSON.parse(readFileSync(rawArtifactReceipt, "utf8"));
+  if (receipt.schema !== "membrane.windows-raw-artifact.v1" || typeof receipt.path !== "string") {
+    throw new Error("raw Hub artifact receipt is invalid");
+  }
+  managedRelease = dirname(receipt.path);
   // right-release signed the mirrored raw EXE between phases. Put those exact
   // managed-target bytes back before NSIS embeds them. Tauri's bundle
   // preparation strips Authenticode while generating installer inputs, so

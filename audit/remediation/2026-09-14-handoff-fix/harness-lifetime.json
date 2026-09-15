@@ -1,0 +1,124 @@
+{
+  "schemaVersion": 1,
+  "installedRoot": "C:\\Users\\adrds\\AppData\\Local\\Orthic Labs\\Membrane\\current",
+  "stages": {
+    "harnessOnly": {
+      "clients": 5,
+      "initialProcessCount": 6,
+      "livez": {
+        "cortexStoreId": "sha256:038c42b7457f5a69e4f841209a3dc68ba40a14fe17fce8b1d6583570d15c8942",
+        "installationId": "610af348-f3ee-45f0-a8c8-9664953cd737",
+        "ok": true,
+        "releaseGeneration": "sha256:79178a91e787497d71c11d62b96616cd8fc3cb1a7ce91108eee8ef46ee8c3fae",
+        "runtimeOrigin": "installed",
+        "serviceGeneration": "sha256:7ab944502729c53a53d50a1b9615a6e0a07fed9de00152b43f8f28b2a9534c98",
+        "stableInstallRoot": "C:\\Users\\adrds\\AppData\\Local\\Orthic Labs\\Membrane\\current",
+        "startupGeneration": 413,
+        "workers": {
+          "detachedRunning": 0,
+          "diagnostics": {
+            "available": 1,
+            "max": 1
+          },
+          "general": {
+            "available": 32,
+            "max": 32
+          },
+          "ingress": {
+            "available": 32,
+            "max": 32
+          },
+          "model": {
+            "available": 8,
+            "executionAvailable": 1,
+            "executionMax": 1,
+            "max": 8
+          },
+          "overloadRejections": {
+            "diagnostics": 0,
+            "general": 0,
+            "ingress": 0,
+            "model": 0,
+            "total": 0
+          }
+        }
+      }
+    },
+    "recovery": {
+      "forcedPid": 254412,
+      "recovered": true,
+      "finalOwnerStopped": true
+    }
+  },
+  "benchmark": {
+    "1": {
+      "concurrency": 1,
+      "requests": 20,
+      "p50Ms": 15.251100000001315,
+      "p95Ms": 16.192699999999604,
+      "p99Ms": 16.192699999999604,
+      "throughputPerSec": 74.87871520105276
+    },
+    "5": {
+      "concurrency": 5,
+      "requests": 20,
+      "p50Ms": 2.7938999999969383,
+      "p95Ms": 9.44119999999748,
+      "p99Ms": 9.44119999999748,
+      "throughputPerSec": 1050.0286132797244
+    },
+    "20": {
+      "concurrency": 20,
+      "requests": 20,
+      "p50Ms": 7.037100000001374,
+      "p95Ms": 7.60229999999865,
+      "p99Ms": 7.60229999999865,
+      "throughputPerSec": 2089.2092343047457
+    }
+  },
+  "startedAt": "2026-09-14T15:32:38.297Z",
+  "startupOutcomes": [
+    {
+      "status": "fulfilled",
+      "value": {
+        "slot": 0,
+        "elapsedMs": 5185
+      }
+    },
+    {
+      "status": "fulfilled",
+      "value": {
+        "slot": 1,
+        "elapsedMs": 5199
+      }
+    },
+    {
+      "status": "fulfilled",
+      "value": {
+        "slot": 2,
+        "elapsedMs": 5200
+      }
+    },
+    {
+      "status": "fulfilled",
+      "value": {
+        "slot": 3,
+        "elapsedMs": 5214
+      }
+    },
+    {
+      "status": "fulfilled",
+      "value": {
+        "slot": 4,
+        "elapsedMs": 5228
+      }
+    }
+  ],
+  "release": {
+    "installationId": "610af348-f3ee-45f0-a8c8-9664953cd737",
+    "cortexStoreId": "sha256:038c42b7457f5a69e4f841209a3dc68ba40a14fe17fce8b1d6583570d15c8942",
+    "releaseGeneration": "sha256:79178a91e787497d71c11d62b96616cd8fc3cb1a7ce91108eee8ef46ee8c3fae",
+    "sessionId": "470b1ec6-7392-497a-9cee-4ee412ed248a"
+  },
+  "finishedAt": "2026-09-14T15:33:00.197Z"
+}

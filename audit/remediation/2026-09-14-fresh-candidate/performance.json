@@ -1,0 +1,7 @@
+{
+  "startedAt": "2026-09-14T14:51:37.124Z",
+  "sampleWarning": "One batch per concurrency; percentiles describe this sample only, not a production baseline.",
+  "results": [],
+  "error": "initialize timeout",
+  "finishedAt": "2026-09-14T14:51:59.344Z"
+}

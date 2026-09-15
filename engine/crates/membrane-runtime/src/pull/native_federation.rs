@@ -11,7 +11,7 @@ use membrane_federation::providers::{
     blueprint::BlueprintProvider, cortex::CortexProvider, git::GitProvider,
     live_files::LiveFilesProvider, rules::RulesProvider, skills::SkillsProvider,
 };
-use membrane_federation::{FederationConfig, FederationEngine, ProviderRegistry};
+use membrane_federation::{FederationConfig, FederationEngine, ProviderConfig, ProviderRegistry};
 use membrane_protocol::{FederationRequestV1, FederationResponseV1, ProviderId};
 use membrane_provider_sdk::{
     FreshnessSource, Provider, ProviderContext, ProviderError, ProviderOutput,
@@ -21,7 +21,8 @@ use std::future::Future;
 use std::path::Path;
 use std::collections::HashMap;
 use std::pin::Pin;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
+use tokio::sync::Semaphore;
 use tokio_util::sync::CancellationToken;
 
 // Provider lanes are admitted concurrently (ten lanes in V1), while their
@@ -29,6 +30,13 @@ use tokio_util::sync::CancellationToken;
 // async scheduling pool for timers, cancellation, and result assembly.
 const NATIVE_FEDERATION_ASYNC_WORKERS: usize = 2;
 const NATIVE_FEDERATION_BLOCKING_WORKERS: usize = 10;
+static PROVIDER_BLOCKING_CAPACITY: OnceLock<Arc<Semaphore>> = OnceLock::new();
+
+pub(super) fn provider_capacity() -> Arc<Semaphore> {
+    PROVIDER_BLOCKING_CAPACITY
+        .get_or_init(|| Arc::new(Semaphore::new(NATIVE_FEDERATION_BLOCKING_WORKERS)))
+        .clone()
+}
 
 pub(crate) fn runtime() -> Result<tokio::runtime::Runtime, String> {
     tokio::runtime::Builder::new_multi_thread()
@@ -37,6 +45,25 @@ pub(crate) fn runtime() -> Result<tokio::runtime::Runtime, String> {
         .enable_all()
         .build()
         .map_err(|error| format!("create native federation runtime: {error}"))
+}
+
+/// Resident callers are already on a blocking dispatch thread. Borrow their
+/// engine runtime; only standalone compatibility callers need a local bridge.
+pub(crate) fn run_on_runtime<T: Send>(
+    handle: Option<&tokio::runtime::Handle>,
+    work: impl Future<Output = Result<T, String>> + Send,
+) -> Result<T, String> {
+    if let Some(handle) = handle {
+        return handle.block_on(work);
+    }
+    std::thread::scope(|scope| {
+        scope.spawn(|| {
+            let runtime = runtime()?;
+            let result = runtime.block_on(work);
+            runtime.shutdown_timeout(std::time::Duration::from_secs(5));
+            result
+        }).join().map_err(|_| "native federation thread panicked".to_owned())?
+    })
 }
 
 /// Native engine plus immutable source handles.  No Python gateway, worker,
@@ -61,6 +88,25 @@ impl std::fmt::Debug for NativeFederation {
 
 impl NativeFederation {
     pub fn new(bindings: NativeSourceBindings) -> Result<Self, String> {
+        Self::with_config(bindings, FederationConfig::all_enabled())
+    }
+
+    pub fn hook(bindings: NativeSourceBindings) -> Result<Self, String> {
+        let providers = ProviderId::ALL
+            .into_iter()
+            .map(|id| {
+                if matches!(id, ProviderId::Cortex | ProviderId::Skills) {
+                    ProviderConfig::enabled(id)
+                } else {
+                    ProviderConfig::disabled(id)
+                }
+            })
+            .collect();
+        let config = FederationConfig::new(providers).map_err(|error| error.to_string())?;
+        Self::with_config(bindings, config)
+    }
+
+    fn with_config(bindings: NativeSourceBindings, config: FederationConfig) -> Result<Self, String> {
         let cancellations = bindings.cancellations.clone();
         let temporal_queries = bindings.temporal_queries.clone();
         let blueprint = bindings
@@ -149,7 +195,7 @@ impl NativeFederation {
         let registry = ProviderRegistry::new(providers).map_err(|e| e.to_string())?;
         let engine = FederationEngine::with_release_source(
             registry,
-            FederationConfig::all_enabled(),
+            config,
             bindings.source_set(),
             release,
         )
@@ -196,6 +242,8 @@ impl NativeFederation {
             return Err("federation deadline exhausted during owner binding".to_owned());
         }
         let cancelled = cancellation.is_cancelled();
+        let work_cancellation = cancellation.child_token();
+        let _cancel_work = work_cancellation.clone().drop_guard();
         let temporal_query = request
             .extensions
             .get("cortexTemporalQuery")
@@ -219,8 +267,12 @@ impl NativeFederation {
                 .or_else(|| request.blueprint_generation.clone()),
             anchors: request.anchors.clone(),
         };
-        let freshness = tokio::time::timeout_at(deadline.instant().into(), self.freshness.freshness(&query))
-            .await.map_err(|_| "federation deadline exhausted during owner binding".to_owned())?;
+        let freshness = tokio::select! {
+            result = tokio::time::timeout_at(deadline.instant().into(), self.freshness.freshness(&query)) =>
+                result.map_err(|_| "federation deadline exhausted during owner binding".to_owned())?,
+            _ = cancellation.cancelled() =>
+                return Err("federation request cancelled during owner binding".to_owned()),
+        };
         if deadline.is_exhausted_at(std::time::Instant::now()) {
             return Err("federation deadline exhausted during owner binding".to_owned());
         }
@@ -237,18 +289,42 @@ impl NativeFederation {
             Err(error) => {
                 let status = error_status(&error.to_string(), cancelled);
                 self.metrics.record(status);
-                return Err(error.to_string());
+                match error {
+                    membrane_provider_sdk::ProviderError::Unavailable(_)
+                    | membrane_provider_sdk::ProviderError::Uninitialized(_)
+                    | membrane_provider_sdk::ProviderError::MissingSource(_)
+                    | membrane_provider_sdk::ProviderError::Incomplete(_) => {
+                        if let Ok(mut current) = self.last_freshness.lock() {
+                            *current = Some(membrane_protocol::FreshnessSnapshotV1 {
+                                graph_state: "unavailable".to_owned(),
+                                generation: None,
+                                snapshot_id: None,
+                                base_commit: None,
+                                overlay_digest: None,
+                                stale: false,
+                            });
+                        }
+                    }
+                    other => return Err(other.to_string()),
+                }
             }
         }
         if let Ok(mut tokens) = self.cancellations.lock() {
-            tokens.insert(request.request_id.clone(), cancellation.clone());
+            tokens.insert(request.request_id.clone(), work_cancellation.clone());
         }
         if let Some(temporal_query) = temporal_query {
             if let Ok(mut queries) = self.temporal_queries.lock() {
                 queries.insert(request.request_id.clone(), temporal_query);
             }
         }
-        let response = self.engine.federate_until(request, cancellation, deadline).await;
+        let response = tokio::select! {
+            response = self.engine.federate_until(request, work_cancellation.clone(), deadline) => response,
+            _ = cancellation.cancelled() => return Err("federation request cancelled".to_owned()),
+        };
+        // Provider adapters may own synchronous work behind the future. Signal
+        // descendants on every exit so no child keeps running after Pull has
+        // released its request scope.
+        work_cancellation.cancel();
         if let Ok(mut tokens) = self.cancellations.lock() {
             tokens.remove(&request.request_id);
         }
@@ -333,7 +409,7 @@ fn registration(
     provider: Arc<dyn membrane_provider_sdk::Provider>,
     dependencies: Vec<ProviderId>,
 ) -> ProviderRegistration {
-    ProviderRegistration::new(id, key, dependencies, Arc::new(BlockingProvider { inner: provider }))
+    ProviderRegistration::new(id, key, dependencies, Arc::new(BlockingProvider { inner: provider, capacity: provider_capacity() }))
 }
 
 /// Run owner-backed provider work on Tokio's bounded blocking pool. Native
@@ -344,6 +420,7 @@ fn registration(
 /// same runtime-owned objects.
 struct BlockingProvider {
     inner: Arc<dyn Provider>,
+    capacity: Arc<Semaphore>,
 }
 
 impl Provider for BlockingProvider {
@@ -357,9 +434,32 @@ impl Provider for BlockingProvider {
         Self: 'async_trait,
     {
         let provider = Arc::clone(&self.inner);
+        let capacity = Arc::clone(&self.capacity);
         let context = context.clone();
         Box::pin(async move {
+            if context.is_cancelled() {
+                return Err(ProviderError::Cancelled);
+            }
+            if context.is_deadline_exhausted() {
+                return Err(ProviderError::DeadlineExceeded);
+            }
+            let permit = tokio::select! {
+                permit = capacity.acquire_owned() => permit
+                    .map_err(|_| ProviderError::Unavailable("provider capacity closed".into()))?,
+                _ = context.cancellation.cancelled() => return Err(ProviderError::Cancelled),
+                _ = tokio::time::sleep_until(tokio::time::Instant::from_std(context.deadline)) => return Err(ProviderError::DeadlineExceeded),
+            };
             tokio::task::spawn_blocking(move || {
+                // A blocking lane may have queued this job after admission;
+                // re-check before starting owner work so expired/cancelled
+                // requests never consume provider capacity.
+                if context.is_cancelled() {
+                    return Err(ProviderError::Cancelled);
+                }
+                if context.is_deadline_exhausted() {
+                    return Err(ProviderError::DeadlineExceeded);
+                }
+                let _permit = permit;
                 tokio::runtime::Handle::current().block_on(provider.provide(&context))
             })
             .await
@@ -386,7 +486,8 @@ impl Provider for BlockingProvider {
 
 #[cfg(test)]
 mod tests {
-    use super::runtime;
+    use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::time::Duration;
 
     #[test]
@@ -404,5 +505,81 @@ mod tests {
             timer
         });
         assert!(timer_fired, "blocking provider work must not starve deadline timers");
+    }
+
+    struct SlowProvider { started: Arc<AtomicUsize> }
+
+    impl Provider for SlowProvider {
+        fn provide<'life0, 'life1, 'async_trait>(&'life0 self, context: &'life1 ProviderContext)
+            -> Pin<Box<dyn Future<Output = Result<ProviderOutput, ProviderError>> + Send + 'async_trait>>
+        where 'life0: 'async_trait, 'life1: 'async_trait, Self: 'async_trait {
+            Box::pin(async move {
+                self.started.fetch_add(1, Ordering::SeqCst);
+                while !context.is_cancelled() && !context.is_deadline_exhausted() {
+                    std::thread::sleep(Duration::from_millis(1));
+                }
+                Err(if context.is_cancelled() { ProviderError::Cancelled } else { ProviderError::DeadlineExceeded })
+            })
+        }
+    }
+
+    fn context(cancellation: CancellationToken) -> ProviderContext {
+        ProviderContext::new("request", ".", "repo", "task", "session", "test", vec![], None, None,
+            membrane_protocol::FreshnessSnapshotV1 { graph_state:"ready".into(), generation:None,
+                snapshot_id:None, base_commit:None, overlay_digest:None, stale:false },
+            std::time::Instant::now() + Duration::from_secs(2), cancellation, "trace",
+            membrane_provider_sdk::SourceSet::default())
+    }
+
+    #[test]
+    fn provider_cancellation_reclaims_capacity_and_expired_queue_never_executes() {
+        let runtime = runtime().unwrap();
+        runtime.block_on(async {
+            let capacity = Arc::new(Semaphore::new(1));
+            let started = Arc::new(AtomicUsize::new(0));
+            let provider = Arc::new(BlockingProvider {
+                inner: Arc::new(SlowProvider { started:started.clone() }), capacity:capacity.clone(),
+            });
+            let cancellation = CancellationToken::new();
+            let running_context = context(cancellation.clone());
+            let running_provider = provider.clone();
+            let running = tokio::spawn(async move { running_provider.provide(&running_context).await });
+            tokio::time::timeout(Duration::from_secs(1), async {
+                while started.load(Ordering::SeqCst) == 0 { tokio::task::yield_now().await; }
+            }).await.unwrap();
+            assert_eq!(capacity.available_permits(), 0);
+            let mut queued_context = context(CancellationToken::new());
+            queued_context.deadline = std::time::Instant::now() + Duration::from_millis(20);
+            assert!(matches!(provider.provide(&queued_context).await, Err(ProviderError::DeadlineExceeded)));
+            assert_eq!(started.load(Ordering::SeqCst), 1);
+            // An unrelated scheduler task still progresses while owner work blocks.
+            assert_eq!(tokio::spawn(async { 7 }).await.unwrap(), 7);
+            cancellation.cancel();
+            assert!(matches!(tokio::time::timeout(Duration::from_secs(1), running).await.unwrap().unwrap(), Err(ProviderError::Cancelled)));
+            assert_eq!(capacity.available_permits(), 1);
+            let mut next = context(CancellationToken::new());
+            next.deadline = std::time::Instant::now() + Duration::from_millis(20);
+            assert!(matches!(provider.provide(&next).await, Err(ProviderError::DeadlineExceeded)));
+            assert_eq!(started.load(Ordering::SeqCst), 2);
+            assert_eq!(capacity.available_permits(), 1);
+        });
+    }
+
+    #[test]
+    fn resident_bridge_uses_same_runtime_for_concurrent_calls() {
+        let runtime = runtime().unwrap();
+        let expected = runtime.handle().id();
+        runtime.block_on(async {
+            let mut jobs = Vec::new();
+            for _ in 0..5 {
+                jobs.push(tokio::task::spawn_blocking(|| {
+                    let handle = tokio::runtime::Handle::current();
+                    run_on_runtime(Some(&handle), async {
+                        Ok(tokio::spawn(async { tokio::runtime::Handle::current().id() }).await.unwrap())
+                    }).unwrap()
+                }));
+            }
+            for job in jobs { assert_eq!(job.await.unwrap(), expected); }
+        });
     }
 }

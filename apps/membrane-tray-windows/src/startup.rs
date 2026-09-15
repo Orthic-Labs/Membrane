@@ -32,13 +32,22 @@ pub fn request_activation(client: &Path, stable_current: &Path) -> io::Result<()
             "installed activation client or current root missing",
         ));
     }
-    Command::new(client)
+    let mut command = Command::new(client);
+    command
         .args(["activate", "--install-root"])
         .arg(stable_current)
+        .arg("--timeout-ms")
+        .arg("15000")
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
-        .spawn()
+        ;
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(0x0800_0000);
+    }
+    command.spawn()
         .map(|_| ())
 }
 

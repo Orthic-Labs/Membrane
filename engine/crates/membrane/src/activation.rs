@@ -361,6 +361,10 @@ enum HealthObservation {
 
 struct ActivationLock {
     path: PathBuf,
+    // Kernel-backed guard serializes stale-owner observation, quarantine, and
+    // publication across concurrent activators. The guard file is permanent;
+    // its lock lifetime is released by the OS on drop/crash.
+    _guard: std::fs::File,
 }
 
 impl Drop for ActivationLock {
@@ -426,7 +430,15 @@ pub fn activate_bindings(options: ActivationOptions) -> Result<ActivationReceipt
     activate_with_residency(options, false)
 }
 
+pub fn activate_engine(options: ActivationOptions) -> Result<ActivationReceiptV1, String> {
+    activate_internal(options, true, false)
+}
+
 fn activate_with_residency(options: ActivationOptions, start_resident: bool) -> Result<ActivationReceiptV1, String> {
+    activate_internal(options, start_resident, true)
+}
+
+fn activate_internal(options: ActivationOptions, start_resident: bool, reconcile_bindings: bool) -> Result<ActivationReceiptV1, String> {
     let (install_root, version_root) = validate_installed_root(&options.install_root)?;
     let product_root = install_root
         .parent()
@@ -469,10 +481,10 @@ fn activate_with_residency(options: ActivationOptions, start_resident: bool) -> 
     // clients & the CLI path before attempting any automatic Hub process, so
     // an unverified/foreign listener on the Membrane port cannot suppress
     // explicit binding reconciliation (docs/architecture/execution-lifecycle-boundary.md).
-    let clients = reconcile_clients(
+    let clients = if reconcile_bindings { reconcile_clients(
         &membrane_client, &options.clients, options.dry_run, run_client,
-    )?;
-    if !options.dry_run {
+    )? } else { Vec::new() };
+    if reconcile_bindings && !options.dry_run {
         ensure_user_path(&install_root)?;
     }
     if start_resident && !options.dry_run && matches!(&initial, HealthObservation::Foreign(_)) {
@@ -512,6 +524,7 @@ fn activate_with_residency(options: ActivationOptions, start_resident: bool) -> 
     } else {
         // The installed engine is the sole resident owner. Tray/Hub is only
         // an optional status surface and must never be part of startup.
+        reset_supervision_before_resident_launch(product_root)?;
         launch_engine(&membrane, &workspace_root, port)?;
         (
             wait_for_health(port, &expected_generation, options.timeout)?,
@@ -520,7 +533,7 @@ fn activate_with_residency(options: ActivationOptions, start_resident: bool) -> 
         )
     };
 
-    if !options.dry_run {
+    if reconcile_bindings && !options.dry_run {
         provision_mcp_credential(product_root)?;
         reconcile_claude_hooks(&install_root)?;
         reconcile_codex_hooks(&install_root)?;
@@ -832,6 +845,22 @@ fn acquire_lock_with_policy(
 ) -> Result<ActivationLock, String> {
     let path = install_root.join(LOCK_DIR);
     let deadline = Instant::now() + wait;
+    let guard_path = install_root.join(".activation.guard");
+    let guard = std::fs::OpenOptions::new()
+        .create(true)
+        .read(true)
+        .write(true)
+        .open(&guard_path)
+        .map_err(|error| format!("open activation guard: {error}"))?;
+    loop {
+        if lock_activation_guard(&guard).is_ok() {
+            break;
+        }
+        if Instant::now() >= deadline {
+            return Err("activation startup lock remained busy".to_string());
+        }
+        std::thread::sleep(POLL_INTERVAL);
+    }
     loop {
         match std::fs::create_dir(&path) {
             Ok(()) => {
@@ -843,7 +872,7 @@ fn acquire_lock_with_policy(
                     let _ = std::fs::remove_dir_all(&path);
                     return Err(format!("record activation lock owner: {error}"));
                 }
-                return Ok(ActivationLock { path });
+                return Ok(ActivationLock { path, _guard: guard });
             }
             Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
                 let stale = std::fs::metadata(&path)
@@ -858,9 +887,25 @@ fn acquire_lock_with_policy(
                 // ran for minutes. The owner pid was already recorded here and
                 // never consulted; consult it, and fall back to age only when
                 // there is no owner to ask about.
-                if stale && !activation_owner_alive(&path) {
-                    let _ = std::fs::remove_dir_all(&path);
-                    continue;
+                // A recorded, dead owner is definitive even when its lock is
+                // young.  An absent owner is different: it can be the small
+                // publication window between mkdir and owner write, so age
+                // remains required before reclaiming that state.
+                let reclaim = match activation_owner_state(&path) {
+                    Some(alive) => !alive,
+                    None => stale,
+                };
+                if reclaim {
+                    // Rename first: remove_dir_all(path) could erase a new
+                    // owner's replacement lock between observation and delete.
+                    let quarantine = install_root.join(format!(
+                        "{LOCK_DIR}.reclaim-{}-{}",
+                        std::process::id(), now_unix_ms()
+                    ));
+                    if std::fs::rename(&path, &quarantine).is_ok() {
+                        let _ = std::fs::remove_dir_all(quarantine);
+                        continue;
+                    }
                 }
                 if Instant::now() >= deadline {
                     return Err("activation startup lock remained busy".to_string());
@@ -872,34 +917,79 @@ fn acquire_lock_with_policy(
     }
 }
 
+fn reset_supervision_before_resident_launch(product_root: &Path) -> Result<(), String> {
+    crate::supervision::reset(product_root)
+        .map_err(|error| format!("reset supervision before resident launch: {error}"))
+}
+
+#[cfg(unix)]
+fn lock_activation_guard(file: &std::fs::File) -> std::io::Result<()> {
+    use std::os::fd::AsRawFd;
+    let result = unsafe { flock(file.as_raw_fd(), 2 | 4) };
+    (result == 0).then_some(()).ok_or_else(std::io::Error::last_os_error)
+}
+
+#[cfg(unix)]
+unsafe extern "C" {
+    fn flock(fd: std::os::raw::c_int, operation: std::os::raw::c_int) -> std::os::raw::c_int;
+}
+
+#[cfg(windows)]
+fn lock_activation_guard(file: &std::fs::File) -> std::io::Result<()> {
+    use std::os::windows::io::AsRawHandle;
+    let mut overlapped = std::mem::MaybeUninit::<OVERLAPPED>::zeroed();
+    let ok = unsafe { LockFileEx(file.as_raw_handle() as _, LOCKFILE_EXCLUSIVE_LOCK | LOCKFILE_FAIL_IMMEDIATELY, 0, u32::MAX, u32::MAX, overlapped.as_mut_ptr()) };
+    (ok != 0).then_some(()).ok_or_else(std::io::Error::last_os_error)
+}
+
+#[cfg(windows)]
+const LOCKFILE_FAIL_IMMEDIATELY: u32 = 0x00000001;
+#[cfg(windows)]
+const LOCKFILE_EXCLUSIVE_LOCK: u32 = 0x00000002;
+#[cfg(windows)]
+#[repr(C)]
+struct OVERLAPPED {
+    internal: usize,
+    internal_high: usize,
+    offset: u32,
+    offset_high: u32,
+    h_event: *mut std::ffi::c_void,
+}
+#[cfg(windows)]
+unsafe extern "system" {
+    fn LockFileEx(file: *mut std::ffi::c_void, flags: u32, reserved: u32, low: u32, high: u32, overlapped: *mut OVERLAPPED) -> i32;
+}
+
 /// Is the process that recorded itself as this lock's owner still running?
 ///
-/// An unreadable or absent owner file answers `false`: there is nobody to ask
-/// about, which is the case the age check was written for.
-fn activation_owner_alive(lock: &Path) -> bool {
+/// Missing metadata is unknown. A process-query denial is conservatively live;
+/// only a missing or exited process proves that a recorded owner is dead.
+fn activation_owner_state(lock: &Path) -> Option<bool> {
     let Ok(text) = std::fs::read_to_string(lock.join("owner")) else {
-        return false;
+        return None;
     };
     let Ok(pid) = text.trim().parse::<u32>() else {
-        return false;
+        return None;
     };
     if pid == 0 {
-        return false;
+        return None;
     }
     #[cfg(windows)]
     {
-        use windows_sys::Win32::Foundation::CloseHandle;
-        use windows_sys::Win32::System::Threading::{OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION};
+        use windows_sys::Win32::Foundation::{CloseHandle, GetLastError, ERROR_INVALID_PARAMETER};
+        use windows_sys::Win32::System::Threading::{GetExitCodeProcess, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION};
         let handle = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid) };
         if handle.is_null() {
-            return false;
+            return Some(unsafe { GetLastError() } != ERROR_INVALID_PARAMETER);
         }
+        let mut exit_code = 0;
+        let queried = unsafe { GetExitCodeProcess(handle, &mut exit_code) };
         unsafe { CloseHandle(handle) };
-        true
+        Some(queried == 0 || exit_code == 259) // STILL_ACTIVE
     }
     #[cfg(not(windows))]
     {
-        std::path::Path::new(&format!("/proc/{pid}")).exists()
+        Some(std::path::Path::new(&format!("/proc/{pid}")).exists())
     }
 }
 
@@ -1212,6 +1302,7 @@ fn request_resident_replacement(
         // best effort: the caller's verified health pre-check owns foreign
         // refusal, and the task may simply not exist.
         let _ = stop_installed_engine_service();
+        use std::os::windows::process::CommandExt;
         let _ = Command::new("schtasks.exe")
             .args(["/Delete", "/TN", "Membrane Engine", "/F"])
             .creation_flags(0x0800_0000)
@@ -1320,6 +1411,9 @@ fn wait_for_tree_release(root: &Path, timeout: Duration) -> Result<(), String> {
 }
 
 fn first_locked_file(root: &Path) -> Option<PathBuf> {
+    let current_image = std::env::current_exe()
+        .ok()
+        .and_then(|path| std::fs::canonicalize(path).ok());
     let mut stack = vec![root.to_path_buf()];
     while let Some(current) = stack.pop() {
         let Ok(metadata) = std::fs::symlink_metadata(&current) else {
@@ -1335,13 +1429,45 @@ fn first_locked_file(root: &Path) -> Option<PathBuf> {
             stack.extend(entries.filter_map(|entry| entry.ok().map(|entry| entry.path())));
             continue;
         }
-        if metadata.is_file()
-            && std::fs::OpenOptions::new().write(true).open(&current).is_err()
-        {
-            return Some(current);
+        if metadata.is_file() && std::fs::OpenOptions::new().write(true).open(&current).is_err() {
+            let is_self_image = current_image
+                .as_ref()
+                .and_then(|image| std::fs::canonicalize(&current).ok().map(|path| (image, path)))
+                .is_some_and(|(image, path)| paths_equal(&image.to_string_lossy(), &path.to_string_lossy()));
+            if !(is_self_image && current_process_is_only_image_holder(&current)) {
+                return Some(current);
+            }
         }
     }
     None
+}
+
+#[cfg(windows)]
+fn current_process_is_only_image_holder(path: &Path) -> bool {
+    use std::os::windows::process::CommandExt;
+    let escaped = path.to_string_lossy().replace('\'', "''");
+    let script = format!(
+        "$p='{}'; @(Get-CimInstance Win32_Process | Where-Object {{$_.ExecutablePath -eq $p}} | Select-Object -ExpandProperty ProcessId)",
+        escaped
+    );
+    let output = Command::new("powershell.exe")
+        .args(["-NoProfile", "-NonInteractive", "-Command", &script])
+        .creation_flags(0x0800_0000)
+        .output();
+    let Ok(output) = output else { return false; };
+    if !output.status.success() { return false; }
+    let ids: Vec<u32> = String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .filter_map(|line| line.trim().parse().ok())
+        .collect();
+    only_current_process_image_holder(&ids, std::process::id())
+}
+
+#[cfg(not(windows))]
+fn current_process_is_only_image_holder(_path: &Path) -> bool { false }
+
+fn only_current_process_image_holder(process_ids: &[u32], current_pid: u32) -> bool {
+    process_ids == [current_pid]
 }
 
 fn wait_for_health(
@@ -1514,12 +1640,21 @@ fn parse_health_response(
         && body.pointer("/blueprintWatcher/watcherState").and_then(serde_json::Value::as_str) == Some("running")
         && body.pointer("/blueprintWatcher/watcherReady").and_then(serde_json::Value::as_bool) == Some(true)
         && body.pointer("/blueprintWatcher/watcherDetail").is_some_and(serde_json::Value::is_null);
+    let watcher_partial_coverage = enrolled_repo_count.is_some_and(|count| count > 0)
+        && body.pointer("/blueprintWatcher/watcherState").and_then(serde_json::Value::as_str) == Some("running")
+        && body.pointer("/blueprintWatcher/watcherDetail").is_some_and(serde_json::Value::is_null);
+    let background_not_required = body
+        .pointer("/backgroundAuthority/active")
+        .and_then(serde_json::Value::as_bool)
+        == Some(false)
+        && (!watcher_running || watcher_partial_coverage)
+        && body.pointer("/blueprintWatcher/watcherDetail").is_none_or(serde_json::Value::is_null);
     let database_usable = matches!(database_status, Some("ok" | "empty"));
     let activation_ready_degraded = status == 503
         && body.get("ok").and_then(serde_json::Value::as_bool) == Some(false)
         && catalog_ok
         && database_usable
-        && (blueprint_running || blueprint_unconfigured);
+        && (blueprint_running || blueprint_unconfigured || background_not_required);
     if (status != 200 && !activation_ready_degraded)
         || (body.get("ok").and_then(serde_json::Value::as_bool) != Some(true)
             && !activation_ready_degraded)
@@ -3199,6 +3334,32 @@ mod tests {
     use super::*;
     use std::collections::VecDeque;
 
+    #[test]
+    fn authorized_resident_launch_reset_clears_suppression_failures() {
+        let product_root = tempfile::tempdir().unwrap();
+        let state_path = product_root.path().join("state/tools/.cache/memory/engine-supervision.json");
+        std::fs::create_dir_all(state_path.parent().unwrap()).unwrap();
+        std::fs::write(&state_path, r#"{"schemaVersion":1,"clean":false,"failures":3,"observedAtUnixMs":0}"#).unwrap();
+        reset_supervision_before_resident_launch(product_root.path()).unwrap();
+        let state = std::fs::read_to_string(
+            product_root
+                .path()
+                .join("state/tools/.cache/memory/engine-supervision.json"),
+        )
+        .unwrap();
+        let state: serde_json::Value = serde_json::from_str(&state).unwrap();
+        assert_eq!(state["clean"], true);
+        assert_eq!(state["failures"], 0);
+    }
+
+    #[test]
+    fn locked_self_image_is_ignored_only_for_sole_current_process() {
+        let pid = 41;
+        assert!(only_current_process_image_holder(&[pid], pid));
+        assert!(!only_current_process_image_holder(&[pid, 42], pid));
+        assert!(!only_current_process_image_holder(&[], pid));
+    }
+
     fn result(code: i32, stdout: &str) -> CommandResult {
         CommandResult {
             code,
@@ -3239,10 +3400,43 @@ mod tests {
         let lock = root.join(LOCK_DIR);
         std::fs::create_dir_all(&lock).unwrap();
         std::fs::write(lock.join("owner"), b"4294967294\n").unwrap();
-        std::thread::sleep(Duration::from_millis(5));
-        let recovered = acquire_lock_with_policy(&root, Duration::from_millis(100), Duration::ZERO).unwrap();
+        // A known-dead owner is reclaimable immediately, even while lock
+        // metadata is young; this is the installer-killed activation case.
+        let recovered = acquire_lock_with_policy(&root, Duration::from_millis(100), Duration::from_secs(3600)).unwrap();
         drop(recovered);
         assert!(!lock.exists());
+        std::fs::create_dir_all(&lock).unwrap();
+        // Missing owner metadata may be in its publication window and must
+        // not be reclaimed solely because the directory is busy.
+        assert!(acquire_lock_with_policy(&root, Duration::from_millis(20), Duration::from_secs(3600)).is_err());
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn startup_lock_reclaim_serializes_concurrent_contenders() {
+        let root = std::env::temp_dir().join(format!(
+            "membrane-activation-lock-contention-{}-{}",
+            std::process::id(), now_unix_ms()
+        ));
+        std::fs::create_dir_all(root.join(LOCK_DIR)).unwrap();
+        std::fs::write(root.join(LOCK_DIR).join("owner"), b"4294967294\n").unwrap();
+        let active = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let maximum = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let mut workers = Vec::new();
+        for _ in 0..8 {
+            let root = root.clone();
+            let active = active.clone();
+            let maximum = maximum.clone();
+            workers.push(std::thread::spawn(move || {
+                let _lock = acquire_lock_with_policy(&root, Duration::from_secs(2), Duration::from_secs(3600)).unwrap();
+                let current = active.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+                maximum.fetch_max(current, std::sync::atomic::Ordering::SeqCst);
+                std::thread::sleep(Duration::from_millis(5));
+                active.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+            }));
+        }
+        for worker in workers { worker.join().unwrap(); }
+        assert_eq!(maximum.load(std::sync::atomic::Ordering::SeqCst), 1);
         let _ = std::fs::remove_dir_all(root);
     }
 
@@ -3673,7 +3867,8 @@ mod tests {
             "runtimeOrigin": "installed", "releaseGeneration": "g1",
             "installationId": "install-1", "database": {"status": "empty"},
             "catalog": {"status": "ok"}, "enrolledRepoCount": 0,
-            "blueprintWatcher": {"watcherState": "not_configured", "watcherRunning": false, "watcherDetail": null}
+            "blueprintWatcher": {"watcherState": "not_configured", "watcherRunning": false, "watcherDetail": null},
+            "backgroundAuthority": {"active": false}
         });
         let observe = |body: &serde_json::Value| {
             parse_health_response(format!("HTTP/1.1 503 Service Unavailable\r\n\r\n{body}").as_bytes(), "g1").unwrap()
@@ -3685,6 +3880,17 @@ mod tests {
         broken["watcherRunning"] = serde_json::json!(true);
         broken["blueprintWatcher"]["watcherReady"] = serde_json::json!(false);
         assert!(matches!(observe(&broken), HealthObservation::NotReady { .. }));
+        let mut harness_only = base.clone();
+        harness_only["enrolledRepoCount"] = serde_json::json!(1);
+        harness_only["blueprintWatcher"]["watcherState"] = serde_json::json!("watcher_unavailable");
+        harness_only["blueprintWatcher"]["watcherRunning"] = serde_json::json!(false);
+        assert!(matches!(observe(&harness_only), HealthObservation::Ready { .. }));
+        let mut partial = base.clone();
+        partial["enrolledRepoCount"] = serde_json::json!(1);
+        partial["watcherRunning"] = serde_json::json!(true);
+        partial["blueprintWatcher"]["watcherState"] = serde_json::json!("running");
+        partial["blueprintWatcher"]["watcherReady"] = serde_json::json!(false);
+        assert!(matches!(observe(&partial), HealthObservation::Ready { .. }));
         let mut corrupt = base.clone();
         corrupt["blueprintWatcher"]["watcherDetail"] = serde_json::json!("registry corrupt");
         assert!(matches!(observe(&corrupt), HealthObservation::NotReady { .. }));

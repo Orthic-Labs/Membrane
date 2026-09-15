@@ -285,7 +285,7 @@ function Write-JsonBounded([object]$Value, [string]$Path, [int]$Depth = 12, [int
   }
 }
 
-$required = @('membrane.exe', 'membrane-daemon.exe', 'membrane-tray.exe', 'membrane-hub.exe', 'cortex.exe')
+$required = @('membrane.exe', 'membrane-client.exe', 'membrane-daemon.exe', 'membrane-tray.exe', 'membrane-hub.exe', 'cortex.exe')
 $files = foreach ($name in $required) {
   $path = Join-Path $InstalledRoot $name
   if (Test-Path -LiteralPath $path -PathType Leaf) {
@@ -295,6 +295,7 @@ $files = foreach ($name in $required) {
 }
 $payloadInterpreters = @(Get-ChildItem -LiteralPath $InstalledRoot -Recurse -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '^(node|nodejs|python|python3|sh|bash)(\.exe)?$' } | ForEach-Object FullName)
 $membrane = Join-Path $InstalledRoot 'membrane.exe'
+$membraneClient = Join-Path $InstalledRoot 'membrane-client.exe'
 $qualification = $null
 if ($QualificationEvidence -and (Test-Path -LiteralPath $QualificationEvidence -PathType Leaf)) { $qualification = Get-Content -LiteralPath $QualificationEvidence -Raw | ConvertFrom-Json }
 $cli = Run-Native $membrane @('diagnostics', 'capabilities')
@@ -519,7 +520,7 @@ $scenarioSpecs = @(
           $v.audit.schemaVersion -eq 'live-diagnostics-audit.v1' -and @($v.endpoints).Count -gt 0
       } catch { return $false }
     } }
-  @{ lane = 'NCL-05'; id = 'mcp'; exe = $membrane; args = @('stdio-mcp'); input = $mcpInput; captureProcessTree = $true; validate = $mcpResult }
+  @{ lane = 'NCL-05'; id = 'mcp'; exe = $membraneClient; args = @('stdio-mcp'); input = $mcpInput; captureProcessTree = $true; validate = $mcpResult }
   @{ lane = 'NCL-05'; id = 'sdk'; explicitSurface = $true; operation = 'list'; request = [ordered]@{ limit = 1 } }
   @{ lane = 'NCL-05'; id = 'federation'; exe = $membrane; args = $federationArgs; captureProcessTree = $true; validate = $federationResult }
 

@@ -116,6 +116,15 @@ cpSync(join(descriptorRoot, "skills", "membrane"), join(payload, ".agents", "ski
 cpSync(join(descriptorRoot, ".antigravity-plugin"), join(payload, ".antigravity-plugin"), { recursive: true });
 mkdirSync(join(payload, ".antigravity-plugin", "skills"), { recursive: true });
 cpSync(join(descriptorRoot, "skills", "membrane"), join(payload, ".antigravity-plugin", "skills", "membrane"), { recursive: true });
+// Plugin identity/version derives from this release, never from a
+// hand-maintained per-host copy.
+for (const manifestName of ["plugin.json", ".claude-plugin/plugin.json", ".codex-plugin/plugin.json", ".antigravity-plugin/plugin.json"]) {
+  const manifestPath = join(payload, manifestName);
+  if (!existsSync(manifestPath)) continue;
+  const manifestJson = JSON.parse(readFileSync(manifestPath, "utf8"));
+  manifestJson.version = pkg.version;
+  writeFileSync(manifestPath, `${JSON.stringify(manifestJson, null, 2)}\n`);
+}
 // A prepared candidate root carries these beside the payload; the repository
 // root carries LICENSE and the canonical notices under docs/product/legal.
 cpSync(join(projectionRoot, "LICENSE"), join(payload, "LICENSE"));

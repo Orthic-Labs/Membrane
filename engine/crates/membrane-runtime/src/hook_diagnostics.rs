@@ -523,7 +523,7 @@ fn mutation_candidates(input: &HookInputEnvelopeV1, root: &Path) -> Vec<String> 
 }
 
 fn project_root(input: &HookInputEnvelopeV1) -> PathBuf {
-    let requested = env::var_os("WORKSPACE_ROOT").map(PathBuf::from).or_else(|| input.payload.get("cwd").and_then(Value::as_str).map(PathBuf::from)).or_else(|| input.payload.get("working_directory").and_then(Value::as_str).map(PathBuf::from)).unwrap_or_else(|| env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
+    let requested = input.payload.get("cwd").and_then(Value::as_str).map(PathBuf::from).or_else(|| input.payload.get("working_directory").and_then(Value::as_str).map(PathBuf::from)).or_else(|| env::var_os("WORKSPACE_ROOT").map(PathBuf::from)).unwrap_or_else(|| env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
     canonical_path(&requested)
 }
 fn canonical_path(path: &Path) -> PathBuf { fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf()) }

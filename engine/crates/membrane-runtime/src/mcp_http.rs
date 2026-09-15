@@ -18,6 +18,7 @@ use axum::http::{header, HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::post;
 use axum::Router;
+use membrane_federation::deadline::{Deadline, SystemClock};
 use membrane_mcp::http_security::{
     admit, HttpAdmissionPolicy, HttpAdmissionRequest, HttpDenialCode, DEFAULT_MAX_BODY_BYTES,
 };
@@ -27,8 +28,7 @@ use serde_json::Value;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::Arc;
 use std::time::Duration;
-use membrane_federation::deadline::{Deadline, SystemClock};
-use tokio_util::sync::CancellationToken;
+use tokio::task::JoinError;
 
 /// Resident transport routes. POST carries JSON-RPC, CLI, or hook payloads;
 /// unsupported methods return 405 with `Allow: POST`.
@@ -46,6 +46,8 @@ const MAX_CLI_OUTPUT_BYTES: usize = 1024 * 1024;
 /// stays responsive under MCP load.
 const MAX_BLOCKING_REQUESTS: usize = 4;
 const MAX_MCP_REQUESTS: usize = 16;
+// Leave MCP capacity for Push & protocol traffic when Pull workers are busy.
+const MAX_PULL_REQUESTS: usize = 8;
 
 /// Callers may propagate a shorter cooperative deadline than the policy
 /// maximum. The admission policy still caps it; over-long or absent values
@@ -98,6 +100,7 @@ struct McpHttpState {
     resolver: Arc<dyn HostResolver>,
     blocking_requests: Arc<tokio::sync::Semaphore>,
     mcp_requests: Arc<tokio::sync::Semaphore>,
+    pull_requests: Arc<tokio::sync::Semaphore>,
 }
 
 /// Build the Streamable HTTP MCP router with the production (real) resolver.
@@ -117,6 +120,7 @@ fn build_mcp_http_router_with_resolver(
         resolver,
         blocking_requests: Arc::new(tokio::sync::Semaphore::new(MAX_BLOCKING_REQUESTS)),
         mcp_requests: Arc::new(tokio::sync::Semaphore::new(MAX_MCP_REQUESTS)),
+        pull_requests: Arc::new(tokio::sync::Semaphore::new(MAX_PULL_REQUESTS)),
     };
     Router::new()
         .route(
@@ -160,19 +164,13 @@ fn status_for_denial(denial: &HttpDenialCode) -> StatusCode {
     match denial {
         HttpDenialCode::BodyTooLarge => StatusCode::PAYLOAD_TOO_LARGE,
         HttpDenialCode::DeadlineTooLong => StatusCode::BAD_REQUEST,
-        HttpDenialCode::MissingBearer | HttpDenialCode::InvalidBearer => {
-            StatusCode::UNAUTHORIZED
-        }
+        HttpDenialCode::MissingBearer | HttpDenialCode::InvalidBearer => StatusCode::UNAUTHORIZED,
         _ => StatusCode::FORBIDDEN,
     }
 }
 
 async fn method_not_allowed() -> Response {
-    (
-        StatusCode::METHOD_NOT_ALLOWED,
-        [(header::ALLOW, "POST")],
-    )
-        .into_response()
+    (StatusCode::METHOD_NOT_ALLOWED, [(header::ALLOW, "POST")]).into_response()
 }
 
 fn header_value<'a>(headers: &'a HeaderMap, name: &'static str) -> &'a str {
@@ -203,7 +201,13 @@ fn admit_request(
     let host = header_value(headers, "host");
     let origin = headers
         .get(header::ORIGIN)
-        .map(|value| value.to_str().ok().filter(|origin| !origin.is_empty()).unwrap_or("\u{0}"))
+        .map(|value| {
+            value
+                .to_str()
+                .ok()
+                .filter(|origin| !origin.is_empty())
+                .unwrap_or("\u{0}")
+        })
         .unwrap_or("");
     let resolved_host_ip = state
         .resolver
@@ -214,31 +218,42 @@ fn admit_request(
         .ok()
         .filter(|value| *value > 0)
         .unwrap_or(state.policy.max_deadline_ms);
-    let receipt = admit(&state.policy, &HttpAdmissionRequest {
-        peer_ip: peer.ip(),
-        resolved_host_ip,
-        host,
-        origin,
-        installation_id: header_value(headers, INSTALLATION_HEADER),
-        bearer_token: bearer_token(headers),
-        session_binding: header_value(headers, SESSION_HEADER),
-        body_bytes: body.len(),
-        deadline_ms: requested_deadline_ms,
-    });
+    let receipt = admit(
+        &state.policy,
+        &HttpAdmissionRequest {
+            peer_ip: peer.ip(),
+            resolved_host_ip,
+            host,
+            origin,
+            installation_id: header_value(headers, INSTALLATION_HEADER),
+            bearer_token: bearer_token(headers),
+            session_binding: header_value(headers, SESSION_HEADER),
+            body_bytes: body.len(),
+            deadline_ms: requested_deadline_ms,
+        },
+    );
     if receipt.accepted {
         Ok(requested_deadline_ms.min(state.policy.max_deadline_ms))
     } else {
-        let status = receipt.denial.as_ref().map(status_for_denial).unwrap_or(StatusCode::FORBIDDEN);
+        let status = receipt
+            .denial
+            .as_ref()
+            .map(status_for_denial)
+            .unwrap_or(StatusCode::FORBIDDEN);
         let mut response = (status, axum::Json(receipt)).into_response();
         if status == StatusCode::UNAUTHORIZED {
-            response.headers_mut().insert(header::WWW_AUTHENTICATE, axum::http::HeaderValue::from_static("Bearer"));
+            response.headers_mut().insert(
+                header::WWW_AUTHENTICATE,
+                axum::http::HeaderValue::from_static("Bearer"),
+            );
         }
         Err(response)
     }
 }
 
 fn json_content_type(headers: &HeaderMap) -> bool {
-    headers.get(header::CONTENT_TYPE)
+    headers
+        .get(header::CONTENT_TYPE)
         .and_then(|value| value.to_str().ok())
         .and_then(|value| value.split(';').next())
         .is_some_and(|value| value.trim().eq_ignore_ascii_case("application/json"))
@@ -255,53 +270,135 @@ fn output_within_limit(value: &str) -> bool {
     value.len() <= MAX_CLI_OUTPUT_BYTES
 }
 
+enum ControlledBlocking<T> {
+    Complete(Result<Result<Result<T, &'static str>, Box<dyn std::any::Any + Send>>, JoinError>),
+    Deadline,
+    Cancelled,
+}
+
+/// Run transport work with request-owned control. The semaphore permit lives
+/// in the blocking closure, so timeout/cancellation cannot release capacity
+/// while abandoned work is still executing.
+async fn controlled_blocking<T, F>(
+    permit: tokio::sync::OwnedSemaphorePermit,
+    control: crate::serve::PushRequestControl,
+    dispatch: F,
+) -> ControlledBlocking<T>
+where
+    T: Send + 'static,
+    F: FnOnce() -> T + Send + 'static,
+{
+    let deadline = control.deadline.instant();
+    let cancellation = control.cancellation.clone();
+    let joined = tokio::task::spawn_blocking(move || {
+        let _permit = permit;
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            dispatch_if_live(&control, || {
+                crate::mcp_executor::with_inherited_push_control(control.clone(), dispatch)
+            })
+        }))
+    });
+    tokio::pin!(joined);
+    tokio::select! {
+        result = &mut joined => ControlledBlocking::Complete(result),
+        _ = tokio::time::sleep_until(tokio::time::Instant::from_std(deadline)) => ControlledBlocking::Deadline,
+        _ = cancellation.cancelled() => ControlledBlocking::Cancelled,
+    }
+}
+
+fn controlled_failure(status: StatusCode, id: Option<Value>, message: &'static str) -> Response {
+    (
+        status,
+        axum::Json(serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": id.unwrap_or(Value::Null),
+            "error": { "code": -32000, "message": message },
+        })),
+    )
+        .into_response()
+}
+
 async fn handle_cli_request(
     State(state): State<McpHttpState>,
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
     body: Bytes,
 ) -> Response {
-    // The admitted deadline is recorded for the lane contract; CLI verbs
-    // carry their own connect/read bounds and the server's request timeout,
-    // so no second outer timeout is layered here.
-    let _admitted_deadline_ms = match admit_request(&state, peer, &headers, &body) {
+    let admitted_deadline_ms = match admit_request(&state, peer, &headers, &body) {
         Ok(deadline_ms) => deadline_ms,
         Err(response) => return response,
     };
-    if !json_content_type(&headers) { return StatusCode::UNSUPPORTED_MEDIA_TYPE.into_response(); }
+    if !json_content_type(&headers) {
+        return StatusCode::UNSUPPORTED_MEDIA_TYPE.into_response();
+    }
     let request: CliRequest = match serde_json::from_slice(&body) {
         Ok(request) => request,
         Err(_) => return StatusCode::BAD_REQUEST.into_response(),
     };
-    if request.args.len() > MAX_CLI_ARGS || request.args.iter().any(|arg| arg.len() > MAX_CLI_ARG_BYTES) {
+    if request.args.len() > MAX_CLI_ARGS
+        || request.args.iter().any(|arg| arg.len() > MAX_CLI_ARG_BYTES)
+    {
         return StatusCode::PAYLOAD_TOO_LARGE.into_response();
     }
     let stdin = request.stdin.into_bytes();
-    if stdin.len() > DEFAULT_MAX_BODY_BYTES { return StatusCode::PAYLOAD_TOO_LARGE.into_response(); }
+    if stdin.len() > DEFAULT_MAX_BODY_BYTES {
+        return StatusCode::PAYLOAD_TOO_LARGE.into_response();
+    }
     let mut argv = Vec::with_capacity(request.args.len() + 1);
     argv.push("membrane".to_owned());
     argv.extend(request.args);
     let Ok(permit) = Arc::clone(&state.blocking_requests).try_acquire_owned() else {
         return StatusCode::TOO_MANY_REQUESTS.into_response();
     };
-    let result = tokio::task::spawn_blocking(move || {
-        let _permit = permit;
-        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| crate::cli::run_cli_captured(&argv, &stdin)))
-    }).await;
+    let cancellation = crate::service::lifecycle_control().cancellation_token();
+    let control = crate::serve::push_request_control(
+        Deadline::after(&SystemClock, Duration::from_millis(admitted_deadline_ms)),
+        cancellation.clone(),
+    );
+    let cancellation_guard = cancellation.drop_guard();
+    let result = controlled_blocking(permit, control, move || {
+        crate::cli::run_cli_captured(&argv, &stdin)
+    })
+    .await;
+    drop(cancellation_guard);
     match result {
-        Ok(Ok(result)) if output_within_limit(&result.stdout) && output_within_limit(&result.stderr) =>
-            (StatusCode::OK, axum::Json(serde_json::json!({
-                "stdout": result.stdout,
-                "stderr": result.stderr,
-                "exit_code": result.exit_code,
-            }))).into_response(),
-        Ok(Ok(_)) => (StatusCode::OK, axum::Json(serde_json::json!({
-            "stdout": "",
-            "stderr": "output_limit_exceeded\n",
-            "exit_code": 1,
-            "error": "output_limit_exceeded",
-        }))).into_response(),
-        Ok(Err(_)) | Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+        ControlledBlocking::Complete(Ok(Ok(Ok(result))))
+            if output_within_limit(&result.stdout) && output_within_limit(&result.stderr) =>
+        {
+            (
+                StatusCode::OK,
+                axum::Json(serde_json::json!({
+                    "stdout": result.stdout,
+                    "stderr": result.stderr,
+                    "exit_code": result.exit_code,
+                })),
+            )
+                .into_response()
+        }
+        ControlledBlocking::Complete(Ok(Ok(Ok(_)))) => (
+            StatusCode::OK,
+            axum::Json(serde_json::json!({
+                "stdout": "",
+                "stderr": "output_limit_exceeded\n",
+                "exit_code": 1,
+                "error": "output_limit_exceeded",
+            })),
+        )
+            .into_response(),
+        ControlledBlocking::Deadline => controlled_failure(
+            StatusCode::SERVICE_UNAVAILABLE,
+            None,
+            "cli deadline exceeded",
+        ),
+        ControlledBlocking::Cancelled => controlled_failure(
+            StatusCode::SERVICE_UNAVAILABLE,
+            None,
+            "cli request cancelled",
+        ),
+        ControlledBlocking::Complete(Ok(Ok(Err(reason)))) => controlled_failure(StatusCode::SERVICE_UNAVAILABLE, None, reason),
+        ControlledBlocking::Complete(Ok(Err(_))) | ControlledBlocking::Complete(Err(_)) => {
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
+        }
     }
 }
 
@@ -311,14 +408,13 @@ async fn handle_hook_request(
     headers: HeaderMap,
     body: Bytes,
 ) -> Response {
-    // Hook modules run under the dispatcher's own per-module deadline with a
-    // bounded leaf scope; the admitted deadline is recorded for the lane
-    // contract rather than layered as a second timeout.
-    let _admitted_deadline_ms = match admit_request(&state, peer, &headers, &body) {
+    let admitted_deadline_ms = match admit_request(&state, peer, &headers, &body) {
         Ok(deadline_ms) => deadline_ms,
         Err(response) => return response,
     };
-    if !json_content_type(&headers) { return StatusCode::UNSUPPORTED_MEDIA_TYPE.into_response(); }
+    if !json_content_type(&headers) {
+        return StatusCode::UNSUPPORTED_MEDIA_TYPE.into_response();
+    }
     let mut payload: Value = match serde_json::from_slice(&body) {
         Ok(payload) => payload,
         Err(_) => return StatusCode::BAD_REQUEST.into_response(),
@@ -345,13 +441,35 @@ async fn handle_hook_request(
     let Ok(permit) = Arc::clone(&state.blocking_requests).try_acquire_owned() else {
         return StatusCode::TOO_MANY_REQUESTS.into_response();
     };
-    let result = tokio::task::spawn_blocking(move || {
-        let _permit = permit;
-        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| crate::hook::run_hook_payload(payload)))
-    }).await;
+    let cancellation = crate::service::lifecycle_control().cancellation_token();
+    let control = crate::serve::push_request_control(
+        Deadline::after(&SystemClock, Duration::from_millis(admitted_deadline_ms)),
+        cancellation.clone(),
+    );
+    let cancellation_guard = cancellation.drop_guard();
+    let result = controlled_blocking(permit, control, move || {
+        crate::hook::run_hook_payload(payload)
+    })
+    .await;
+    drop(cancellation_guard);
     match result {
-        Ok(Ok(response)) => (StatusCode::OK, axum::Json(response)).into_response(),
-        Ok(Err(_)) | Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+        ControlledBlocking::Complete(Ok(Ok(Ok(response)))) => {
+            (StatusCode::OK, axum::Json(response)).into_response()
+        }
+        ControlledBlocking::Deadline => controlled_failure(
+            StatusCode::SERVICE_UNAVAILABLE,
+            None,
+            "hook deadline exceeded",
+        ),
+        ControlledBlocking::Cancelled => controlled_failure(
+            StatusCode::SERVICE_UNAVAILABLE,
+            None,
+            "hook request cancelled",
+        ),
+        ControlledBlocking::Complete(Ok(Ok(Err(reason)))) => controlled_failure(StatusCode::SERVICE_UNAVAILABLE, None, reason),
+        ControlledBlocking::Complete(Ok(Err(_))) | ControlledBlocking::Complete(Err(_)) => {
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
+        }
     }
 }
 
@@ -372,6 +490,24 @@ async fn handle_mcp_request(
     let payload: Value = match serde_json::from_slice(&body) {
         Ok(value) => value,
         Err(_) => return StatusCode::BAD_REQUEST.into_response(),
+    };
+    let pull_permit = if payload.get("method").and_then(Value::as_str) == Some("tools/call")
+        && matches!(
+            payload.pointer("/params/name").and_then(Value::as_str),
+            Some("pull" | "membrane_context")
+        ) {
+        match Arc::clone(&state.pull_requests).try_acquire_owned() {
+            Ok(permit) => Some(permit),
+            Err(_) => {
+                return (
+                    StatusCode::TOO_MANY_REQUESTS,
+                    axum::Json(serde_json::json!({"error":"pull_lane_saturated"})),
+                )
+                    .into_response()
+            }
+        }
+    } else {
+        None
     };
     // Blocking MCP work runs on its own bounded lane so bulk model traffic
     // cannot starve the CLI/hook lane (and vice versa); saturation is an
@@ -397,52 +533,48 @@ async fn handle_mcp_request(
     // the lane. Cancellation is tied to handler completion via the drop
     // guard; the dispatch itself observes the same token through the push
     // request control it inherits below.
-    let cancellation = CancellationToken::new();
+    let cancellation = crate::service::lifecycle_control().cancellation_token();
     let push_control = crate::serve::push_request_control(
-        Deadline::after(
-            &SystemClock,
-            Duration::from_millis(admitted_deadline_ms),
-        ),
+        Deadline::after(&SystemClock, Duration::from_millis(admitted_deadline_ms)),
         cancellation.clone(),
     );
+    let request_deadline = push_control.deadline.instant();
+    let request_cancellation = push_control.cancellation.clone();
     let cancellation_guard = cancellation.drop_guard();
     let request_id = payload.get("id").cloned().unwrap_or(Value::Null);
     let server = Arc::clone(&state.server);
     let dispatched = tokio::task::spawn_blocking(move || {
         let _permit = permit;
+        let _pull_permit = pull_permit;
         std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            crate::mcp_executor::with_inherited_push_control(push_control, || {
-                server.dispatch(&payload)
+            dispatch_if_live(&push_control, || {
+                crate::mcp_executor::with_inherited_push_control(push_control.clone(), || {
+                    server.dispatch(&payload)
+                })
             })
         }))
     });
-    let dispatched = match tokio::time::timeout(
-        Duration::from_millis(admitted_deadline_ms),
-        dispatched,
-    )
-    .await
-    {
-        Ok(joined) => joined,
-        Err(_) => {
+    tokio::pin!(dispatched);
+    let dispatched = tokio::select! {
+        joined = &mut dispatched => joined,
+        _ = tokio::time::sleep_until(tokio::time::Instant::from_std(request_deadline)) => {
             drop(cancellation_guard);
-            return (
-                StatusCode::SERVICE_UNAVAILABLE,
-                axum::Json(serde_json::json!({
-                    "jsonrpc": "2.0",
-                    "id": request_id,
-                    "error": {
-                        "code": -32000,
-                        "message": "mcp deadline exceeded: dispatch did not complete within the admitted deadline"
-                    }
-                })),
-            )
-                .into_response();
+            return controlled_failure(StatusCode::SERVICE_UNAVAILABLE, Some(request_id), "mcp deadline exceeded: dispatch did not complete within the admitted deadline");
+        }
+        _ = request_cancellation.cancelled() => {
+            drop(cancellation_guard);
+            return controlled_failure(StatusCode::SERVICE_UNAVAILABLE, Some(request_id), "mcp request cancelled");
         }
     };
     drop(cancellation_guard);
     match dispatched {
-        Ok(Ok(Some(response))) => (StatusCode::OK, axum::Json(response)).into_response(),
-        Ok(Ok(None)) => StatusCode::ACCEPTED.into_response(),
+        Ok(Ok(Ok(Some(response)))) => (StatusCode::OK, axum::Json(response)).into_response(),
+        Ok(Ok(Ok(None))) => StatusCode::ACCEPTED.into_response(),
+        Ok(Ok(Err(reason))) => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            axum::Json(serde_json::json!({"jsonrpc":"2.0", "id":request_id,
+                "error":{"code":-32000,"message":reason}})),
+        ).into_response(),
         Ok(Err(_)) | Err(_) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             axum::Json(serde_json::json!({
@@ -456,6 +588,19 @@ async fn handle_mcp_request(
         )
             .into_response(),
     }
+}
+
+fn dispatch_if_live<T>(
+    control: &crate::serve::PushRequestControl,
+    dispatch: impl FnOnce() -> T,
+) -> Result<T, &'static str> {
+    if control.cancellation.is_cancelled() {
+        return Err("mcp request cancelled before dispatch");
+    }
+    if control.deadline.is_exhausted_at(std::time::Instant::now()) {
+        return Err("mcp deadline exceeded before dispatch");
+    }
+    Ok(dispatch())
 }
 
 /// Bind the Streamable HTTP MCP listener to loopback only and serve until the
@@ -501,7 +646,8 @@ pub fn run_mcp_streamable_http_for_resident(port: u16) -> Result<(), String> {
     // identity, but before a caller has copied its database location into the
     // process environment. Bind the native executor to that exact Hub store.
     let store = crate::MemoryStore::try_open(
-        crate::MemDb::open(&runtime.db).map_err(|error| error.to_string())?)?;
+        crate::MemDb::open(&runtime.db).map_err(|error| error.to_string())?,
+    )?;
     crate::mcp_executor::install_native_mcp_executor_for_hub(store)?;
     let (identity, claim) = crate::service::prepare_runtime_identity(&runtime)?;
     let bind_port = if port >= 1024 { port } else { runtime.port };
@@ -521,6 +667,34 @@ pub fn run_mcp_streamable_http_for_resident(port: u16) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn controlled_dispatch_cancels_waiter_but_retains_running_permit() {
+        let permits = Arc::new(tokio::sync::Semaphore::new(1));
+        let permit = permits.clone().acquire_owned().await.unwrap();
+        let token = tokio_util::sync::CancellationToken::new();
+        let control = crate::serve::push_request_control(Deadline::after(&SystemClock, Duration::from_secs(2)), token.clone());
+        let (started, observed) = tokio::sync::oneshot::channel();
+        let (release, blocked) = std::sync::mpsc::channel();
+        let (finished, exited) = tokio::sync::oneshot::channel();
+        let task = tokio::spawn(controlled_blocking(permit, control, move || {
+            let inherited = crate::mcp_executor::inherited_push_control().unwrap();
+            started.send(()).unwrap();
+            blocked.recv().unwrap();
+            assert!(inherited.cancellation.is_cancelled());
+            let _ = finished.send(());
+        }));
+        observed.await.unwrap();
+        token.cancel();
+        assert!(matches!(tokio::time::timeout(Duration::from_secs(1), task).await.unwrap().unwrap(), ControlledBlocking::Cancelled));
+        assert_eq!(permits.available_permits(), 0);
+        release.send(()).unwrap();
+        exited.await.unwrap();
+        let reclaimed = tokio::time::timeout(Duration::from_secs(1), permits.acquire()).await.unwrap().unwrap();
+        drop(reclaimed);
+        assert_eq!(permits.available_permits(), 1);
+    }
+
     use axum::body::{to_bytes, Body};
     use axum::http::Request;
     use tower::ServiceExt;
@@ -665,6 +839,7 @@ mod tests {
             resolver: Arc::new(FixedResolver(Some(Ipv4Addr::LOCALHOST.into()))),
             blocking_requests: Arc::new(tokio::sync::Semaphore::new(MAX_BLOCKING_REQUESTS)),
             mcp_requests: Arc::new(tokio::sync::Semaphore::new(0)),
+            pull_requests: Arc::new(tokio::sync::Semaphore::new(MAX_PULL_REQUESTS)),
         };
         let app = Router::new()
             .route(MCP_HTTP_PATH, post(handle_mcp_request))
@@ -686,19 +861,113 @@ mod tests {
     async fn resident_routes_require_bearer_admission() {
         let app = router_with(Arc::new(FixedResolver(Some(Ipv4Addr::LOCALHOST.into()))));
         for path in [CLI_HTTP_PATH, HOOK_HTTP_PATH] {
-            let response = app.clone().oneshot(resident_request(path, None, serde_json::json!({"args": []}))).await.unwrap();
+            let response = app
+                .clone()
+                .oneshot(resident_request(
+                    path,
+                    None,
+                    serde_json::json!({"args": []}),
+                ))
+                .await
+                .unwrap();
             assert_eq!(response.status(), StatusCode::UNAUTHORIZED, "{path}");
         }
     }
 
     #[tokio::test]
+    async fn saturated_pull_lane_preserves_protocol_capacity_and_recovers() {
+        let pull_requests = Arc::new(tokio::sync::Semaphore::new(MAX_PULL_REQUESTS));
+        let occupied = pull_requests
+            .clone()
+            .acquire_many_owned(MAX_PULL_REQUESTS as u32)
+            .await
+            .unwrap();
+        let state = McpHttpState {
+            policy: Arc::new(policy()),
+            server: Arc::new(McpServer),
+            resolver: Arc::new(FixedResolver(Some(Ipv4Addr::LOCALHOST.into()))),
+            blocking_requests: Arc::new(tokio::sync::Semaphore::new(MAX_BLOCKING_REQUESTS)),
+            mcp_requests: Arc::new(tokio::sync::Semaphore::new(MAX_MCP_REQUESTS)),
+            pull_requests: pull_requests.clone(),
+        };
+        let app = Router::new()
+            .route(MCP_HTTP_PATH, post(handle_mcp_request))
+            .with_state(state);
+        let mut request = full_request(
+            loopback_peer(),
+            "127.0.0.1:9",
+            "http://127.0.0.1:9",
+            "correct-token",
+        );
+        *request.body_mut() = Body::from(serde_json::json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"pull","arguments":{}}}).to_string());
+        let response = app.clone().oneshot(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
+        let bytes = to_bytes(response.into_body(), MAX_BODY).await.unwrap();
+        assert_eq!(
+            serde_json::from_slice::<Value>(&bytes).unwrap()["error"],
+            "pull_lane_saturated"
+        );
+        let response = app
+            .oneshot(full_request(
+                loopback_peer(),
+                "127.0.0.1:9",
+                "http://127.0.0.1:9",
+                "correct-token",
+            ))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        drop(occupied);
+        assert_eq!(pull_requests.available_permits(), MAX_PULL_REQUESTS);
+    }
+
+    #[test]
+    fn queued_expired_dispatch_never_runs_and_returns_its_permit() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(1)
+            .max_blocking_threads(1)
+            .enable_all()
+            .build()
+            .unwrap();
+        let (started_tx, started_rx) = std::sync::mpsc::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        let blocker = runtime.spawn_blocking(move || {
+            started_tx.send(()).unwrap();
+            release_rx.recv_timeout(Duration::from_secs(3)).unwrap();
+        });
+        started_rx.recv_timeout(Duration::from_secs(1)).unwrap();
+        let ran = Arc::new(AtomicBool::new(false));
+        let work_ran = ran.clone();
+        let lane = Arc::new(tokio::sync::Semaphore::new(1));
+        let permit = lane.clone().try_acquire_owned().unwrap();
+        let control = crate::serve::push_request_control(
+            Deadline::at(std::time::Instant::now()),
+            tokio_util::sync::CancellationToken::new(),
+        );
+        let queued = runtime.spawn_blocking(move || {
+            let _permit = permit;
+            dispatch_if_live(&control, || work_ran.store(true, Ordering::Release))
+        });
+        assert_eq!(lane.available_permits(), 0);
+        release_tx.send(()).unwrap();
+        runtime.block_on(blocker).unwrap();
+        assert!(runtime.block_on(queued).unwrap().is_err());
+        assert!(!ran.load(Ordering::Acquire));
+        assert_eq!(lane.available_permits(), 1);
+    }
+
+    #[tokio::test]
     async fn authenticated_hook_route_dispatches_host_response() {
         let app = router_with(Arc::new(FixedResolver(Some(Ipv4Addr::LOCALHOST.into()))));
-        let response = app.oneshot(resident_request(
-            HOOK_HTTP_PATH,
-            Some("correct-token"),
-            serde_json::json!({"event": "SessionEnd", "session_id": "route-test"}),
-        )).await.unwrap();
+        let response = app
+            .oneshot(resident_request(
+                HOOK_HTTP_PATH,
+                Some("correct-token"),
+                serde_json::json!({"event": "SessionEnd", "session_id": "route-test"}),
+            ))
+            .await
+            .unwrap();
         assert_eq!(response.status(), StatusCode::OK);
         let bytes = to_bytes(response.into_body(), MAX_BODY).await.unwrap();
         let value: Value = serde_json::from_slice(&bytes).unwrap();
@@ -708,11 +977,14 @@ mod tests {
     #[tokio::test]
     async fn authenticated_cli_route_dispatches_captured_help() {
         let app = router_with(Arc::new(FixedResolver(Some(Ipv4Addr::LOCALHOST.into()))));
-        let response = app.oneshot(resident_request(
-            CLI_HTTP_PATH,
-            Some("correct-token"),
-            serde_json::json!({"args": ["--help"], "stdin": ""}),
-        )).await.unwrap();
+        let response = app
+            .oneshot(resident_request(
+                CLI_HTTP_PATH,
+                Some("correct-token"),
+                serde_json::json!({"args": ["--help"], "stdin": ""}),
+            ))
+            .await
+            .unwrap();
         assert_eq!(response.status(), StatusCode::OK);
         let bytes = to_bytes(response.into_body(), MAX_BODY).await.unwrap();
         let value: Value = serde_json::from_slice(&bytes).unwrap();
@@ -723,11 +995,14 @@ mod tests {
     #[tokio::test]
     async fn authenticated_cli_route_rejects_non_string_args() {
         let app = router_with(Arc::new(FixedResolver(Some(Ipv4Addr::LOCALHOST.into()))));
-        let response = app.oneshot(resident_request(
-            CLI_HTTP_PATH,
-            Some("correct-token"),
-            serde_json::json!({"args": [42], "stdin": ""}),
-        )).await.unwrap();
+        let response = app
+            .oneshot(resident_request(
+                CLI_HTTP_PATH,
+                Some("correct-token"),
+                serde_json::json!({"args": [42], "stdin": ""}),
+            ))
+            .await
+            .unwrap();
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     }
 
@@ -769,10 +1044,9 @@ mod tests {
             "http://127.0.0.1:9",
             "correct-token",
         );
-        request.headers_mut().insert(
-            header::CONTENT_TYPE,
-            "text/plain".parse().unwrap(),
-        );
+        request
+            .headers_mut()
+            .insert(header::CONTENT_TYPE, "text/plain".parse().unwrap());
         let response = app.oneshot(request).await.unwrap();
         assert_eq!(response.status(), StatusCode::UNSUPPORTED_MEDIA_TYPE);
     }
@@ -839,12 +1113,7 @@ mod tests {
     #[tokio::test]
     async fn empty_supplied_origin_is_not_treated_as_absent() {
         let app = router_with(Arc::new(FixedResolver(Some(Ipv4Addr::LOCALHOST.into()))));
-        let request = full_request(
-            loopback_peer(),
-            "127.0.0.1:9",
-            "",
-            "correct-token",
-        );
+        let request = full_request(loopback_peer(), "127.0.0.1:9", "", "correct-token");
         let response = app.oneshot(request).await.unwrap();
         assert_eq!(response.status(), StatusCode::FORBIDDEN);
         assert_eq!(denial_of(response).await, "origin_not_allowed");

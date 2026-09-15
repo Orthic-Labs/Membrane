@@ -151,7 +151,7 @@ impl Embedder for HashEmbedder {
 #[cfg(feature = "fastembed")]
 mod fast {
     use super::{l2_normalize, Embedder, EMBEDDING_MAX_SEQUENCE_TOKENS};
-    use std::sync::Mutex;
+    use std::sync::{Mutex, OnceLock};
 
     #[derive(Clone, Copy, PartialEq)]
     enum Kind {
@@ -168,15 +168,47 @@ mod fast {
         model_id: &'static str,
     }
 
+    /// Defers model construction until first semantic operation. Concurrent
+    /// callers share one initialization & wait for its result.
+    pub struct LazyFastEmbedder {
+        model: OnceLock<Result<FastEmbedder, String>>,
+        dim: usize,
+        model_id: &'static str,
+    }
+
+    impl LazyFastEmbedder {
+        pub fn new() -> Self {
+            let (_, dim, _, model_id) = FastEmbedder::selected_model();
+            Self {
+                model: OnceLock::new(),
+                dim,
+                model_id,
+            }
+        }
+
+        fn get(&self) -> Result<&FastEmbedder, String> {
+            self.model
+                .get_or_init(FastEmbedder::new)
+                .as_ref()
+                .map_err(Clone::clone)
+        }
+
+        pub fn initialized(&self) -> bool {
+            self.model.get().is_some()
+        }
+    }
+
+    impl Default for LazyFastEmbedder {
+        fn default() -> Self {
+            Self::new()
+        }
+    }
+
     impl FastEmbedder {
-        /// Model from `WORKSPACE_EMBED_MODEL`. Default: EmbeddingGemma-300M Q4
-        /// (768-dim, 2K context, multilingual, <200MB resident — upgraded from
-        /// BGE-small 2026-07-02). `bge-small-en-v1.5` stays selectable for DBs
-        /// embedded pre-upgrade; a dim change requires `cortex reindex`.
-        pub fn new() -> Result<Self, String> {
-            use fastembed::{EmbeddingModel, InitOptions, TextEmbedding};
+        fn selected_model() -> (fastembed::EmbeddingModel, usize, Kind, &'static str) {
+            use fastembed::EmbeddingModel;
             let want = std::env::var("WORKSPACE_EMBED_MODEL").unwrap_or_default();
-            let (m, dim, kind, model_id) = match want.as_str() {
+            match want.as_str() {
                 "bge-small-en-v1.5" | "BAAI/bge-small-en-v1.5" => (
                     EmbeddingModel::BGESmallENV15,
                     384,
@@ -195,7 +227,16 @@ mod fast {
                     Kind::Gemma,
                     "embeddinggemma-300m-q4",
                 ),
-            };
+            }
+        }
+
+        /// Model from `WORKSPACE_EMBED_MODEL`. Default: EmbeddingGemma-300M Q4
+        /// (768-dim, 2K context, multilingual, <200MB resident — upgraded from
+        /// BGE-small 2026-07-02). `bge-small-en-v1.5` stays selectable for DBs
+        /// embedded pre-upgrade; a dim change requires `cortex reindex`.
+        pub fn new() -> Result<Self, String> {
+            use fastembed::{InitOptions, TextEmbedding};
+            let (m, dim, kind, model_id) = Self::selected_model();
             // Offline path: when the product bundle ships the model files (the
             // Tauri app sets CODERIGHT_EMBED_MODEL_DIR to the bundled resource),
             // load them directly with no HuggingFace download. Only the shipped
@@ -369,10 +410,41 @@ mod fast {
             self.model_id
         }
     }
+
+    impl Embedder for LazyFastEmbedder {
+        fn embed(&self, text: &str) -> Vec<f32> {
+            self.try_embed(text).unwrap_or_else(|error| panic!("{error}"))
+        }
+
+        fn try_embed(&self, text: &str) -> Result<Vec<f32>, String> {
+            self.get()?.try_embed(text)
+        }
+
+        fn try_embed_batch(&self, texts: &[&str]) -> Result<Vec<Vec<f32>>, String> {
+            self.get()?.try_embed_batch(texts)
+        }
+
+        fn embed_query(&self, text: &str) -> Vec<f32> {
+            self.try_embed_query(text)
+                .unwrap_or_else(|error| panic!("{error}"))
+        }
+
+        fn try_embed_query(&self, text: &str) -> Result<Vec<f32>, String> {
+            self.get()?.try_embed_query(text)
+        }
+
+        fn dim(&self) -> usize {
+            self.dim
+        }
+
+        fn model_id(&self) -> &'static str {
+            self.model_id
+        }
+    }
 }
 
 #[cfg(feature = "fastembed")]
-pub use fast::FastEmbedder;
+pub use fast::{FastEmbedder, LazyFastEmbedder};
 
 #[cfg(test)]
 mod tests {

@@ -1,0 +1,65 @@
+{
+  "schemaVersion": 1,
+  "installedRoot": "C:\\Users\\adrds\\AppData\\Local\\Orthic Labs\\Membrane\\current",
+  "stages": {},
+  "benchmark": {},
+  "startedAt": "2026-09-14T14:46:53.754Z",
+  "startupOutcomes": [
+    {
+      "status": "fulfilled",
+      "value": {
+        "slot": 0,
+        "elapsedMs": 17820
+      }
+    },
+    {
+      "status": "fulfilled",
+      "value": {
+        "slot": 1,
+        "elapsedMs": 17242
+      }
+    },
+    {
+      "status": "rejected",
+      "error": "RPC timeout: initialize"
+    },
+    {
+      "status": "fulfilled",
+      "value": {
+        "slot": 3,
+        "elapsedMs": 17523
+      }
+    },
+    {
+      "status": "fulfilled",
+      "value": {
+        "slot": 4,
+        "elapsedMs": 17523
+      }
+    }
+  ],
+  "error": "[{\"status\":\"fulfilled\",\"value\":{\"slot\":0,\"elapsedMs\":17820}},{\"status\":\"fulfilled\",\"value\":{\"slot\":1,\"elapsedMs\":17242}},{\"status\":\"rejected\",\"error\":\"RPC timeout: initialize\"},{\"status\":\"fulfilled\",\"value\":{\"slot\":3,\"elapsedMs\":17523}},{\"status\":\"fulfilled\",\"value\":{\"slot\":4,\"elapsedMs\":17523}}]",
+  "stderr": [
+    {
+      "slot": 0,
+      "output": ""
+    },
+    {
+      "slot": 1,
+      "output": ""
+    },
+    {
+      "slot": 2,
+      "output": ""
+    },
+    {
+      "slot": 3,
+      "output": ""
+    },
+    {
+      "slot": 4,
+      "output": ""
+    }
+  ],
+  "finishedAt": "2026-09-14T14:49:08.225Z"
+}

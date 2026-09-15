@@ -1,0 +1,394 @@
+rightkit: request abeb1465-07b4-4a67-a42d-c5eddce1c505
+warning: unused import: `ProviderError`
+ --> crates\membrane-provider-sdk\src\source.rs:8:20
+  |
+8 | use crate::error::{ProviderError, Result};
+  |                    ^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: `membrane-provider-sdk` (lib) generated 1 warning (run `cargo fix --lib -p membrane-provider-sdk` to apply 1 suggestion)
+warning: value assigned to `output_tokens` is never read
+   --> crates\membrane-core\src\compaction.rs:228:25
+    |
+228 |                         output_tokens = output_tokens.saturating_add(item_tokens(&item));
+    |                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: maybe it is overwritten before being read?
+    = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: `membrane-core` (lib) generated 1 warning
+warning: unused import: `SourceResponse`
+  --> crates\membrane-federation\src\providers\audit.rs:14:5
+   |
+14 |     SourceResponse, SourceWarning,
+   |     ^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `DecisionRecordSource`
+  --> crates\membrane-federation\src\providers\architect.rs:14:35
+   |
+14 |     CapabilityV1, DecisionRecord, DecisionRecordSource, Provider, ProviderContext, ProviderError,
+   |                                   ^^^^^^^^^^^^^^^^^^^^
+
+warning: unused variable: `error`
+  --> crates\membrane-federation\src\providers\skills.rs:88:17
+   |
+88 |             Err(error) => {
+   |                 ^^^^^ help: if this is intentional, prefix it with an underscore: `_error`
+   |
+   = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+   --> crates\membrane-federation\src\lib_federation_index.rs:528:14
+    |
+528 |     let Some(mut result) = response.result else {
+    |              ----^^^^^^
+    |              |
+    |              help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+   Compiling membrane-runtime v0.1.0 (D:\Claude\membrane\engine\crates\membrane-runtime)
+warning: variable does not need to be mutable
+   --> crates\cortex-store\src\temporal.rs:486:13
+    |
+486 |         let mut conn = self.db.lock();
+    |             ----^^^^
+    |             |
+    |             help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+   --> crates\cortex-store\src\temporal.rs:687:13
+    |
+687 |         let mut conn = self.db.lock();
+    |             ----^^^^
+    |             |
+    |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> crates\cortex-store\src\temporal.rs:735:13
+    |
+735 |         let mut conn = self.db.lock();
+    |             ----^^^^
+    |             |
+    |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> crates\cortex-store\src\temporal.rs:782:13
+    |
+782 |         let mut conn = self.db.lock();
+    |             ----^^^^
+    |             |
+    |             help: remove this `mut`
+
+warning: function `provenance` is never used
+   --> crates\cortex-store\src\absorbed_records.rs:280:4
+    |
+280 | fn provenance<T: for<'de> Deserialize<'de>>(value: String) -> Result<T, rusqlite::Error> {
+    |    ^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: constant `CHUNK_TABLE` is never used
+  --> crates\cortex-store\src\transcript.rs:11:7
+   |
+11 | const CHUNK_TABLE: &str = "cortex_transcript_chunks";
+   |       ^^^^^^^^^^^
+
+warning: constant `FTS_TABLE` is never used
+  --> crates\cortex-store\src\transcript.rs:12:7
+   |
+12 | const FTS_TABLE: &str = "cortex_transcript_chunks_fts";
+   |       ^^^^^^^^^
+
+warning: function `host_context` is never used
+   --> crates\membrane-mcp\src\tools.rs:566:4
+    |
+566 | fn host_context() -> Value {
+    |    ^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `membrane-federation` (lib) generated 4 warnings (run `cargo fix --lib -p membrane-federation` to apply 3 suggestions)
+warning: `cortex-store` (lib) generated 7 warnings (run `cargo fix --lib -p cortex-store` to apply 4 suggestions)
+warning: `membrane-mcp` (lib) generated 1 warning
+warning: unused import: `EffectivenessVerdict`
+  --> crates\membrane-runtime\src\adapt_effectiveness.rs:15:43
+   |
+15 |     project_host_effectiveness, Coverage, EffectivenessVerdict, HostEvaluationObservationV1,
+   |                                           ^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `std::io::Read as _`
+    --> crates\membrane-runtime\src\cli.rs:6248:25
+     |
+6248 |                     use std::io::Read as _;
+     |                         ^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `OptionalExtension`
+  --> crates\membrane-runtime\src\mcp_executor.rs:18:24
+   |
+18 | use rusqlite::{params, OptionalExtension};
+   |                        ^^^^^^^^^^^^^^^^^
+
+warning: unused import: `crate::pull::truncate`
+ --> crates\membrane-runtime\src\pull\..\push\runc.rs:7:5
+  |
+7 | use crate::pull::truncate;
+  |     ^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `is_code_ext` and `is_structured_text`
+ --> crates\membrane-runtime\src\pull\..\push\selection.rs:7:25
+  |
+7 | use crate::pull::prep::{is_code_ext, is_structured_text, PushPolicy};
+  |                         ^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `telemetry`
+ --> crates\membrane-runtime\src\pull\..\push\selection.rs:8:35
+  |
+8 | use crate::pull::{compress, skel, telemetry};
+  |                                   ^^^^^^^^^
+
+warning: unused import: `ContextPacketV1`
+ --> crates\membrane-runtime\src\pull\..\push\selection.rs:9:37
+  |
+9 | use cortex_core::planner::{BlockV1, ContextPacketV1};
+  |                                     ^^^^^^^^^^^^^^^
+
+warning: unused import: `PACKET_REDUCTION_SELECTION_RECEIPT_SCHEMA_VERSION`
+  --> crates\membrane-runtime\src\pull\..\push\selection.rs:16:5
+   |
+16 |     PACKET_REDUCTION_SELECTION_RECEIPT_SCHEMA_VERSION,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `BlockV1`
+ --> crates\membrane-runtime\src\pull\..\push\packet_selection.rs:2:28
+  |
+2 | use cortex_core::planner::{BlockV1, ContextPacketV1};
+  |                            ^^^^^^^
+
+warning: the `#![windows_subsystem]` attribute can only be used at the crate root
+ --> crates\membrane-runtime\src\service.rs:1:22
+  |
+1 | #![cfg_attr(windows, windows_subsystem = "windows")]
+  |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_attributes)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+   --> crates\membrane-runtime\src\blueprint_explore.rs:167:9
+    |
+167 |     let mut input = json!({
+    |         ----^^^^^
+    |         |
+    |         help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `BlueprintApi`
+ --> crates\membrane-runtime\src\blueprint_one_shot.rs:8:33
+  |
+8 |     native_blueprint_operation, BlueprintApi, BlueprintRequest, BlueprintResponse,
+  |                                 ^^^^^^^^^^^^
+
+warning: value assigned to `body` is never read
+    --> crates\membrane-runtime\src\cli.rs:2959:28
+     |
+2959 |             let mut body = String::new();
+     |                            ^^^^^^^^^^^^^ this value is reassigned later and never used
+2960 |             body = String::from_utf8(read_request_stdin()?)
+     |             ---- `body` is overwritten here before the previous value is read
+     |
+     = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: value assigned to `body` is never read
+    --> crates\membrane-runtime\src\cli.rs:5577:44
+     |
+5577 | ...                   let mut body = String::new();
+     |                                      ^^^^^^^^^^^^^ this value is reassigned later and never used
+5578 | ...                   body = String::from_utf8(read_request_stdin()?)
+     |                       ---- `body` is overwritten here before the previous value is read
+
+warning: unused variable: `store`
+  --> crates\membrane-runtime\src\cortex_qualification_lifecycle.rs:30:15
+   |
+30 | fn checkpoint(store: &MemoryStore, id: &str) -> CheckpointV1 {
+   |               ^^^^^ help: if this is intentional, prefix it with an underscore: `_store`
+   |
+   = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `db`
+   --> crates\membrane-runtime\src\ledger\qualification_core.rs:269:17
+    |
+269 |     let (_root, db, _doc, _hash) = one_doc(markdown)?;
+    |                 ^^ help: if this is intentional, prefix it with an underscore: `_db`
+
+warning: variable does not need to be mutable
+   --> crates\membrane-runtime\src\mcp_executor.rs:690:13
+    |
+690 |         let mut executor = Self {
+    |             ----^^^^^^^^
+    |             |
+    |             help: remove this `mut`
+
+warning: unused variable: `status`
+    --> crates\membrane-runtime\src\mcp_executor.rs:1681:26
+     |
+1681 |                         (status, payload) => ("unavailable", payload),
+     |                          ^^^^^^ help: if this is intentional, prefix it with an underscore: `_status`
+
+warning: variable does not need to be mutable
+   --> crates\membrane-runtime\src\providers\child_process.rs:321:9
+    |
+321 |     let mut child = command.spawn()?;
+    |         ----^^^^^
+    |         |
+    |         help: remove this `mut`
+
+warning: unused variable: `elided`
+   --> crates\membrane-runtime\src\pull\federation.rs:567:17
+    |
+567 |             let elided = if total > reasons.len() {
+    |                 ^^^^^^ help: if this is intentional, prefix it with an underscore: `_elided`
+
+warning: unused variable: `packet_budget`
+   --> crates\membrane-runtime\src\pull\federation.rs:577:17
+    |
+577 |             let packet_budget = payload
+    |                 ^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_packet_budget`
+
+warning: function `run_installed` is never used
+   --> crates\membrane-runtime\src\ledger\qualification_lifecycle.rs:154:15
+    |
+154 | pub(crate) fn run_installed(case_id: &str) -> Result<Value, String> {
+    |               ^^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `replace_link_projection_tx` is never used
+  --> crates\membrane-runtime\src\ledger\link_projection.rs:99:15
+   |
+99 | pub(crate) fn replace_link_projection_tx(
+   |               ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `empty_lane` is never used
+  --> crates\membrane-runtime\src\live_diagnostics.rs:58:4
+   |
+58 | fn empty_lane() -> CoverageLaneV1 {
+   |    ^^^^^^^^^^
+
+warning: method `queue` is never used
+    --> crates\membrane-runtime\src\live_diagnostics.rs:1961:12
+     |
+1953 |     impl FakeProvider {
+     |     ----------------- method in this implementation
+...
+1961 |         fn queue(&self, result: Result<ProviderOutput, ProviderError>) {
+     |            ^^^^^
+
+warning: function `source_path` is never used
+   --> crates\membrane-runtime\src\mcp_executor.rs:601:4
+    |
+601 | fn source_path(root: &str, source_ref: &str) -> Result<PathBuf, &'static str> {
+    |    ^^^^^^^^^^^
+
+warning: fields `installation_id`, `cortex_store_id`, `release_generation`, `session_id`, and `token_path` are never read
+   --> crates\membrane-runtime\src\mcp_executor.rs:625:5
+    |
+623 | struct HubTransportExecutor {
+    |        -------------------- fields in this struct
+624 |     port: u16,
+625 |     installation_id: String,
+    |     ^^^^^^^^^^^^^^^
+626 |     cortex_store_id: String,
+    |     ^^^^^^^^^^^^^^^
+627 |     release_generation: String,
+    |     ^^^^^^^^^^^^^^^^^^
+628 |     session_id: String,
+    |     ^^^^^^^^^^
+629 |     token: String,
+630 |     token_path: std::path::PathBuf,
+    |     ^^^^^^^^^^
+
+warning: method `health` is never used
+   --> crates\membrane-runtime\src\mcp_executor.rs:702:8
+    |
+668 | impl HubTransportExecutor {
+    | ------------------------- method in this implementation
+...
+702 |     fn health(&self) -> Result<Value, String> {
+    |        ^^^^^^
+
+warning: function `db_path_for` is never used
+    --> crates\membrane-runtime\src\pull\federation.rs:2288:15
+     |
+2288 | pub(crate) fn db_path_for(workspace: &Path) -> PathBuf {
+     |               ^^^^^^^^^^^
+
+warning: associated functions `for_repository` and `for_ambient_repository` are never used
+  --> crates\membrane-runtime\src\pull\federation_sources.rs:64:12
+   |
+62 | impl NativeSourceBindings {
+   | ------------------------- associated functions in this implementation
+63 |     /// Compose concrete runtime owners for one repository request.
+64 |     pub fn for_repository(
+   |            ^^^^^^^^^^^^^^
+...
+74 |     pub fn for_ambient_repository(
+   |            ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `configured_anchor_directory` is never used
+   --> crates\membrane-runtime\src\serve.rs:297:4
+    |
+297 | fn configured_anchor_directory() -> std::path::PathBuf {
+    |    ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `store_export_error` is never used
+     --> crates\membrane-runtime\src\store.rs:12316:8
+      |
+12316 |     fn store_export_error(path: &Path) -> String {
+      |        ^^^^^^^^^^^^^^^^^^
+
+warning: unused `std::result::Result` that must be used
+   --> crates\membrane-runtime\src\ledger\service.rs:116:26
+    |
+116 |     fn drop(&mut self) { self.0.lock().progress_handler(0, None::<fn() -> bool>); }
+    |                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: this `Result` may be an `Err` variant, which should be handled
+    = note: `#[warn(unused_must_use)]` (part of `#[warn(unused)]`) on by default
+help: use `let _ = ...` to ignore the resulting value
+    |
+116 |     fn drop(&mut self) { let _ = self.0.lock().progress_handler(0, None::<fn() -> bool>); }
+    |                          +++++++
+
+warning: unused `std::result::Result` that must be used
+   --> crates\membrane-runtime\src\ledger\service.rs:168:9
+    |
+168 |         self.db.lock().progress_handler(1000, Some(move || observed.interrupted()));
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+    |
+168 |         let _ = self.db.lock().progress_handler(1000, Some(move || observed.interrupted()));
+    |         +++++++
+
+warning: linker stdout: LINK : warning LNK4098: defaultlib 'LIBCMT' conflicts with use of other libs; use /NODEFAULTLIB:library
+  |
+  = note: `#[warn(linker_messages)]` on by default
+
+warning: `membrane-runtime` (lib test) generated 35 warnings (run `cargo fix --lib -p membrane-runtime --tests` to apply 17 suggestions)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1m 14s
+     Running unittests src\lib.rs (D:\.rightkit-managed\rightkit-build-control\ws\1206a718561f\g\002\target\x86_64-pc-windows-msvc\debug\deps\membrane_runtime-0de59bc7e3e855a6.exe)
+
+running 1 test
+test serve::tests::runtime_shutdown_is_bounded_when_blocking_work_ignores_cancellation ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 919 filtered out; finished in 0.03s
+

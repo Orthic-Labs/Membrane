@@ -307,6 +307,14 @@ function installedExecutable(options = {}) {
   return join(resolve(root), "membrane.exe");
 }
 
+// `stdio-mcp`/`hook` are compat transports owned by the co-installed
+// membrane-client.exe; the engine binary membrane.exe rejects them.
+function installedClient(options = {}) {
+  const root = options.installedRoot ?? process.env.MEMBRANE_QUALIFICATION_INSTALLED_ROOT
+    ?? "C:/Users/adrds/AppData/Local/Orthic Labs/Membrane/current";
+  return join(resolve(root), "membrane-client.exe");
+}
+
 function sha256File(path) {
   return createHash("sha256").update(readFileSync(path)).digest("hex");
 }
@@ -365,7 +373,7 @@ function installedJson(args, options = {}) {
 }
 
 function installedMcp(methods, options = {}) {
-  const exe = installedExecutable(options);
+  const exe = installedClient(options);
   if (!existsSync(exe)) return { ok: false, reason: "installed_executable_missing", path: exe };
   const requests = [
     { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "membrane-qualification", version: "1" } } },
@@ -380,7 +388,7 @@ function installedMcp(methods, options = {}) {
 }
 
 function installedMcpCall(name, args, options = {}) {
-  const exe = installedExecutable(options);
+  const exe = installedClient(options);
   const request = [
     { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "membrane-qualification", version: "1" } } },
     { jsonrpc: "2.0", id: 2, method: "tools/call", params: { name, arguments: args } },
@@ -569,14 +577,16 @@ function runExplicitPullProbe(exe, workspaceRoot) {
 
 export function probeBM09Installed(options = {}) {
   const exe = installedExecutable(options);
+  const client = installedClient(options);
   const workspaceRoot = resolve(options.workspaceRoot ?? REPO_ROOT);
   if (!existsSync(exe)) return { pass: false, reason: "installed_executable_missing", detail: { path: exe } };
+  if (!existsSync(client)) return { pass: false, reason: "installed_client_missing", detail: { path: client } };
   const build = installedJson(["cli", "build-info"], { ...options, workspaceRoot });
   if (!build.ok || build.value?.target !== "x86_64-pc-windows-msvc") return { pass: false, reason: "installed_build_identity_invalid", detail: { build } };
-  const hooks = BM09_EVENT_PROBES.map((probe) => runHookProbe(exe, probe, workspaceRoot));
-  const explicitPull = runExplicitPullProbe(exe, workspaceRoot);
+  const hooks = BM09_EVENT_PROBES.map((probe) => runHookProbe(client, probe, workspaceRoot));
+  const explicitPull = runExplicitPullProbe(client, workspaceRoot);
   const pass = hooks.every((probe) => probe.ok) && explicitPull.ok;
-  return { pass, reason: pass ? "available_intact_discoverable_effective" : "installed_hook_or_explicit_pull_probe_failed", detail: { executable: exe, build: build.value, hooks, explicitPull } };
+  return { pass, reason: pass ? "available_intact_discoverable_effective" : "installed_hook_or_explicit_pull_probe_failed", detail: { executable: exe, client, build: build.value, hooks, explicitPull } };
 }
 
 export function probeBM11Installed(options = {}) {

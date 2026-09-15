@@ -1,0 +1,9 @@
+[qualification] profile=internal-unsigned: Authenticode verification skipped by design; hash-bound identity checks below still apply
+[qualification] Invoke-Installer 07:57:22
+[qualification] Invoke-ActivationDryRun 07:57:57
+[qualification] Invoke-Activation 07:58:03
+[qualification] Start-AndVerifyHub 07:58:08
+[qualification] Assert-NativeHostCutover 07:58:08
+[qualification] Assert-Dashboard 07:58:10
+[qualification] primary failure: Hub health unavailable during initial install (port 47851; runtime logs copied to D:\Claude\membrane\.tmp-final-installed-qualification\receipt.json\runtime-logs-hub-health-initial-install)
+qualification cleanup also failed: final-holder daemon drain did not complete within qualification timeout

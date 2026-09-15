@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "installedRoot": "C:\\Users\\adrds\\AppData\\Local\\Orthic Labs\\Membrane\\current",
+  "stages": {},
+  "benchmark": {},
+  "startedAt": "2026-09-14T10:23:46.627Z",
+  "error": "RPC client exited during initialize: 1",
+  "stderr": [
+    {
+      "slot": 0,
+      "output": "membrane-client: engine_unavailable: harness ownership acquisition failed\n"
+    },
+    {
+      "slot": 1,
+      "output": ""
+    },
+    {
+      "slot": 2,
+      "output": ""
+    },
+    {
+      "slot": 3,
+      "output": ""
+    },
+    {
+      "slot": 4,
+      "output": ""
+    }
+  ],
+  "finishedAt": "2026-09-14T10:24:03.630Z"
+}

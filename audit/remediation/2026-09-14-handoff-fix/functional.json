@@ -1,0 +1,983 @@
+{
+  "startedAt": "2026-09-14T15:33:55.389Z",
+  "scope": {
+    "repository": "membrane",
+    "caller": {
+      "root": "D:\\Claude\\membrane",
+      "repositoryId": "membrane",
+      "scopeId": "membrane"
+    }
+  },
+  "pushScope": {
+    "repository": "membrane-finish-smoke",
+    "caller": {
+      "root": "D:\\Claude\\.tmp\\membrane-finish-smoke",
+      "repositoryId": "membrane-finish-smoke",
+      "scopeId": "membrane-finish-smoke"
+    }
+  },
+  "stages": {
+    "pull": {
+      "elapsedMs": 7483,
+      "envelope": {
+        "errorVersion": 1,
+        "operation": "pull",
+        "result": {
+          "data": {
+            "degradationReason": "none",
+            "deliveryMeasurement": {
+              "basis": "o200k_base/1",
+              "bytes": 8810,
+              "ceilingId": "qualification-1789400035388",
+              "providerBilledTokens": null,
+              "remainingTokens": 100000,
+              "schemaVersion": 1,
+              "scope": "serialized_mcp_tool_result",
+              "tokens": 2784
+            },
+            "packet": {
+              "allocations": {
+                "3": 0,
+                "7": 0,
+                "other": 16
+              },
+              "blocks": [
+                {
+                  "allottedTokens": 9,
+                  "baseCommit": "xxh128:6c7f73437187d38f46dd7ecfe25b75f2",
+                  "deliveredChars": 0,
+                  "deliveryClass": "rendered",
+                  "deliveryStage": "planned",
+                  "dropReason": "none",
+                  "estimatedTokens": 8,
+                  "freshnessClass": "current",
+                  "id": "git:meta:branch:main",
+                  "instructionPolicy": "data_only",
+                  "layer": 1,
+                  "overlayDigest": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                  "priority": 40,
+                  "protected": false,
+                  "provider": "git",
+                  "recoverable": true,
+                  "renderedTokens": 3,
+                  "resolver": "git rev-parse --abbrev-ref HEAD",
+                  "selectedTokens": 3,
+                  "sourceHash": "0000000000000000000000000000000000000000000000000000000000000000",
+                  "sourceKind": "git_meta",
+                  "sourceRef": "git:branch:main",
+                  "text": "current branch main",
+                  "trustClass": "workspace_tracked"
+                },
+                {
+                  "allottedTokens": 7,
+                  "baseCommit": "xxh128:6c7f73437187d38f46dd7ecfe25b75f2",
+                  "deliveredChars": 0,
+                  "deliveryClass": "rendered",
+                  "deliveryStage": "planned",
+                  "dropReason": "none",
+                  "estimatedTokens": 8,
+                  "freshnessClass": "current",
+                  "id": "git:meta:head:3dbb0d8bcfe6",
+                  "instructionPolicy": "data_only",
+                  "layer": 1,
+                  "overlayDigest": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                  "priority": 30,
+                  "protected": false,
+                  "provider": "git",
+                  "recoverable": true,
+                  "renderedTokens": 12,
+                  "resolver": "git log -1 --format=%H",
+                  "selectedTokens": 12,
+                  "sourceHash": "3dbb0d8bcfe6e077e4c3a4146fbf10d1a731157b",
+                  "sourceKind": "git_meta",
+                  "sourceRef": "git:commit:3dbb0d8bcfe6e077e4c3a4146fbf10d1a731157b",
+                  "text": "HEAD commit 3dbb0d8bcfe6",
+                  "trustClass": "workspace_tracked"
+                }
+              ],
+              "budget": {
+                "admittedTokens": 15,
+                "configuredPacketCharBudget": 30000,
+                "maxTokens": 2000,
+                "packetCharBudgetDefault": 30000
+              },
+              "mode": "native",
+              "omissions": [
+                {
+                  "detailId": "anchors_empty",
+                  "id": "anchors:0",
+                  "layer": null,
+                  "reason": "provider_unavailable",
+                  "stage": "anchor_resolution"
+                },
+                {
+                  "detailId": "generation_incoherent",
+                  "id": "architect:8",
+                  "layer": null,
+                  "reason": "generation_incoherent",
+                  "stage": "generation_admission"
+                },
+                {
+                  "detailId": "decision_source_missing",
+                  "id": "architect:9",
+                  "layer": null,
+                  "reason": "provider_unavailable",
+                  "stage": "decision_normalization"
+                },
+                {
+                  "detailId": "generation_incoherent",
+                  "id": "audit:6",
+                  "layer": null,
+                  "reason": "generation_incoherent",
+                  "stage": "generation_admission"
+                },
+                {
+                  "detailId": "source_missing",
+                  "id": "audit:7",
+                  "layer": null,
+                  "reason": "provider_unavailable",
+                  "stage": "source"
+                },
+                {
+                  "detailId": "generation_incoherent",
+                  "id": "blueprint:1",
+                  "layer": null,
+                  "reason": "blueprint_stale",
+                  "stage": "generation_admission"
+                },
+                {
+                  "detailId": "blueprint_source_failed",
+                  "id": "blueprint:2",
+                  "layer": null,
+                  "reason": "provider_failed",
+                  "stage": "blueprint_source"
+                },
+                {
+                  "detailId": "generation_incoherent",
+                  "id": "ledger:12",
+                  "layer": null,
+                  "reason": "generation_incoherent",
+                  "stage": "generation_admission"
+                },
+                {
+                  "detailId": "ledger_manifest_budget_exhausted",
+                  "id": "ledger:13",
+                  "layer": null,
+                  "reason": "provider_unavailable",
+                  "stage": "ledger"
+                },
+                {
+                  "detailId": "generation_incoherent",
+                  "id": "live_files:4",
+                  "layer": null,
+                  "reason": "generation_incoherent",
+                  "stage": "generation_admission"
+                },
+                {
+                  "detailId": "grant_required",
+                  "id": "live_files:5",
+                  "layer": null,
+                  "reason": "scope_grant_missing",
+                  "stage": "live_overlay"
+                },
+                {
+                  "detailId": "grant_required",
+                  "id": "rules:3",
+                  "layer": null,
+                  "reason": "scope_grant_missing",
+                  "stage": "rules"
+                },
+                {
+                  "detailId": "expected:xxh128:dc87fc801837e129c4fed61a3c1db87c",
+                  "id": "skills:10",
+                  "layer": null,
+                  "reason": "generation_incoherent",
+                  "stage": "skills_provider"
+                },
+                {
+                  "detailId": "generation_incoherent",
+                  "id": "skills:11",
+                  "layer": null,
+                  "reason": "generation_incoherent",
+                  "stage": "generation_admission"
+                }
+              ],
+              "providerAccounting": {
+                "git": {
+                  "deliveredChars": 0,
+                  "deliveryStage": "planned",
+                  "dropReason": "none",
+                  "renderedTokens": 0,
+                  "selectedTokens": 16
+                }
+              },
+              "schemaVersion": 1,
+              "task": "Identify current repository architecture evidence",
+              "traceId": "rc-mem-1a0a08dbb35"
+            },
+            "pullReceipt": {
+              "atomicEvidencePaths": [],
+              "cachePrefixDiagnostic": {
+                "blockDigests": [
+                  {
+                    "digest": "sha256:6411a4bcb5f350f28ec07f25e3673dc1a6ca198b0d50972ac2f8826bd2f16d1e",
+                    "id": "git:meta:branch:main"
+                  },
+                  {
+                    "digest": "sha256:b559d571a1f143c86303bfdf67bbb768a3f7379caf6e5f952a48ad565f848630",
+                    "id": "git:meta:head:3dbb0d8bcfe6"
+                  }
+                ],
+                "metadataDigests": [
+                  {
+                    "digest": "sha256:6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b",
+                    "field": "schemaVersion"
+                  },
+                  {
+                    "digest": "sha256:24690be1c838dce3116e7f2c4ea1f6a5a3d6a8fb49558d9234e997d3faefe073",
+                    "field": "task"
+                  },
+                  {
+                    "digest": "sha256:4333d880d7e2f1bfe343268c0e1f99165f38b5fd1bc812aed41cec0477f8246e",
+                    "field": "mode"
+                  },
+                  {
+                    "digest": "sha256:fa896cd9e6d1f3b9c3c3ef2a8952991554e2728491749229437c4e579beed094",
+                    "field": "budget"
+                  },
+                  {
+                    "digest": "sha256:c0261158266e72b95481e8c2a4abb007fb61ec415d5df27c811794f9f6cdf727",
+                    "field": "allocations"
+                  },
+                  {
+                    "digest": "sha256:b2456a9a4192c524aa409bf047ff095798e14e34f1aa88aeaabc486e0227bd27",
+                    "field": "providerAccounting"
+                  }
+                ],
+                "prefixDigest": "sha256:90a5cdd7dfef7b23f528643ce68d358aa1bafeb3a19018cee3b9cf5e47312bbf",
+                "schemaVersion": 1,
+                "stableBlockOrder": [
+                  "git:meta:branch:main",
+                  "git:meta:head:3dbb0d8bcfe6"
+                ],
+                "volatilitySource": "none"
+              },
+              "correctiveRetrieval": {
+                "attempted": false,
+                "outcome": "not_evaluated_missing_sufficiency_contract",
+                "policy": "membrane-corrective-retrieval-v1",
+                "schemaVersion": 1,
+                "stageLimit": 1,
+                "triggered": false
+              },
+              "federationMetrics": {
+                "partial": 1
+              },
+              "fusionReceipt": {
+                "candidatesReceived": 2,
+                "candidatesSelected": 2,
+                "decisions": [
+                  {
+                    "decision": "selected",
+                    "fusedRank": 1,
+                    "id": "git:meta:branch:main",
+                    "provider": "git",
+                    "providerRank": 1,
+                    "reason": "fixed_order_control",
+                    "rrfDenominator": 61
+                  },
+                  {
+                    "decision": "selected",
+                    "fusedRank": 2,
+                    "id": "git:meta:head:3dbb0d8bcfe6",
+                    "provider": "git",
+                    "providerRank": 2,
+                    "reason": "fixed_order_control",
+                    "rrfDenominator": 62
+                  }
+                ],
+                "fallbackPolicy": "fixed-lanes-v1",
+                "maxItems": 2,
+                "policy": "membrane-fusion-fixed-v1",
+                "providerOrder": [
+                  "anchors",
+                  "rules",
+                  "git",
+                  "cortex"
+                ],
+                "providerQuotas": {
+                  "anchors": 0,
+                  "cortex": 0,
+                  "git": 2,
+                  "rules": 0
+                },
+                "rrfK": 60,
+                "schemaVersion": 1
+              },
+              "insufficientConfidence": null,
+              "packetReduction": {
+                "ceilingId": "qualification-1789400035388",
+                "decision": "selected",
+                "estimatorBasis": {
+                  "id": "o200k_base",
+                  "version": "1"
+                },
+                "planRef": "packet://rc-mem-1a0a08dbb35",
+                "remainingTokens": 100000,
+                "schemaVersion": 1,
+                "selectedRepresentationId": "full",
+                "selectedTokens": 1048,
+                "sessionId": "membrane"
+              },
+              "placementReceipt": {
+                "policy": "pull-semantic-placement-v1",
+                "rows": [
+                  {
+                    "id": "git:meta:branch:main",
+                    "originalIndex": 0,
+                    "placedIndex": 0,
+                    "semanticClass": "repository_evidence"
+                  },
+                  {
+                    "id": "git:meta:head:3dbb0d8bcfe6",
+                    "originalIndex": 1,
+                    "placedIndex": 1,
+                    "semanticClass": "repository_evidence"
+                  }
+                ],
+                "schemaVersion": 1
+              },
+              "publicationFence": null,
+              "sourceResolutionReceipts": [],
+              "suppressionReceipts": []
+            },
+            "receipts": [
+              {
+                "admittedChars": 32,
+                "allottedTokens": 9,
+                "baseCommit": "xxh128:6c7f73437187d38f46dd7ecfe25b75f2",
+                "beforeChars": 32,
+                "contentSha256": "sha256:c3383972cb3874769ec2083e1e0ee4a2086f70a00b7f2a18cb97aacafb02f33a",
+                "decision": "admitted",
+                "degradationReason": "none",
+                "deliveredChars": 0,
+                "deliveryClass": "rendered",
+                "deliveryStage": "planned",
+                "dropReason": "none",
+                "fallbackMode": "none",
+                "freshnessClass": "current",
+                "id": "git:meta:branch:main",
+                "layer": 1,
+                "overlayDigest": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                "provider": "git",
+                "providerStatus": "fresh",
+                "reason": "within_identity_lane",
+                "renderedTokens": 0,
+                "schemaVersion": 2,
+                "selectedTokens": 8,
+                "sourceGeneration": "sha256:c9d4c83b21c58eefcd1934c252abad079b63dcecff655830f508a84cd5073563",
+                "sourceKind": "git_meta",
+                "sourceRef": "git:branch:main",
+                "statusProvider": "federation",
+                "statusScope": "candidate_set",
+                "traceId": "rc-mem-1a0a08dbb35"
+              },
+              {
+                "admittedChars": 32,
+                "allottedTokens": 7,
+                "baseCommit": "xxh128:6c7f73437187d38f46dd7ecfe25b75f2",
+                "beforeChars": 32,
+                "contentSha256": "sha256:af8e5ccda08c720ecf8e39d8d476253668092a9674378c7a3e701b8819b45aba",
+                "decision": "admitted",
+                "degradationReason": "none",
+                "deliveredChars": 0,
+                "deliveryClass": "rendered",
+                "deliveryStage": "planned",
+                "dropReason": "none",
+                "fallbackMode": "none",
+                "freshnessClass": "current",
+                "id": "git:meta:head:3dbb0d8bcfe6",
+                "layer": 1,
+                "overlayDigest": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                "provider": "git",
+                "providerStatus": "fresh",
+                "reason": "within_identity_lane",
+                "renderedTokens": 0,
+                "schemaVersion": 2,
+                "selectedTokens": 8,
+                "sourceGeneration": "sha256:c9d4c83b21c58eefcd1934c252abad079b63dcecff655830f508a84cd5073563",
+                "sourceKind": "git_meta",
+                "sourceRef": "git:commit:3dbb0d8bcfe6e077e4c3a4146fbf10d1a731157b",
+                "statusProvider": "federation",
+                "statusScope": "candidate_set",
+                "traceId": "rc-mem-1a0a08dbb35"
+              }
+            ],
+            "repositoryId": "membrane",
+            "scopeId": "membrane",
+            "status": "ok",
+            "sufficiencyEvaluated": false
+          },
+          "kind": "success"
+        },
+        "schemaVersion": 1
+      }
+    },
+    "blueprint": {
+      "elapsedMs": 8,
+      "envelope": {
+        "errorVersion": 1,
+        "operation": "membrane_blueprint",
+        "result": {
+          "data": {
+            "complete": true,
+            "detail": null,
+            "fresh": true,
+            "freshnessReceipt": {
+              "ageMs": null,
+              "current": {
+                "available": true,
+                "dirty": true,
+                "vcs_revision": "e07aba54d57cb7ff84f7d40eb36e47acd710eb8a",
+                "worktree_fingerprint": "4e993b24495e07104a3a9e550f14759b"
+              },
+              "freshness": "fresh",
+              "generation": {
+                "indexed_revision": "e07aba54d57cb7ff84f7d40eb36e47acd710eb8a",
+                "indexed_worktree_fingerprint": "4e993b24495e07104a3a9e550f14759b"
+              },
+              "generationId": "xxh128:dc87fc801837e129c4fed61a3c1db87c",
+              "liveSourceObserved": false,
+              "manifestDigest": null,
+              "observationMode": "sealed_generation",
+              "schema": "BlueprintFreshnessReceiptV1",
+              "sealedAtUnixMs": null,
+              "staleSources": {
+                "complete": true,
+                "paths": [],
+                "reason": null
+              },
+              "suppression": {
+                "mode": "None",
+                "required": false
+              }
+            },
+            "generationId": "xxh128:dc87fc801837e129c4fed61a3c1db87c",
+            "operation": "status",
+            "repoRoot": "\\\\?\\D:\\Claude\\membrane",
+            "schemaVersion": 1,
+            "sourceHash": "xxh128:6c7f73437187d38f46dd7ecfe25b75f2",
+            "state": "fresh",
+            "storePath": "\\\\?\\D:\\Claude\\membrane\\.agent\\graph\\graph.db",
+            "truncationReasonCount": 0,
+            "truncationReasons": [],
+            "truncationReasonsOmitted": 0
+          },
+          "kind": "success"
+        },
+        "schemaVersion": 1
+      }
+    },
+    "push": {
+      "elapsedMs": 49,
+      "envelope": {
+        "errorVersion": 1,
+        "operation": "push",
+        "result": {
+          "data": {
+            "authority": "A2",
+            "contentHash": "sha256:6152d8488e3883d6b999c416d2a297ef4e3bad1372827b22bf71f10fe9fd42f1",
+            "lifecycle": {
+              "callerAuthority": "untrusted",
+              "managedBy": "cortex"
+            },
+            "memoryId": "membrane-finish-smoke/agent_push_ae8469cc9c3703d361c1a5a812a6a418",
+            "provenance": {
+              "callerId": "membrane-finish-smoke",
+              "repositoryId": "membrane-finish-smoke",
+              "requestId": "qualification-1789400035388",
+              "scopeId": "membrane-finish-smoke",
+              "source": "cortex_agent_memory_source_v1"
+            },
+            "rawBodyBytes": 112,
+            "schemaVersion": 1,
+            "status": "stored"
+          },
+          "kind": "success"
+        },
+        "schemaVersion": 1
+      }
+    },
+    "readback": {
+      "elapsedMs": 2,
+      "envelope": {
+        "errorVersion": 1,
+        "operation": "membrane_memory_read",
+        "result": {
+          "data": {
+            "authority": "A2",
+            "complete": true,
+            "content": "Installed qualification exact UTF-8 body: qualification-1789400035388\nUnicode: é — 漢字\nTrailing spaces:  \n",
+            "contentHash": "sha256:6152d8488e3883d6b999c416d2a297ef4e3bad1372827b22bf71f10fe9fd42f1",
+            "cortexStoreId": "sha256:038c42b7457f5a69e4f841209a3dc68ba40a14fe17fce8b1d6583570d15c8942",
+            "derivation": "original",
+            "id": "membrane-finish-smoke/agent_push_ae8469cc9c3703d361c1a5a812a6a418",
+            "lifecycle": "active",
+            "nextOffset": null,
+            "observedResolution": true,
+            "offset": 0,
+            "originProducer": "agent",
+            "pageComplete": true,
+            "provenanceAvailability": "unavailable_legacy",
+            "recordType": "agent_memory_push",
+            "schemaVersion": 1,
+            "scopeId": "membrane-finish-smoke",
+            "sensitivity": "unclassified",
+            "sourceRefs": [],
+            "totalChars": 105,
+            "verifiedHelped": false
+          },
+          "kind": "success"
+        },
+        "schemaVersion": 1
+      }
+    },
+    "SessionStart": {
+      "hookSpecificOutput": {
+        "hookEventName": "SessionStart",
+        "additionalContext": ""
+      },
+      "membraneHook": {
+        "schemaVersion": 1,
+        "event": "SessionStart",
+        "status": "ok",
+        "results": [
+          {
+            "id": "membrane.cortex-status",
+            "status": "ok",
+            "output": {
+              "schemaVersion": 1,
+              "kind": "membrane.hook.status",
+              "state": "available",
+              "reason": "cortex_healthy",
+              "detail": null
+            }
+          },
+          {
+            "id": "membrane.memory-rearm",
+            "status": "ok",
+            "output": {
+              "schemaVersion": 1,
+              "kind": "membrane.hook.status",
+              "state": "skipped",
+              "reason": "rearm_not_applicable",
+              "detail": null
+            }
+          },
+          {
+            "id": "membrane.memory-recall",
+            "status": "ok",
+            "output": {
+              "schemaVersion": 1,
+              "kind": "membrane.hook.status",
+              "state": "unavailable",
+              "reason": "membrane_retrieval_failed",
+              "detail": {
+                "error": "provider unavailable: Blueprint response is malformed: response has no generation identity",
+                "stages": {
+                  "credential_ms": 1,
+                  "envelope_ms": 0,
+                  "one_shot_ms": 10,
+                  "resident_exchange_ms": 1,
+                  "total_ms": 12
+                },
+                "transport": "one_shot"
+              }
+            }
+          },
+          {
+            "id": "membrane.memory-pre-compact",
+            "status": "ok",
+            "output": {
+              "schemaVersion": 1,
+              "kind": "membrane.hook.status",
+              "state": "skipped",
+              "reason": "event_not_applicable",
+              "detail": null
+            }
+          },
+          {
+            "id": "membrane.memory-post-compact",
+            "status": "ok",
+            "output": {
+              "schemaVersion": 1,
+              "kind": "membrane.hook.status",
+              "state": "skipped",
+              "reason": "event_not_applicable",
+              "detail": null
+            }
+          },
+          {
+            "id": "membrane.memory-bump",
+            "status": "ok",
+            "output": {
+              "schemaVersion": 1,
+              "kind": "membrane.hook.status",
+              "state": "skipped",
+              "reason": "event_not_applicable",
+              "detail": null
+            }
+          },
+          {
+            "id": "membrane.diagnostics-fence",
+            "status": "ok",
+            "output": {
+              "schemaVersion": 1,
+              "kind": "membrane.hook.status",
+              "state": "skipped",
+              "reason": "event_not_applicable",
+              "detail": null
+            }
+          },
+          {
+            "id": "membrane.memory-conflict",
+            "status": "ok",
+            "output": {
+              "schemaVersion": 1,
+              "kind": "membrane.hook.status",
+              "state": "skipped",
+              "reason": "event_not_applicable",
+              "detail": null
+            }
+          },
+          {
+            "id": "membrane.tool-observer",
+            "status": "ok",
+            "output": {
+              "schemaVersion": 1,
+              "kind": "membrane.hook.status",
+              "state": "skipped",
+              "reason": "event_not_applicable",
+              "detail": null
+            }
+          },
+          {
+            "id": "membrane.memory-ingest",
+            "status": "ok",
+            "output": {
+              "schemaVersion": 1,
+              "kind": "membrane.hook.status",
+              "state": "skipped",
+              "reason": "event_not_applicable",
+              "detail": null
+            }
+          },
+          {
+            "id": "membrane.diagnostics-observe",
+            "status": "ok",
+            "output": {
+              "schemaVersion": 1,
+              "kind": "membrane.hook.status",
+              "state": "skipped",
+              "reason": "event_not_applicable",
+              "detail": null
+            }
+          },
+          {
+            "id": "membrane.diagnostics-completion-fence",
+            "status": "ok",
+            "output": {
+              "schemaVersion": 1,
+              "kind": "membrane.hook.status",
+              "state": "skipped",
+              "reason": "event_not_applicable",
+              "detail": null
+            }
+          },
+          {
+            "id": "membrane.memory-nag",
+            "status": "ok",
+            "output": {
+              "schemaVersion": 1,
+              "kind": "membrane.hook.status",
+              "state": "skipped",
+              "reason": "event_not_applicable",
+              "detail": null
+            }
+          },
+          {
+            "id": "membrane.memory-failure",
+            "status": "ok",
+            "output": {
+              "schemaVersion": 1,
+              "kind": "membrane.hook.status",
+              "state": "skipped",
+              "reason": "event_not_applicable",
+              "detail": null
+            }
+          },
+          {
+            "id": "membrane.memory-episode",
+            "status": "ok",
+            "output": {
+              "schemaVersion": 1,
+              "kind": "membrane.hook.status",
+              "state": "skipped",
+              "reason": "event_not_applicable",
+              "detail": null
+            }
+          },
+          {
+            "id": "membrane.memory-session-end",
+            "status": "ok",
+            "output": {
+              "schemaVersion": 1,
+              "kind": "membrane.hook.status",
+              "state": "skipped",
+              "reason": "event_not_applicable",
+              "detail": null
+            }
+          }
+        ]
+      }
+    },
+    "SessionEnd": {
+      "membraneHook": {
+        "schemaVersion": 1,
+        "event": "SessionEnd",
+        "status": "ok",
+        "results": [
+          {
+            "id": "membrane.cortex-status",
+            "status": "ok",
+            "output": {
+              "schemaVersion": 1,
+              "kind": "membrane.hook.status",
+              "state": "skipped",
+              "reason": "event_not_applicable",
+              "detail": null
+            }
+          },
+          {
+            "id": "membrane.memory-rearm",
+            "status": "ok",
+            "output": {
+              "schemaVersion": 1,
+              "kind": "membrane.hook.status",
+              "state": "skipped",
+              "reason": "event_not_applicable",
+              "detail": null
+            }
+          },
+          {
+            "id": "membrane.memory-recall",
+            "status": "ok",
+            "output": {
+              "schemaVersion": 1,
+              "kind": "membrane.hook.status",
+              "state": "skipped",
+              "reason": "event_not_applicable",
+              "detail": null
+            }
+          },
+          {
+            "id": "membrane.memory-pre-compact",
+            "status": "ok",
+            "output": {
+              "schemaVersion": 1,
+              "kind": "membrane.hook.status",
+              "state": "skipped",
+              "reason": "event_not_applicable",
+              "detail": null
+            }
+          },
+          {
+            "id": "membrane.memory-post-compact",
+            "status": "ok",
+            "output": {
+              "schemaVersion": 1,
+              "kind": "membrane.hook.status",
+              "state": "skipped",
+              "reason": "event_not_applicable",
+              "detail": null
+            }
+          },
+          {
+            "id": "membrane.memory-bump",
+            "status": "ok",
+            "output": {
+              "schemaVersion": 1,
+              "kind": "membrane.hook.status",
+              "state": "skipped",
+              "reason": "event_not_applicable",
+              "detail": null
+            }
+          },
+          {
+            "id": "membrane.diagnostics-fence",
+            "status": "ok",
+            "output": {
+              "schemaVersion": 1,
+              "kind": "membrane.hook.status",
+              "state": "skipped",
+              "reason": "event_not_applicable",
+              "detail": null
+            }
+          },
+          {
+            "id": "membrane.memory-conflict",
+            "status": "ok",
+            "output": {
+              "schemaVersion": 1,
+              "kind": "membrane.hook.status",
+              "state": "skipped",
+              "reason": "event_not_applicable",
+              "detail": null
+            }
+          },
+          {
+            "id": "membrane.tool-observer",
+            "status": "ok",
+            "output": {
+              "schemaVersion": 1,
+              "kind": "membrane.hook.status",
+              "state": "skipped",
+              "reason": "event_not_applicable",
+              "detail": null
+            }
+          },
+          {
+            "id": "membrane.memory-ingest",
+            "status": "ok",
+            "output": {
+              "schemaVersion": 1,
+              "kind": "membrane.hook.status",
+              "state": "skipped",
+              "reason": "event_not_applicable",
+              "detail": null
+            }
+          },
+          {
+            "id": "membrane.diagnostics-observe",
+            "status": "ok",
+            "output": {
+              "schemaVersion": 1,
+              "kind": "membrane.hook.status",
+              "state": "skipped",
+              "reason": "event_not_applicable",
+              "detail": null
+            }
+          },
+          {
+            "id": "membrane.diagnostics-completion-fence",
+            "status": "ok",
+            "output": {
+              "schemaVersion": 1,
+              "kind": "membrane.hook.status",
+              "state": "skipped",
+              "reason": "event_not_applicable",
+              "detail": null
+            }
+          },
+          {
+            "id": "membrane.memory-nag",
+            "status": "ok",
+            "output": {
+              "schemaVersion": 1,
+              "kind": "membrane.hook.status",
+              "state": "skipped",
+              "reason": "event_not_applicable",
+              "detail": null
+            }
+          },
+          {
+            "id": "membrane.memory-failure",
+            "status": "ok",
+            "output": {
+              "schemaVersion": 1,
+              "kind": "membrane.hook.status",
+              "state": "skipped",
+              "reason": "event_not_applicable",
+              "detail": null
+            }
+          },
+          {
+            "id": "membrane.memory-episode",
+            "status": "ok",
+            "output": {
+              "schemaVersion": 1,
+              "kind": "membrane.hook.status",
+              "state": "skipped",
+              "reason": "event_not_applicable",
+              "detail": null
+            }
+          },
+          {
+            "id": "membrane.memory-session-end",
+            "status": "ok",
+            "output": {
+              "schemaVersion": 1,
+              "kind": "membrane.hook.status",
+              "state": "available",
+              "reason": "session_closed",
+              "detail": null
+            }
+          }
+        ]
+      }
+    }
+  },
+  "identity": {
+    "cortexStoreId": "sha256:038c42b7457f5a69e4f841209a3dc68ba40a14fe17fce8b1d6583570d15c8942",
+    "installationId": "610af348-f3ee-45f0-a8c8-9664953cd737",
+    "ok": true,
+    "releaseGeneration": "sha256:79178a91e787497d71c11d62b96616cd8fc3cb1a7ce91108eee8ef46ee8c3fae",
+    "runtimeOrigin": "installed",
+    "serviceGeneration": "sha256:0c486414576de0faffc975aa46d68adb4342b8cff7ebe37284dea3b7bd198941",
+    "stableInstallRoot": "C:\\Users\\adrds\\AppData\\Local\\Orthic Labs\\Membrane\\current",
+    "startupGeneration": 417,
+    "workers": {
+      "detachedRunning": 0,
+      "diagnostics": {
+        "available": 1,
+        "max": 1
+      },
+      "general": {
+        "available": 32,
+        "max": 32
+      },
+      "ingress": {
+        "available": 32,
+        "max": 32
+      },
+      "model": {
+        "available": 8,
+        "executionAvailable": 1,
+        "executionMax": 1,
+        "max": 8
+      },
+      "overloadRejections": {
+        "diagnostics": 0,
+        "general": 0,
+        "ingress": 0,
+        "model": 0,
+        "total": 0
+      }
+    }
+  },
+  "tools": [
+    "pull",
+    "push"
+  ],
+  "capacityEvidence": {
+    "producer": "controlled-qualification-host",
+    "taskId": "installed-resume-qualification",
+    "scopeId": "membrane",
+    "capacityTokens": 100000,
+    "observedAt": 1789400038195
+  },
+  "submittedBody": "Installed qualification exact UTF-8 body: qualification-1789400035388\nUnicode: é — 漢字\nTrailing spaces:  \n",
+  "exactCortexReadback": true,
+  "finishedAt": "2026-09-14T15:34:08.246Z",
+  "stderr": ""
+}

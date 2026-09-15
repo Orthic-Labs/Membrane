@@ -24,13 +24,24 @@ import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdtempSync, writeFileSync, existsSync, rmSync, readFileSync, mkdirSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join, normalize, resolve } from "node:path";
+import { basename, dirname, join, normalize, resolve } from "node:path";
 
 export const GROUP = "PSH";
 
 export function resolveCli(ctx = {}) {
   const candidate = ctx.cliPath || process.env.MEMBRANE_CLI_PATH || "membrane";
   return candidate;
+}
+
+// `stdio-mcp`/`hook` are compat transports owned by the co-installed
+// membrane-client transport binary; the engine binary rejects them. The
+// client lives beside the resolved CLI unless an explicit override is set.
+export function resolveClient(ctx = {}) {
+  const explicit = ctx.clientPath || process.env.MEMBRANE_CLIENT_PATH;
+  if (explicit) return explicit;
+  const cli = resolveCli(ctx);
+  if (basename(cli) === cli) return "membrane-client";
+  return join(dirname(resolve(cli)), "membrane-client.exe");
 }
 
 export function probeInstalled(ctx = {}) {
@@ -142,7 +153,7 @@ function withTempDir(fn) {
 }
 
 function runStdioMcp(ctx, requests) {
-  const result = spawnSync(resolveCli(ctx), ["stdio-mcp"], {
+  const result = spawnSync(resolveClient(ctx), ["stdio-mcp"], {
     encoding: "utf8", windowsHide: true, timeout: 30_000, env: { ...process.env, ...(ctx.env || {}) },
     input: `${requests.map((request) => JSON.stringify(request)).join("\n")}\n`,
   });
@@ -193,7 +204,7 @@ function withNativeFixture(ctx, fn) {
 }
 
 async function runStdioMcpHandshake(ctx, { root, caller, taskId }) {
-  const child = spawn(resolveCli(ctx), ["stdio-mcp"], { windowsHide: true, env: { ...process.env, ...(ctx.env || {}) } });
+  const child = spawn(resolveClient(ctx), ["stdio-mcp"], { windowsHide: true, env: { ...process.env, ...(ctx.env || {}) } });
   const responses = [];
   let buffer = "";
   return await new Promise((resolve) => {

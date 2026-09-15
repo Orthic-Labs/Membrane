@@ -195,6 +195,9 @@ struct ActivateArgs {
     /// Reconcile explicit client bindings without starting Hub or background services.
     #[arg(long, default_value_t = false)]
     bindings_only: bool,
+    /// Start/adopt engine without reconciling installer-owned bindings.
+    #[arg(long, conflicts_with = "bindings_only")]
+    engine_only: bool,
     /// Installed stable `current` directory. Defaults to the user-local
     /// product root's stable current path.
     #[arg(long)]
@@ -290,6 +293,7 @@ pub struct UninstallInvocation {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ActivationInvocation {
     pub bindings_only: bool,
+    pub engine_only: bool,
     pub install_root: Option<std::path::PathBuf>,
     pub clients: Vec<String>,
     pub timeout_ms: u64,
@@ -493,6 +497,7 @@ where
             uninstall: None,
             activation: Some(ActivationInvocation {
                 bindings_only: args.bindings_only,
+                engine_only: args.engine_only,
                 install_root: args.install_root,
                 clients: args.client,
                 timeout_ms: args.timeout_ms,
@@ -509,6 +514,7 @@ where
             uninstall: None,
             activation: Some(ActivationInvocation {
                 bindings_only: args.bindings_only,
+                engine_only: args.engine_only,
                 install_root: args.install_root,
                 clients: args.client,
                 timeout_ms: args.timeout_ms,
@@ -525,6 +531,7 @@ where
             uninstall: None,
             activation: Some(ActivationInvocation {
                 bindings_only: args.bindings_only,
+                engine_only: args.engine_only,
                 install_root: args.install_root,
                 clients: args.client,
                 timeout_ms: args.timeout_ms,
@@ -850,6 +857,13 @@ mod tests {
     }
 
     #[test]
+    fn engine_only_activation_is_explicit_and_excludes_bindings_only() {
+        let inv = parse_mode(["membrane", "activate", "--engine-only"].iter().copied()).unwrap();
+        assert!(inv.activation.unwrap().engine_only);
+        assert!(parse_mode(["membrane", "activate", "--engine-only", "--bindings-only"].iter().copied()).is_err());
+    }
+
+    #[test]
     fn activate_parses_installed_root_clients_and_deadline() {
         let inv = parse_mode(
             [
@@ -871,6 +885,7 @@ mod tests {
             inv.activation,
             Some(ActivationInvocation {
                 bindings_only: false,
+                engine_only: false,
                 install_root: Some(std::path::PathBuf::from(r"C:\Membrane")),
                 clients: vec!["codex".to_string()],
                 timeout_ms: 45_000,
@@ -902,6 +917,7 @@ mod tests {
             inv.activation,
             Some(ActivationInvocation {
                 bindings_only: false,
+                engine_only: false,
                 install_root: Some(std::path::PathBuf::from(r"C:\Membrane")),
                 clients: vec!["claude".to_string()],
                 timeout_ms: 4_000,

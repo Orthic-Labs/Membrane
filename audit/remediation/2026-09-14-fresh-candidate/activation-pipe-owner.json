@@ -1,0 +1,24 @@
+{
+  "pid": 252608,
+  "events": [
+    {
+      "ms": 8305,
+      "event": "exit",
+      "code": 0
+    },
+    {
+      "ms": 10315,
+      "event": "kill_engine_child",
+      "data": "{\"ProcessId\":231488,\"ParentProcessId\":252608,\"Name\":\"membrane.exe\"}\r\n"
+    },
+    {
+      "ms": 11804,
+      "event": "close",
+      "code": 0
+    },
+    {
+      "ms": 22017,
+      "event": "bound"
+    }
+  ]
+}

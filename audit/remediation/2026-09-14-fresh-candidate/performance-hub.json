@@ -1,0 +1,2373 @@
+{
+  "startedAt": "2026-09-14T14:55:48.955Z",
+  "sampleWarning": "One batch per concurrency; percentiles describe this sample only, not a production baseline.",
+  "results": [
+    {
+      "name": "pull",
+      "concurrency": 1,
+      "requests": [
+        {
+          "elapsedMs": 7387,
+          "httpStatus": 200,
+          "kind": "success",
+          "error": null,
+          "envelope": {
+            "errorVersion": 1,
+            "operation": "pull",
+            "result": {
+              "data": {
+                "degradationReason": "none",
+                "deliveryMeasurement": {
+                  "basis": "o200k_base/1",
+                  "bytes": 8796,
+                  "ceilingId": "perf-1789397749006-1",
+                  "providerBilledTokens": null,
+                  "remainingTokens": 100000,
+                  "schemaVersion": 1,
+                  "scope": "serialized_mcp_tool_result",
+                  "tokens": 2784
+                },
+                "packet": {
+                  "allocations": {
+                    "3": 0,
+                    "7": 0,
+                    "other": 16
+                  },
+                  "blocks": [
+                    {
+                      "allottedTokens": 9,
+                      "baseCommit": "xxh128:6c7f73437187d38f46dd7ecfe25b75f2",
+                      "deliveredChars": 0,
+                      "deliveryClass": "rendered",
+                      "deliveryStage": "planned",
+                      "dropReason": "none",
+                      "estimatedTokens": 8,
+                      "freshnessClass": "current",
+                      "id": "git:meta:branch:main",
+                      "instructionPolicy": "data_only",
+                      "layer": 1,
+                      "overlayDigest": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                      "priority": 40,
+                      "protected": false,
+                      "provider": "git",
+                      "recoverable": true,
+                      "renderedTokens": 3,
+                      "resolver": "git rev-parse --abbrev-ref HEAD",
+                      "selectedTokens": 3,
+                      "sourceHash": "0000000000000000000000000000000000000000000000000000000000000000",
+                      "sourceKind": "git_meta",
+                      "sourceRef": "git:branch:main",
+                      "text": "current branch main",
+                      "trustClass": "workspace_tracked"
+                    },
+                    {
+                      "allottedTokens": 7,
+                      "baseCommit": "xxh128:6c7f73437187d38f46dd7ecfe25b75f2",
+                      "deliveredChars": 0,
+                      "deliveryClass": "rendered",
+                      "deliveryStage": "planned",
+                      "dropReason": "none",
+                      "estimatedTokens": 8,
+                      "freshnessClass": "current",
+                      "id": "git:meta:head:3dbb0d8bcfe6",
+                      "instructionPolicy": "data_only",
+                      "layer": 1,
+                      "overlayDigest": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                      "priority": 30,
+                      "protected": false,
+                      "provider": "git",
+                      "recoverable": true,
+                      "renderedTokens": 12,
+                      "resolver": "git log -1 --format=%H",
+                      "selectedTokens": 12,
+                      "sourceHash": "3dbb0d8bcfe6e077e4c3a4146fbf10d1a731157b",
+                      "sourceKind": "git_meta",
+                      "sourceRef": "git:commit:3dbb0d8bcfe6e077e4c3a4146fbf10d1a731157b",
+                      "text": "HEAD commit 3dbb0d8bcfe6",
+                      "trustClass": "workspace_tracked"
+                    }
+                  ],
+                  "budget": {
+                    "admittedTokens": 15,
+                    "configuredPacketCharBudget": 30000,
+                    "maxTokens": 2000,
+                    "packetCharBudgetDefault": 30000
+                  },
+                  "mode": "native",
+                  "omissions": [
+                    {
+                      "detailId": "anchors_empty",
+                      "id": "anchors:0",
+                      "layer": null,
+                      "reason": "provider_unavailable",
+                      "stage": "anchor_resolution"
+                    },
+                    {
+                      "detailId": "generation_incoherent",
+                      "id": "architect:8",
+                      "layer": null,
+                      "reason": "generation_incoherent",
+                      "stage": "generation_admission"
+                    },
+                    {
+                      "detailId": "decision_source_missing",
+                      "id": "architect:9",
+                      "layer": null,
+                      "reason": "provider_unavailable",
+                      "stage": "decision_normalization"
+                    },
+                    {
+                      "detailId": "generation_incoherent",
+                      "id": "audit:6",
+                      "layer": null,
+                      "reason": "generation_incoherent",
+                      "stage": "generation_admission"
+                    },
+                    {
+                      "detailId": "source_missing",
+                      "id": "audit:7",
+                      "layer": null,
+                      "reason": "provider_unavailable",
+                      "stage": "source"
+                    },
+                    {
+                      "detailId": "generation_incoherent",
+                      "id": "blueprint:1",
+                      "layer": null,
+                      "reason": "blueprint_stale",
+                      "stage": "generation_admission"
+                    },
+                    {
+                      "detailId": "blueprint_source_failed",
+                      "id": "blueprint:2",
+                      "layer": null,
+                      "reason": "provider_failed",
+                      "stage": "blueprint_source"
+                    },
+                    {
+                      "detailId": "generation_incoherent",
+                      "id": "ledger:12",
+                      "layer": null,
+                      "reason": "generation_incoherent",
+                      "stage": "generation_admission"
+                    },
+                    {
+                      "detailId": "ledger_manifest_budget_exhausted",
+                      "id": "ledger:13",
+                      "layer": null,
+                      "reason": "provider_unavailable",
+                      "stage": "ledger"
+                    },
+                    {
+                      "detailId": "generation_incoherent",
+                      "id": "live_files:4",
+                      "layer": null,
+                      "reason": "generation_incoherent",
+                      "stage": "generation_admission"
+                    },
+                    {
+                      "detailId": "grant_required",
+                      "id": "live_files:5",
+                      "layer": null,
+                      "reason": "scope_grant_missing",
+                      "stage": "live_overlay"
+                    },
+                    {
+                      "detailId": "grant_required",
+                      "id": "rules:3",
+                      "layer": null,
+                      "reason": "scope_grant_missing",
+                      "stage": "rules"
+                    },
+                    {
+                      "detailId": "expected:xxh128:dc87fc801837e129c4fed61a3c1db87c",
+                      "id": "skills:10",
+                      "layer": null,
+                      "reason": "generation_incoherent",
+                      "stage": "skills_provider"
+                    },
+                    {
+                      "detailId": "generation_incoherent",
+                      "id": "skills:11",
+                      "layer": null,
+                      "reason": "generation_incoherent",
+                      "stage": "generation_admission"
+                    }
+                  ],
+                  "providerAccounting": {
+                    "git": {
+                      "deliveredChars": 0,
+                      "deliveryStage": "planned",
+                      "dropReason": "none",
+                      "renderedTokens": 0,
+                      "selectedTokens": 16
+                    }
+                  },
+                  "schemaVersion": 1,
+                  "task": "Identify current repository architecture evidence",
+                  "traceId": "rc-mem-1a0a06acd14"
+                },
+                "pullReceipt": {
+                  "atomicEvidencePaths": [],
+                  "cachePrefixDiagnostic": {
+                    "blockDigests": [
+                      {
+                        "digest": "sha256:6411a4bcb5f350f28ec07f25e3673dc1a6ca198b0d50972ac2f8826bd2f16d1e",
+                        "id": "git:meta:branch:main"
+                      },
+                      {
+                        "digest": "sha256:b559d571a1f143c86303bfdf67bbb768a3f7379caf6e5f952a48ad565f848630",
+                        "id": "git:meta:head:3dbb0d8bcfe6"
+                      }
+                    ],
+                    "metadataDigests": [
+                      {
+                        "digest": "sha256:6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b",
+                        "field": "schemaVersion"
+                      },
+                      {
+                        "digest": "sha256:24690be1c838dce3116e7f2c4ea1f6a5a3d6a8fb49558d9234e997d3faefe073",
+                        "field": "task"
+                      },
+                      {
+                        "digest": "sha256:4333d880d7e2f1bfe343268c0e1f99165f38b5fd1bc812aed41cec0477f8246e",
+                        "field": "mode"
+                      },
+                      {
+                        "digest": "sha256:fa896cd9e6d1f3b9c3c3ef2a8952991554e2728491749229437c4e579beed094",
+                        "field": "budget"
+                      },
+                      {
+                        "digest": "sha256:c0261158266e72b95481e8c2a4abb007fb61ec415d5df27c811794f9f6cdf727",
+                        "field": "allocations"
+                      },
+                      {
+                        "digest": "sha256:b2456a9a4192c524aa409bf047ff095798e14e34f1aa88aeaabc486e0227bd27",
+                        "field": "providerAccounting"
+                      }
+                    ],
+                    "prefixDigest": "sha256:90a5cdd7dfef7b23f528643ce68d358aa1bafeb3a19018cee3b9cf5e47312bbf",
+                    "schemaVersion": 1,
+                    "stableBlockOrder": [
+                      "git:meta:branch:main",
+                      "git:meta:head:3dbb0d8bcfe6"
+                    ],
+                    "volatilitySource": "none"
+                  },
+                  "correctiveRetrieval": {
+                    "attempted": false,
+                    "outcome": "not_evaluated_missing_sufficiency_contract",
+                    "policy": "membrane-corrective-retrieval-v1",
+                    "schemaVersion": 1,
+                    "stageLimit": 1,
+                    "triggered": false
+                  },
+                  "federationMetrics": {
+                    "partial": 1
+                  },
+                  "fusionReceipt": {
+                    "candidatesReceived": 2,
+                    "candidatesSelected": 2,
+                    "decisions": [
+                      {
+                        "decision": "selected",
+                        "fusedRank": 1,
+                        "id": "git:meta:branch:main",
+                        "provider": "git",
+                        "providerRank": 1,
+                        "reason": "fixed_order_control",
+                        "rrfDenominator": 61
+                      },
+                      {
+                        "decision": "selected",
+                        "fusedRank": 2,
+                        "id": "git:meta:head:3dbb0d8bcfe6",
+                        "provider": "git",
+                        "providerRank": 2,
+                        "reason": "fixed_order_control",
+                        "rrfDenominator": 62
+                      }
+                    ],
+                    "fallbackPolicy": "fixed-lanes-v1",
+                    "maxItems": 2,
+                    "policy": "membrane-fusion-fixed-v1",
+                    "providerOrder": [
+                      "anchors",
+                      "rules",
+                      "git",
+                      "cortex"
+                    ],
+                    "providerQuotas": {
+                      "anchors": 0,
+                      "cortex": 0,
+                      "git": 2,
+                      "rules": 0
+                    },
+                    "rrfK": 60,
+                    "schemaVersion": 1
+                  },
+                  "insufficientConfidence": null,
+                  "packetReduction": {
+                    "ceilingId": "perf-1789397749006-1",
+                    "decision": "selected",
+                    "estimatorBasis": {
+                      "id": "o200k_base",
+                      "version": "1"
+                    },
+                    "planRef": "packet://rc-mem-1a0a06acd14",
+                    "remainingTokens": 100000,
+                    "schemaVersion": 1,
+                    "selectedRepresentationId": "full",
+                    "selectedTokens": 1047,
+                    "sessionId": "membrane"
+                  },
+                  "placementReceipt": {
+                    "policy": "pull-semantic-placement-v1",
+                    "rows": [
+                      {
+                        "id": "git:meta:branch:main",
+                        "originalIndex": 0,
+                        "placedIndex": 0,
+                        "semanticClass": "repository_evidence"
+                      },
+                      {
+                        "id": "git:meta:head:3dbb0d8bcfe6",
+                        "originalIndex": 1,
+                        "placedIndex": 1,
+                        "semanticClass": "repository_evidence"
+                      }
+                    ],
+                    "schemaVersion": 1
+                  },
+                  "publicationFence": null,
+                  "sourceResolutionReceipts": [],
+                  "suppressionReceipts": []
+                },
+                "receipts": [
+                  {
+                    "admittedChars": 32,
+                    "allottedTokens": 9,
+                    "baseCommit": "xxh128:6c7f73437187d38f46dd7ecfe25b75f2",
+                    "beforeChars": 32,
+                    "contentSha256": "sha256:c3383972cb3874769ec2083e1e0ee4a2086f70a00b7f2a18cb97aacafb02f33a",
+                    "decision": "admitted",
+                    "degradationReason": "none",
+                    "deliveredChars": 0,
+                    "deliveryClass": "rendered",
+                    "deliveryStage": "planned",
+                    "dropReason": "none",
+                    "fallbackMode": "none",
+                    "freshnessClass": "current",
+                    "id": "git:meta:branch:main",
+                    "layer": 1,
+                    "overlayDigest": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                    "provider": "git",
+                    "providerStatus": "fresh",
+                    "reason": "within_identity_lane",
+                    "renderedTokens": 0,
+                    "schemaVersion": 2,
+                    "selectedTokens": 8,
+                    "sourceGeneration": "sha256:c9d4c83b21c58eefcd1934c252abad079b63dcecff655830f508a84cd5073563",
+                    "sourceKind": "git_meta",
+                    "sourceRef": "git:branch:main",
+                    "statusProvider": "federation",
+                    "statusScope": "candidate_set",
+                    "traceId": "rc-mem-1a0a06acd14"
+                  },
+                  {
+                    "admittedChars": 32,
+                    "allottedTokens": 7,
+                    "baseCommit": "xxh128:6c7f73437187d38f46dd7ecfe25b75f2",
+                    "beforeChars": 32,
+                    "contentSha256": "sha256:af8e5ccda08c720ecf8e39d8d476253668092a9674378c7a3e701b8819b45aba",
+                    "decision": "admitted",
+                    "degradationReason": "none",
+                    "deliveredChars": 0,
+                    "deliveryClass": "rendered",
+                    "deliveryStage": "planned",
+                    "dropReason": "none",
+                    "fallbackMode": "none",
+                    "freshnessClass": "current",
+                    "id": "git:meta:head:3dbb0d8bcfe6",
+                    "layer": 1,
+                    "overlayDigest": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                    "provider": "git",
+                    "providerStatus": "fresh",
+                    "reason": "within_identity_lane",
+                    "renderedTokens": 0,
+                    "schemaVersion": 2,
+                    "selectedTokens": 8,
+                    "sourceGeneration": "sha256:c9d4c83b21c58eefcd1934c252abad079b63dcecff655830f508a84cd5073563",
+                    "sourceKind": "git_meta",
+                    "sourceRef": "git:commit:3dbb0d8bcfe6e077e4c3a4146fbf10d1a731157b",
+                    "statusProvider": "federation",
+                    "statusScope": "candidate_set",
+                    "traceId": "rc-mem-1a0a06acd14"
+                  }
+                ],
+                "repositoryId": "membrane",
+                "scopeId": "membrane",
+                "status": "ok",
+                "sufficiencyEvaluated": false
+              },
+              "kind": "success"
+            },
+            "schemaVersion": 1
+          }
+        }
+      ],
+      "p50Ms": 7387,
+      "p95Ms": 7387,
+      "p99Ms": 7387,
+      "throughputPerSec": 0.1353546291283162
+    },
+    {
+      "name": "pull",
+      "concurrency": 5,
+      "requests": [
+        {
+          "elapsedMs": 15008,
+          "httpStatus": 503,
+          "kind": "rpc-error",
+          "error": {
+            "code": -32000,
+            "message": "mcp deadline exceeded: dispatch did not complete within the admitted deadline"
+          },
+          "envelope": {
+            "error": {
+              "code": -32000,
+              "message": "mcp deadline exceeded: dispatch did not complete within the admitted deadline"
+            },
+            "id": 2,
+            "jsonrpc": "2.0"
+          }
+        },
+        {
+          "elapsedMs": 15020,
+          "httpStatus": 503,
+          "kind": "rpc-error",
+          "error": {
+            "code": -32000,
+            "message": "mcp deadline exceeded: dispatch did not complete within the admitted deadline"
+          },
+          "envelope": {
+            "error": {
+              "code": -32000,
+              "message": "mcp deadline exceeded: dispatch did not complete within the admitted deadline"
+            },
+            "id": 3,
+            "jsonrpc": "2.0"
+          }
+        },
+        {
+          "elapsedMs": 15009,
+          "httpStatus": 200,
+          "kind": "error",
+          "error": null,
+          "envelope": {
+            "errorVersion": 1,
+            "operation": "pull",
+            "result": {
+              "code": "context_unavailable",
+              "kind": "error",
+              "message": "federation is unavailable",
+              "retryable": false
+            },
+            "schemaVersion": 1
+          }
+        },
+        {
+          "elapsedMs": 11494,
+          "httpStatus": 200,
+          "kind": "success",
+          "error": null,
+          "envelope": {
+            "errorVersion": 1,
+            "operation": "pull",
+            "result": {
+              "data": {
+                "degradationReason": "none",
+                "deliveryMeasurement": {
+                  "basis": "o200k_base/1",
+                  "bytes": 8796,
+                  "ceilingId": "perf-1789397756396-5",
+                  "providerBilledTokens": null,
+                  "remainingTokens": 100000,
+                  "schemaVersion": 1,
+                  "scope": "serialized_mcp_tool_result",
+                  "tokens": 2792
+                },
+                "packet": {
+                  "allocations": {
+                    "3": 0,
+                    "7": 0,
+                    "other": 16
+                  },
+                  "blocks": [
+                    {
+                      "allottedTokens": 9,
+                      "baseCommit": "xxh128:6c7f73437187d38f46dd7ecfe25b75f2",
+                      "deliveredChars": 0,
+                      "deliveryClass": "rendered",
+                      "deliveryStage": "planned",
+                      "dropReason": "none",
+                      "estimatedTokens": 8,
+                      "freshnessClass": "current",
+                      "id": "git:meta:branch:main",
+                      "instructionPolicy": "data_only",
+                      "layer": 1,
+                      "overlayDigest": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                      "priority": 40,
+                      "protected": false,
+                      "provider": "git",
+                      "recoverable": true,
+                      "renderedTokens": 3,
+                      "resolver": "git rev-parse --abbrev-ref HEAD",
+                      "selectedTokens": 3,
+                      "sourceHash": "0000000000000000000000000000000000000000000000000000000000000000",
+                      "sourceKind": "git_meta",
+                      "sourceRef": "git:branch:main",
+                      "text": "current branch main",
+                      "trustClass": "workspace_tracked"
+                    },
+                    {
+                      "allottedTokens": 7,
+                      "baseCommit": "xxh128:6c7f73437187d38f46dd7ecfe25b75f2",
+                      "deliveredChars": 0,
+                      "deliveryClass": "rendered",
+                      "deliveryStage": "planned",
+                      "dropReason": "none",
+                      "estimatedTokens": 8,
+                      "freshnessClass": "current",
+                      "id": "git:meta:head:3dbb0d8bcfe6",
+                      "instructionPolicy": "data_only",
+                      "layer": 1,
+                      "overlayDigest": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                      "priority": 30,
+                      "protected": false,
+                      "provider": "git",
+                      "recoverable": true,
+                      "renderedTokens": 12,
+                      "resolver": "git log -1 --format=%H",
+                      "selectedTokens": 12,
+                      "sourceHash": "3dbb0d8bcfe6e077e4c3a4146fbf10d1a731157b",
+                      "sourceKind": "git_meta",
+                      "sourceRef": "git:commit:3dbb0d8bcfe6e077e4c3a4146fbf10d1a731157b",
+                      "text": "HEAD commit 3dbb0d8bcfe6",
+                      "trustClass": "workspace_tracked"
+                    }
+                  ],
+                  "budget": {
+                    "admittedTokens": 15,
+                    "configuredPacketCharBudget": 30000,
+                    "maxTokens": 2000,
+                    "packetCharBudgetDefault": 30000
+                  },
+                  "mode": "native",
+                  "omissions": [
+                    {
+                      "detailId": "anchors_empty",
+                      "id": "anchors:0",
+                      "layer": null,
+                      "reason": "provider_unavailable",
+                      "stage": "anchor_resolution"
+                    },
+                    {
+                      "detailId": "generation_incoherent",
+                      "id": "architect:8",
+                      "layer": null,
+                      "reason": "generation_incoherent",
+                      "stage": "generation_admission"
+                    },
+                    {
+                      "detailId": "decision_source_missing",
+                      "id": "architect:9",
+                      "layer": null,
+                      "reason": "provider_unavailable",
+                      "stage": "decision_normalization"
+                    },
+                    {
+                      "detailId": "generation_incoherent",
+                      "id": "audit:6",
+                      "layer": null,
+                      "reason": "generation_incoherent",
+                      "stage": "generation_admission"
+                    },
+                    {
+                      "detailId": "source_missing",
+                      "id": "audit:7",
+                      "layer": null,
+                      "reason": "provider_unavailable",
+                      "stage": "source"
+                    },
+                    {
+                      "detailId": "generation_incoherent",
+                      "id": "blueprint:1",
+                      "layer": null,
+                      "reason": "blueprint_stale",
+                      "stage": "generation_admission"
+                    },
+                    {
+                      "detailId": "blueprint_source_failed",
+                      "id": "blueprint:2",
+                      "layer": null,
+                      "reason": "provider_failed",
+                      "stage": "blueprint_source"
+                    },
+                    {
+                      "detailId": "generation_incoherent",
+                      "id": "ledger:12",
+                      "layer": null,
+                      "reason": "generation_incoherent",
+                      "stage": "generation_admission"
+                    },
+                    {
+                      "detailId": "ledger_manifest_budget_exhausted",
+                      "id": "ledger:13",
+                      "layer": null,
+                      "reason": "provider_unavailable",
+                      "stage": "ledger"
+                    },
+                    {
+                      "detailId": "generation_incoherent",
+                      "id": "live_files:4",
+                      "layer": null,
+                      "reason": "generation_incoherent",
+                      "stage": "generation_admission"
+                    },
+                    {
+                      "detailId": "grant_required",
+                      "id": "live_files:5",
+                      "layer": null,
+                      "reason": "scope_grant_missing",
+                      "stage": "live_overlay"
+                    },
+                    {
+                      "detailId": "grant_required",
+                      "id": "rules:3",
+                      "layer": null,
+                      "reason": "scope_grant_missing",
+                      "stage": "rules"
+                    },
+                    {
+                      "detailId": "expected:xxh128:dc87fc801837e129c4fed61a3c1db87c",
+                      "id": "skills:10",
+                      "layer": null,
+                      "reason": "generation_incoherent",
+                      "stage": "skills_provider"
+                    },
+                    {
+                      "detailId": "generation_incoherent",
+                      "id": "skills:11",
+                      "layer": null,
+                      "reason": "generation_incoherent",
+                      "stage": "generation_admission"
+                    }
+                  ],
+                  "providerAccounting": {
+                    "git": {
+                      "deliveredChars": 0,
+                      "deliveryStage": "planned",
+                      "dropReason": "none",
+                      "renderedTokens": 0,
+                      "selectedTokens": 16
+                    }
+                  },
+                  "schemaVersion": 1,
+                  "task": "Identify current repository architecture evidence",
+                  "traceId": "rc-mem-1a0a06ae9f3"
+                },
+                "pullReceipt": {
+                  "atomicEvidencePaths": [],
+                  "cachePrefixDiagnostic": {
+                    "blockDigests": [
+                      {
+                        "digest": "sha256:6411a4bcb5f350f28ec07f25e3673dc1a6ca198b0d50972ac2f8826bd2f16d1e",
+                        "id": "git:meta:branch:main"
+                      },
+                      {
+                        "digest": "sha256:b559d571a1f143c86303bfdf67bbb768a3f7379caf6e5f952a48ad565f848630",
+                        "id": "git:meta:head:3dbb0d8bcfe6"
+                      }
+                    ],
+                    "metadataDigests": [
+                      {
+                        "digest": "sha256:6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b",
+                        "field": "schemaVersion"
+                      },
+                      {
+                        "digest": "sha256:24690be1c838dce3116e7f2c4ea1f6a5a3d6a8fb49558d9234e997d3faefe073",
+                        "field": "task"
+                      },
+                      {
+                        "digest": "sha256:4333d880d7e2f1bfe343268c0e1f99165f38b5fd1bc812aed41cec0477f8246e",
+                        "field": "mode"
+                      },
+                      {
+                        "digest": "sha256:fa896cd9e6d1f3b9c3c3ef2a8952991554e2728491749229437c4e579beed094",
+                        "field": "budget"
+                      },
+                      {
+                        "digest": "sha256:c0261158266e72b95481e8c2a4abb007fb61ec415d5df27c811794f9f6cdf727",
+                        "field": "allocations"
+                      },
+                      {
+                        "digest": "sha256:b2456a9a4192c524aa409bf047ff095798e14e34f1aa88aeaabc486e0227bd27",
+                        "field": "providerAccounting"
+                      }
+                    ],
+                    "prefixDigest": "sha256:90a5cdd7dfef7b23f528643ce68d358aa1bafeb3a19018cee3b9cf5e47312bbf",
+                    "schemaVersion": 1,
+                    "stableBlockOrder": [
+                      "git:meta:branch:main",
+                      "git:meta:head:3dbb0d8bcfe6"
+                    ],
+                    "volatilitySource": "none"
+                  },
+                  "correctiveRetrieval": {
+                    "attempted": false,
+                    "outcome": "not_evaluated_missing_sufficiency_contract",
+                    "policy": "membrane-corrective-retrieval-v1",
+                    "schemaVersion": 1,
+                    "stageLimit": 1,
+                    "triggered": false
+                  },
+                  "federationMetrics": {
+                    "partial": 1
+                  },
+                  "fusionReceipt": {
+                    "candidatesReceived": 2,
+                    "candidatesSelected": 2,
+                    "decisions": [
+                      {
+                        "decision": "selected",
+                        "fusedRank": 1,
+                        "id": "git:meta:branch:main",
+                        "provider": "git",
+                        "providerRank": 1,
+                        "reason": "fixed_order_control",
+                        "rrfDenominator": 61
+                      },
+                      {
+                        "decision": "selected",
+                        "fusedRank": 2,
+                        "id": "git:meta:head:3dbb0d8bcfe6",
+                        "provider": "git",
+                        "providerRank": 2,
+                        "reason": "fixed_order_control",
+                        "rrfDenominator": 62
+                      }
+                    ],
+                    "fallbackPolicy": "fixed-lanes-v1",
+                    "maxItems": 2,
+                    "policy": "membrane-fusion-fixed-v1",
+                    "providerOrder": [
+                      "anchors",
+                      "rules",
+                      "git",
+                      "cortex"
+                    ],
+                    "providerQuotas": {
+                      "anchors": 0,
+                      "cortex": 0,
+                      "git": 2,
+                      "rules": 0
+                    },
+                    "rrfK": 60,
+                    "schemaVersion": 1
+                  },
+                  "insufficientConfidence": null,
+                  "packetReduction": {
+                    "ceilingId": "perf-1789397756396-5",
+                    "decision": "selected",
+                    "estimatorBasis": {
+                      "id": "o200k_base",
+                      "version": "1"
+                    },
+                    "planRef": "packet://rc-mem-1a0a06ae9f3",
+                    "remainingTokens": 100000,
+                    "schemaVersion": 1,
+                    "selectedRepresentationId": "full",
+                    "selectedTokens": 1049,
+                    "sessionId": "membrane"
+                  },
+                  "placementReceipt": {
+                    "policy": "pull-semantic-placement-v1",
+                    "rows": [
+                      {
+                        "id": "git:meta:branch:main",
+                        "originalIndex": 0,
+                        "placedIndex": 0,
+                        "semanticClass": "repository_evidence"
+                      },
+                      {
+                        "id": "git:meta:head:3dbb0d8bcfe6",
+                        "originalIndex": 1,
+                        "placedIndex": 1,
+                        "semanticClass": "repository_evidence"
+                      }
+                    ],
+                    "schemaVersion": 1
+                  },
+                  "publicationFence": null,
+                  "sourceResolutionReceipts": [],
+                  "suppressionReceipts": []
+                },
+                "receipts": [
+                  {
+                    "admittedChars": 32,
+                    "allottedTokens": 9,
+                    "baseCommit": "xxh128:6c7f73437187d38f46dd7ecfe25b75f2",
+                    "beforeChars": 32,
+                    "contentSha256": "sha256:c3383972cb3874769ec2083e1e0ee4a2086f70a00b7f2a18cb97aacafb02f33a",
+                    "decision": "admitted",
+                    "degradationReason": "none",
+                    "deliveredChars": 0,
+                    "deliveryClass": "rendered",
+                    "deliveryStage": "planned",
+                    "dropReason": "none",
+                    "fallbackMode": "none",
+                    "freshnessClass": "current",
+                    "id": "git:meta:branch:main",
+                    "layer": 1,
+                    "overlayDigest": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                    "provider": "git",
+                    "providerStatus": "fresh",
+                    "reason": "within_identity_lane",
+                    "renderedTokens": 0,
+                    "schemaVersion": 2,
+                    "selectedTokens": 8,
+                    "sourceGeneration": "sha256:c9d4c83b21c58eefcd1934c252abad079b63dcecff655830f508a84cd5073563",
+                    "sourceKind": "git_meta",
+                    "sourceRef": "git:branch:main",
+                    "statusProvider": "federation",
+                    "statusScope": "candidate_set",
+                    "traceId": "rc-mem-1a0a06ae9f3"
+                  },
+                  {
+                    "admittedChars": 32,
+                    "allottedTokens": 7,
+                    "baseCommit": "xxh128:6c7f73437187d38f46dd7ecfe25b75f2",
+                    "beforeChars": 32,
+                    "contentSha256": "sha256:af8e5ccda08c720ecf8e39d8d476253668092a9674378c7a3e701b8819b45aba",
+                    "decision": "admitted",
+                    "degradationReason": "none",
+                    "deliveredChars": 0,
+                    "deliveryClass": "rendered",
+                    "deliveryStage": "planned",
+                    "dropReason": "none",
+                    "fallbackMode": "none",
+                    "freshnessClass": "current",
+                    "id": "git:meta:head:3dbb0d8bcfe6",
+                    "layer": 1,
+                    "overlayDigest": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                    "provider": "git",
+                    "providerStatus": "fresh",
+                    "reason": "within_identity_lane",
+                    "renderedTokens": 0,
+                    "schemaVersion": 2,
+                    "selectedTokens": 8,
+                    "sourceGeneration": "sha256:c9d4c83b21c58eefcd1934c252abad079b63dcecff655830f508a84cd5073563",
+                    "sourceKind": "git_meta",
+                    "sourceRef": "git:commit:3dbb0d8bcfe6e077e4c3a4146fbf10d1a731157b",
+                    "statusProvider": "federation",
+                    "statusScope": "candidate_set",
+                    "traceId": "rc-mem-1a0a06ae9f3"
+                  }
+                ],
+                "repositoryId": "membrane",
+                "scopeId": "membrane",
+                "status": "ok",
+                "sufficiencyEvaluated": false
+              },
+              "kind": "success"
+            },
+            "schemaVersion": 1
+          }
+        },
+        {
+          "elapsedMs": 15010,
+          "httpStatus": 200,
+          "kind": "error",
+          "error": null,
+          "envelope": {
+            "errorVersion": 1,
+            "operation": "pull",
+            "result": {
+              "code": "context_unavailable",
+              "kind": "error",
+              "message": "federation is unavailable",
+              "retryable": false
+            },
+            "schemaVersion": 1
+          }
+        }
+      ],
+      "p50Ms": 15009,
+      "p95Ms": 15010,
+      "p99Ms": 15010,
+      "throughputPerSec": 0.33288948069241014
+    },
+    {
+      "name": "pull",
+      "concurrency": 20,
+      "requests": [
+        {
+          "elapsedMs": 15015,
+          "httpStatus": 200,
+          "kind": "error",
+          "error": null,
+          "envelope": {
+            "errorVersion": 1,
+            "operation": "pull",
+            "result": {
+              "code": "context_unavailable",
+              "kind": "error",
+              "message": "federation is unavailable",
+              "retryable": false
+            },
+            "schemaVersion": 1
+          }
+        },
+        {
+          "elapsedMs": 12406,
+          "httpStatus": 200,
+          "kind": "success",
+          "error": null,
+          "envelope": {
+            "errorVersion": 1,
+            "operation": "pull",
+            "result": {
+              "data": {
+                "degradationReason": "none",
+                "deliveryMeasurement": {
+                  "basis": "o200k_base/1",
+                  "bytes": 8796,
+                  "ceilingId": "perf-1789397771416-8",
+                  "providerBilledTokens": null,
+                  "remainingTokens": 100000,
+                  "schemaVersion": 1,
+                  "scope": "serialized_mcp_tool_result",
+                  "tokens": 2792
+                },
+                "packet": {
+                  "allocations": {
+                    "3": 0,
+                    "7": 0,
+                    "other": 16
+                  },
+                  "blocks": [
+                    {
+                      "allottedTokens": 9,
+                      "baseCommit": "xxh128:6c7f73437187d38f46dd7ecfe25b75f2",
+                      "deliveredChars": 0,
+                      "deliveryClass": "rendered",
+                      "deliveryStage": "planned",
+                      "dropReason": "none",
+                      "estimatedTokens": 8,
+                      "freshnessClass": "current",
+                      "id": "git:meta:branch:main",
+                      "instructionPolicy": "data_only",
+                      "layer": 1,
+                      "overlayDigest": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                      "priority": 40,
+                      "protected": false,
+                      "provider": "git",
+                      "recoverable": true,
+                      "renderedTokens": 3,
+                      "resolver": "git rev-parse --abbrev-ref HEAD",
+                      "selectedTokens": 3,
+                      "sourceHash": "0000000000000000000000000000000000000000000000000000000000000000",
+                      "sourceKind": "git_meta",
+                      "sourceRef": "git:branch:main",
+                      "text": "current branch main",
+                      "trustClass": "workspace_tracked"
+                    },
+                    {
+                      "allottedTokens": 7,
+                      "baseCommit": "xxh128:6c7f73437187d38f46dd7ecfe25b75f2",
+                      "deliveredChars": 0,
+                      "deliveryClass": "rendered",
+                      "deliveryStage": "planned",
+                      "dropReason": "none",
+                      "estimatedTokens": 8,
+                      "freshnessClass": "current",
+                      "id": "git:meta:head:3dbb0d8bcfe6",
+                      "instructionPolicy": "data_only",
+                      "layer": 1,
+                      "overlayDigest": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                      "priority": 30,
+                      "protected": false,
+                      "provider": "git",
+                      "recoverable": true,
+                      "renderedTokens": 12,
+                      "resolver": "git log -1 --format=%H",
+                      "selectedTokens": 12,
+                      "sourceHash": "3dbb0d8bcfe6e077e4c3a4146fbf10d1a731157b",
+                      "sourceKind": "git_meta",
+                      "sourceRef": "git:commit:3dbb0d8bcfe6e077e4c3a4146fbf10d1a731157b",
+                      "text": "HEAD commit 3dbb0d8bcfe6",
+                      "trustClass": "workspace_tracked"
+                    }
+                  ],
+                  "budget": {
+                    "admittedTokens": 15,
+                    "configuredPacketCharBudget": 30000,
+                    "maxTokens": 2000,
+                    "packetCharBudgetDefault": 30000
+                  },
+                  "mode": "native",
+                  "omissions": [
+                    {
+                      "detailId": "anchors_empty",
+                      "id": "anchors:0",
+                      "layer": null,
+                      "reason": "provider_unavailable",
+                      "stage": "anchor_resolution"
+                    },
+                    {
+                      "detailId": "generation_incoherent",
+                      "id": "architect:8",
+                      "layer": null,
+                      "reason": "generation_incoherent",
+                      "stage": "generation_admission"
+                    },
+                    {
+                      "detailId": "decision_source_missing",
+                      "id": "architect:9",
+                      "layer": null,
+                      "reason": "provider_unavailable",
+                      "stage": "decision_normalization"
+                    },
+                    {
+                      "detailId": "generation_incoherent",
+                      "id": "audit:6",
+                      "layer": null,
+                      "reason": "generation_incoherent",
+                      "stage": "generation_admission"
+                    },
+                    {
+                      "detailId": "source_missing",
+                      "id": "audit:7",
+                      "layer": null,
+                      "reason": "provider_unavailable",
+                      "stage": "source"
+                    },
+                    {
+                      "detailId": "generation_incoherent",
+                      "id": "blueprint:1",
+                      "layer": null,
+                      "reason": "blueprint_stale",
+                      "stage": "generation_admission"
+                    },
+                    {
+                      "detailId": "blueprint_source_failed",
+                      "id": "blueprint:2",
+                      "layer": null,
+                      "reason": "provider_failed",
+                      "stage": "blueprint_source"
+                    },
+                    {
+                      "detailId": "generation_incoherent",
+                      "id": "ledger:12",
+                      "layer": null,
+                      "reason": "generation_incoherent",
+                      "stage": "generation_admission"
+                    },
+                    {
+                      "detailId": "ledger_manifest_budget_exhausted",
+                      "id": "ledger:13",
+                      "layer": null,
+                      "reason": "provider_unavailable",
+                      "stage": "ledger"
+                    },
+                    {
+                      "detailId": "generation_incoherent",
+                      "id": "live_files:4",
+                      "layer": null,
+                      "reason": "generation_incoherent",
+                      "stage": "generation_admission"
+                    },
+                    {
+                      "detailId": "grant_required",
+                      "id": "live_files:5",
+                      "layer": null,
+                      "reason": "scope_grant_missing",
+                      "stage": "live_overlay"
+                    },
+                    {
+                      "detailId": "grant_required",
+                      "id": "rules:3",
+                      "layer": null,
+                      "reason": "scope_grant_missing",
+                      "stage": "rules"
+                    },
+                    {
+                      "detailId": "expected:xxh128:dc87fc801837e129c4fed61a3c1db87c",
+                      "id": "skills:10",
+                      "layer": null,
+                      "reason": "generation_incoherent",
+                      "stage": "skills_provider"
+                    },
+                    {
+                      "detailId": "generation_incoherent",
+                      "id": "skills:11",
+                      "layer": null,
+                      "reason": "generation_incoherent",
+                      "stage": "generation_admission"
+                    }
+                  ],
+                  "providerAccounting": {
+                    "git": {
+                      "deliveredChars": 0,
+                      "deliveryStage": "planned",
+                      "dropReason": "none",
+                      "renderedTokens": 0,
+                      "selectedTokens": 16
+                    }
+                  },
+                  "schemaVersion": 1,
+                  "task": "Identify current repository architecture evidence",
+                  "traceId": "rc-mem-1a0a06b24a6"
+                },
+                "pullReceipt": {
+                  "atomicEvidencePaths": [],
+                  "cachePrefixDiagnostic": {
+                    "blockDigests": [
+                      {
+                        "digest": "sha256:6411a4bcb5f350f28ec07f25e3673dc1a6ca198b0d50972ac2f8826bd2f16d1e",
+                        "id": "git:meta:branch:main"
+                      },
+                      {
+                        "digest": "sha256:b559d571a1f143c86303bfdf67bbb768a3f7379caf6e5f952a48ad565f848630",
+                        "id": "git:meta:head:3dbb0d8bcfe6"
+                      }
+                    ],
+                    "metadataDigests": [
+                      {
+                        "digest": "sha256:6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b",
+                        "field": "schemaVersion"
+                      },
+                      {
+                        "digest": "sha256:24690be1c838dce3116e7f2c4ea1f6a5a3d6a8fb49558d9234e997d3faefe073",
+                        "field": "task"
+                      },
+                      {
+                        "digest": "sha256:4333d880d7e2f1bfe343268c0e1f99165f38b5fd1bc812aed41cec0477f8246e",
+                        "field": "mode"
+                      },
+                      {
+                        "digest": "sha256:fa896cd9e6d1f3b9c3c3ef2a8952991554e2728491749229437c4e579beed094",
+                        "field": "budget"
+                      },
+                      {
+                        "digest": "sha256:c0261158266e72b95481e8c2a4abb007fb61ec415d5df27c811794f9f6cdf727",
+                        "field": "allocations"
+                      },
+                      {
+                        "digest": "sha256:b2456a9a4192c524aa409bf047ff095798e14e34f1aa88aeaabc486e0227bd27",
+                        "field": "providerAccounting"
+                      }
+                    ],
+                    "prefixDigest": "sha256:90a5cdd7dfef7b23f528643ce68d358aa1bafeb3a19018cee3b9cf5e47312bbf",
+                    "schemaVersion": 1,
+                    "stableBlockOrder": [
+                      "git:meta:branch:main",
+                      "git:meta:head:3dbb0d8bcfe6"
+                    ],
+                    "volatilitySource": "none"
+                  },
+                  "correctiveRetrieval": {
+                    "attempted": false,
+                    "outcome": "not_evaluated_missing_sufficiency_contract",
+                    "policy": "membrane-corrective-retrieval-v1",
+                    "schemaVersion": 1,
+                    "stageLimit": 1,
+                    "triggered": false
+                  },
+                  "federationMetrics": {
+                    "partial": 1
+                  },
+                  "fusionReceipt": {
+                    "candidatesReceived": 2,
+                    "candidatesSelected": 2,
+                    "decisions": [
+                      {
+                        "decision": "selected",
+                        "fusedRank": 1,
+                        "id": "git:meta:branch:main",
+                        "provider": "git",
+                        "providerRank": 1,
+                        "reason": "fixed_order_control",
+                        "rrfDenominator": 61
+                      },
+                      {
+                        "decision": "selected",
+                        "fusedRank": 2,
+                        "id": "git:meta:head:3dbb0d8bcfe6",
+                        "provider": "git",
+                        "providerRank": 2,
+                        "reason": "fixed_order_control",
+                        "rrfDenominator": 62
+                      }
+                    ],
+                    "fallbackPolicy": "fixed-lanes-v1",
+                    "maxItems": 2,
+                    "policy": "membrane-fusion-fixed-v1",
+                    "providerOrder": [
+                      "anchors",
+                      "rules",
+                      "git",
+                      "cortex"
+                    ],
+                    "providerQuotas": {
+                      "anchors": 0,
+                      "cortex": 0,
+                      "git": 2,
+                      "rules": 0
+                    },
+                    "rrfK": 60,
+                    "schemaVersion": 1
+                  },
+                  "insufficientConfidence": null,
+                  "packetReduction": {
+                    "ceilingId": "perf-1789397771416-8",
+                    "decision": "selected",
+                    "estimatorBasis": {
+                      "id": "o200k_base",
+                      "version": "1"
+                    },
+                    "planRef": "packet://rc-mem-1a0a06b24a6",
+                    "remainingTokens": 100000,
+                    "schemaVersion": 1,
+                    "selectedRepresentationId": "full",
+                    "selectedTokens": 1049,
+                    "sessionId": "membrane"
+                  },
+                  "placementReceipt": {
+                    "policy": "pull-semantic-placement-v1",
+                    "rows": [
+                      {
+                        "id": "git:meta:branch:main",
+                        "originalIndex": 0,
+                        "placedIndex": 0,
+                        "semanticClass": "repository_evidence"
+                      },
+                      {
+                        "id": "git:meta:head:3dbb0d8bcfe6",
+                        "originalIndex": 1,
+                        "placedIndex": 1,
+                        "semanticClass": "repository_evidence"
+                      }
+                    ],
+                    "schemaVersion": 1
+                  },
+                  "publicationFence": null,
+                  "sourceResolutionReceipts": [],
+                  "suppressionReceipts": []
+                },
+                "receipts": [
+                  {
+                    "admittedChars": 32,
+                    "allottedTokens": 9,
+                    "baseCommit": "xxh128:6c7f73437187d38f46dd7ecfe25b75f2",
+                    "beforeChars": 32,
+                    "contentSha256": "sha256:c3383972cb3874769ec2083e1e0ee4a2086f70a00b7f2a18cb97aacafb02f33a",
+                    "decision": "admitted",
+                    "degradationReason": "none",
+                    "deliveredChars": 0,
+                    "deliveryClass": "rendered",
+                    "deliveryStage": "planned",
+                    "dropReason": "none",
+                    "fallbackMode": "none",
+                    "freshnessClass": "current",
+                    "id": "git:meta:branch:main",
+                    "layer": 1,
+                    "overlayDigest": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                    "provider": "git",
+                    "providerStatus": "fresh",
+                    "reason": "within_identity_lane",
+                    "renderedTokens": 0,
+                    "schemaVersion": 2,
+                    "selectedTokens": 8,
+                    "sourceGeneration": "sha256:c9d4c83b21c58eefcd1934c252abad079b63dcecff655830f508a84cd5073563",
+                    "sourceKind": "git_meta",
+                    "sourceRef": "git:branch:main",
+                    "statusProvider": "federation",
+                    "statusScope": "candidate_set",
+                    "traceId": "rc-mem-1a0a06b24a6"
+                  },
+                  {
+                    "admittedChars": 32,
+                    "allottedTokens": 7,
+                    "baseCommit": "xxh128:6c7f73437187d38f46dd7ecfe25b75f2",
+                    "beforeChars": 32,
+                    "contentSha256": "sha256:af8e5ccda08c720ecf8e39d8d476253668092a9674378c7a3e701b8819b45aba",
+                    "decision": "admitted",
+                    "degradationReason": "none",
+                    "deliveredChars": 0,
+                    "deliveryClass": "rendered",
+                    "deliveryStage": "planned",
+                    "dropReason": "none",
+                    "fallbackMode": "none",
+                    "freshnessClass": "current",
+                    "id": "git:meta:head:3dbb0d8bcfe6",
+                    "layer": 1,
+                    "overlayDigest": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                    "provider": "git",
+                    "providerStatus": "fresh",
+                    "reason": "within_identity_lane",
+                    "renderedTokens": 0,
+                    "schemaVersion": 2,
+                    "selectedTokens": 8,
+                    "sourceGeneration": "sha256:c9d4c83b21c58eefcd1934c252abad079b63dcecff655830f508a84cd5073563",
+                    "sourceKind": "git_meta",
+                    "sourceRef": "git:commit:3dbb0d8bcfe6e077e4c3a4146fbf10d1a731157b",
+                    "statusProvider": "federation",
+                    "statusScope": "candidate_set",
+                    "traceId": "rc-mem-1a0a06b24a6"
+                  }
+                ],
+                "repositoryId": "membrane",
+                "scopeId": "membrane",
+                "status": "ok",
+                "sufficiencyEvaluated": false
+              },
+              "kind": "success"
+            },
+            "schemaVersion": 1
+          }
+        },
+        {
+          "elapsedMs": 15014,
+          "httpStatus": 200,
+          "kind": "error",
+          "error": null,
+          "envelope": {
+            "errorVersion": 1,
+            "operation": "pull",
+            "result": {
+              "code": "context_unavailable",
+              "kind": "error",
+              "message": "federation is unavailable",
+              "retryable": false
+            },
+            "schemaVersion": 1
+          }
+        },
+        {
+          "elapsedMs": 15014,
+          "httpStatus": 503,
+          "kind": "rpc-error",
+          "error": {
+            "code": -32000,
+            "message": "mcp deadline exceeded: dispatch did not complete within the admitted deadline"
+          },
+          "envelope": {
+            "error": {
+              "code": -32000,
+              "message": "mcp deadline exceeded: dispatch did not complete within the admitted deadline"
+            },
+            "id": 10,
+            "jsonrpc": "2.0"
+          }
+        },
+        {
+          "elapsedMs": 15014,
+          "httpStatus": 503,
+          "kind": "rpc-error",
+          "error": {
+            "code": -32000,
+            "message": "mcp deadline exceeded: dispatch did not complete within the admitted deadline"
+          },
+          "envelope": {
+            "error": {
+              "code": -32000,
+              "message": "mcp deadline exceeded: dispatch did not complete within the admitted deadline"
+            },
+            "id": 11,
+            "jsonrpc": "2.0"
+          }
+        },
+        {
+          "elapsedMs": 15017,
+          "httpStatus": 200,
+          "kind": "error",
+          "error": null,
+          "envelope": {
+            "errorVersion": 1,
+            "operation": "pull",
+            "result": {
+              "code": "context_unavailable",
+              "kind": "error",
+              "message": "federation is unavailable",
+              "retryable": false
+            },
+            "schemaVersion": 1
+          }
+        },
+        {
+          "elapsedMs": 15017,
+          "httpStatus": 503,
+          "kind": "rpc-error",
+          "error": {
+            "code": -32000,
+            "message": "mcp deadline exceeded: dispatch did not complete within the admitted deadline"
+          },
+          "envelope": {
+            "error": {
+              "code": -32000,
+              "message": "mcp deadline exceeded: dispatch did not complete within the admitted deadline"
+            },
+            "id": 13,
+            "jsonrpc": "2.0"
+          }
+        },
+        {
+          "elapsedMs": 15017,
+          "httpStatus": 503,
+          "kind": "rpc-error",
+          "error": {
+            "code": -32000,
+            "message": "mcp deadline exceeded: dispatch did not complete within the admitted deadline"
+          },
+          "envelope": {
+            "error": {
+              "code": -32000,
+              "message": "mcp deadline exceeded: dispatch did not complete within the admitted deadline"
+            },
+            "id": 14,
+            "jsonrpc": "2.0"
+          }
+        },
+        {
+          "elapsedMs": 18,
+          "httpStatus": 429,
+          "kind": "rpc-error",
+          "error": "pull_lane_saturated",
+          "envelope": {
+            "error": "pull_lane_saturated"
+          }
+        },
+        {
+          "elapsedMs": 18,
+          "httpStatus": 429,
+          "kind": "rpc-error",
+          "error": "pull_lane_saturated",
+          "envelope": {
+            "error": "pull_lane_saturated"
+          }
+        },
+        {
+          "elapsedMs": 18,
+          "httpStatus": 429,
+          "kind": "rpc-error",
+          "error": "pull_lane_saturated",
+          "envelope": {
+            "error": "pull_lane_saturated"
+          }
+        },
+        {
+          "elapsedMs": 19,
+          "httpStatus": 429,
+          "kind": "rpc-error",
+          "error": "pull_lane_saturated",
+          "envelope": {
+            "error": "pull_lane_saturated"
+          }
+        },
+        {
+          "elapsedMs": 19,
+          "httpStatus": 429,
+          "kind": "rpc-error",
+          "error": "pull_lane_saturated",
+          "envelope": {
+            "error": "pull_lane_saturated"
+          }
+        },
+        {
+          "elapsedMs": 19,
+          "httpStatus": 429,
+          "kind": "rpc-error",
+          "error": "pull_lane_saturated",
+          "envelope": {
+            "error": "pull_lane_saturated"
+          }
+        },
+        {
+          "elapsedMs": 18,
+          "httpStatus": 429,
+          "kind": "rpc-error",
+          "error": "pull_lane_saturated",
+          "envelope": {
+            "error": "pull_lane_saturated"
+          }
+        },
+        {
+          "elapsedMs": 18,
+          "httpStatus": 429,
+          "kind": "rpc-error",
+          "error": "pull_lane_saturated",
+          "envelope": {
+            "error": "pull_lane_saturated"
+          }
+        },
+        {
+          "elapsedMs": 17,
+          "httpStatus": 429,
+          "kind": "rpc-error",
+          "error": "pull_lane_saturated",
+          "envelope": {
+            "error": "pull_lane_saturated"
+          }
+        },
+        {
+          "elapsedMs": 18,
+          "httpStatus": 429,
+          "kind": "rpc-error",
+          "error": "pull_lane_saturated",
+          "envelope": {
+            "error": "pull_lane_saturated"
+          }
+        },
+        {
+          "elapsedMs": 18,
+          "httpStatus": 429,
+          "kind": "rpc-error",
+          "error": "pull_lane_saturated",
+          "envelope": {
+            "error": "pull_lane_saturated"
+          }
+        },
+        {
+          "elapsedMs": 19,
+          "httpStatus": 429,
+          "kind": "rpc-error",
+          "error": "pull_lane_saturated",
+          "envelope": {
+            "error": "pull_lane_saturated"
+          }
+        }
+      ],
+      "p50Ms": 19,
+      "p95Ms": 15017,
+      "p99Ms": 15017,
+      "throughputPerSec": 1.3316465809974032
+    },
+    {
+      "name": "push",
+      "concurrency": 1,
+      "requests": [
+        {
+          "elapsedMs": 96,
+          "httpStatus": 200,
+          "kind": "success",
+          "error": null,
+          "envelope": {
+            "errorVersion": 1,
+            "operation": "push",
+            "result": {
+              "data": {
+                "authority": "A2",
+                "contentHash": "sha256:88bf4325d4e5a277324d5f2ecd8923ba543198b2558c98c3afddacc785d57227",
+                "lifecycle": {
+                  "callerAuthority": "untrusted",
+                  "managedBy": "cortex"
+                },
+                "memoryId": "membrane-finish-smoke/agent_push_883b60259399eed92e068ed24803937c",
+                "provenance": {
+                  "callerId": "membrane-finish-smoke",
+                  "repositoryId": "membrane-finish-smoke",
+                  "requestId": "perf-1789397786435-27",
+                  "scopeId": "membrane-finish-smoke",
+                  "source": "cortex_agent_memory_source_v1"
+                },
+                "rawBodyBytes": 67,
+                "schemaVersion": 1,
+                "status": "stored"
+              },
+              "kind": "success"
+            },
+            "schemaVersion": 1
+          }
+        }
+      ],
+      "p50Ms": 96,
+      "p95Ms": 96,
+      "p99Ms": 96,
+      "throughputPerSec": 10.416666666666666
+    },
+    {
+      "name": "push",
+      "concurrency": 5,
+      "requests": [
+        {
+          "elapsedMs": 109,
+          "httpStatus": 200,
+          "kind": "success",
+          "error": null,
+          "envelope": {
+            "errorVersion": 1,
+            "operation": "push",
+            "result": {
+              "data": {
+                "authority": "A2",
+                "contentHash": "sha256:6e637273e01571fe67a445c569e3311808eb1a6b09557e5a8b7f9ed9bb2c00aa",
+                "lifecycle": {
+                  "callerAuthority": "untrusted",
+                  "managedBy": "cortex"
+                },
+                "memoryId": "membrane-finish-smoke/agent_push_cdbec9c7e5911219a37b2e39e37a5cad",
+                "provenance": {
+                  "callerId": "membrane-finish-smoke",
+                  "repositoryId": "membrane-finish-smoke",
+                  "requestId": "perf-1789397786532-28",
+                  "scopeId": "membrane-finish-smoke",
+                  "source": "cortex_agent_memory_source_v1"
+                },
+                "rawBodyBytes": 67,
+                "schemaVersion": 1,
+                "status": "stored"
+              },
+              "kind": "success"
+            },
+            "schemaVersion": 1
+          }
+        },
+        {
+          "elapsedMs": 239,
+          "httpStatus": 200,
+          "kind": "success",
+          "error": null,
+          "envelope": {
+            "errorVersion": 1,
+            "operation": "push",
+            "result": {
+              "data": {
+                "authority": "A2",
+                "contentHash": "sha256:9891154eaacd6871905b7da5b518f93a7ccb14e561f780ba96f3506fc3dba4e4",
+                "lifecycle": {
+                  "callerAuthority": "untrusted",
+                  "managedBy": "cortex"
+                },
+                "memoryId": "membrane-finish-smoke/agent_push_79d2427490be76d23de053eed095feb6",
+                "provenance": {
+                  "callerId": "membrane-finish-smoke",
+                  "repositoryId": "membrane-finish-smoke",
+                  "requestId": "perf-1789397786533-29",
+                  "scopeId": "membrane-finish-smoke",
+                  "source": "cortex_agent_memory_source_v1"
+                },
+                "rawBodyBytes": 67,
+                "schemaVersion": 1,
+                "status": "stored"
+              },
+              "kind": "success"
+            },
+            "schemaVersion": 1
+          }
+        },
+        {
+          "elapsedMs": 388,
+          "httpStatus": 200,
+          "kind": "success",
+          "error": null,
+          "envelope": {
+            "errorVersion": 1,
+            "operation": "push",
+            "result": {
+              "data": {
+                "authority": "A2",
+                "contentHash": "sha256:13cbe7c1492333090a95f540ed38e0b572def951f991f0244b872ce1ed0f5284",
+                "lifecycle": {
+                  "callerAuthority": "untrusted",
+                  "managedBy": "cortex"
+                },
+                "memoryId": "membrane-finish-smoke/agent_push_7e41526e585ca27f63080666f1444b77",
+                "provenance": {
+                  "callerId": "membrane-finish-smoke",
+                  "repositoryId": "membrane-finish-smoke",
+                  "requestId": "perf-1789397786533-30",
+                  "scopeId": "membrane-finish-smoke",
+                  "source": "cortex_agent_memory_source_v1"
+                },
+                "rawBodyBytes": 67,
+                "schemaVersion": 1,
+                "status": "stored"
+              },
+              "kind": "success"
+            },
+            "schemaVersion": 1
+          }
+        },
+        {
+          "elapsedMs": 767,
+          "httpStatus": 200,
+          "kind": "success",
+          "error": null,
+          "envelope": {
+            "errorVersion": 1,
+            "operation": "push",
+            "result": {
+              "data": {
+                "authority": "A2",
+                "contentHash": "sha256:005fcdb502e7faa93732016aeaae6a1d8923f7afe0fa0cca53dcb868a4be1371",
+                "lifecycle": {
+                  "callerAuthority": "untrusted",
+                  "managedBy": "cortex"
+                },
+                "memoryId": "membrane-finish-smoke/agent_push_a70266ff02d32ae49face56edb4d25ef",
+                "provenance": {
+                  "callerId": "membrane-finish-smoke",
+                  "repositoryId": "membrane-finish-smoke",
+                  "requestId": "perf-1789397786533-31",
+                  "scopeId": "membrane-finish-smoke",
+                  "source": "cortex_agent_memory_source_v1"
+                },
+                "rawBodyBytes": 67,
+                "schemaVersion": 1,
+                "status": "stored"
+              },
+              "kind": "success"
+            },
+            "schemaVersion": 1
+          }
+        },
+        {
+          "elapsedMs": 765,
+          "httpStatus": 200,
+          "kind": "error",
+          "error": null,
+          "envelope": {
+            "errorVersion": 1,
+            "operation": "push",
+            "result": {
+              "code": "cortex_storage_unavailable",
+              "kind": "error",
+              "message": "membrane event replay failed: invalid context telemetry event: membrane event outbox acknowledgement conflict",
+              "retryable": true
+            },
+            "schemaVersion": 1
+          }
+        }
+      ],
+      "p50Ms": 388,
+      "p95Ms": 765,
+      "p99Ms": 765,
+      "throughputPerSec": 6.510416666666667
+    },
+    {
+      "name": "push",
+      "concurrency": 20,
+      "requests": [
+        {
+          "elapsedMs": 69,
+          "httpStatus": 200,
+          "kind": "success",
+          "error": null,
+          "envelope": {
+            "errorVersion": 1,
+            "operation": "push",
+            "result": {
+              "data": {
+                "authority": "A2",
+                "contentHash": "sha256:f57eb428ee1ccb814f70c516da20b47564f750d4be497448d5327706b984a6ad",
+                "lifecycle": {
+                  "callerAuthority": "untrusted",
+                  "managedBy": "cortex"
+                },
+                "memoryId": "membrane-finish-smoke/agent_push_2328e58b90bad4b51d401f7067be0e7b",
+                "provenance": {
+                  "callerId": "membrane-finish-smoke",
+                  "repositoryId": "membrane-finish-smoke",
+                  "requestId": "perf-1789397787300-33",
+                  "scopeId": "membrane-finish-smoke",
+                  "source": "cortex_agent_memory_source_v1"
+                },
+                "rawBodyBytes": 67,
+                "schemaVersion": 1,
+                "status": "stored"
+              },
+              "kind": "success"
+            },
+            "schemaVersion": 1
+          }
+        },
+        {
+          "elapsedMs": 147,
+          "httpStatus": 200,
+          "kind": "success",
+          "error": null,
+          "envelope": {
+            "errorVersion": 1,
+            "operation": "push",
+            "result": {
+              "data": {
+                "authority": "A2",
+                "contentHash": "sha256:59003fc4e5ba3c4ad38df66578aa0800b5e8f2a33e3b20b6990123415c7e7694",
+                "lifecycle": {
+                  "callerAuthority": "untrusted",
+                  "managedBy": "cortex"
+                },
+                "memoryId": "membrane-finish-smoke/agent_push_9447d39a75ef42b2db6aad4036267fde",
+                "provenance": {
+                  "callerId": "membrane-finish-smoke",
+                  "repositoryId": "membrane-finish-smoke",
+                  "requestId": "perf-1789397787301-34",
+                  "scopeId": "membrane-finish-smoke",
+                  "source": "cortex_agent_memory_source_v1"
+                },
+                "rawBodyBytes": 67,
+                "schemaVersion": 1,
+                "status": "stored"
+              },
+              "kind": "success"
+            },
+            "schemaVersion": 1
+          }
+        },
+        {
+          "elapsedMs": 253,
+          "httpStatus": 200,
+          "kind": "success",
+          "error": null,
+          "envelope": {
+            "errorVersion": 1,
+            "operation": "push",
+            "result": {
+              "data": {
+                "authority": "A2",
+                "contentHash": "sha256:e3b539d70424f748ceaffaad0b33a7faebebfdd4a5f91161b93a760d0a6b0c20",
+                "lifecycle": {
+                  "callerAuthority": "untrusted",
+                  "managedBy": "cortex"
+                },
+                "memoryId": "membrane-finish-smoke/agent_push_0a5b7bedecaa6b26fa237b3ff0b988be",
+                "provenance": {
+                  "callerId": "membrane-finish-smoke",
+                  "repositoryId": "membrane-finish-smoke",
+                  "requestId": "perf-1789397787301-35",
+                  "scopeId": "membrane-finish-smoke",
+                  "source": "cortex_agent_memory_source_v1"
+                },
+                "rawBodyBytes": 67,
+                "schemaVersion": 1,
+                "status": "stored"
+              },
+              "kind": "success"
+            },
+            "schemaVersion": 1
+          }
+        },
+        {
+          "elapsedMs": 908,
+          "httpStatus": 200,
+          "kind": "success",
+          "error": null,
+          "envelope": {
+            "errorVersion": 1,
+            "operation": "push",
+            "result": {
+              "data": {
+                "authority": "A2",
+                "contentHash": "sha256:d3c8a5158bf244ca75e85922f79ade3d5a34b879fbe9af3e364b98fea265fe4b",
+                "lifecycle": {
+                  "callerAuthority": "untrusted",
+                  "managedBy": "cortex"
+                },
+                "memoryId": "membrane-finish-smoke/agent_push_b9a30669f0f5f150d9f1755036f7b684",
+                "provenance": {
+                  "callerId": "membrane-finish-smoke",
+                  "repositoryId": "membrane-finish-smoke",
+                  "requestId": "perf-1789397787301-36",
+                  "scopeId": "membrane-finish-smoke",
+                  "source": "cortex_agent_memory_source_v1"
+                },
+                "rawBodyBytes": 67,
+                "schemaVersion": 1,
+                "status": "stored"
+              },
+              "kind": "success"
+            },
+            "schemaVersion": 1
+          }
+        },
+        {
+          "elapsedMs": 674,
+          "httpStatus": 200,
+          "kind": "success",
+          "error": null,
+          "envelope": {
+            "errorVersion": 1,
+            "operation": "push",
+            "result": {
+              "data": {
+                "authority": "A2",
+                "contentHash": "sha256:6d8bfeec1f3a81eba7d47a98f4accfbc31930f0d856567aeb5773c1ae6961b7e",
+                "lifecycle": {
+                  "callerAuthority": "untrusted",
+                  "managedBy": "cortex"
+                },
+                "memoryId": "membrane-finish-smoke/agent_push_d7d61b74670a3b45546f575d1fe21d5b",
+                "provenance": {
+                  "callerId": "membrane-finish-smoke",
+                  "repositoryId": "membrane-finish-smoke",
+                  "requestId": "perf-1789397787301-37",
+                  "scopeId": "membrane-finish-smoke",
+                  "source": "cortex_agent_memory_source_v1"
+                },
+                "rawBodyBytes": 67,
+                "schemaVersion": 1,
+                "status": "stored"
+              },
+              "kind": "success"
+            },
+            "schemaVersion": 1
+          }
+        },
+        {
+          "elapsedMs": 329,
+          "httpStatus": 200,
+          "kind": "success",
+          "error": null,
+          "envelope": {
+            "errorVersion": 1,
+            "operation": "push",
+            "result": {
+              "data": {
+                "authority": "A2",
+                "contentHash": "sha256:5c0328b392b326448ba9fef505b7d7de9cd6dfbf72e004a7b653850a8a10537e",
+                "lifecycle": {
+                  "callerAuthority": "untrusted",
+                  "managedBy": "cortex"
+                },
+                "memoryId": "membrane-finish-smoke/agent_push_e9f59a6a3cef785e78e7a810d9b3ca79",
+                "provenance": {
+                  "callerId": "membrane-finish-smoke",
+                  "repositoryId": "membrane-finish-smoke",
+                  "requestId": "perf-1789397787302-38",
+                  "scopeId": "membrane-finish-smoke",
+                  "source": "cortex_agent_memory_source_v1"
+                },
+                "rawBodyBytes": 67,
+                "schemaVersion": 1,
+                "status": "stored"
+              },
+              "kind": "success"
+            },
+            "schemaVersion": 1
+          }
+        },
+        {
+          "elapsedMs": 522,
+          "httpStatus": 200,
+          "kind": "success",
+          "error": null,
+          "envelope": {
+            "errorVersion": 1,
+            "operation": "push",
+            "result": {
+              "data": {
+                "authority": "A2",
+                "contentHash": "sha256:d88082c34228149a595ba29293043cecc76f44604a6158f2b74c6e2101d5a2ab",
+                "lifecycle": {
+                  "callerAuthority": "untrusted",
+                  "managedBy": "cortex"
+                },
+                "memoryId": "membrane-finish-smoke/agent_push_c64615c016e71f1a0375587dbb719463",
+                "provenance": {
+                  "callerId": "membrane-finish-smoke",
+                  "repositoryId": "membrane-finish-smoke",
+                  "requestId": "perf-1789397787302-39",
+                  "scopeId": "membrane-finish-smoke",
+                  "source": "cortex_agent_memory_source_v1"
+                },
+                "rawBodyBytes": 67,
+                "schemaVersion": 1,
+                "status": "stored"
+              },
+              "kind": "success"
+            },
+            "schemaVersion": 1
+          }
+        },
+        {
+          "elapsedMs": 417,
+          "httpStatus": 200,
+          "kind": "success",
+          "error": null,
+          "envelope": {
+            "errorVersion": 1,
+            "operation": "push",
+            "result": {
+              "data": {
+                "authority": "A2",
+                "contentHash": "sha256:124a0b0c7af76f6f21c750b8bd2f5baef97df39b7d14bf8f49f3d7093205325a",
+                "lifecycle": {
+                  "callerAuthority": "untrusted",
+                  "managedBy": "cortex"
+                },
+                "memoryId": "membrane-finish-smoke/agent_push_456a3c9813787b4073800172db12cae2",
+                "provenance": {
+                  "callerId": "membrane-finish-smoke",
+                  "repositoryId": "membrane-finish-smoke",
+                  "requestId": "perf-1789397787302-40",
+                  "scopeId": "membrane-finish-smoke",
+                  "source": "cortex_agent_memory_source_v1"
+                },
+                "rawBodyBytes": 67,
+                "schemaVersion": 1,
+                "status": "stored"
+              },
+              "kind": "success"
+            },
+            "schemaVersion": 1
+          }
+        },
+        {
+          "elapsedMs": 1311,
+          "httpStatus": 200,
+          "kind": "success",
+          "error": null,
+          "envelope": {
+            "errorVersion": 1,
+            "operation": "push",
+            "result": {
+              "data": {
+                "authority": "A2",
+                "contentHash": "sha256:8d1c4ce23cd5d876d3f244101f85b4ab807934c43f35ea2205c7a09e6f30448e",
+                "lifecycle": {
+                  "callerAuthority": "untrusted",
+                  "managedBy": "cortex"
+                },
+                "memoryId": "membrane-finish-smoke/agent_push_21787a573e19fa335ff2aa74ffc9913b",
+                "provenance": {
+                  "callerId": "membrane-finish-smoke",
+                  "repositoryId": "membrane-finish-smoke",
+                  "requestId": "perf-1789397787302-41",
+                  "scopeId": "membrane-finish-smoke",
+                  "source": "cortex_agent_memory_source_v1"
+                },
+                "rawBodyBytes": 67,
+                "schemaVersion": 1,
+                "status": "stored"
+              },
+              "kind": "success"
+            },
+            "schemaVersion": 1
+          }
+        },
+        {
+          "elapsedMs": 1455,
+          "httpStatus": 200,
+          "kind": "success",
+          "error": null,
+          "envelope": {
+            "errorVersion": 1,
+            "operation": "push",
+            "result": {
+              "data": {
+                "authority": "A2",
+                "contentHash": "sha256:f9f7d2994b88b61ba7cccbc4f117d07181420871da2876c3e8e3dea473a0c818",
+                "lifecycle": {
+                  "callerAuthority": "untrusted",
+                  "managedBy": "cortex"
+                },
+                "memoryId": "membrane-finish-smoke/agent_push_6b62a68d1d72476aaba2ccd19ac660b8",
+                "provenance": {
+                  "callerId": "membrane-finish-smoke",
+                  "repositoryId": "membrane-finish-smoke",
+                  "requestId": "perf-1789397787302-42",
+                  "scopeId": "membrane-finish-smoke",
+                  "source": "cortex_agent_memory_source_v1"
+                },
+                "rawBodyBytes": 67,
+                "schemaVersion": 1,
+                "status": "stored"
+              },
+              "kind": "success"
+            },
+            "schemaVersion": 1
+          }
+        },
+        {
+          "elapsedMs": 754,
+          "httpStatus": 200,
+          "kind": "success",
+          "error": null,
+          "envelope": {
+            "errorVersion": 1,
+            "operation": "push",
+            "result": {
+              "data": {
+                "authority": "A2",
+                "contentHash": "sha256:d833310b7748f83689d36786e247684bacffca2f6dcc3b2198325e0261f03c23",
+                "lifecycle": {
+                  "callerAuthority": "untrusted",
+                  "managedBy": "cortex"
+                },
+                "memoryId": "membrane-finish-smoke/agent_push_f563a8fa0678ae0043d82f2d9ed876f6",
+                "provenance": {
+                  "callerId": "membrane-finish-smoke",
+                  "repositoryId": "membrane-finish-smoke",
+                  "requestId": "perf-1789397787302-43",
+                  "scopeId": "membrane-finish-smoke",
+                  "source": "cortex_agent_memory_source_v1"
+                },
+                "rawBodyBytes": 67,
+                "schemaVersion": 1,
+                "status": "stored"
+              },
+              "kind": "success"
+            },
+            "schemaVersion": 1
+          }
+        },
+        {
+          "elapsedMs": 1028,
+          "httpStatus": 200,
+          "kind": "success",
+          "error": null,
+          "envelope": {
+            "errorVersion": 1,
+            "operation": "push",
+            "result": {
+              "data": {
+                "authority": "A2",
+                "contentHash": "sha256:42d7d5d099ee42409e24c74a25bedb0a43b2c7d1fdbe4ed942d5ba0365fa449b",
+                "lifecycle": {
+                  "callerAuthority": "untrusted",
+                  "managedBy": "cortex"
+                },
+                "memoryId": "membrane-finish-smoke/agent_push_fdcf21456e824aa938950cd7802afd80",
+                "provenance": {
+                  "callerId": "membrane-finish-smoke",
+                  "repositoryId": "membrane-finish-smoke",
+                  "requestId": "perf-1789397787303-44",
+                  "scopeId": "membrane-finish-smoke",
+                  "source": "cortex_agent_memory_source_v1"
+                },
+                "rawBodyBytes": 67,
+                "schemaVersion": 1,
+                "status": "stored"
+              },
+              "kind": "success"
+            },
+            "schemaVersion": 1
+          }
+        },
+        {
+          "elapsedMs": 1120,
+          "httpStatus": 200,
+          "kind": "success",
+          "error": null,
+          "envelope": {
+            "errorVersion": 1,
+            "operation": "push",
+            "result": {
+              "data": {
+                "authority": "A2",
+                "contentHash": "sha256:0aa7b0e65a5018f8d1c5398be335baaff86b843596b1534ab49a56030c19cceb",
+                "lifecycle": {
+                  "callerAuthority": "untrusted",
+                  "managedBy": "cortex"
+                },
+                "memoryId": "membrane-finish-smoke/agent_push_c53ed74acea6abd2be53b0dd551e6ad9",
+                "provenance": {
+                  "callerId": "membrane-finish-smoke",
+                  "repositoryId": "membrane-finish-smoke",
+                  "requestId": "perf-1789397787303-45",
+                  "scopeId": "membrane-finish-smoke",
+                  "source": "cortex_agent_memory_source_v1"
+                },
+                "rawBodyBytes": 67,
+                "schemaVersion": 1,
+                "status": "stored"
+              },
+              "kind": "success"
+            },
+            "schemaVersion": 1
+          }
+        },
+        {
+          "elapsedMs": 1218,
+          "httpStatus": 200,
+          "kind": "success",
+          "error": null,
+          "envelope": {
+            "errorVersion": 1,
+            "operation": "push",
+            "result": {
+              "data": {
+                "authority": "A2",
+                "contentHash": "sha256:f5be1a5a20815d5064a2cd869dfbd60c018d91751250e004e6dca0c55d1efb1d",
+                "lifecycle": {
+                  "callerAuthority": "untrusted",
+                  "managedBy": "cortex"
+                },
+                "memoryId": "membrane-finish-smoke/agent_push_802160164142352bef8ed75ac1b54f96",
+                "provenance": {
+                  "callerId": "membrane-finish-smoke",
+                  "repositoryId": "membrane-finish-smoke",
+                  "requestId": "perf-1789397787303-46",
+                  "scopeId": "membrane-finish-smoke",
+                  "source": "cortex_agent_memory_source_v1"
+                },
+                "rawBodyBytes": 67,
+                "schemaVersion": 1,
+                "status": "stored"
+              },
+              "kind": "success"
+            },
+            "schemaVersion": 1
+          }
+        },
+        {
+          "elapsedMs": 1582,
+          "httpStatus": 200,
+          "kind": "success",
+          "error": null,
+          "envelope": {
+            "errorVersion": 1,
+            "operation": "push",
+            "result": {
+              "data": {
+                "authority": "A2",
+                "contentHash": "sha256:83932da32b2d78e4fe064c84a1deced5b93bd6034b421640c3c18f3dbb52c8e8",
+                "lifecycle": {
+                  "callerAuthority": "untrusted",
+                  "managedBy": "cortex"
+                },
+                "memoryId": "membrane-finish-smoke/agent_push_c98c45816d363d502ec5a818aca8bfa4",
+                "provenance": {
+                  "callerId": "membrane-finish-smoke",
+                  "repositoryId": "membrane-finish-smoke",
+                  "requestId": "perf-1789397787303-47",
+                  "scopeId": "membrane-finish-smoke",
+                  "source": "cortex_agent_memory_source_v1"
+                },
+                "rawBodyBytes": 67,
+                "schemaVersion": 1,
+                "status": "stored"
+              },
+              "kind": "success"
+            },
+            "schemaVersion": 1
+          }
+        },
+        {
+          "elapsedMs": 1668,
+          "httpStatus": 200,
+          "kind": "success",
+          "error": null,
+          "envelope": {
+            "errorVersion": 1,
+            "operation": "push",
+            "result": {
+              "data": {
+                "authority": "A2",
+                "contentHash": "sha256:c5839c19e1851852c4143125065ffe310045724da54c92a92ff17a31848f2364",
+                "lifecycle": {
+                  "callerAuthority": "untrusted",
+                  "managedBy": "cortex"
+                },
+                "memoryId": "membrane-finish-smoke/agent_push_34d5af1e08786afa6d6e1058b854088a",
+                "provenance": {
+                  "callerId": "membrane-finish-smoke",
+                  "repositoryId": "membrane-finish-smoke",
+                  "requestId": "perf-1789397787303-48",
+                  "scopeId": "membrane-finish-smoke",
+                  "source": "cortex_agent_memory_source_v1"
+                },
+                "rawBodyBytes": 67,
+                "schemaVersion": 1,
+                "status": "stored"
+              },
+              "kind": "success"
+            },
+            "schemaVersion": 1
+          }
+        },
+        {
+          "elapsedMs": 10,
+          "httpStatus": 429,
+          "kind": "rpc-error",
+          "error": "mcp_lane_saturated",
+          "envelope": {
+            "error": "mcp_lane_saturated"
+          }
+        },
+        {
+          "elapsedMs": 11,
+          "httpStatus": 429,
+          "kind": "rpc-error",
+          "error": "mcp_lane_saturated",
+          "envelope": {
+            "error": "mcp_lane_saturated"
+          }
+        },
+        {
+          "elapsedMs": 11,
+          "httpStatus": 429,
+          "kind": "rpc-error",
+          "error": "mcp_lane_saturated",
+          "envelope": {
+            "error": "mcp_lane_saturated"
+          }
+        },
+        {
+          "elapsedMs": 11,
+          "httpStatus": 429,
+          "kind": "rpc-error",
+          "error": "mcp_lane_saturated",
+          "envelope": {
+            "error": "mcp_lane_saturated"
+          }
+        }
+      ],
+      "p50Ms": 522,
+      "p95Ms": 1582,
+      "p99Ms": 1582,
+      "throughputPerSec": 11.968880909634949
+    }
+  ],
+  "identity": {
+    "cortexStoreId": "sha256:038c42b7457f5a69e4f841209a3dc68ba40a14fe17fce8b1d6583570d15c8942",
+    "installationId": "610af348-f3ee-45f0-a8c8-9664953cd737",
+    "ok": true,
+    "releaseGeneration": "sha256:041bb8df2612c05f0df12bbf2281ea6622a87e115e099e5001ed5d16dc1c0539",
+    "runtimeOrigin": "installed",
+    "serviceGeneration": "sha256:a6da06765626cfdf7736ce8dd42b9e1def67d191ba64453fdd25f0dd36bab807",
+    "stableInstallRoot": "C:\\Users\\adrds\\AppData\\Local\\Orthic Labs\\Membrane\\current",
+    "startupGeneration": 406,
+    "workers": {
+      "detachedRunning": 0,
+      "diagnostics": {
+        "available": 1,
+        "max": 1
+      },
+      "general": {
+        "available": 32,
+        "max": 32
+      },
+      "ingress": {
+        "available": 32,
+        "max": 32
+      },
+      "model": {
+        "available": 8,
+        "executionAvailable": 1,
+        "executionMax": 1,
+        "max": 8
+      },
+      "overloadRejections": {
+        "diagnostics": 0,
+        "general": 0,
+        "ingress": 0,
+        "model": 0,
+        "total": 0
+      }
+    }
+  },
+  "finishedAt": "2026-09-14T14:56:31.185Z"
+}

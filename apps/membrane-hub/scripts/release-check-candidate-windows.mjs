@@ -19,7 +19,7 @@ if (!/^[0-9a-f]{40}$/.test(candidate.sourceCommit)) throw new Error("candidate s
 if (!/^\d+$/.test(candidate.github?.runId ?? "") || !/^\d+$/.test(candidate.github?.runAttempt ?? "")) throw new Error("candidate GitHub run identity is invalid");
 if (!new RegExp(`^membrane-[0-9A-Za-z.+-]+-windows-x86_64-${signingStatus ?? "(?:signed|unsigned)"}\\.zip$`).test(candidate.archive?.name)) throw new Error("candidate archive name is invalid");
 if (!candidate.startedAt || Number.isNaN(Date.parse(candidate.startedAt))) throw new Error("candidate start time is invalid");
-for (const name of ["membrane-hub.exe", "cortex.exe", "membrane.exe", "membrane-tray.exe", "membrane-daemon.exe"]) {
+for (const name of ["membrane-hub.exe", "cortex.exe", "membrane.exe", "membrane-client.exe", "membrane-tray.exe", "membrane-daemon.exe"]) {
   if (!candidate.files?.[name]) throw new Error(`candidate executable closure missing: ${name}`);
 }
 for (const name of Object.keys(candidate.files ?? {})) {
@@ -75,7 +75,8 @@ try {
   const actual = Object.fromEntries(walk(extracted).map((path) => [relative(extracted, path).replaceAll("\\", "/"), createHash("sha256").update(readFileSync(path)).digest("hex")]));
   if (JSON.stringify(actual) !== JSON.stringify(candidate.files)) throw new Error("candidate file closure mismatch");
   if (existsSync(join(extracted, "mcp")) || existsSync(join(extracted, "runtime", "blueprint"))) throw new Error("candidate archive includes retired runtime tree");
-  const hookAuthority = spawnSync(join(extracted, "membrane.exe"), ["hook", "--help"], { cwd: extracted, encoding: "utf8", windowsHide: true, timeout: 3_000 });
+  // `hook` is served by the transport client; the engine binary rejects it.
+  const hookAuthority = spawnSync(join(extracted, "membrane-client.exe"), ["hook", "--help"], { cwd: extracted, encoding: "utf8", windowsHide: true, timeout: 3_000 });
   if (hookAuthority.error || hookAuthority.status !== 0) throw new Error("candidate native hook authority unavailable");
 } finally {
   rmSync(extracted, { recursive: true, force: true });

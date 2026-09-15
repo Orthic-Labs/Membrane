@@ -15,17 +15,20 @@ const hub = read("engine/crates/membrane-protocol/src/hub.rs");
 const product = read("docs/product/README.md");
 
 test("quickstart matches canonical native MCP entrypoint", () => {
-  assert.equal(mcp.mcpServers.membrane.command, "membrane");
-  assert.deepEqual(mcp.mcpServers.membrane.args, ["stdio-mcp"]);
-  assert.match(doc, /"command": "membrane"/);
-  assert.match(doc, /"args": \["stdio-mcp"\]/);
+  assert.equal(mcp.mcpServers.membrane.type, "streamable-http");
+  assert.equal(mcp.mcpServers.membrane.url, "http://127.0.0.1:47851/mcp");
+  assert.equal(mcp.mcpServers.membrane.headers?.Authorization, "Bearer ${MEMBRANE_BEARER_TOKEN}");
+  assert.match(doc, /"type": "streamable-http"/);
+  assert.match(doc, /"url": "http:\/\/127\.0\.0\.1:47851\/mcp"/);
+  assert.match(doc, /Bearer \$\{MEMBRANE_BEARER_TOKEN\}/);
   assert.doesNotMatch(doc, /node mcp\/server\.mjs/);
 });
 
 test("Claude projection is installed-path bound & ships hooks", () => {
   const server = claudePlugin.mcpServers?.membrane;
-  assert.equal(server?.command, "${CLAUDE_PLUGIN_ROOT}/membrane.exe");
-  assert.deepEqual(server?.args, ["stdio-mcp"]);
+  assert.equal(server?.type, "http");
+  assert.equal(server?.url, "http://127.0.0.1:47851/mcp");
+  assert.equal(server?.headers?.Authorization, "Bearer ${MEMBRANE_BEARER_TOKEN}");
   const hookEvents = ["SessionStart", "UserPromptSubmit", "PreCompact", "PostCompact", "PreToolUse", "PostToolUse", "PostToolUseFailure", "Stop", "TaskCompleted", "SessionEnd"];
   for (const event of hookEvents) {
     const hooks = claudePlugin.hooks?.[event];
@@ -33,7 +36,7 @@ test("Claude projection is installed-path bound & ships hooks", () => {
     const command = hooks[0].hooks?.[0]?.command;
     assert.equal(
       command,
-      '"${CLAUDE_PLUGIN_ROOT}/membrane.exe" hook',
+      '"${CLAUDE_PLUGIN_ROOT}/membrane-client.exe" hook',
       event,
     );
     assert.doesNotMatch(command, /D:[\\/]Claude|node(?:\.exe)?|node_modules|\.mjs|(?:^|[\\/])(?:dist|target)(?:[\\/]|$)|python(?:\.exe)?/i);

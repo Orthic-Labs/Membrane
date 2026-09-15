@@ -95,6 +95,15 @@ impl NativeSourceBindings {
         Self::with_store_and_deadline_mode(repository_root, scope_grant_id, store, None, true)
     }
 
+    pub(crate) fn with_ambient_store_and_deadline(
+        repository_root: &Path,
+        scope_grant_id: Option<&str>,
+        store: crate::MemoryStore,
+        deadline: membrane_federation::deadline::Deadline,
+    ) -> Result<Self, String> {
+        Self::with_store_and_deadline_mode(repository_root, scope_grant_id, store, Some(deadline), true)
+    }
+
     pub(crate) fn with_store_and_deadline(
         _repository_root: &Path,
         scope_grant_id: Option<&str>,
@@ -233,10 +242,11 @@ impl MemoryCandidateSource for RuntimeMemorySource {
                 )
             }
             .map_err(membrane_provider_sdk::ProviderError::Unavailable)?;
-            let generation = query
-                .generation
-                .clone()
-                .unwrap_or_else(|| "runtime-memory".to_owned());
+            let generation = query.generation.clone().ok_or_else(|| {
+                membrane_provider_sdk::ProviderError::Uninitialized(
+                    "Cortex generation binding is unavailable".to_owned(),
+                )
+            })?;
             let values = payload
                 .get("candidates")
                 .and_then(serde_json::Value::as_array)
@@ -352,6 +362,26 @@ impl SkillCatalogSource for RuntimeSkillsSource {
     }
 }
 
+async fn owner_work_permit(deadline: Option<membrane_federation::deadline::Deadline>)
+    -> Result<tokio::sync::OwnedSemaphorePermit, membrane_provider_sdk::ProviderError> {
+    check_owner_deadline(deadline)?;
+    let acquire = super::native_federation::provider_capacity().acquire_owned();
+    let permit = match deadline {
+        Some(deadline) => tokio::time::timeout_at(deadline.instant().into(), acquire).await
+            .map_err(|_| membrane_provider_sdk::ProviderError::DeadlineExceeded)?,
+        None => acquire.await,
+    };
+    permit.map_err(|_| membrane_provider_sdk::ProviderError::Unavailable("provider capacity closed".into()))
+}
+
+fn check_owner_deadline(deadline: Option<membrane_federation::deadline::Deadline>)
+    -> Result<(), membrane_provider_sdk::ProviderError> {
+    if deadline.is_some_and(|deadline| deadline.is_exhausted_at(std::time::Instant::now())) {
+        return Err(membrane_provider_sdk::ProviderError::DeadlineExceeded);
+    }
+    Ok(())
+}
+
 #[derive(Clone)]
 struct RuntimeFreshnessSource {
     store: crate::MemoryStore,
@@ -424,7 +454,10 @@ impl FreshnessSource for RuntimeFreshnessSource {
         let persisted_freshness = self.persisted_freshness;
         let query = query.clone();
         Box::pin(async move {
+            let permit = owner_work_permit(deadline).await?;
             tokio::task::spawn_blocking(move || {
+                let _permit = permit;
+                check_owner_deadline(deadline)?;
                 if persisted_freshness {
                     return persisted_blueprint_freshness(&blueprint, &query)
                         .map_err(membrane_provider_sdk::ProviderError::Unavailable);
@@ -487,7 +520,10 @@ impl ScopeGrantSource for RuntimeScopeGrantSource {
         let grant_id = self.grant_id.clone();
         let query = query.clone();
         Box::pin(async move {
+            let permit = owner_work_permit(deadline).await?;
             tokio::task::spawn_blocking(move || {
+                let _permit = permit;
+                check_owner_deadline(deadline)?;
                 let Some(id) = grant_id else {
                     return Err(membrane_provider_sdk::ProviderError::Unavailable(
                         "scope_grant_missing".into(),

@@ -39,7 +39,7 @@ pub use dream::{
 };
 pub use effectiveness::{EffectivenessGate, MemoryUsageRecord, Outcome};
 #[cfg(feature = "fastembed")]
-pub use embed::FastEmbedder;
+pub use embed::{FastEmbedder, LazyFastEmbedder};
 pub use embed::{cosine, Embedder, HashEmbedder, EMBEDDING_MAX_SEQUENCE_TOKENS};
 pub use eval_gate::{EvalGateConfig, MemoryRetrievalEvalGate};
 pub use fingerprint::PipelineFingerprint;

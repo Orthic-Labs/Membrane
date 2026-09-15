@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { existsSync, readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
+import { dirname, join } from "node:path";
 import * as psh from "./psh-windows.mjs";
 
 const EXPECTED_IDS = Array.from({ length: 29 }, (_, i) => `PSH_${String(i + 1).padStart(3, "0")}`);
@@ -145,7 +146,9 @@ test("installed native Push rows use row-specific assertions & fail closed when 
   // Missing Push tools are an installed-runtime failure, never an
   // insufficient/source-only outcome. PSH-005 is first-row representative
   // for this surface contract & keeps this negative control bounded.
-  const listed = spawnSync(cliPath, ["stdio-mcp"], {
+  // stdio-mcp is served by the co-installed transport client, never by the
+  // engine binary itself.
+  const listed = spawnSync(join(dirname(cliPath), "membrane-client.exe"), ["stdio-mcp"], {
     encoding: "utf8",
     windowsHide: true,
     timeout: 15_000,

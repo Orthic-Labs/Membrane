@@ -1,7 +1,7 @@
 #![cfg_attr(windows, windows_subsystem = "windows")]
 
-//! Console-free Windows entrypoint for Task Scheduler. The scheduler owns this final process
-//! directly; no shell wrapper or visible console host sits between it and the resident service.
+//! Console-free Windows entrypoint for the installed resident service. No shell wrapper or
+//! visible console host sits between its lifecycle owner and the resident service.
 
 use serde::Deserialize;
 use std::fs::{File, OpenOptions};
@@ -9,11 +9,12 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, Mutex, OnceLock, RwLock};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use membrane_blueprint::{BlueprintRequest, CancellationToken, NativeService, Operation, ServiceStatus};
 
 const LIFECYCLE_READY_WAIT: std::time::Duration = std::time::Duration::from_secs(30);
+const RESIDENT_SUPERVISOR_STOP_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Ephemeral capability received from Membrane lifecycle channel.
 /// It is copied into process memory at startup, never persisted.
@@ -23,6 +24,7 @@ pub struct LifecycleControl {
     admission_open: Arc<AtomicBool>,
     background_authority: Arc<AtomicBool>,
     shutdown_requested: Arc<AtomicBool>,
+    shutdown_cancellation: tokio_util::sync::CancellationToken,
     ready: Arc<(Mutex<Option<u16>>, Condvar)>,
     command: Arc<Mutex<Option<String>>>,
     failure: Arc<Mutex<Option<String>>>,
@@ -35,6 +37,7 @@ impl Default for LifecycleControl {
             admission_open: Arc::new(AtomicBool::new(true)),
             background_authority: Arc::new(AtomicBool::new(false)),
             shutdown_requested: Arc::new(AtomicBool::new(false)),
+            shutdown_cancellation: tokio_util::sync::CancellationToken::new(),
             ready: Arc::new((Mutex::new(None), Condvar::new())),
             command: Arc::new(Mutex::new(None)),
             failure: Arc::new(Mutex::new(None)),
@@ -86,6 +89,11 @@ impl LifecycleControl {
         self.shutdown_requested.load(Ordering::Acquire)
     }
 
+    /// Descendant work observes engine drain without owning engine lifetime.
+    pub(crate) fn cancellation_token(&self) -> tokio_util::sync::CancellationToken {
+        self.shutdown_cancellation.child_token()
+    }
+
     /// Background work is independently authorized from engine admission.
     /// Losing the final holder drains this flag while preserving explicit
     /// request availability on the resident engine.
@@ -124,6 +132,7 @@ impl LifecycleControl {
         let first_drain = !self
             .shutdown_requested
             .swap(true, Ordering::AcqRel);
+        self.shutdown_cancellation.cancel();
         if first_drain {
             let reason = self
                 .command()
@@ -204,6 +213,19 @@ struct ResidentBlueprintState {
     enrolled_repo_count: u64,
     registry_error: Option<String>,
     cancellation: CancellationToken,
+    /// What the supervisor thread is currently doing. Stop timeouts name this
+    /// stage so a drain timeout is attributable without a live debugger.
+    supervisor_stage: Arc<Mutex<String>>,
+}
+
+fn set_supervisor_stage(stage: &Arc<Mutex<String>>, value: &str) {
+    if let Ok(mut current) = stage.lock() {
+        *current = value.to_owned();
+    }
+}
+
+fn supervisor_stage(stage: &Arc<Mutex<String>>) -> String {
+    stage.lock().map(|current| current.clone()).unwrap_or_else(|_| "unknown".to_owned())
 }
 
 struct ResidentBlueprint {
@@ -223,7 +245,7 @@ pub fn start_resident_blueprint() -> Result<(), String> {
     let mut current = slot
         .lock()
         .map_err(|_| "resident Blueprint state unavailable".to_string())?;
-    if let Some(existing) = current.take() {
+    if let Some(existing) = current.as_mut() {
         let running = existing
             .state
             .lock()
@@ -231,22 +253,25 @@ pub fn start_resident_blueprint() -> Result<(), String> {
                 && state.repos.iter().all(|repo| repo.service.status() == ServiceStatus::Running))
             .unwrap_or(false);
         if running {
-            *current = Some(existing);
             return Ok(());
         }
-        // A failed supervisor leaves a terminal service object behind. Drop
-        // it before rebuilding so the next start owns a live watcher.
-        drop(existing);
+        // A failed supervisor leaves a terminal service object behind. Stop it
+        // while the singleton slot is still occupied; never detach a worker
+        // that may still own writable repository services.
+        existing.stop_bounded(RESIDENT_SUPERVISOR_STOP_TIMEOUT)?;
     }
+    current.take();
     let registry = crate::authorization::load_installation_registry().map_err(|error| error.to_string())?;
     let roots = enrolled_roots(&registry)?;
     let cancellation = CancellationToken::new();
+    let supervisor_stage = Arc::new(Mutex::new(String::from("startup")));
     let enrolled_repo_count = roots.len() as u64;
     let state = Arc::new(Mutex::new(ResidentBlueprintState {
         enrolled_repo_count,
         repos: Vec::new(),
         registry_error: None,
         cancellation,
+        supervisor_stage: Arc::clone(&supervisor_stage),
     }));
     let lifecycle = lifecycle_control();
     let supervised = Arc::clone(&state);
@@ -257,15 +282,19 @@ pub fn start_resident_blueprint() -> Result<(), String> {
             eprintln!("{}", serde_json::json!({"event":"resident_blueprint_initialization", "stage":"started", "enrolledRepoCount": enrolled_repo_count}));
             while !supervisor_lifecycle.shutdown_requested() {
                 if supervisor_lifecycle.background_authority_open() {
+                    set_supervisor_stage(&supervisor_stage, "supervise");
                     if !supervise_resident_repositories(&supervised) {
                         break;
                     }
-                    reconcile_resident_repositories(&supervised);
+                    set_supervisor_stage(&supervisor_stage, "reconcile");
+                    reconcile_resident_repositories(&supervised, &supervisor_stage);
                 } else {
                     // Holder loss drains automatic repository work while the
                     // engine/listener remains available for explicit calls.
+                    set_supervisor_stage(&supervisor_stage, "holder_drain");
                     drain_resident_repositories(&supervised);
                 }
+                set_supervisor_stage(&supervisor_stage, "idle");
                 std::thread::sleep(Duration::from_millis(250));
             }
             eprintln!("{}", serde_json::json!({"event":"resident_blueprint_initialization", "stage":"stopped"}));
@@ -379,7 +408,7 @@ fn supervise_resident_repositories(state: &Arc<Mutex<ResidentBlueprintState>>) -
     status
 }
 
-fn reconcile_resident_repositories(state: &Arc<Mutex<ResidentBlueprintState>>) {
+fn reconcile_resident_repositories(state: &Arc<Mutex<ResidentBlueprintState>>, supervisor_stage: &Arc<Mutex<String>>) {
     let registry = match crate::authorization::load_installation_registry() {
         Ok(registry) => registry,
         Err(error) => {
@@ -407,27 +436,35 @@ fn reconcile_resident_repositories(state: &Arc<Mutex<ResidentBlueprintState>>) {
         drop(removed);
         (state.repos.iter().map(|repo| repo.root.clone()).collect::<std::collections::BTreeSet<_>>(), state.cancellation.clone())
     };
-    let mut additions = Vec::new();
     let mut build_errors = Vec::new();
     for root in roots {
+        if cancellation.is_cancelled() { break; }
         let key = root.to_string_lossy().into_owned();
         if existing.contains(&key) { continue; }
+        set_supervisor_stage(supervisor_stage, &format!("build:{key}"));
         match build_resident_repo(&root, &cancellation) {
-            Ok(repo) => additions.push(repo),
+            Ok(repo) => {
+                // Publish each completed root immediately. A large enrolled
+                // repository must not hide smaller completed roots from
+                // health or watcher identity until the whole batch finishes.
+                if cancellation.is_cancelled() {
+                    let _ = repo.service.drain();
+                } else if let Ok(mut state) = state.lock() {
+                    if desired.contains(&repo.root)
+                        && !state.repos.iter().any(|current| current.root == repo.root)
+                    {
+                        state.repos.push(repo);
+                    }
+                }
+            }
             Err(error) => build_errors.push(error),
         }
     }
     if let Ok(mut state) = state.lock() {
-        let added_count = additions.len();
-        for repo in additions {
-            if desired.contains(&repo.root) && !state.repos.iter().any(|current| current.root == repo.root) {
-                state.repos.push(repo);
-            }
-        }
         state.registry_error = build_errors.into_iter().next();
         if let Some(error) = &state.registry_error {
             eprintln!("{}", serde_json::json!({"event":"resident_blueprint_initialization", "stage":"failed", "error": error}));
-        } else if added_count > 0 {
+        } else if !state.repos.is_empty() {
             eprintln!("{}", serde_json::json!({"event":"resident_blueprint_initialization", "stage":"completed", "repoCount": state.repos.len()}));
         }
     }
@@ -451,25 +488,69 @@ fn stop_resident_blueprint() -> Result<(), String> {
     let Some(slot) = RESIDENT_BLUEPRINT.get() else {
         return Ok(());
     };
-    let resident = slot
+    let mut current = slot
         .lock()
-        .map_err(|_| "resident Blueprint state unavailable".to_string())?
-        .take();
-    if let Some(resident) = resident {
-        drop(resident);
+        .map_err(|_| "resident Blueprint state unavailable".to_string())?;
+    if let Some(resident) = current.as_mut() {
+        // Keep singleton ownership in the slot until supervisor termination is
+        // observed. A timeout is surfaced to the caller; no writable worker is
+        // silently detached or allowed to outlive its owner.
+        resident.stop_bounded(RESIDENT_SUPERVISOR_STOP_TIMEOUT)?;
     }
+    current.take();
     Ok(())
 }
 
 impl Drop for ResidentBlueprint {
     fn drop(&mut self) {
+        // Normal teardown goes through stop_bounded while this value remains
+        // in RESIDENT_BLUEPRINT. Keep Drop defensive and bounded for failed
+        // startup/replacement paths; it must never block process teardown
+        // forever.
+        let _ = self.stop_bounded(RESIDENT_SUPERVISOR_STOP_TIMEOUT);
+    }
+}
+
+impl ResidentBlueprint {
+    fn stop_bounded(&mut self, timeout: Duration) -> Result<(), String> {
         self.state.lock().ok().map(|state| state.cancellation.cancel());
         self.lifecycle.request_drain(Some("resident_runtime_exit"));
+        if let Some(supervisor) = self.supervisor.as_ref() {
+            if !wait_for_thread_exit(supervisor, timeout) {
+                let stage = match self.state.lock() {
+                    Ok(state) => supervisor_stage(&state.supervisor_stage),
+                    Err(_) => "state_unavailable".to_owned(),
+                };
+                eprintln!(
+                    "{}",
+                    serde_json::json!({
+                        "event": "resident_blueprint_supervisor_stop_timeout",
+                        "stage": stage,
+                        "timeoutMs": timeout.as_millis() as u64,
+                    })
+                );
+                return Err(format!(
+                    "resident Blueprint supervisor drain timeout; singleton retained (supervisor stage at timeout: {stage})"
+                ));
+            }
+        }
         if let Some(supervisor) = self.supervisor.take() {
-            let _ = supervisor.join();
+            supervisor.join().map_err(|_| "resident Blueprint supervisor panicked while draining".to_string())?;
         }
         drain_resident_repositories(&self.state);
+        Ok(())
     }
+}
+
+fn wait_for_thread_exit(thread: &std::thread::JoinHandle<()>, timeout: Duration) -> bool {
+    let deadline = std::time::Instant::now() + timeout;
+    while !thread.is_finished() {
+        if std::time::Instant::now() >= deadline {
+            return false;
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    true
 }
 
 /// Actual resident watcher state for health and Hub composition.
@@ -842,7 +923,25 @@ fn runtime_from_exe_at_workspace(
     })
 }
 
+static RESIDENT_STORE: OnceLock<crate::MemoryStore> = OnceLock::new();
+
+pub(crate) fn install_resident_store(store: crate::MemoryStore) -> Result<(), String> {
+    RESIDENT_STORE.set(store).map_err(|_| "resident Cortex store already owned".to_owned())
+}
+
+pub(crate) fn resident_store() -> Option<crate::MemoryStore> { RESIDENT_STORE.get().cloned() }
+
+pub(crate) fn resident_store_for_db(path: &Path) -> Option<crate::MemoryStore> {
+    let store = resident_store()?;
+    let exe = std::env::current_exe().ok()?;
+    let runtime = runtime_from_installed_exe(&exe).ok()?;
+    let requested = std::fs::canonicalize(path).ok()?;
+    let installed = std::fs::canonicalize(runtime.db).ok()?;
+    if requested == installed { Some(store) } else { None }
+}
+
 pub(crate) fn open_installed_store() -> Result<crate::MemoryStore, String> {
+    if let Some(store) = resident_store() { return Ok(store); }
     let exe = std::env::current_exe().map_err(|error| error.to_string())?;
     let runtime = runtime_from_installed_exe(&exe)?;
     if let Some(parent) = runtime.db.parent() {
@@ -869,6 +968,7 @@ pub(crate) fn emit_lifecycle(event: &str, reason: Option<&str>) {
 /// Foreground hook owner. Opens persisted Cortex rows without loading the
 /// optional embedding runtime; callers use its lexical read-only arm.
 pub(crate) fn open_installed_lexical_store() -> Result<crate::MemoryStore, String> {
+    if let Some(store) = resident_store() { return Ok(store); }
     let exe = std::env::current_exe().map_err(|error| error.to_string())?;
     let runtime = runtime_from_installed_exe(&exe)?;
     // Hook startup is a read-only bounded path.  In particular, do not create
@@ -1086,11 +1186,80 @@ pub fn run_hub_runtime(workspace_root: &Path, lifecycle: LifecycleControl) -> Re
     run_runtime(runtime)
 }
 
+// Installed ownership lasts until OS process exit, including any blocking
+// tasks left behind by Tokio shutdown_timeout. Never unlock beneath a writer.
+static INSTALLED_ENGINE_OWNER: OnceLock<EngineOwner> = OnceLock::new();
+
+struct ShutdownDeadline {
+    done: std::sync::mpsc::Sender<()>,
+    thread: Option<std::thread::JoinHandle<()>>,
+}
+
+impl ShutdownDeadline {
+    fn start(lifecycle: LifecycleControl) -> Result<Self, String> {
+        let (done, receiver) = std::sync::mpsc::channel();
+        let thread = std::thread::Builder::new().name("membrane-shutdown-deadline".into())
+            .spawn(move || watch_shutdown_deadline(lifecycle, receiver, Duration::from_secs(15), || {
+                emit_lifecycle("engine_shutdown_timeout", Some("complete_teardown_deadline_exceeded"));
+                // Only installed standalone engine uses this watchdog. OS exit
+                // ends all workers before releasing singleton file ownership.
+                std::process::exit(1);
+            })).map_err(|error| format!("start shutdown deadline: {error}"))?;
+        Ok(Self { done, thread: Some(thread) })
+    }
+}
+
+impl Drop for ShutdownDeadline {
+    fn drop(&mut self) {
+        let _ = self.done.send(());
+        if let Some(thread) = self.thread.take() { let _ = thread.join(); }
+    }
+}
+
+fn watch_shutdown_deadline(
+    lifecycle: LifecycleControl,
+    done: std::sync::mpsc::Receiver<()>,
+    grace: Duration,
+    expired: impl FnOnce(),
+) {
+    while !lifecycle.shutdown_requested() {
+        match done.recv_timeout(Duration::from_millis(10)) {
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {},
+            _ => return,
+        }
+    }
+    emit_lifecycle("engine_shutdown_deadline_started", Some("complete_teardown"));
+    if matches!(done.recv_timeout(grace), Err(std::sync::mpsc::RecvTimeoutError::Timeout)) {
+        expired();
+    }
+}
+
 fn run_runtime(runtime: Runtime) -> Result<(), String> {
+    let startup_started = Instant::now();
+    let emit_startup_stage = |stage: &str, stage_started: Instant| {
+        eprintln!(
+            "{}",
+            serde_json::json!({
+                "event": "membrane_startup_stage",
+                "stage": stage,
+                "durationMs": stage_started.elapsed().as_millis() as u64,
+                "elapsedMs": startup_started.elapsed().as_millis() as u64,
+            })
+        );
+    };
     // This is intentionally the first stateful operation.  Store opening,
     // identity minting, embedder initialization, watcher startup, and port
     // binding all happen only after exclusive ownership is established.
-    let _owner = EngineOwner::acquire(&runtime)?;
+    let stage_started = Instant::now();
+    let owner = EngineOwner::acquire(&runtime)?;
+    emit_startup_stage("ownership", stage_started);
+    let installed = runtime.origin == "installed";
+    let _development_owner = if installed {
+        INSTALLED_ENGINE_OWNER.set(owner).map_err(|_| "installed engine already initialized".to_owned())?;
+        None
+    } else { Some(owner) };
+    let _shutdown_deadline = if installed { Some(ShutdownDeadline::start(lifecycle_control().clone())?) } else { None };
+    let stage_started = Instant::now();
     std::env::set_var("CORTEX_DB", &runtime.db);
     std::env::set_var("MEMBRANE_PORT", runtime.port.to_string());
     std::env::set_var("MEMBRANE_API_TOKEN_FILE", &runtime.token);
@@ -1101,6 +1270,7 @@ fn run_runtime(runtime: Runtime) -> Result<(), String> {
     std::env::set_var("MEMBRANE_RUNTIME_ORIGIN", runtime.origin);
     let catalog_path = crate::catalog::default_catalog_path().map_err(|error| error.to_string())?;
     std::env::set_var("MEMBRANE_CATALOG", catalog_path);
+    emit_startup_stage("environment", stage_started);
     // State the embedder mode once at startup. Whether recall is semantic or
     // lexical decides how much its results are worth, and the daemon log is
     // the one place that answer is available before any command is run.
@@ -1119,9 +1289,13 @@ fn run_runtime(runtime: Runtime) -> Result<(), String> {
         );
     }
     if runtime.origin == "installed" {
+        let stage_started = Instant::now();
         crate::serve::migrate_installed_credential(&runtime.token)?;
+        emit_startup_stage("credential_migration", stage_started);
     }
+    let stage_started = Instant::now();
     let (identity, claim) = prepare_runtime_identity(&runtime)?;
+    emit_startup_stage("identity", stage_started);
     let workspace_root = &runtime.workspace_root;
     // Publish the IPC handshake manifest before any peer can connect. This
     // is a hard requirement of the MBR-105 contract: a resident that has
@@ -1132,14 +1306,18 @@ fn run_runtime(runtime: Runtime) -> Result<(), String> {
     // verify, which silently breaks the contract.
     let active_manifest =
         crate::installation_manifest::build_active_manifest(&identity, &claim, workspace_root);
+    let stage_started = Instant::now();
     crate::installation_manifest::publish_active_manifest(active_manifest)
         .map_err(|error| format!("publish installation manifest: {error}"))?;
+    emit_startup_stage("active_manifest", stage_started);
     std::env::set_var("MEMBRANE_INSTALLATION_ID", &identity.installation_id);
     std::env::set_var("MEMBRANE_SERVICE_INSTANCE_ID", &claim.service_instance_id);
     // Start only after all pre-serve initialization can still fail. Startup
     // errors therefore leave no detached watcher behind, while health is
     // never published without a running, enrolled native service.
+    let stage_started = Instant::now();
     start_resident_blueprint()?;
+    emit_startup_stage("blueprint_supervisor_dispatch", stage_started);
     let result = crate::serve::run(
         runtime
             .db
@@ -1148,7 +1326,9 @@ fn run_runtime(runtime: Runtime) -> Result<(), String> {
         runtime.port,
         &identity,
         &claim,
+        startup_started,
     );
+    lifecycle_control().request_drain(Some("resident_transport_stopped"));
     stop_resident_blueprint()?;
     emit_lifecycle("engine_stopped", Some("resident_engine"));
     result
@@ -1171,6 +1351,79 @@ mod tests {
     use super::*;
 
     #[test]
+    fn shutdown_deadline_terminates_stuck_process_before_owner_can_be_reacquired() {
+        const CHILD_ROOT: &str = "MEMBRANE_SHUTDOWN_TEST_ROOT";
+        if let Some(root) = std::env::var_os(CHILD_ROOT) {
+            let root = PathBuf::from(root);
+            let runtime = Runtime { workspace_root: root.clone(), db: root.join("db"), token: root.join("token"),
+                ort: root.join("ort"), hf_home: root.join("hf"), port: 0, origin: "installed", stable_current: None, version_root: None };
+            let _owner = EngineOwner::acquire(&runtime).unwrap();
+            let store = crate::MemoryStore::new();
+            store.db().lock().execute_batch("CREATE TABLE shared_owner_probe(value INTEGER); INSERT INTO shared_owner_probe VALUES(7)").unwrap();
+            install_resident_store(store).unwrap();
+            for shared in [open_installed_store().unwrap(), open_installed_lexical_store().unwrap()] {
+                let value: i64 = shared.db().lock().query_row("SELECT value FROM shared_owner_probe", [], |row| row.get(0)).unwrap();
+                assert_eq!(value, 7);
+            }
+            let control = LifecycleControl::default();
+            let (_done, receiver) = std::sync::mpsc::channel();
+            control.request_drain(Some("test_final_holder"));
+            watch_shutdown_deadline(control, receiver, Duration::from_millis(25), || std::process::exit(73));
+            panic!("stuck teardown unexpectedly returned");
+        }
+        let root = tempfile::tempdir().unwrap();
+        let mut command = std::process::Command::new(std::env::current_exe().unwrap());
+        command.args(["--exact", "service::tests::shutdown_deadline_terminates_stuck_process_before_owner_can_be_reacquired", "--nocapture"])
+            .env(CHILD_ROOT, root.path()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null());
+        #[cfg(windows)] { use std::os::windows::process::CommandExt; command.creation_flags(0x08000000); }
+        let mut child = command.spawn().unwrap();
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        let status = loop {
+            if let Some(status) = child.try_wait().unwrap() { break status; }
+            if std::time::Instant::now() >= deadline { let _ = child.kill(); let _ = child.wait(); panic!("shutdown deadline did not terminate child"); }
+            std::thread::sleep(Duration::from_millis(5));
+        };
+        assert_eq!(status.code(), Some(73));
+        let runtime = Runtime { workspace_root: root.path().into(), db: root.path().join("db"), token: root.path().join("token"),
+            ort: root.path().join("ort"), hf_home: root.path().join("hf"), port: 0, origin: "installed", stable_current: None, version_root: None };
+        assert!(EngineOwner::acquire(&runtime).is_ok());
+    }
+
+    #[test]
+    fn complete_shutdown_deadline_covers_stuck_teardown_and_disarms_cleanly() {
+        for complete in [false, true] {
+            let control = LifecycleControl::default();
+            let (done, receiver) = std::sync::mpsc::channel();
+            let timed_out = Arc::new(AtomicBool::new(false));
+            let observed = timed_out.clone();
+            let worker_control = control.clone();
+            let thread = std::thread::spawn(move || watch_shutdown_deadline(worker_control, receiver,
+                Duration::from_millis(20), || { observed.store(true, Ordering::Release); }));
+            control.request_drain(Some("test_final_owner"));
+            if complete { done.send(()).unwrap(); }
+            thread.join().unwrap();
+            assert_eq!(timed_out.load(Ordering::Acquire), !complete);
+        }
+    }
+
+    #[test]
+    fn resident_supervisor_wait_is_bounded_when_worker_is_stuck() {
+        let thread = std::thread::spawn(|| std::thread::sleep(Duration::from_millis(100)));
+        let started = std::time::Instant::now();
+        assert!(!wait_for_thread_exit(&thread, Duration::from_millis(10)));
+        assert!(started.elapsed() < Duration::from_millis(80));
+        // Join after bounded probe so test does not leave a worker behind.
+        thread.join().unwrap();
+    }
+
+    #[test]
+    fn resident_supervisor_wait_accepts_clean_stop() {
+        let thread = std::thread::spawn(|| {});
+        assert!(wait_for_thread_exit(&thread, Duration::from_secs(1)));
+        thread.join().unwrap();
+    }
+
+    #[test]
     fn lifecycle_capability_is_bounded_memory_only_authority() {
         let capability = "a".repeat(64);
         let control = LifecycleControl::from_lifecycle_capability(&capability).unwrap();
@@ -1191,6 +1444,23 @@ mod tests {
         assert!(!control.admission_open());
         assert!(control.shutdown_requested());
         assert_eq!(control.command().as_deref(), Some("stop"));
+    }
+
+    #[test]
+    fn engine_drain_cancels_descendants_but_background_loss_does_not() {
+        let control = LifecycleControl::default();
+        let request = control.cancellation_token();
+        let sibling = control.cancellation_token();
+        request.cancel();
+        assert!(!sibling.is_cancelled());
+        assert!(!control.shutdown_requested());
+        control.grant_background("hub");
+        control.drain_background("hub_left_harness_remains");
+        assert!(!sibling.is_cancelled());
+        control.request_drain(Some("final_owner_loss"));
+        assert!(sibling.is_cancelled());
+        assert!(control.cancellation_token().is_cancelled());
+        assert!(!control.admission_open());
     }
 
     #[test]

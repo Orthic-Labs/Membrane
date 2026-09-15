@@ -1,0 +1,578 @@
+rightkit: request af27a334-e4e7-4591-8e53-6ef95617adbb
+warning: unused import: `ProviderError`
+ --> crates\membrane-provider-sdk\src\source.rs:8:20
+  |
+8 | use crate::error::{ProviderError, Result};
+  |                    ^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: `membrane-provider-sdk` (lib) generated 1 warning (run `cargo fix --lib -p membrane-provider-sdk` to apply 1 suggestion)
+warning: value assigned to `output_tokens` is never read
+   --> crates\membrane-core\src\compaction.rs:228:25
+    |
+228 |                         output_tokens = output_tokens.saturating_add(item_tokens(&item));
+    |                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: maybe it is overwritten before being read?
+    = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: `membrane-core` (lib) generated 1 warning
+warning: unused import: `SourceResponse`
+  --> crates\membrane-federation\src\providers\audit.rs:14:5
+   |
+14 |     SourceResponse, SourceWarning,
+   |     ^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `DecisionRecordSource`
+  --> crates\membrane-federation\src\providers\architect.rs:14:35
+   |
+14 |     CapabilityV1, DecisionRecord, DecisionRecordSource, Provider, ProviderContext, ProviderError,
+   |                                   ^^^^^^^^^^^^^^^^^^^^
+
+warning: unused variable: `error`
+  --> crates\membrane-federation\src\providers\skills.rs:88:17
+   |
+88 |             Err(error) => {
+   |                 ^^^^^ help: if this is intentional, prefix it with an underscore: `_error`
+   |
+   = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+   --> crates\membrane-federation\src\lib_federation_index.rs:528:14
+    |
+528 |     let Some(mut result) = response.result else {
+    |              ----^^^^^^
+    |              |
+    |              help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: `membrane-federation` (lib) generated 4 warnings (run `cargo fix --lib -p membrane-federation` to apply 3 suggestions)
+warning: variable does not need to be mutable
+   --> crates\cortex-store\src\temporal.rs:486:13
+    |
+486 |         let mut conn = self.db.lock();
+    |             ----^^^^
+    |             |
+    |             help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+   --> crates\cortex-store\src\temporal.rs:687:13
+    |
+687 |         let mut conn = self.db.lock();
+    |             ----^^^^
+    |             |
+    |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> crates\cortex-store\src\temporal.rs:735:13
+    |
+735 |         let mut conn = self.db.lock();
+    |             ----^^^^
+    |             |
+    |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> crates\cortex-store\src\temporal.rs:782:13
+    |
+782 |         let mut conn = self.db.lock();
+    |             ----^^^^
+    |             |
+    |             help: remove this `mut`
+
+warning: function `provenance` is never used
+   --> crates\cortex-store\src\absorbed_records.rs:280:4
+    |
+280 | fn provenance<T: for<'de> Deserialize<'de>>(value: String) -> Result<T, rusqlite::Error> {
+    |    ^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: constant `CHUNK_TABLE` is never used
+  --> crates\cortex-store\src\transcript.rs:11:7
+   |
+11 | const CHUNK_TABLE: &str = "cortex_transcript_chunks";
+   |       ^^^^^^^^^^^
+
+warning: constant `FTS_TABLE` is never used
+  --> crates\cortex-store\src\transcript.rs:12:7
+   |
+12 | const FTS_TABLE: &str = "cortex_transcript_chunks_fts";
+   |       ^^^^^^^^^
+
+warning: function `host_context` is never used
+   --> crates\membrane-mcp\src\tools.rs:566:4
+    |
+566 | fn host_context() -> Value {
+    |    ^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `cortex-store` (lib) generated 7 warnings (run `cargo fix --lib -p cortex-store` to apply 4 suggestions)
+warning: `membrane-mcp` (lib) generated 1 warning
+warning: unused import: `EffectivenessVerdict`
+  --> crates\membrane-runtime\src\adapt_effectiveness.rs:15:43
+   |
+15 |     project_host_effectiveness, Coverage, EffectivenessVerdict, HostEvaluationObservationV1,
+   |                                           ^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `std::io::Read as _`
+    --> crates\membrane-runtime\src\cli.rs:6248:25
+     |
+6248 |                     use std::io::Read as _;
+     |                         ^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `OptionalExtension`
+  --> crates\membrane-runtime\src\mcp_executor.rs:18:24
+   |
+18 | use rusqlite::{params, OptionalExtension};
+   |                        ^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `Command` and `Stdio`
+  --> crates\membrane-runtime\src\pull\federation.rs:27:20
+   |
+27 | use std::process::{Command, Stdio};
+   |                    ^^^^^^^  ^^^^^
+
+warning: unused import: `crate::pull::truncate`
+ --> crates\membrane-runtime\src\pull\..\push\runc.rs:7:5
+  |
+7 | use crate::pull::truncate;
+  |     ^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `PushPolicy`, `is_code_ext`, and `is_structured_text`
+ --> crates\membrane-runtime\src\pull\..\push\selection.rs:7:25
+  |
+7 | use crate::pull::prep::{is_code_ext, is_structured_text, PushPolicy};
+  |                         ^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^
+
+warning: unused imports: `compress`, `skel`, and `telemetry`
+ --> crates\membrane-runtime\src\pull\..\push\selection.rs:8:19
+  |
+8 | use crate::pull::{compress, skel, telemetry};
+  |                   ^^^^^^^^  ^^^^  ^^^^^^^^^
+
+warning: unused imports: `BlockV1` and `ContextPacketV1`
+ --> crates\membrane-runtime\src\pull\..\push\selection.rs:9:28
+  |
+9 | use cortex_core::planner::{BlockV1, ContextPacketV1};
+  |                            ^^^^^^^  ^^^^^^^^^^^^^^^
+
+warning: unused import: `PACKET_REDUCTION_SELECTION_RECEIPT_SCHEMA_VERSION`
+  --> crates\membrane-runtime\src\pull\..\push\selection.rs:16:5
+   |
+16 |     PACKET_REDUCTION_SELECTION_RECEIPT_SCHEMA_VERSION,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `std::path::Path`
+  --> crates\membrane-runtime\src\pull\..\push\selection.rs:20:5
+   |
+20 | use std::path::Path;
+   |     ^^^^^^^^^^^^^^^
+
+warning: unused import: `BlockV1`
+ --> crates\membrane-runtime\src\pull\..\push\packet_selection.rs:2:28
+  |
+2 | use cortex_core::planner::{BlockV1, ContextPacketV1};
+  |                            ^^^^^^^
+
+warning: the `#![windows_subsystem]` attribute can only be used at the crate root
+ --> crates\membrane-runtime\src\service.rs:1:22
+  |
+1 | #![cfg_attr(windows, windows_subsystem = "windows")]
+  |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_attributes)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+   --> crates\membrane-runtime\src\blueprint_explore.rs:167:9
+    |
+167 |     let mut input = json!({
+    |         ----^^^^^
+    |         |
+    |         help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `BlueprintApi`
+ --> crates\membrane-runtime\src\blueprint_one_shot.rs:8:33
+  |
+8 |     native_blueprint_operation, BlueprintApi, BlueprintRequest, BlueprintResponse,
+  |                                 ^^^^^^^^^^^^
+
+warning: value assigned to `body` is never read
+    --> crates\membrane-runtime\src\cli.rs:2959:28
+     |
+2959 |             let mut body = String::new();
+     |                            ^^^^^^^^^^^^^ this value is reassigned later and never used
+2960 |             body = String::from_utf8(read_request_stdin()?)
+     |             ---- `body` is overwritten here before the previous value is read
+     |
+     = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: value assigned to `body` is never read
+    --> crates\membrane-runtime\src\cli.rs:5577:44
+     |
+5577 | ...                   let mut body = String::new();
+     |                                      ^^^^^^^^^^^^^ this value is reassigned later and never used
+5578 | ...                   body = String::from_utf8(read_request_stdin()?)
+     |                       ---- `body` is overwritten here before the previous value is read
+
+warning: unused variable: `store`
+  --> crates\membrane-runtime\src\cortex_qualification_lifecycle.rs:30:15
+   |
+30 | fn checkpoint(store: &MemoryStore, id: &str) -> CheckpointV1 {
+   |               ^^^^^ help: if this is intentional, prefix it with an underscore: `_store`
+   |
+   = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `db`
+   --> crates\membrane-runtime\src\ledger\qualification_core.rs:269:17
+    |
+269 |     let (_root, db, _doc, _hash) = one_doc(markdown)?;
+    |                 ^^ help: if this is intentional, prefix it with an underscore: `_db`
+
+warning: variable does not need to be mutable
+   --> crates\membrane-runtime\src\mcp_executor.rs:690:13
+    |
+690 |         let mut executor = Self {
+    |             ----^^^^^^^^
+    |             |
+    |             help: remove this `mut`
+
+warning: unused variable: `status`
+    --> crates\membrane-runtime\src\mcp_executor.rs:1738:26
+     |
+1738 |                         (status, payload) => ("unavailable", payload),
+     |                          ^^^^^^ help: if this is intentional, prefix it with an underscore: `_status`
+
+warning: variable does not need to be mutable
+   --> crates\membrane-runtime\src\providers\child_process.rs:321:9
+    |
+321 |     let mut child = command.spawn()?;
+    |         ----^^^^^
+    |         |
+    |         help: remove this `mut`
+
+warning: unused variable: `elided`
+   --> crates\membrane-runtime\src\pull\federation.rs:655:17
+    |
+655 |             let elided = if total > reasons.len() {
+    |                 ^^^^^^ help: if this is intentional, prefix it with an underscore: `_elided`
+
+warning: unused variable: `packet_budget`
+   --> crates\membrane-runtime\src\pull\federation.rs:665:17
+    |
+665 |             let packet_budget = payload
+    |                 ^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_packet_budget`
+
+warning: function `parse_lsof_observations` is never used
+    --> crates\membrane-runtime\src\cli.rs:1559:4
+     |
+1559 | fn parse_lsof_observations(raw: &str) -> Vec<serde_json::Value> {
+     |    ^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `resolve_doc_read_path` is never used
+    --> crates\membrane-runtime\src\cli.rs:1900:4
+     |
+1900 | fn resolve_doc_read_path(
+     |    ^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `inputs_from_health` is never used
+   --> crates\membrane-runtime\src\hub_inputs.rs:330:4
+    |
+330 | fn inputs_from_health(
+    |    ^^^^^^^^^^^^^^^^^^
+
+warning: struct `QualifiedDelivery` is never constructed
+ --> crates\membrane-runtime\src\ledger\qualification.rs:8:19
+  |
+8 | pub(crate) struct QualifiedDelivery {
+  |                   ^^^^^^^^^^^^^^^^^
+
+warning: constant `QUALIFIED_DELIVERIES` is never used
+  --> crates\membrane-runtime\src\ledger\qualification.rs:18:7
+   |
+18 | const QUALIFIED_DELIVERIES: &[QualifiedDelivery] = &[];
+   |       ^^^^^^^^^^^^^^^^^^^^
+
+warning: function `delivery_allowed` is never used
+  --> crates\membrane-runtime\src\ledger\qualification.rs:20:15
+   |
+20 | pub(crate) fn delivery_allowed(release: Option<&str>) -> bool {
+   |               ^^^^^^^^^^^^^^^^
+
+warning: function `run_installed` is never used
+   --> crates\membrane-runtime\src\ledger\qualification_lifecycle.rs:154:15
+    |
+154 | pub(crate) fn run_installed(case_id: &str) -> Result<Value, String> {
+    |               ^^^^^^^^^^^^^
+
+warning: function `replace_link_projection_tx` is never used
+  --> crates\membrane-runtime\src\ledger\link_projection.rs:99:15
+   |
+99 | pub(crate) fn replace_link_projection_tx(
+   |               ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `source_path` is never used
+   --> crates\membrane-runtime\src\mcp_executor.rs:601:4
+    |
+601 | fn source_path(root: &str, source_ref: &str) -> Result<PathBuf, &'static str> {
+    |    ^^^^^^^^^^^
+
+warning: fields `installation_id`, `cortex_store_id`, `release_generation`, `session_id`, and `token_path` are never read
+   --> crates\membrane-runtime\src\mcp_executor.rs:625:5
+    |
+623 | struct HubTransportExecutor {
+    |        -------------------- fields in this struct
+624 |     port: u16,
+625 |     installation_id: String,
+    |     ^^^^^^^^^^^^^^^
+626 |     cortex_store_id: String,
+    |     ^^^^^^^^^^^^^^^
+627 |     release_generation: String,
+    |     ^^^^^^^^^^^^^^^^^^
+628 |     session_id: String,
+    |     ^^^^^^^^^^
+629 |     token: String,
+630 |     token_path: std::path::PathBuf,
+    |     ^^^^^^^^^^
+
+warning: method `health` is never used
+   --> crates\membrane-runtime\src\mcp_executor.rs:702:8
+    |
+668 | impl HubTransportExecutor {
+    | ------------------------- method in this implementation
+...
+702 |     fn health(&self) -> Result<Value, String> {
+    |        ^^^^^^
+
+warning: function `admitted_publication_grant` is never used
+    --> crates\membrane-runtime\src\pull\federation.rs:1018:4
+     |
+1018 | fn admitted_publication_grant(
+     |    ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `post_fusion_publication_fence` is never used
+    --> crates\membrane-runtime\src\pull\federation.rs:1053:4
+     |
+1053 | fn post_fusion_publication_fence(
+     |    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `db_path_for` is never used
+    --> crates\membrane-runtime\src\pull\federation.rs:2387:15
+     |
+2387 | pub(crate) fn db_path_for(workspace: &Path) -> PathBuf {
+     |               ^^^^^^^^^^^
+
+warning: associated functions `for_repository`, `for_ambient_repository`, `with_store`, and `with_ambient_store` are never used
+  --> crates\membrane-runtime\src\pull\federation_sources.rs:64:12
+   |
+62 | impl NativeSourceBindings {
+   | ------------------------- associated functions in this implementation
+63 |     /// Compose concrete runtime owners for one repository request.
+64 |     pub fn for_repository(
+   |            ^^^^^^^^^^^^^^
+...
+74 |     pub fn for_ambient_repository(
+   |            ^^^^^^^^^^^^^^^^^^^^^^
+...
+82 |     pub fn with_store(
+   |            ^^^^^^^^^^
+...
+90 |     pub(crate) fn with_ambient_store(
+   |                   ^^^^^^^^^^^^^^^^^^
+
+warning: method `federate` is never used
+   --> crates\membrane-runtime\src\pull\native_federation.rs:205:18
+    |
+ 89 | impl NativeFederation {
+    | --------------------- method in this implementation
+...
+205 |     pub async fn federate(
+    |                  ^^^^^^^^
+
+warning: function `configured_anchor_directory` is never used
+   --> crates\membrane-runtime\src\serve.rs:297:4
+    |
+297 | fn configured_anchor_directory() -> std::path::PathBuf {
+    |    ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: field `version_root` is never read
+   --> crates\membrane-runtime\src\service.rs:657:16
+    |
+648 | pub(crate) struct Runtime {
+    |                   ------- field in this struct
+...
+657 |     pub(crate) version_root: Option<PathBuf>,
+    |                ^^^^^^^^^^^^
+
+warning: function `build_info` is never used
+   --> crates\membrane-runtime\src\service.rs:809:4
+    |
+809 | fn build_info() -> serde_json::Value {
+    |    ^^^^^^^^^^
+
+warning: unused `std::result::Result` that must be used
+   --> crates\membrane-runtime\src\ledger\service.rs:116:26
+    |
+116 |     fn drop(&mut self) { self.0.lock().progress_handler(0, None::<fn() -> bool>); }
+    |                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: this `Result` may be an `Err` variant, which should be handled
+    = note: `#[warn(unused_must_use)]` (part of `#[warn(unused)]`) on by default
+help: use `let _ = ...` to ignore the resulting value
+    |
+116 |     fn drop(&mut self) { let _ = self.0.lock().progress_handler(0, None::<fn() -> bool>); }
+    |                          +++++++
+
+warning: unused `std::result::Result` that must be used
+   --> crates\membrane-runtime\src\ledger\service.rs:168:9
+    |
+168 |         self.db.lock().progress_handler(1000, Some(move || observed.interrupted()));
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+    |
+168 |         let _ = self.db.lock().progress_handler(1000, Some(move || observed.interrupted()));
+    |         +++++++
+
+warning: `membrane-runtime` (lib) generated 44 warnings (run `cargo fix --lib -p membrane-runtime` to apply 19 suggestions)
+   Compiling membrane v0.1.0 (D:\Claude\membrane\engine\crates\membrane)
+warning: unused imports: `LoopbackAuthSigner` and `build_loopback_request_headers`
+    --> crates\membrane\src\activation.rs:1072:9
+     |
+1072 |         build_loopback_request_headers, LoopbackAuthSigner, LoopbackIdentityFields,
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: fields `success` and `status` are never read
+    --> crates\membrane\src\activation.rs:1253:5
+     |
+1252 | struct SignedPostOutcome {
+     |        ----------------- fields in this struct
+1253 |     success: bool,
+     |     ^^^^^^^
+1254 |     status: u16,
+     |     ^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: linker stdout: LINK : warning LNK4098: defaultlib 'LIBCMT' conflicts with use of other libs; use /NODEFAULTLIB:library
+  |
+  = note: `#[warn(linker_messages)]` on by default
+
+warning: `membrane` (lib test) generated 3 warnings (run `cargo fix --lib -p membrane --tests` to apply 1 suggestion)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 12.74s
+     Running unittests src\lib.rs (D:\.rightkit-managed\rightkit-build-control\ws\1206a718561f\g\002\target\x86_64-pc-windows-msvc\debug\deps\membrane-d83f8dacdf1565a1.exe)
+
+running 95 tests
+test activation::tests::activation_optional_readiness_never_masks_real_component_failures ... ok
+test activation::tests::activation_receipt_health_keys_are_camel_case ... ok
+test activation::tests::claude_labeled_config_is_parsed_for_upgrade_and_rollback ... ok
+test activation::tests::additional_clients_use_documented_global_config_files ... ok
+test activation::tests::authorized_resident_launch_reset_clears_suppression_failures ... ok
+test activation::tests::codex_json_config_is_parsed_and_matched ... ok
+test activation::tests::claude_session_start_projection_is_native_idempotent_and_foreign_safe ... ok
+test activation::tests::config_client_deactivation_removes_only_exact_owned_entry ... ok
+test activation::tests::codex_hook_projection_is_owned_idempotent_and_foreign_safe ... ok
+test activation::tests::deactivation_activation_receipt_match_is_exact ... ok
+test activation::tests::deactivation_dry_run_plans_owned_binding_without_remove ... ok
+test activation::tests::deactivation_hook_removal_preserves_near_matches_and_unrelated_items ... ok
+test activation::tests::deactivation_path_removal_drops_only_exact_stable_current_entries ... ok
+test activation::tests::deactivation_removes_only_exact_owned_client_binding ... ok
+test activation::tests::deactivation_startup_match_requires_exact_owned_command ... ok
+test activation::tests::dry_run_health_projection_is_non_ready_but_serializable ... ok
+test activation::tests::health_gate_rejects_foreign_identity_and_accepts_exact_generation ... ok
+test activation::tests::installed_runtime_is_product_state_on_fixed_port ... ok
+test activation::tests::health_ownership_requires_existing_matching_installation_identity ... ok
+test activation::tests::config_client_merge_preserves_other_servers_and_replaces_conflict ... ok
+test activation::tests::later_failure_restores_prior_binding ... ok
+test activation::tests::legacy_node_hook_projection_upgrades_to_native_command ... ok
+test activation::tests::locked_self_image_is_ignored_only_for_sole_current_process ... ok
+test activation::tests::registration_ports_native_cli_add_and_verification_flow ... ok
+test activation::tests::read_client_config_treats_empty_file_as_empty_object ... ok
+test activation::tests::tree_release_treats_missing_and_idle_trees_as_replaceable ... ok
+test activation::tests::workspace_migration_rejects_invalid_schema_and_root ... ok
+test activation::tests::status_requires_exact_ready_resident_generation ... ok
+test cli::tests::run_cli_from_signature_matches_runtime_run_cli_from ... ok
+test activation::tests::workspace_v2_migration_is_idempotent_byte_for_byte ... ok
+test cli::tests::run_cli_signature_matches_runtime_run_cli ... ok
+test activation::tests::workspace_v2_migration_preserves_root_spelling_and_strips_python ... ok
+test cli_parity::tests::flag_name_drift_is_recorded ... ok
+test cli_parity::tests::generated_source_has_banner_version_and_every_arm ... ok
+test cli_parity::tests::matching_specs_and_parser_are_drift_free ... ok
+test cli_parity::tests::parser_only_operation_is_extra ... ok
+test activation::tests::workspace_v2_dry_run_does_not_write ... ok
+test dispatch::tests::activate_parses_installed_root_clients_and_deadline ... ok
+test dispatch::tests::activation_accepts_every_supported_native_client ... ok
+test dispatch::tests::adapt_is_a_first_class_cli_tail ... ok
+test dispatch::tests::cli_mode_accepts_forwarded_tail ... ok
+test dispatch::tests::deactivate_parses_installed_root_clients_deadline_and_dry_run ... ok
+test dispatch::tests::lifecycle_hello_is_closed_and_bounded ... ok
+test dispatch::tests::diagnostics_is_first_class_cli_tail ... ok
+test cli_parity::tests::missing_operation_is_recorded ... ok
+test dispatch::tests::no_mode_is_rejected ... ok
+test cli_parity::tests::empty_input_has_an_empty_report ... ok
+test dispatch::tests::pull_and_push_are_first_class_cli_tails ... ok
+test dispatch::tests::retired_resident_modes_are_rejected ... ok
+test dispatch::tests::unknown_mode_is_rejected ... ok
+test dispatch::tests::stdio_mcp_defaults_to_jsonl ... ok
+test dispatch::tests::stdio_mcp_rejects_unknown_framing ... ok
+test install_tx::tests::discovery_table_absent_provisions_configured_package ... ok
+test install_tx::tests::discovery_table_corrupt_denied_unverifiable_all_refuse ... ok
+test install_tx::tests::discovery_table_repairable_updates_in_place ... ok
+test install_tx::tests::commit_atomically_renames_scratch_to_target ... ok
+test install_tx::tests::discovery_table_unavailable_package_is_typed_not_generic_refuse ... ok
+test install_tx::tests::discovery_table_verified_stopped_starts_canonical_current ... ok
+test install_tx::tests::empty_plan_is_noop ... ok
+test install_tx::tests::lc04_isolated_denied_fixture_refuses_without_provisioning ... ok
+test install_tx::tests::install_outcome_round_trips_through_serde ... ok
+test install_tx::tests::lc04_isolated_refusals_preserve_artifact_digest ... ok
+test install_tx::tests::stage_failure_runs_prior_rollbacks_in_reverse_order ... ok
+test migration::tests::both_studio_layouts_move_data_grants_events_and_aliases_without_copying ... ok
+test migration::tests::nested_target_refuses_before_mutation ... ok
+test migration::tests::receipt_failure_restores_every_renamed_layout ... ok
+test modes::tests::compat_transport_modes_are_rejected_for_the_client ... ok
+test modes::tests::generic_cli_dispatch_uses_only_named_local_metadata_whitelist ... ok
+test modes::tests::hook_stdin_stops_at_one_byte_past_transport_cap ... ok
+test install_tx::tests::lc04_isolated_provision_adopt_update_are_filesystem_backed ... ok
+test modes::tests::exit_code_table_matches_constants ... ok
+test modes::tests::hook_stdin_accepts_bounded_json ... ok
+test modes::tests::hub_snapshot_stamps_current_observation_for_unavailable_inputs ... ok
+test modes::tests::installed_lifecycle_dispatches_lc04_controls_before_runtime ... ok
+test uninstall::tests::empty_table_refuses_every_candidate ... ok
+test modes::tests::installed_lifecycle_dispatches_lc06_isolated_controls ... ok
+test activation::tests::startup_lock_reclaim_serializes_concurrent_contenders ... ok
+test native_init::tests::schema_one_normalizes_without_dropping_token_audit ... ok
+test install_tx::tests::receipt_is_written_after_every_stage ... ok
+test native_init::tests::malformed_schema_one_binding_returns_error ... ok
+test uninstall::tests::ownership_kind_as_str_is_stable ... ok
+test uninstall::tests::load_table_returns_fresh_when_missing ... ok
+test uninstall::tests::duplicate_registration_returns_typed_error ... ok
+test native_init::tests::enrollment_preserves_tokens_on_second_update_and_dry_run_writes_nothing ... ok
+test modes::tests::plane_of_maps_user_facing_modes_to_application ... ok
+test uninstall::tests::ownership_table_round_trips_through_disk ... ok
+test serve::tests::retired_loopback_entrypoint_never_starts_a_runtime ... ok
+test uninstall::tests::partial_removal_outcome_serialization_round_trips ... ok
+test uninstall::tests::refused_paths_survive_uninstall ... ok
+test update::tests::cancellation_prevents_quiescence_or_activation ... ok
+test uninstall::tests::remove_failure_halts_and_records_partial_state ... ok
+test update::tests::success_removes_nonempty_backup ... ok
+test uninstall::tests::registered_path_is_removed_and_unregistered_is_refused ... ok
+test update::tests::every_phase_fault_or_migration_failure_restores_prior_release ... ok
+test activation::tests::startup_lock_rejects_live_owner_and_recovers_abandoned_owner ... ok
+
+test result: ok. 95 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.65s
+

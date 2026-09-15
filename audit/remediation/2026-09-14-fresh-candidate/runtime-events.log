@@ -1,0 +1,372 @@
+{"event":"activation_requested","observedAtUnixMs":1789397184335,"pid":252496,"reason":"standalone_daemon"}
+{"event":"owner_acquired","observedAtUnixMs":1789397184336,"pid":252496,"reason":"resident_engine"}
+[startup] embedder: fastembed compiled in, ORT_DYLIB_PATH=\\?\C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24\runtime\resources\semantic-embed-runtime\onnxruntime.dll
+{"error":"The system cannot find the path specified. (os error 3)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\membrane-installed-boundary-5724\\repo"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-1lKjNT"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-G39Zxo"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-GG217r"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-dupEMk"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-hgRGGw"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-vQlKuN"}
+{"enrolledRepoCount":4,"event":"resident_blueprint_initialization","stage":"started"}
+membrane resident on 127.0.0.1:47851 db=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory/cortex-engine.db catalog=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory\catalog.db
+{"event":"ready","observedAtUnixMs":1789397186195,"pid":252496,"reason":"transport"}
+{"event":"holder_acquired","observedAtUnixMs":1789397187954,"pid":252496,"reason":"resident_holder"}
+{"event":"drain_requested","observedAtUnixMs":1789397187957,"pid":252496,"reason":"final_holder_release"}
+{"event":"holder_released","observedAtUnixMs":1789397187957,"pid":252496,"reason":"resident_holder"}
+{"event":"engine_shutdown_deadline_started","observedAtUnixMs":1789397187963,"pid":252496,"reason":"complete_teardown"}
+{"event":"resident_blueprint_initialization","stage":"stopped"}
+{"event":"engine_stopped","observedAtUnixMs":1789397188053,"pid":252496,"reason":"resident_engine"}
+{"event":"activation_requested","observedAtUnixMs":1789397193722,"pid":160512,"reason":"standalone_daemon"}
+{"event":"owner_acquired","observedAtUnixMs":1789397193723,"pid":160512,"reason":"resident_engine"}
+[startup] embedder: fastembed compiled in, ORT_DYLIB_PATH=\\?\C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24\runtime\resources\semantic-embed-runtime\onnxruntime.dll
+{"error":"The system cannot find the path specified. (os error 3)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\membrane-installed-boundary-5724\\repo"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-1lKjNT"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-G39Zxo"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-GG217r"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-dupEMk"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-hgRGGw"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-vQlKuN"}
+{"enrolledRepoCount":4,"event":"resident_blueprint_initialization","stage":"started"}
+membrane resident on 127.0.0.1:47851 db=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory/cortex-engine.db catalog=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory\catalog.db
+{"event":"ready","observedAtUnixMs":1789397195641,"pid":160512,"reason":"transport"}
+{"event":"holder_acquired","observedAtUnixMs":1789397195906,"pid":160512,"reason":"resident_holder"}
+{"event":"holder_acquired","observedAtUnixMs":1789397195907,"pid":160512,"reason":"resident_holder"}
+{"event":"holder_acquired","observedAtUnixMs":1789397195922,"pid":160512,"reason":"resident_holder"}
+{"event":"holder_acquired","observedAtUnixMs":1789397196530,"pid":160512,"reason":"resident_holder"}
+{"event":"holder_expired","observedAtUnixMs":1789397226681,"pid":160512,"reason":"resident_holder"}
+{"event":"drain_requested","observedAtUnixMs":1789397226682,"pid":160512,"reason":"final_holder_expired"}
+{"event":"engine_shutdown_deadline_started","observedAtUnixMs":1789397226685,"pid":160512,"reason":"complete_teardown"}
+{"event":"resident_blueprint_initialization","stage":"stopped"}
+{"event":"engine_stopped","observedAtUnixMs":1789397226721,"pid":160512,"reason":"resident_engine"}
+{"event":"activation_requested","observedAtUnixMs":1789397233858,"pid":245012,"reason":"standalone_daemon"}
+{"event":"owner_acquired","observedAtUnixMs":1789397233859,"pid":245012,"reason":"resident_engine"}
+[startup] embedder: fastembed compiled in, ORT_DYLIB_PATH=\\?\C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24\runtime\resources\semantic-embed-runtime\onnxruntime.dll
+{"error":"The system cannot find the path specified. (os error 3)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\membrane-installed-boundary-5724\\repo"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-1lKjNT"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-G39Zxo"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-GG217r"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-dupEMk"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-hgRGGw"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-vQlKuN"}
+{"enrolledRepoCount":4,"event":"resident_blueprint_initialization","stage":"started"}
+membrane resident on 127.0.0.1:47851 db=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory/cortex-engine.db catalog=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory\catalog.db
+{"event":"ready","observedAtUnixMs":1789397235795,"pid":245012,"reason":"transport"}
+{"event":"holder_acquired","observedAtUnixMs":1789397237522,"pid":245012,"reason":"resident_holder"}
+{"event":"drain_requested","observedAtUnixMs":1789397237524,"pid":245012,"reason":"final_holder_release"}
+{"event":"holder_released","observedAtUnixMs":1789397237525,"pid":245012,"reason":"resident_holder"}
+{"event":"engine_shutdown_deadline_started","observedAtUnixMs":1789397237531,"pid":245012,"reason":"complete_teardown"}
+{"event":"resident_blueprint_initialization","stage":"stopped"}
+{"event":"engine_stopped","observedAtUnixMs":1789397237567,"pid":245012,"reason":"resident_engine"}
+{"event":"activation_requested","observedAtUnixMs":1789397243207,"pid":252104,"reason":"standalone_daemon"}
+{"event":"owner_acquired","observedAtUnixMs":1789397243208,"pid":252104,"reason":"resident_engine"}
+[startup] embedder: fastembed compiled in, ORT_DYLIB_PATH=\\?\C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24\runtime\resources\semantic-embed-runtime\onnxruntime.dll
+{"error":"The system cannot find the path specified. (os error 3)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\membrane-installed-boundary-5724\\repo"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-1lKjNT"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-G39Zxo"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-GG217r"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-dupEMk"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-hgRGGw"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-vQlKuN"}
+{"enrolledRepoCount":4,"event":"resident_blueprint_initialization","stage":"started"}
+membrane resident on 127.0.0.1:47851 db=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory/cortex-engine.db catalog=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory\catalog.db
+{"event":"ready","observedAtUnixMs":1789397245094,"pid":252104,"reason":"transport"}
+{"event":"holder_acquired","observedAtUnixMs":1789397245457,"pid":252104,"reason":"resident_holder"}
+{"event":"holder_acquired","observedAtUnixMs":1789397245738,"pid":252104,"reason":"resident_holder"}
+{"event":"holder_acquired","observedAtUnixMs":1789397245738,"pid":252104,"reason":"resident_holder"}
+{"event":"holder_acquired","observedAtUnixMs":1789397246035,"pid":252104,"reason":"resident_holder"}
+{"event":"holder_renewed","observedAtUnixMs":1789397255459,"pid":252104,"reason":"resident_holder"}
+{"event":"holder_renewed","observedAtUnixMs":1789397255740,"pid":252104,"reason":"resident_holder"}
+{"event":"holder_renewed","observedAtUnixMs":1789397255740,"pid":252104,"reason":"resident_holder"}
+{"event":"holder_renewed","observedAtUnixMs":1789397256037,"pid":252104,"reason":"resident_holder"}
+{"event":"holder_renewed","observedAtUnixMs":1789397265462,"pid":252104,"reason":"resident_holder"}
+{"event":"holder_renewed","observedAtUnixMs":1789397265743,"pid":252104,"reason":"resident_holder"}
+{"event":"holder_renewed","observedAtUnixMs":1789397265743,"pid":252104,"reason":"resident_holder"}
+{"event":"holder_renewed","observedAtUnixMs":1789397266039,"pid":252104,"reason":"resident_holder"}
+{"event":"holder_renewed","observedAtUnixMs":1789397275465,"pid":252104,"reason":"resident_holder"}
+{"event":"holder_renewed","observedAtUnixMs":1789397275745,"pid":252104,"reason":"resident_holder"}
+{"event":"holder_renewed","observedAtUnixMs":1789397275745,"pid":252104,"reason":"resident_holder"}
+{"event":"holder_renewed","observedAtUnixMs":1789397276041,"pid":252104,"reason":"resident_holder"}
+{"event":"holder_renewed","observedAtUnixMs":1789397285467,"pid":252104,"reason":"resident_holder"}
+{"event":"holder_renewed","observedAtUnixMs":1789397285747,"pid":252104,"reason":"resident_holder"}
+{"event":"holder_renewed","observedAtUnixMs":1789397285748,"pid":252104,"reason":"resident_holder"}
+{"event":"holder_renewed","observedAtUnixMs":1789397286043,"pid":252104,"reason":"resident_holder"}
+{"event":"holder_renewed","observedAtUnixMs":1789397295469,"pid":252104,"reason":"resident_holder"}
+{"event":"holder_renewed","observedAtUnixMs":1789397295750,"pid":252104,"reason":"resident_holder"}
+{"event":"holder_renewed","observedAtUnixMs":1789397295750,"pid":252104,"reason":"resident_holder"}
+{"event":"holder_renewed","observedAtUnixMs":1789397296046,"pid":252104,"reason":"resident_holder"}
+{"event":"holder_renewed","observedAtUnixMs":1789397305472,"pid":252104,"reason":"resident_holder"}
+{"event":"holder_renewed","observedAtUnixMs":1789397305752,"pid":252104,"reason":"resident_holder"}
+{"event":"holder_renewed","observedAtUnixMs":1789397305753,"pid":252104,"reason":"resident_holder"}
+{"event":"holder_renewed","observedAtUnixMs":1789397306049,"pid":252104,"reason":"resident_holder"}
+{"event":"holder_renewed","observedAtUnixMs":1789397315474,"pid":252104,"reason":"resident_holder"}
+{"event":"holder_renewed","observedAtUnixMs":1789397315755,"pid":252104,"reason":"resident_holder"}
+{"event":"holder_renewed","observedAtUnixMs":1789397315755,"pid":252104,"reason":"resident_holder"}
+{"event":"holder_renewed","observedAtUnixMs":1789397316051,"pid":252104,"reason":"resident_holder"}
+{"event":"holder_renewed","observedAtUnixMs":1789397325477,"pid":252104,"reason":"resident_holder"}
+{"event":"holder_renewed","observedAtUnixMs":1789397325757,"pid":252104,"reason":"resident_holder"}
+{"event":"holder_renewed","observedAtUnixMs":1789397325758,"pid":252104,"reason":"resident_holder"}
+{"event":"holder_renewed","observedAtUnixMs":1789397326053,"pid":252104,"reason":"resident_holder"}
+{"event":"holder_renewed","observedAtUnixMs":1789397335479,"pid":252104,"reason":"resident_holder"}
+{"event":"holder_renewed","observedAtUnixMs":1789397335760,"pid":252104,"reason":"resident_holder"}
+{"event":"holder_renewed","observedAtUnixMs":1789397335760,"pid":252104,"reason":"resident_holder"}
+{"event":"holder_renewed","observedAtUnixMs":1789397336056,"pid":252104,"reason":"resident_holder"}
+{"event":"holder_renewed","observedAtUnixMs":1789397345482,"pid":252104,"reason":"resident_holder"}
+{"event":"holder_renewed","observedAtUnixMs":1789397345762,"pid":252104,"reason":"resident_holder"}
+{"event":"holder_renewed","observedAtUnixMs":1789397345762,"pid":252104,"reason":"resident_holder"}
+{"event":"holder_renewed","observedAtUnixMs":1789397346058,"pid":252104,"reason":"resident_holder"}
+{"event":"holder_expired","observedAtUnixMs":1789397376269,"pid":252104,"reason":"resident_holder"}
+{"event":"drain_requested","observedAtUnixMs":1789397376269,"pid":252104,"reason":"final_holder_expired"}
+{"event":"engine_shutdown_deadline_started","observedAtUnixMs":1789397376280,"pid":252104,"reason":"complete_teardown"}
+{"event":"resident_blueprint_initialization","stage":"stopped"}
+{"event":"engine_stopped","observedAtUnixMs":1789397376329,"pid":252104,"reason":"resident_engine"}
+{"event":"activation_requested","observedAtUnixMs":1789397393129,"pid":250548,"reason":"standalone_daemon"}
+{"event":"owner_acquired","observedAtUnixMs":1789397393131,"pid":250548,"reason":"resident_engine"}
+[startup] embedder: fastembed compiled in, ORT_DYLIB_PATH=\\?\C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24\runtime\resources\semantic-embed-runtime\onnxruntime.dll
+{"error":"The system cannot find the path specified. (os error 3)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\membrane-installed-boundary-5724\\repo"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-1lKjNT"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-G39Zxo"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-GG217r"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-dupEMk"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-hgRGGw"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-vQlKuN"}
+{"enrolledRepoCount":4,"event":"resident_blueprint_initialization","stage":"started"}
+membrane resident on 127.0.0.1:47851 db=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory/cortex-engine.db catalog=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory\catalog.db
+{"event":"ready","observedAtUnixMs":1789397395030,"pid":250548,"reason":"transport"}
+{"event":"holder_status","observedAtUnixMs":1789397395244,"pid":250548,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397395763,"pid":250548,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397395765,"pid":250548,"reason":"resident_holder"}
+{"event":"background_authority_granted","observedAtUnixMs":1789397395766,"pid":250548,"reason":"background_holder_active"}
+{"event":"holder_acquired","observedAtUnixMs":1789397395766,"pid":250548,"reason":"resident_holder"}
+{"error":"The system cannot find the path specified. (os error 3)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\membrane-installed-boundary-5724\\repo"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-1lKjNT"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-G39Zxo"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-GG217r"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-dupEMk"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-hgRGGw"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-vQlKuN"}
+{"event":"resident_blueprint_repository_build","root":"\\\\?\\D:\\Claude\\.tmp\\membrane-finish-smoke","stage":"started"}
+{"elapsedMs":22,"event":"resident_blueprint_repository_build","root":"\\\\?\\D:\\Claude\\.tmp\\membrane-finish-smoke","stage":"completed"}
+{"event":"resident_blueprint_repository_build","root":"\\\\?\\D:\\Claude\\coderight","stage":"started"}
+{"event":"holder_status","observedAtUnixMs":1789397396294,"pid":250548,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397396814,"pid":250548,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397398881,"pid":250548,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397400923,"pid":250548,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397402952,"pid":250548,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397404990,"pid":250548,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397405783,"pid":250548,"reason":"resident_holder"}
+{"event":"holder_renewed","observedAtUnixMs":1789397405784,"pid":250548,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397407043,"pid":250548,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397409064,"pid":250548,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397411090,"pid":250548,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397413112,"pid":250548,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397415158,"pid":250548,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397415801,"pid":250548,"reason":"resident_holder"}
+{"event":"holder_renewed","observedAtUnixMs":1789397415803,"pid":250548,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397417192,"pid":250548,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397419217,"pid":250548,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397421263,"pid":250548,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397423305,"pid":250548,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397425345,"pid":250548,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397425815,"pid":250548,"reason":"resident_holder"}
+{"event":"holder_renewed","observedAtUnixMs":1789397425816,"pid":250548,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397427379,"pid":250548,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397429411,"pid":250548,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397431443,"pid":250548,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397433072,"pid":250548,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397433466,"pid":250548,"reason":"resident_holder"}
+{"event":"activation_requested","observedAtUnixMs":1789397442682,"pid":252012,"reason":"standalone_daemon"}
+{"event":"owner_acquired","observedAtUnixMs":1789397442684,"pid":252012,"reason":"resident_engine"}
+[startup] embedder: fastembed compiled in, ORT_DYLIB_PATH=\\?\C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24\runtime\resources\semantic-embed-runtime\onnxruntime.dll
+{"error":"The system cannot find the path specified. (os error 3)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\membrane-installed-boundary-5724\\repo"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-1lKjNT"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-G39Zxo"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-GG217r"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-dupEMk"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-hgRGGw"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-vQlKuN"}
+{"enrolledRepoCount":4,"event":"resident_blueprint_initialization","stage":"started"}
+membrane resident on 127.0.0.1:47851 db=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory/cortex-engine.db catalog=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory\catalog.db
+{"event":"ready","observedAtUnixMs":1789397445075,"pid":252012,"reason":"transport"}
+{"event":"holder_status","observedAtUnixMs":1789397445096,"pid":252012,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397445518,"pid":252012,"reason":"resident_holder"}
+{"event":"background_authority_granted","observedAtUnixMs":1789397445520,"pid":252012,"reason":"background_holder_active"}
+{"event":"holder_acquired","observedAtUnixMs":1789397445520,"pid":252012,"reason":"resident_holder"}
+{"error":"The system cannot find the path specified. (os error 3)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\membrane-installed-boundary-5724\\repo"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-1lKjNT"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-G39Zxo"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-GG217r"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-dupEMk"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-hgRGGw"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-vQlKuN"}
+{"event":"resident_blueprint_repository_build","root":"\\\\?\\D:\\Claude\\.tmp\\membrane-finish-smoke","stage":"started"}
+{"elapsedMs":34,"event":"resident_blueprint_repository_build","root":"\\\\?\\D:\\Claude\\.tmp\\membrane-finish-smoke","stage":"completed"}
+{"event":"resident_blueprint_repository_build","root":"\\\\?\\D:\\Claude\\coderight","stage":"started"}
+{"event":"holder_status","observedAtUnixMs":1789397446120,"pid":252012,"reason":"resident_holder"}
+{"event":"holder_acquired","observedAtUnixMs":1789397446157,"pid":252012,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397446173,"pid":252012,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397446188,"pid":252012,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397446718,"pid":252012,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397447248,"pid":252012,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397447780,"pid":252012,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397448309,"pid":252012,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397448839,"pid":252012,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397449367,"pid":252012,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397449897,"pid":252012,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397450418,"pid":252012,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397450946,"pid":252012,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397451473,"pid":252012,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397451993,"pid":252012,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397452517,"pid":252012,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397453044,"pid":252012,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397453575,"pid":252012,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397454107,"pid":252012,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397454636,"pid":252012,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397455167,"pid":252012,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397455695,"pid":252012,"reason":"resident_holder"}
+{"event":"holder_renewed","observedAtUnixMs":1789397456160,"pid":252012,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397456223,"pid":252012,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397456753,"pid":252012,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397457283,"pid":252012,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397457812,"pid":252012,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397458341,"pid":252012,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397458859,"pid":252012,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397459393,"pid":252012,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397459924,"pid":252012,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397460451,"pid":252012,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397460983,"pid":252012,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397461514,"pid":252012,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397462044,"pid":252012,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397462563,"pid":252012,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397463081,"pid":252012,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397463598,"pid":252012,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397464127,"pid":252012,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397464657,"pid":252012,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397465174,"pid":252012,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397465686,"pid":252012,"reason":"resident_holder"}
+{"event":"holder_renewed","observedAtUnixMs":1789397466162,"pid":252012,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397466216,"pid":252012,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397466748,"pid":252012,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397467273,"pid":252012,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397467804,"pid":252012,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397468321,"pid":252012,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397468849,"pid":252012,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397469367,"pid":252012,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397469896,"pid":252012,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397470425,"pid":252012,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397470954,"pid":252012,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397471478,"pid":252012,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397472003,"pid":252012,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397472528,"pid":252012,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397473050,"pid":252012,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397473578,"pid":252012,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397474105,"pid":252012,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397474630,"pid":252012,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397475163,"pid":252012,"reason":"resident_holder"}
+{"event":"background_authority_drained","observedAtUnixMs":1789397475615,"pid":252012,"reason":"no_background_holder_expired"}
+{"event":"holder_status","observedAtUnixMs":1789397475688,"pid":252012,"reason":"resident_holder"}
+{"event":"holder_renewed","observedAtUnixMs":1789397476166,"pid":252012,"reason":"resident_holder"}
+{"event":"drain_requested","observedAtUnixMs":1789397476622,"pid":252012,"reason":"final_holder_release"}
+{"event":"holder_released","observedAtUnixMs":1789397476622,"pid":252012,"reason":"resident_holder"}
+{"event":"engine_shutdown_deadline_started","observedAtUnixMs":1789397476633,"pid":252012,"reason":"complete_teardown"}
+{"event":"resident_blueprint_supervisor_stop_timeout","stage":"build:\\\\?\\D:\\Claude\\coderight","timeoutMs":5000}
+membrane: engine startup failed: resident Blueprint supervisor drain timeout; singleton retained (supervisor stage at timeout: build:\\?\D:\Claude\coderight)
+{"event":"activation_requested","observedAtUnixMs":1789397503667,"pid":235852,"reason":"standalone_daemon"}
+{"event":"owner_acquired","observedAtUnixMs":1789397503668,"pid":235852,"reason":"resident_engine"}
+[startup] embedder: fastembed compiled in, ORT_DYLIB_PATH=\\?\C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24\runtime\resources\semantic-embed-runtime\onnxruntime.dll
+{"error":"The system cannot find the path specified. (os error 3)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\membrane-installed-boundary-5724\\repo"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-1lKjNT"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-G39Zxo"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-GG217r"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-dupEMk"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-hgRGGw"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-vQlKuN"}
+{"enrolledRepoCount":4,"event":"resident_blueprint_initialization","stage":"started"}
+membrane resident on 127.0.0.1:47851 db=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory/cortex-engine.db catalog=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory\catalog.db
+{"event":"ready","observedAtUnixMs":1789397505553,"pid":235852,"reason":"transport"}
+{"event":"drain_requested","observedAtUnixMs":1789397535591,"pid":235852,"reason":"initial_holder_grace_expired"}
+{"event":"engine_shutdown_deadline_started","observedAtUnixMs":1789397535595,"pid":235852,"reason":"complete_teardown"}
+{"event":"resident_blueprint_initialization","stage":"stopped"}
+{"event":"engine_stopped","observedAtUnixMs":1789397535667,"pid":235852,"reason":"resident_engine"}
+{"event":"activation_requested","observedAtUnixMs":1789397580285,"pid":251504,"reason":"standalone_daemon"}
+{"event":"owner_acquired","observedAtUnixMs":1789397580286,"pid":251504,"reason":"resident_engine"}
+[startup] embedder: fastembed compiled in, ORT_DYLIB_PATH=\\?\C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24\runtime\resources\semantic-embed-runtime\onnxruntime.dll
+{"error":"The system cannot find the path specified. (os error 3)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\membrane-installed-boundary-5724\\repo"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-1lKjNT"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-G39Zxo"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-GG217r"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-dupEMk"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-hgRGGw"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-vQlKuN"}
+{"enrolledRepoCount":4,"event":"resident_blueprint_initialization","stage":"started"}
+membrane resident on 127.0.0.1:47851 db=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory/cortex-engine.db catalog=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory\catalog.db
+{"event":"ready","observedAtUnixMs":1789397582200,"pid":251504,"reason":"transport"}
+{"event":"drain_requested","observedAtUnixMs":1789397612240,"pid":251504,"reason":"initial_holder_grace_expired"}
+{"event":"engine_shutdown_deadline_started","observedAtUnixMs":1789397612246,"pid":251504,"reason":"complete_teardown"}
+{"event":"resident_blueprint_initialization","stage":"stopped"}
+{"event":"engine_stopped","observedAtUnixMs":1789397612291,"pid":251504,"reason":"resident_engine"}
+{"event":"activation_requested","observedAtUnixMs":1789397746679,"pid":250964,"reason":"standalone_daemon"}
+{"event":"owner_acquired","observedAtUnixMs":1789397746680,"pid":250964,"reason":"resident_engine"}
+[startup] embedder: fastembed compiled in, ORT_DYLIB_PATH=\\?\C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24\runtime\resources\semantic-embed-runtime\onnxruntime.dll
+{"error":"The system cannot find the path specified. (os error 3)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\membrane-installed-boundary-5724\\repo"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-1lKjNT"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-G39Zxo"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-GG217r"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-dupEMk"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-hgRGGw"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-vQlKuN"}
+{"enrolledRepoCount":4,"event":"resident_blueprint_initialization","stage":"started"}
+membrane resident on 127.0.0.1:47851 db=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory/cortex-engine.db catalog=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory\catalog.db
+{"event":"ready","observedAtUnixMs":1789397748632,"pid":250964,"reason":"transport"}
+{"event":"holder_acquired","observedAtUnixMs":1789397748979,"pid":250964,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397749477,"pid":250964,"reason":"resident_holder"}
+{"event":"background_authority_granted","observedAtUnixMs":1789397749479,"pid":250964,"reason":"background_holder_active"}
+{"event":"holder_acquired","observedAtUnixMs":1789397749479,"pid":250964,"reason":"resident_holder"}
+{"error":"The system cannot find the path specified. (os error 3)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\membrane-installed-boundary-5724\\repo"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-1lKjNT"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-G39Zxo"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-GG217r"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-dupEMk"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-hgRGGw"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-vQlKuN"}
+{"event":"resident_blueprint_repository_build","root":"\\\\?\\D:\\Claude\\.tmp\\membrane-finish-smoke","stage":"started"}
+{"elapsedMs":27,"event":"resident_blueprint_repository_build","root":"\\\\?\\D:\\Claude\\.tmp\\membrane-finish-smoke","stage":"completed"}
+{"event":"resident_blueprint_repository_build","root":"\\\\?\\D:\\Claude\\coderight","stage":"started"}
+{"event":"holder_status","observedAtUnixMs":1789397750453,"pid":250964,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397752475,"pid":250964,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397754494,"pid":250964,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397756521,"pid":250964,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397758548,"pid":250964,"reason":"resident_holder"}
+{"event":"holder_renewed","observedAtUnixMs":1789397758982,"pid":250964,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397759487,"pid":250964,"reason":"resident_holder"}
+{"event":"holder_renewed","observedAtUnixMs":1789397759490,"pid":250964,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397760776,"pid":250964,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397762861,"pid":250964,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397764889,"pid":250964,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397766913,"pid":250964,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397768936,"pid":250964,"reason":"resident_holder"}
+{"event":"holder_renewed","observedAtUnixMs":1789397768986,"pid":250964,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397769507,"pid":250964,"reason":"resident_holder"}
+{"event":"holder_renewed","observedAtUnixMs":1789397769509,"pid":250964,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397770957,"pid":250964,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397772989,"pid":250964,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397775375,"pid":250964,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397777431,"pid":250964,"reason":"resident_holder"}
+{"event":"holder_renewed","observedAtUnixMs":1789397778995,"pid":250964,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397779459,"pid":250964,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397779523,"pid":250964,"reason":"resident_holder"}
+{"event":"holder_renewed","observedAtUnixMs":1789397779526,"pid":250964,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397781487,"pid":250964,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397783526,"pid":250964,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397785547,"pid":250964,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397787690,"pid":250964,"reason":"resident_holder"}
+{"event":"holder_released","observedAtUnixMs":1789397788974,"pid":250964,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397789536,"pid":250964,"reason":"resident_holder"}
+{"event":"holder_renewed","observedAtUnixMs":1789397789538,"pid":250964,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789397789836,"pid":250964,"reason":"resident_holder"}
+{"event":"background_authority_drained","observedAtUnixMs":1789397819630,"pid":250964,"reason":"no_background_holder_expired"}
+{"event":"holder_expired","observedAtUnixMs":1789397819630,"pid":250964,"reason":"resident_holder"}
+{"event":"drain_requested","observedAtUnixMs":1789397819630,"pid":250964,"reason":"final_holder_expired"}
+{"event":"engine_shutdown_deadline_started","observedAtUnixMs":1789397819646,"pid":250964,"reason":"complete_teardown"}
+{"event":"resident_blueprint_supervisor_stop_timeout","stage":"build:\\\\?\\D:\\Claude\\coderight","timeoutMs":5000}
+membrane: engine startup failed: resident Blueprint supervisor drain timeout; singleton retained (supervisor stage at timeout: build:\\?\D:\Claude\coderight)

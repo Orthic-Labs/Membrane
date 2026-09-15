@@ -2142,7 +2142,7 @@ async fn dispatch(
     let path = uri.path();
     // Start request-owned Push control at dispatch entry, before body parsing
     // or worker admission, so queue time consumes inherited request budget.
-    let cancellation = CancellationToken::new();
+    let cancellation = crate::service::lifecycle_control().cancellation_token();
     let push_control = PushRequestControl {
         deadline: Deadline::after(&SystemClock, REQUEST_TIMEOUT),
         cancellation: cancellation.clone(),
@@ -2327,8 +2327,12 @@ async fn dispatch(
                 let response = controller
                     .dispatch_authoritative(identity, now_unix_ms, request, resident_services_ready(&state))
                     .map_err(|error| error.to_string())?;
-                if response.status.controller_active {
-                    lifecycle.grant_background("holder_active");
+                let background_active = response.status.hub_holders > 0
+                    || response.status.coderight_daemon_holders > 0;
+                if background_active {
+                    lifecycle.grant_background("background_holder_active");
+                } else {
+                    lifecycle.drain_background("no_background_holder");
                 }
                 // Keep controller lock through authority reconciliation. A
                 // final release drains background work and, per decisions
@@ -2960,12 +2964,31 @@ fn build_router_inner(
     {
         let controller = Arc::clone(&resident_controller);
         let lifecycle = crate::service::lifecycle_control();
-        let _ = std::thread::Builder::new()
-            .name("membrane-holder-expiry".into())
-            .spawn(move || {
+        if resident_identity.is_some() {
+            let _ = std::thread::Builder::new()
+                .name("membrane-holder-expiry".into())
+                .spawn(move || {
+                let startup_deadline = Instant::now() + Duration::from_secs(30);
                 while !lifecycle.shutdown_requested() {
+                    if Instant::now() >= startup_deadline {
+                        if let Ok(controller) = controller.lock() {
+                            let snapshot = controller.snapshot();
+                            if !snapshot.residents_required() {
+                                lifecycle.request_drain(Some("initial_holder_grace_expired"));
+                                break;
+                            }
+                        }
+                    }
                     if controller.lock().map(|mut controller| {
-                        let drain = controller.reconcile_expired(now_unix_ms()).drain_controller;
+                        let decision = controller.reconcile_expired(now_unix_ms());
+                        if decision.snapshot.hub_holders == 0
+                            && decision.snapshot.coderight_daemon_holders == 0
+                        {
+                            lifecycle.drain_background("no_background_holder_expired");
+                        } else {
+                            lifecycle.grant_background("background_holder_active");
+                        }
+                        let drain = decision.drain_controller;
                         if drain {
                             crate::service::emit_lifecycle("holder_expired", Some("resident_holder"));
                             // Final lease expiry is owner loss: drain background
@@ -2981,6 +3004,7 @@ fn build_router_inner(
                     std::thread::sleep(Duration::from_millis(250));
                 }
             });
+        }
     }
     let state = AppState {
         store: Arc::new(store),
@@ -3742,7 +3766,10 @@ fn route_with_context_ingest_lease(
         };
     }
     if method == "POST" && path == "/federate" {
-        return federate_route_response(store, body);
+        return match push_control {
+            Some(control) => crate::mcp_executor::with_inherited_push_control(control.clone(), || federate_route_response(store, body)),
+            None => federate_route_response(store, body),
+        };
     }
     if method == "GET" && path == "/hub/capabilities" {
         let live = crate::hub_inputs::live_inputs_from_local_service();
@@ -5759,6 +5786,7 @@ fn installed_resident_identity(
 
 fn resident_services_ready(state: &AppState) -> bool {
     let watcher = crate::service::resident_blueprint_status();
+    let background_authorized = crate::service::lifecycle_control().background_authority_open();
     let watcher_has_error = watcher
         .get("watcherDetail")
         .is_some_and(|detail| !detail.is_null());
@@ -5775,8 +5803,8 @@ fn resident_services_ready(state: &AppState) -> bool {
             .get("ok")
             .and_then(Value::as_bool)
             != Some(true)
-        || watcher_has_error
-        || (!no_repositories_configured
+        || (background_authorized && watcher_has_error)
+        || (background_authorized && !no_repositories_configured
             && (watcher.get("watcherRunning").and_then(Value::as_bool) != Some(true)
                 || watcher.get("watcherReady").and_then(Value::as_bool) != Some(true)))
     {
@@ -6474,7 +6502,20 @@ pub(crate) fn run(
     port: u16,
     identity: &crate::installation_identity::InstallationIdentity,
     claim: &crate::installation_identity::StartupClaim,
+    startup_started: Instant,
 ) -> Result<(), String> {
+    let emit_startup_stage = |stage: &str, stage_started: Instant| {
+        eprintln!(
+            "{}",
+            serde_json::json!({
+                "event": "membrane_startup_stage",
+                "stage": stage,
+                "durationMs": stage_started.elapsed().as_millis() as u64,
+                "elapsedMs": startup_started.elapsed().as_millis() as u64,
+            })
+        );
+    };
+    let stage_started = Instant::now();
     let db_path = std::path::Path::new(db_path);
     if !db_path.is_absolute() {
         return Err(format!("CORTEX_DB must be absolute: {}", db_path.display()));
@@ -6493,15 +6534,22 @@ pub(crate) fn run(
         std::env::var_os("MEMBRANE_EVENT_DB"),
     )
     .map_err(|error| error.to_string())?;
+    emit_startup_stage("serve_configuration", stage_started);
     #[cfg(feature = "fastembed")]
     {
+        let stage_started = Instant::now();
         let ort_path = std::env::var_os("ORT_DYLIB_PATH")
             .ok_or_else(|| "ORT_DYLIB_PATH is required for fastembed".to_string())?;
         ort::init_from(std::path::PathBuf::from(ort_path))
             .map_err(|error| format!("initialize ONNX Runtime: {error}"))?
             .commit();
+        emit_startup_stage("onnx_runtime", stage_started);
     }
+    let cortex_started = Instant::now();
     let store = MemoryStore::try_open(MemDb::open(db_path).map_err(|e| e.to_string())?)?;
+    emit_startup_stage("cortex_store", cortex_started);
+    let stage_started = Instant::now();
+    crate::service::install_resident_store(store.clone())?;
     let telemetry_event_db = store.db().event_db_path().ok_or_else(|| {
         "resident Cortex store has no physical telemetry event database".to_string()
     })?;
@@ -6520,6 +6568,8 @@ pub(crate) fn run(
         claim,
     )
     .map_err(|error| error.to_string())?;
+    emit_startup_stage("runtime_receipt_prepare", stage_started);
+    let stage_started = Instant::now();
     let context_ingest_lease =
         crate::context_telemetry::ContextIngestLease::from_startup(identity, claim)
             .map_err(|error| format!("prepare telemetry ingest lease: {error}"))?;
@@ -6560,24 +6610,34 @@ pub(crate) fn run(
         running: prompt_telemetry_running,
         thread: Some(prompt_telemetry_thread),
     };
+    emit_startup_stage("telemetry_worker", stage_started);
+    let catalog_started = Instant::now();
     let catalog = ContextCatalog::open(&catalog_path)
         .map_err(|e| format!("open catalog {}: {e}", catalog_path.display()))?;
+    emit_startup_stage("catalog", catalog_started);
+    let stage_started = Instant::now();
     let runtime_receipt_path = runtime_receipt
         .persist()
         .map_err(|error| error.to_string())?;
     std::env::set_var("MEMBRANE_RUNTIME_RECEIPT", &runtime_receipt_path);
     crate::runtime_receipt::publish_current(runtime_receipt);
+    emit_startup_stage("runtime_receipt_persist", stage_started);
     eprintln!(
         "membrane resident on 127.0.0.1:{port} db={} catalog={}",
         db_path.display(),
         catalog_path.display()
     );
+    let stage_started = Instant::now();
     let api_token = Some(configured_api_token(db_path)?);
+    emit_startup_stage("api_token", stage_started);
 
+    let stage_started = Instant::now();
     let _cortex_recovery = crate::cortex_lifecycle::AdmissionRecoveryWorker::start(store.clone())?;
+    emit_startup_stage("cortex_recovery_dispatch", stage_started);
 
     // Active Hub owns native MCP execution. The stdio binary is only a
     // transport client back to this authenticated in-process route.
+    let stage_started = Instant::now();
     crate::mcp_executor::install_native_mcp_executor_for_hub(store.clone())?;
     let mcp_host = format!("127.0.0.1:{port}");
     let mcp_policy = membrane_mcp::http_security::HttpAdmissionPolicy::local(
@@ -6587,7 +6647,9 @@ pub(crate) fn run(
         api_token.clone().unwrap_or_default(),
         claim.service_instance_id.clone(),
     );
+    emit_startup_stage("mcp_prepare", stage_started);
 
+    let stage_started = Instant::now();
     let app = build_router(
         store,
         Some(catalog),
@@ -6598,12 +6660,15 @@ pub(crate) fn run(
         MAX_CONCURRENT_REQUESTS,
     )
     .merge(crate::mcp_http::build_mcp_http_router(mcp_policy));
+    emit_startup_stage("router", stage_started);
     let lifecycle = crate::service::lifecycle_control().clone();
-    let server_result = tokio::runtime::Builder::new_multi_thread()
+    let stage_started = Instant::now();
+    let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
-        .map_err(|error| error.to_string())?
-        .block_on(async move {
+        .map_err(|error| error.to_string())?;
+    emit_startup_stage("tokio_runtime", stage_started);
+    let server_result = runtime.block_on(async move {
             let listener = tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, port))
                 .await
                 .map_err(|error| error.to_string())?;
@@ -6612,6 +6677,7 @@ pub(crate) fn run(
             // live generation, while lifecycle holders can attach during the
             // bounded initial build.
             lifecycle.mark_ready(port);
+            emit_startup_stage("transport_ready", startup_started);
             let shutdown = lifecycle.clone();
             let server = crate::http_server::serve(
                 listener,
@@ -6641,6 +6707,10 @@ pub(crate) fn run(
                 }
             }
         });
+    // Runtime::Drop waits indefinitely for blocking-pool tasks. HTTP drain is
+    // already bounded above; keep teardown bounded when a cancelled blocking
+    // operation ignores its token.
+    shutdown_runtime_bounded(runtime, Duration::from_secs(5));
 
     let prompt_telemetry_result = prompt_telemetry_worker.stop();
     match (server_result, prompt_telemetry_result) {
@@ -6648,6 +6718,12 @@ pub(crate) fn run(
         (Ok(()), Err(error)) => Err(error),
         (Ok(()), Ok(())) => Ok(()),
     }
+}
+
+/// Stop a service runtime without waiting forever for blocking work that has
+/// ignored cancellation. Caller owns runtime after `block_on` returns.
+fn shutdown_runtime_bounded(runtime: tokio::runtime::Runtime, timeout: Duration) {
+    runtime.shutdown_timeout(timeout);
 }
 
 // ============================================================================
@@ -6668,6 +6744,48 @@ pub fn run_stdio_mcp() -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn federate_http_route_preserves_cancelled_and_expired_ingress_before_owner_binding() {
+        let store = MemoryStore::new();
+        let repo = tempfile::tempdir().unwrap();
+        let body = serde_json::json!({"task":"trace", "repo":repo.path(),
+            "budgetPolicy":"configured_cap", "maxWaitMs":60000}).to_string();
+        for cancelled in [false, true] {
+            let token = CancellationToken::new();
+            let deadline = if cancelled { Deadline::after(&SystemClock, Duration::from_secs(60)) }
+                else { Deadline::at(std::time::Instant::now()) };
+            if cancelled { token.cancel(); }
+            let control = PushRequestControl {deadline, cancellation:token};
+            let response = route_with_context_ingest_lease(&store, None, None, "POST", "/federate", &body, Some(&control));
+            assert_eq!(response.0, 503, "{}", response.1);
+            assert!(response.1.contains(if cancelled { "cancelled" } else { "deadline" }), "{}", response.1);
+        }
+    }
+
+    #[test]
+    fn runtime_shutdown_is_bounded_when_blocking_work_ignores_cancellation() {
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(1)
+            .max_blocking_threads(1)
+            .enable_all()
+            .build()
+            .unwrap();
+        let (started_tx, started_rx) = std::sync::mpsc::sync_channel(1);
+        let (_release_tx, release_rx) = std::sync::mpsc::channel::<()>();
+        runtime.spawn_blocking(move || {
+            started_tx.send(()).unwrap();
+            let _ = release_rx.recv();
+        });
+        started_rx.recv().unwrap();
+
+        let began = std::time::Instant::now();
+        shutdown_runtime_bounded(runtime, Duration::from_millis(25));
+        assert!(
+            began.elapsed() < Duration::from_secs(1),
+            "runtime shutdown waited for uncancellable blocking work"
+        );
+    }
 
     #[test]
     fn push_prepare_body_limit_is_larger_without_widening_other_routes() {
@@ -8339,7 +8457,7 @@ mod tests {
         assert_eq!(busy.status(), StatusCode::SERVICE_UNAVAILABLE);
         assert_eq!(busy.headers()[header::RETRY_AFTER], "1");
         let busy_payload: Value = serde_json::from_slice(
-            &to_bytes(busy.into_body(), MAX_BODY_BYTES).await.unwrap(),
+            &axum::body::to_bytes(busy.into_body(), MAX_BODY_BYTES).await.unwrap(),
         )
         .unwrap();
         assert_eq!(busy_payload["ok"], false);

@@ -1,7 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
   "name": "membrane",
-  "version": "0.1.16",
+  "version": "0.1.24",
   "displayName": "Membrane",
   "description": "Membrane is a local-first context service for repository evidence, durable knowledge, document navigation, learning, and reversible reduction. Installs the Membrane MCP server and public skill.",
   "author": {
@@ -19,20 +19,23 @@
   ],
   "mcpServers": {
     "membrane": {
-      "command": "${CLAUDE_PLUGIN_ROOT}/membrane.exe",
-      "args": ["stdio-mcp"]
+      "type": "http",
+      "url": "http://127.0.0.1:47851/mcp",
+      "headers": {
+        "Authorization": "Bearer ${MEMBRANE_BEARER_TOKEN}"
+      }
     }
   },
   "hooks": {
-    "SessionStart": [{"hooks": [{"type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/membrane.exe\" hook"}]}],
-    "UserPromptSubmit": [{"hooks": [{"type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/membrane.exe\" hook"}]}],
-    "PreCompact": [{"hooks": [{"type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/membrane.exe\" hook"}]}],
-    "PostCompact": [{"hooks": [{"type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/membrane.exe\" hook"}]}],
-    "PreToolUse": [{"matcher": ".*", "hooks": [{"type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/membrane.exe\" hook"}]}],
-    "PostToolUse": [{"matcher": ".*", "hooks": [{"type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/membrane.exe\" hook"}]}],
-    "PostToolUseFailure": [{"matcher": ".*", "hooks": [{"type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/membrane.exe\" hook"}]}],
-    "Stop": [{"hooks": [{"type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/membrane.exe\" hook"}]}],
-    "TaskCompleted": [{"hooks": [{"type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/membrane.exe\" hook"}]}],
-    "SessionEnd": [{"hooks": [{"type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/membrane.exe\" hook"}]}]
+    "SessionStart": [{"hooks": [{"type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/membrane-client.exe\" hook"}]}],
+    "UserPromptSubmit": [{"hooks": [{"type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/membrane-client.exe\" hook"}]}],
+    "PreCompact": [{"hooks": [{"type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/membrane-client.exe\" hook"}]}],
+    "PostCompact": [{"hooks": [{"type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/membrane-client.exe\" hook"}]}],
+    "PreToolUse": [{"matcher": ".*", "hooks": [{"type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/membrane-client.exe\" hook"}]}],
+    "PostToolUse": [{"matcher": ".*", "hooks": [{"type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/membrane-client.exe\" hook"}]}],
+    "PostToolUseFailure": [{"matcher": ".*", "hooks": [{"type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/membrane-client.exe\" hook"}]}],
+    "Stop": [{"hooks": [{"type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/membrane-client.exe\" hook"}]}],
+    "TaskCompleted": [{"hooks": [{"type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/membrane-client.exe\" hook"}]}],
+    "SessionEnd": [{"hooks": [{"type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/membrane-client.exe\" hook"}]}]
   }
 }

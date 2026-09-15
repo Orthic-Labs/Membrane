@@ -855,6 +855,10 @@ fn build_and_publish(request: &BlueprintRequest, context: &RequestContext, root:
     // `statusDigest`, the bounded worktree fingerprint freshness comparisons
     // are built on.
     let git_identity = crate::git_source_observation::git_source_observation(&root.to_string_lossy());
+    // Nothing between the graph build and the store write observed
+    // cancellation; a shutdown firing during git observation or the SQLite
+    // write otherwise stays invisible until the next checkpoint.
+    context.check()?;
     let observation = json!({
         "sourceClock": request.input.get("sourceClock").cloned().unwrap_or(Value::Null),
         "eventKind": request.input.get("eventKind").cloned().unwrap_or(Value::Null),
@@ -902,6 +906,9 @@ fn build_and_publish(request: &BlueprintRequest, context: &RequestContext, root:
             .and_then(Value::as_bool)
             .unwrap_or(false),
     };
+    // Docs generation is a bounded but uncancellable phase; at least refuse
+    // to enter it once shutdown has been requested.
+    context.check()?;
     let docs_result = crate::lib_generated_docs::generate_docs(root, docs_options)
         .map_err(|error| BlueprintError::new("blueprint_docs_failed", error.to_string()))?;
     let docs_value = json!({

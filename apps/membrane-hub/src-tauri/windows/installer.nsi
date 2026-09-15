@@ -376,7 +376,7 @@ Section Install
     Pop $1
     Pop $3
     Sleep 1500
-    nsExec::ExecToStack /TIMEOUT=30000 'cmd /c tasklist /FI "IMAGENAME eq membrane-tray.exe" /FI "STATUS eq running" | find /I "membrane-tray.exe" >nul && exit /b 1 || exit /b 0'
+    nsExec::ExecToStack /TIMEOUT=30000 'cmd /c tasklist /FO CSV /NH | findstr /I /C:"membrane-tray.exe" /C:"membrane-client.exe" /C:"membrane-hub.exe" /C:"membrane.exe" /C:"cortex.exe" >nul && exit /b 1 || exit /b 0'
     Pop $1
     Pop $3
     ${If} $1 == 0
@@ -429,11 +429,25 @@ Section Install
   ClearErrors
   {{#each resources_dirs}}
     CreateDirectory "$INSTDIR\\{{this}}"
+    ${If} ${Errors}
+      StrCpy $R4 "$INSTDIR\\{{this}}"
+      ${Log} "extract failed target=$R4"
+      Goto extract_failed
+    ${EndIf}
   {{/each}}
   {{#each resources}}
     File /a "/oname={{this.[1]}}" "{{no-escape @key}}"
+    ${If} ${Errors}
+      StrCpy $R4 "$INSTDIR\\{{this.[1]}}"
+      ${Log} "extract failed target=$R4"
+      Goto extract_failed
+    ${EndIf}
   {{/each}}
   ${If} ${Errors}
+    Goto extract_failed
+  ${EndIf}
+  Goto extract_succeeded
+  extract_failed:
     IntOp $2 $2 + 1
     ${If} $2 < 6
       Sleep 5000
@@ -441,7 +455,7 @@ Section Install
     ${EndIf}
     StrCpy $R0 1
     Goto install_failed
-  ${EndIf}
+  extract_succeeded:
   ; Same-version repair overlays files. Remove retired runtime owner so an
   ; earlier installation cannot leave a second executable runtime behind.
   Delete "$INSTDIR\versions\${VERSION}\membrane-daemon.exe"
@@ -522,12 +536,8 @@ Section Install
   ${EndIf}
   ${Log} "cutover-current ok"
 
-  ; Release the install lock before binding. Binding runs full activation,
-  ; which requests a resident start through the supervisor task; a fresh
-  ; engine refuses to start while the lock is held (it must not map images
-  ; during file replacement), so binding under the lock can only time out
-  ; waiting for a listener the lock itself prevents. The old tree is fully
-  ; cut over at this point: no file replacement is pending anymore.
+  ; Release install lock before bindings-only reconciliation. A fully cut
+  ; over tree is required before installed clients are reconciled.
   RMDir /r "$INSTDIR\.install-lock"
 
   ; 3. Registration: uninstall entry, Start Menu shortcut, login launch.
@@ -556,6 +566,13 @@ Section Install
   ${If} $R2 == ""
     WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "Membrane" '"$INSTDIR\current\membrane-tray.exe" --login-launch'
     WriteRegStr HKCU "${UNINSTKEY}" "LoginLaunchWritten" "1"
+  ${Else}
+    ; Migrate only the installer-owned legacy engine autostart. Preserve an
+    ; absent value and any user/foreign Run value exactly as chosen.
+    ReadRegStr $R3 HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "Membrane"
+    ${If} $R3 == '"$INSTDIR\current\membrane.exe" activate --install-root "$INSTDIR\current"'
+      WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "Membrane" '"$INSTDIR\current\membrane-tray.exe" --login-launch'
+    ${EndIf}
   ${EndIf}
   DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "Membrane Tray"
 

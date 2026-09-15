@@ -5,7 +5,8 @@ This path ends only with a receipt-backed packet. A packet without a receipt is 
 Use installed Windows package; every runtime call remains bound to stable
 `current`. Visible native tray owns full resident lifecycle through its daemon,
 including Blueprint watchers & background work. Hub dashboard is on demand.
-MCP client launches only installed native `membrane` binary.
+MCP clients reach the resident engine over authenticated Streamable HTTP;
+stdio-only hosts launch only installed native `membrane-client` binary.
 Blueprint is a native installed service; no agent-supplied Node or Python is required.
 
 ## 1. Install & launch (0:00)
@@ -16,23 +17,25 @@ wait for **Running** before relying on automatic refresh.
 
 ## 2. Configure MCP (0:45)
 
-Point the MCP client at the installed native entrypoint. Repository `mcp.json`
+Point the MCP client at the resident engine endpoint. Repository `mcp.json`
 shows the canonical transport:
 
 ```json
 {
   "mcpServers": {
     "membrane": {
-      "type": "stdio",
-      "command": "membrane",
-      "args": ["stdio-mcp"]
+      "type": "streamable-http",
+      "url": "http://127.0.0.1:47851/mcp",
+      "headers": { "Authorization": "Bearer ${MEMBRANE_BEARER_TOKEN}" }
     }
   }
 }
 ```
 
-`membrane stdio-mcp` serves explicit operations through canonical installed owners.
-It may reuse active services or execute bounded work with Hub off. It preserves
+The resident engine serves explicit operations through canonical installed
+owners; the bearer token binds the session to the installed host projection.
+Stdio-only hosts launch `membrane-client stdio-mcp`, which forwards to the same
+engine. It may reuse active services or execute bounded work with Hub off. It preserves
 storage ownership & starts no watcher, scheduler or replacement daemon.
 
 ## 3. Request first packet (1:30)

@@ -1693,16 +1693,11 @@ fn default_embedder() -> (Arc<dyn Embedder>, Option<String>, bool) {
             eprintln!("[memory] {issue}");
             return (Arc::new(HashEmbedder::new()), Some(issue), true);
         }
-        match cortex_core::FastEmbedder::new() {
-            Ok(f) => (Arc::new(f), None, true),
-            Err(e) => {
-                let issue = format!(
-                    "fastembed init failed ({e}); memory writes disabled to avoid hash-vector corruption. Fix ORT_DYLIB_PATH/model cache, or set MEMBRANE_ALLOW_HASH=1 to accept degraded embeddings."
-                );
-                eprintln!("[memory] {issue}");
-                (Arc::new(HashEmbedder::new()), Some(issue), false)
-            }
-        }
+        (
+            Arc::new(cortex_core::LazyFastEmbedder::new()),
+            None,
+            true,
+        )
     }
     #[cfg(not(feature = "fastembed"))]
     {
@@ -2553,6 +2548,8 @@ impl MemoryStore {
         attribution: OperationAttribution,
         initialize_embedder: bool,
     ) -> Result<Self, String> {
+        let initialization_started = std::time::Instant::now();
+        let schema_started = std::time::Instant::now();
         if initialize_embedder {
             crate::cortex_lifecycle::ensure_memory_schema(&db.lock())
                 .map_err(|error| format!("Cortex lifecycle schema: {error}"))?;
@@ -2570,12 +2567,21 @@ impl MemoryStore {
                 |_| Ok(()),
             ).map_err(|error| format!("Cortex memories table unavailable: {error}"))?;
         }
+        eprintln!(
+            "{}",
+            serde_json::json!({
+                "event": "cortex_store_initialization",
+                "stage": "schema",
+                "elapsedMs": schema_started.elapsed().as_millis() as u64,
+            })
+        );
         let mut registry = if initialize_embedder && vector_dispatch_v2_enabled() {
             MemoryRegistry::new_indexed()
         } else {
             MemoryRegistry::new()
         };
         let db_path = db_path(&db);
+        let embedder_started = std::time::Instant::now();
         let (embedder, embedder_issue, writes_enabled) = if initialize_embedder {
             default_embedder()
         } else {
@@ -2585,6 +2591,16 @@ impl MemoryStore {
                 false,
             )
         };
+        eprintln!(
+            "{}",
+            serde_json::json!({
+                "event": "cortex_store_initialization",
+                "stage": "embedder",
+                "elapsedMs": embedder_started.elapsed().as_millis() as u64,
+                "requested": initialize_embedder,
+            })
+        );
+        let hydration_started = std::time::Instant::now();
         {
             let conn = db.lock();
             #[allow(clippy::type_complexity)]
@@ -2622,6 +2638,7 @@ impl MemoryStore {
                     .and_then(|rows| rows.collect())
                 })
                 .map_err(|e| format!("registry row load failed: {e}"))?;
+            let row_count = rows.len();
             for (
                 id,
                 tier,
@@ -2669,6 +2686,15 @@ impl MemoryStore {
                     scope_id,
                 });
             }
+            eprintln!(
+                "{}",
+                serde_json::json!({
+                    "event": "cortex_store_initialization",
+                    "stage": "hydration",
+                    "elapsedMs": hydration_started.elapsed().as_millis() as u64,
+                    "rowCount": row_count,
+                })
+            );
         }
         let store = Self {
             registry: Arc::new(RwLock::new(registry)),
@@ -2698,6 +2724,49 @@ impl MemoryStore {
             last_persist_error: Arc::new(Mutex::new(None)),
             operation_attribution: attribution,
         };
+        if initialize_embedder {
+            let embedder = store.embedder.clone();
+            std::thread::Builder::new()
+                .name("cortex-embedder-warmup".to_string())
+                .spawn(move || {
+                    let started = std::time::Instant::now();
+                    eprintln!(
+                        "{}",
+                        serde_json::json!({
+                            "event": "cortex_embedder_readiness",
+                            "stage": "started",
+                        })
+                    );
+                    match embedder.try_embed_query("Membrane semantic readiness") {
+                        Ok(_) => eprintln!(
+                            "{}",
+                            serde_json::json!({
+                                "event": "cortex_embedder_readiness",
+                                "stage": "ready",
+                                "elapsedMs": started.elapsed().as_millis() as u64,
+                            })
+                        ),
+                        Err(error) => eprintln!(
+                            "{}",
+                            serde_json::json!({
+                                "event": "cortex_embedder_readiness",
+                                "stage": "failed",
+                                "elapsedMs": started.elapsed().as_millis() as u64,
+                                "error": error,
+                            })
+                        ),
+                    }
+                })
+                .map_err(|error| format!("start Cortex embedder warmup: {error}"))?;
+        }
+        eprintln!(
+            "{}",
+            serde_json::json!({
+                "event": "cortex_store_initialization",
+                "stage": "complete",
+                "elapsedMs": initialization_started.elapsed().as_millis() as u64,
+            })
+        );
         Ok(store)
     }
 

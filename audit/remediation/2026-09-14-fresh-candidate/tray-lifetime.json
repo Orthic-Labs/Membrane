@@ -1,0 +1,79 @@
+{
+  "schemaVersion": 1,
+  "current": "C:\\Users\\adrds\\AppData\\Local\\Orthic Labs\\Membrane\\current",
+  "stages": {
+    "tray": {
+      "pid": 178008,
+      "status": {
+        "controllerActive": true,
+        "servicesReady": false,
+        "servicesUnavailableReason": "blueprint_watcher_unavailable",
+        "hubHolders": 1,
+        "coderightDaemonHolders": 0
+      },
+      "livez": {
+        "cortexStoreId": "sha256:038c42b7457f5a69e4f841209a3dc68ba40a14fe17fce8b1d6583570d15c8942",
+        "installationId": "610af348-f3ee-45f0-a8c8-9664953cd737",
+        "ok": true,
+        "releaseGeneration": "sha256:041bb8df2612c05f0df12bbf2281ea6622a87e115e099e5001ed5d16dc1c0539",
+        "runtimeOrigin": "installed",
+        "serviceGeneration": "sha256:6f415b3a22632725d15bc159a2a4fd9aa6dd52941f31d6dbde0ea600f5914816",
+        "stableInstallRoot": "C:\\Users\\adrds\\AppData\\Local\\Orthic Labs\\Membrane\\current",
+        "startupGeneration": 402,
+        "workers": {
+          "detachedRunning": 0,
+          "diagnostics": {
+            "available": 1,
+            "max": 1
+          },
+          "general": {
+            "available": 32,
+            "max": 32
+          },
+          "ingress": {
+            "available": 32,
+            "max": 32
+          },
+          "model": {
+            "available": 8,
+            "executionAvailable": 1,
+            "executionMax": 1,
+            "max": 8
+          },
+          "overloadRejections": {
+            "diagnostics": 0,
+            "general": 0,
+            "ingress": 0,
+            "model": 0,
+            "total": 0
+          }
+        }
+      }
+    },
+    "trayCrashRecovery": {
+      "oldEnginePid": 250548,
+      "newEnginePid": 252012,
+      "generationChanged": true
+    },
+    "harness": {
+      "status": {
+        "controllerActive": true,
+        "servicesReady": false,
+        "servicesUnavailableReason": "blueprint_watcher_unavailable",
+        "hubHolders": 1,
+        "coderightDaemonHolders": 0,
+        "harnessHolders": 1
+      },
+      "startupGeneration": 403
+    },
+    "trayCrash": {
+      "trayPid": 178008,
+      "engineSurvived": true
+    },
+    "finalDrain": {
+      "complete": true
+    }
+  },
+  "startedAt": "2026-09-14T14:49:45.660Z",
+  "finishedAt": "2026-09-14T14:51:22.043Z"
+}

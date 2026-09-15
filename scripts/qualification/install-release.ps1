@@ -635,7 +635,13 @@ function Assert-NativeSteadyState([int]$TrayProcessId, [int]$DaemonProcessId, [s
   $daemonFull = [IO.Path]::GetFullPath($DaemonExecutable)
   $webViewPath = $null
   for ($sample = 0; $sample -lt [Math]::Max(1, $SteadyStateSamples); $sample++) {
-    $latest = @(Get-ProcessTree $TrayProcessId | Where-Object {
+    # A shared engine may have been started by a harness before Hub adopted it.
+    # Include its verified PID explicitly; OS parentage is not holder ownership.
+    $sampleRows = @(Get-ProcessTree $TrayProcessId)
+    if (-not @($sampleRows | Where-Object { [int]$_.ProcessId -eq $DaemonProcessId }).Count) {
+      $sampleRows += @(Get-CimInstance Win32_Process -Filter "ProcessId=$DaemonProcessId")
+    }
+    $latest = @($sampleRows | Where-Object {
       $candidate = Get-Process -Id ([int]$_.ProcessId) -ErrorAction SilentlyContinue
       $null -ne $candidate -and -not $candidate.HasExited
     })
@@ -645,7 +651,7 @@ function Assert-NativeSteadyState([int]$TrayProcessId, [int]$DaemonProcessId, [s
     $daemon = @($latest | Where-Object { [int]$_.ProcessId -eq $DaemonProcessId })
     Require ($daemon.Count -eq 1) 'tray-owned installed daemon is missing during native steady-state sampling'
     Require ([IO.Path]::GetFullPath([string]$daemon[0].ExecutablePath) -ieq $daemonFull) 'native steady-state daemon path is not the installed daemon'
-    Require ([int]$daemon[0].ParentProcessId -eq $TrayProcessId) 'installed daemon is not owned by the installed tray'
+    Require (@(Get-InstalledProcessRows $DaemonExecutable).Count -eq 1) 'installed engine is not a singleton'
     $forbidden = @($latest | Where-Object { $_.Name -match '(?i)^(node|nodejs|python|pythonw|python3|pip|npm|npx)(\.exe)?$' })
     Require ($forbidden.Count -eq 0) "native-only steady-state contains retired interpreter process: $($forbidden.Name -join ', ')"
     # Dashboard is the active Hub holder during this sample. Its renderer
@@ -904,7 +910,7 @@ function Assert-NativeHostCutover([string]$Root, [string]$HubExecutable) {
     Require ($actual -ieq [string]$entry.sha256) "installed inventory hash mismatch: $relative"
     $inventoryEvidence += [ordered]@{ path = $relative.Replace('\', '/'); sha256 = $actual }
   }
-  return [pscustomobject]@{ Hub = $HubExecutable; Membrane = $membrane; Cortex = $cortex; Tray = $tray; Client = $client; Daemon = $HubExecutable; RuntimeInventory = $inventoryPath; RuntimeInventoryEvidence = $inventoryEvidence; Publisher = $hubPublisher }
+  return [pscustomobject]@{ Hub = $HubExecutable; Membrane = $membrane; Cortex = $cortex; Tray = $tray; Client = $client; Daemon = $membrane; RuntimeInventory = $inventoryPath; RuntimeInventoryEvidence = $inventoryEvidence; Publisher = $hubPublisher }
 }
 
 function Invoke-NativeProcess([string]$Executable, [string]$Arguments, [string]$InputText = '', [string]$WorkingDirectory = $InstallRoot, [hashtable]$Environment = @{}) {
@@ -948,8 +954,16 @@ function Invoke-NativeProcessAllowFailure([string]$Executable, [string]$Argument
 
 function Invoke-InstalledHealth([string]$Executable, [int]$TimeoutSeconds, [string]$Phase) {
   $result = Invoke-NativeProcessAllowFailure $Executable "cli health --timeout-seconds $TimeoutSeconds" '' $InstallRoot
-  Require ($result.ExitCode -eq 0) "installed authenticated health failed during ${Phase}: $($result.Stderr)"
-  try { return ($result.Stdout | ConvertFrom-Json) } catch { throw "installed authenticated health returned invalid JSON during $Phase" }
+  try { $body = ($result.Stdout | ConvertFrom-Json) } catch {
+    Require ($result.ExitCode -eq 0) "installed authenticated health failed during ${Phase}: $($result.Stderr)"
+    throw "installed authenticated health returned invalid JSON during $Phase"
+  }
+  # A valid authenticated 503 is diagnostic progress, not transport failure:
+  # return its body so caller can inspect the exact watcher signature.
+  if ($result.ExitCode -ne 0 -and $body.ok -ne $false) {
+    throw "installed authenticated health failed during ${Phase}: $($result.Stderr)"
+  }
+  return $body
 }
 
 # Product liveness contract for the hub wait loop: `cli health` prints its
@@ -1172,9 +1186,10 @@ function Invoke-NativeMcp([string]$Executable, [switch]$ExerciseAll, [hashtable]
   $listing = @($responses | Where-Object { $_.id -eq 2 }) | Select-Object -First 1
   Require ($null -ne $initialize -and $null -ne $initialize.result.serverInfo) 'MCP initialize response is invalid'
   $tools = @($listing.result.tools)
-  Require ($tools.Count -eq $allTools.Count) "MCP tools/list returned $($tools.Count) tools; expected $($allTools.Count)"
+  $publicTools = @('pull', 'push')
+  Require ($tools.Count -eq $publicTools.Count) "MCP tools/list returned $($tools.Count) tools; expected $($publicTools.Count)"
   $actualNames = (@($tools.name) | Sort-Object) -join ','
-  $expectedNames = ($allTools | Sort-Object) -join ','
+  $expectedNames = ($publicTools | Sort-Object) -join ','
   Require ($actualNames -eq $expectedNames) 'MCP tools/list does not match the exact qualification registry'
   $calls = @($responses | Where-Object { [int]$_.id -ge 100 })
   Require ($calls.Count -eq $callNames.Count) "MCP returned $($calls.Count) tool responses; expected $($callNames.Count)"
@@ -1344,7 +1359,7 @@ function Start-AndVerifyHub([string]$Phase, [string]$ExpectedVersion, [string]$E
   if ($trayRows.Count -eq 0) {
     # Tray starts transport within its bounded pre-holder grace. The real
     # dashboard below acquires Hub ownership before semantic catch-up finishes.
-    $script:TrayProcess = Start-Process -FilePath $script:TrayPath -ArgumentList @('--activate') -WorkingDirectory $InstallRoot -PassThru -WindowStyle Hidden
+    $script:TrayProcess = Start-Process -FilePath $script:TrayPath -ArgumentList @('--login-launch') -WorkingDirectory $InstallRoot -PassThru -WindowStyle Hidden
     $trayDeadline = (Get-Date).AddSeconds(10)
     do {
       $trayRows = @(Get-InstalledProcessRows $script:TrayPath)
@@ -1362,13 +1377,21 @@ function Start-AndVerifyHub([string]$Phase, [string]$ExpectedVersion, [string]$E
   $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
   $watcherBudgetExtended = $false
   do {
-    $daemonRows = @(Get-InstalledProcessRows $script:DaemonPath | Where-Object { [int]$_.ParentProcessId -eq $trayIdentity.ProcessId })
+    $daemonRows = @(Get-InstalledProcessRows $script:DaemonPath)
     if ($daemonRows.Count -eq 1) {
-      try { $daemonIdentity = Capture-InstalledProcess $script:DaemonPath "tray-owned daemon during $Phase" $trayIdentity.ProcessId } catch { $daemonIdentity = $null }
+      try { $daemonIdentity = Capture-InstalledProcess $script:DaemonPath "Hub-held engine during $Phase" } catch { $daemonIdentity = $null }
     }
     try {
       $health = Invoke-InstalledHealth (Join-Path $InstallRoot 'membrane.exe') 3 $Phase
       if ($health.ok -eq $true -and $null -ne $daemonIdentity) { break }
+      if (-not $watcherBudgetExtended -and $null -ne $daemonIdentity -and
+          $health.backgroundAuthority.active -eq $true -and
+          $health.watcherRunning -ne $true) {
+        $watcherBudgetExtended = $true
+        $deadline = (Get-Date).AddSeconds($WatcherInitBudgetSeconds)
+        Write-Host "[qualification] health 503 signature: holderActive=True watcherRunning=False watcherDetail=$([string]$health.blueprintWatcher.watcherDetail) catalog=$([string]$health.catalog.status)"
+        Write-Host "[qualification] authorized watcher initializing during $Phase; health budget extended once by $WatcherInitBudgetSeconds s"
+      }
     } catch {
       # The product reports 503 while holder-authorized watching is still
       # initializing (first blueprint builds after install). That is progress
@@ -1401,6 +1424,7 @@ function Start-AndVerifyHub([string]$Phase, [string]$ExpectedVersion, [string]$E
   $daemonIdentity | Add-Member -NotePropertyName Generation -NotePropertyValue $generation
   Require ([int]$health.protocolVersion -eq 1 -and [int]$health.schemaVersion -eq 1) "Hub protocol/schema handshake is invalid during $Phase"
   Require ($health.nativeOnly -eq $true) "Hub did not attest nativeOnly during $Phase"
+  Require ($health.backgroundAuthority.active -eq $true) "Hub did not hold background authority during $Phase"
   $script:ActiveHubHealth = $health
   $script:ActiveHubPort = $port
   $subsystems = @($health.subsystems | Sort-Object)
@@ -1415,7 +1439,7 @@ function Start-AndVerifyHub([string]$Phase, [string]$ExpectedVersion, [string]$E
   if ($Full) {
     Assert-TrayAndPopup $trayIdentity.ProcessId
     $assets = @(Assert-RendererWindows $script:DashboardProcess.Id)
-    $mcp = Invoke-NativeMcp $native.Membrane -ExerciseAll
+    $mcp = Invoke-NativeMcp $native.Client -ExerciseAll
     $blueprint = Assert-BlueprintResident $InstallRoot $script:QualificationWorkspace
   }
   $script:HubProcess = $script:DashboardProcess
@@ -1616,18 +1640,10 @@ $script:PreviousMembraneProjectRegistry = [Environment]::GetEnvironmentVariable(
 $script:WorkspaceConfigPath = Join-Path $script:QualificationWorkspace 'workspace.json'
 Seed-WorkspaceV2Config $script:WorkspaceConfigPath $script:QualificationWorkspace
 Initialize-QualificationRepository $script:QualificationWorkspace
-# Isolated canonical registry input exercises resident watching; native
-# enrollment behavior requires separate qualification.
-$registryBindings = @{}
-$registryBindings[$script:QualificationWorkspace] = [ordered]@{
-  repository_id = 'windows-qualification'
-  scope_id = 'windows-qualification'
-  scope_descriptor = [ordered]@{ kind = 'filesystem'; path = 'windows-qualification' }
-  grant_policy = [ordered]@{ level = 'read-only' }
-}
-$registryPath = Join-Path $script:QualificationWorkspace 'project-registry.json'
-Write-NativeText $registryPath ([ordered]@{ schema_version = 2; bindings = $registryBindings } | ConvertTo-Json -Depth 10)
-$env:MEMBRANE_PROJECT_REGISTRY = $registryPath
+# Exercise installed native enrollment, never a child-local fixture registry
+# against the canonical shared engine.
+$registryPath = Join-Path $env:APPDATA 'Cortex\project-registry.json'
+Remove-Item Env:MEMBRANE_PROJECT_REGISTRY -ErrorAction SilentlyContinue
 $env:MEMBRANE_WORKSPACE_ROOT = $script:QualificationWorkspace
 $env:MEMBRANE_WORKSPACE_CONFIG = $script:WorkspaceConfigPath
 
@@ -1643,6 +1659,8 @@ try {
   # Reconcile bindings through silent-install activation. Start-AndVerifyHub
   # then opens the real Hub holder before waiting for resident service health.
   $script:Activation = Invoke-Activation $InstallRoot
+  $enrollArgs = 'init ' + (Quote-NativeArgument $script:QualificationWorkspace) + ' --repository windows-qualification --scope windows-qualification'
+  [void](Invoke-NativeProcess (Join-Path $InstallRoot 'membrane.exe') $enrollArgs '' $InstallRoot)
   $first = Start-AndVerifyHub 'initial install' $currentVersion $currentGeneration '' -Full
   $script:InitialEvidence = $first
   $initArgs = 'init ' + (Quote-NativeArgument $script:QualificationWorkspace) + ' --repository windows-qualification --scope windows-qualification'
@@ -1863,6 +1881,21 @@ try {
     } else { throw }
   }
   if ($dataMarker -and (Test-Path -LiteralPath $dataMarker)) { Remove-Item -LiteralPath $dataMarker -Force -ErrorAction SilentlyContinue }
+  # Merge cleanup against current registry under native init's lock; remove
+  # only this run's unique root, never restore an old whole-file snapshot.
+  if (Test-Path -LiteralPath $registryPath) {
+    $registryLock = [IO.Path]::ChangeExtension($registryPath, 'json.lock')
+    $lockHandle = [IO.File]::Open($registryLock, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write, [IO.FileShare]::None)
+    try {
+      $registry = Read-JsonFile $registryPath 'canonical qualification registry cleanup'
+      foreach ($key in @($registry.bindings.PSObject.Properties.Name)) {
+        if ((Normalize-ComparablePath $key) -eq (Normalize-ComparablePath $script:QualificationWorkspace)) {
+          $registry.bindings.PSObject.Properties.Remove($key)
+        }
+      }
+      Write-JsonAtomic $registryPath $registry
+    } finally { $lockHandle.Dispose(); Remove-Item -LiteralPath $registryLock -Force }
+  }
   if ($script:QualificationWorkspace -and (Test-Path -LiteralPath $script:QualificationWorkspace)) { Remove-Item -LiteralPath $script:QualificationWorkspace -Recurse -Force -ErrorAction SilentlyContinue }
   if ($null -eq $script:PreviousMembraneWorkspaceRoot) { Remove-Item Env:MEMBRANE_WORKSPACE_ROOT -ErrorAction SilentlyContinue } else { $env:MEMBRANE_WORKSPACE_ROOT = $script:PreviousMembraneWorkspaceRoot }
   if ($null -eq $script:PreviousMembraneWorkspaceConfig) { Remove-Item Env:MEMBRANE_WORKSPACE_CONFIG -ErrorAction SilentlyContinue } else { $env:MEMBRANE_WORKSPACE_CONFIG = $script:PreviousMembraneWorkspaceConfig }

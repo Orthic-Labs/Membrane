@@ -40,7 +40,7 @@ fn response(request: &membrane_protocol::ResidentHolderRequestV1) -> ResidentHol
         operation: request.operation,
         controller: request.controller.clone(),
         status: ResidentHolderStatusV1 { controller_active: true, services_ready: true,
-            services_unavailable_reason: None, hub_holders: 0, coderight_daemon_holders: 1 },
+            services_unavailable_reason: None, hub_holders: 0, coderight_daemon_holders: 1, harness_holders: 0 },
         loss: None,
     }
 }

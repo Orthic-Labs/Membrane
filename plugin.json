@@ -1,6 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "membrane",
+  "version": "0.1.24",
   "description": "Local-first context service that returns current repository context with receipts.",
   "license": "SEE LICENSE IN LICENSE"
 }

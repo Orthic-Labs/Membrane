@@ -24,7 +24,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { hostname } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 export const SCENARIOS = [
@@ -141,7 +141,13 @@ export async function defaultScenarioRunner({ scenario, platform, workspaceRoot,
 // consumer. Keep qualification fail-closed instead of importing the retired
 // mcp/e2e-benchmark.mjs reference implementation.
 export async function defaultBenchmarkRunner({ workspaceRoot, platform, scenarioResults, eventDbPath }) {
-  const executable = process.env.MEMBRANE_BIN || (process.platform === "win32" ? "membrane.exe" : "membrane");
+  // stdio-mcp is served by the co-installed transport client; the engine
+  // binary rejects the mode. Resolve the client beside a path-qualified
+  // MEMBRANE_BIN, or via MEMBRANE_CLIENT_BIN/PATH directly.
+  const configured = process.env.MEMBRANE_BIN || (process.platform === "win32" ? "membrane.exe" : "membrane");
+  const clientName = process.platform === "win32" ? "membrane-client.exe" : "membrane-client";
+  const executable = process.env.MEMBRANE_CLIENT_BIN
+    || (basename(configured) === configured ? clientName : join(dirname(resolve(configured)), clientName));
   try {
     const responses = nativeMcp(executable, [
       { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "mbr801-native", version: "1" } } },

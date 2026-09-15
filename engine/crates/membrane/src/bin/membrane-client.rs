@@ -31,10 +31,8 @@ const MAX_ATTEMPTS_PER_REQUEST: usize = 2;
 /// black-holed loopback connect must fail in well under a host hook budget;
 /// established-socket I/O keeps IO_TIMEOUT.
 const CONNECT_TIMEOUT: Duration = Duration::from_millis(300);
-/// Hook route served by the engine. It is read-shaped: recall retrieves
-/// context and records bounded observations, and a re-executed hook cannot
-/// double-apply an effect. Every other client route (/cli, /mcp) may execute
-/// server-side effects and is therefore never retried after a full send.
+/// Hook route served by engine; hooks may record observations or apply
+/// enforcement, so fully sent requests are never retried after ambiguity.
 const HOOK_PATH: &str = "/hook";
 
 /// Harness access lifetime (decisions 22/24): persistent client sessions own
@@ -183,23 +181,31 @@ fn installed_release_metadata() -> (Value, Value) {
 }
 
 fn run(mode: &str) -> Result<(), String> {
-    // Harness access lifetime (decisions 22/24): persistent sessions own the
-    // engine while their Membrane access is active; one-shot CLI never does.
-    // The lease is dropped (released) when this process exits; a crashed
-    // client simply stops renewing and the engine drains after expiry.
-    let _lease = match mode {
-        "stdio-mcp" => harness::session_lease(),
-        "hook" => harness::keepalive_lease(),
-        _ => None,
-    };
     match mode {
-        "stdio-mcp" => run_stdio_mcp(),
-        "hook" => forward_stdin("/hook"),
+        "stdio-mcp" => {
+            let _lease = harness::session_lease().map_err(|error| format!("engine_unavailable: {error}"))?;
+            run_stdio_mcp()
+        }
+        "hook" => {
+            let mut body = Vec::new();
+            io::stdin()
+                .take((MAX_BODY_BYTES + 1) as u64)
+                .read_to_end(&mut body)
+                .map_err(|error| format!("read hook payload: {error}"))?;
+            if body.len() > MAX_BODY_BYTES {
+                return Err("hook payload exceeds transport limit".into());
+            }
+            let (session_id, session_end) = hook_session_identity(&body);
+            let _lease = harness::hook_lease(session_id.as_deref(), session_end).map_err(|error| format!("engine_unavailable: {error}"))?;
+            forward_body("/hook", &body)
+        }
         "cli" => {
+            let _lease = harness::cli_lease().map_err(|error| format!("engine_unavailable: {error}"))?;
             let tail = std::env::args().skip(2).collect::<Vec<_>>();
             forward_cli(tail)
         }
         other => {
+            let _lease = harness::cli_lease().map_err(|error| format!("engine_unavailable: {error}"))?;
             let mut tail = vec![other.to_owned()];
             tail.extend(std::env::args().skip(2));
             forward_cli(tail)
@@ -273,8 +279,31 @@ fn forward_stdin(path: &str) -> Result<(), String> {
     if body.len() > MAX_BODY_BYTES {
         return Err("hook payload exceeds transport limit".into());
     }
-    let (_, response) = request_engine(path, &body)?;
+    forward_body(path, &body)
+}
+
+fn forward_body(path: &str, body: &[u8]) -> Result<(), String> {
+    let (_, response) = request_engine(path, body)?;
     write_stdout(&response)
+}
+
+fn hook_session_identity(body: &[u8]) -> (Option<String>, bool) {
+    let Ok(payload) = serde_json::from_slice::<Value>(body) else {
+        return (None, false);
+    };
+    let session_id = payload
+        .get("session_id")
+        .or_else(|| payload.get("sessionId"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty() && value.len() <= 512)
+        .map(str::to_owned);
+    let event = payload
+        .get("hook_event_name")
+        .or_else(|| payload.get("hookEventName"))
+        .or_else(|| payload.get("event"))
+        .and_then(Value::as_str);
+    (session_id, event.is_some_and(|value| value.eq_ignore_ascii_case("SessionEnd")))
 }
 
 fn write_stdout(body: &[u8]) -> Result<(), String> {
@@ -291,22 +320,31 @@ fn write_stdout(body: &[u8]) -> Result<(), String> {
 /// Identity of this client's harness holder lease. `controller` is captured
 /// from the acquire response so renew/release address the same controller.
 struct HarnessLease {
-    controller: Value,
-    holder: Value,
+    identity: Arc<Mutex<(Value, Value)>>,
     stop: Arc<AtomicBool>,
+    renew_wake: Option<std::sync::mpsc::Sender<()>>,
+    release_on_drop: bool,
 }
 
 impl Drop for HarnessLease {
     fn drop(&mut self) {
         // Release is best effort: the lease is bounded, so a failed release
         // still expires server-side without leaving an orphan engine.
-        self.stop.store(true, Ordering::AcqRel);
+        self.stop.store(true, Ordering::Release);
+        if let Some(wake) = self.renew_wake.take() {
+            let _ = wake.send(());
+        }
+        if !self.release_on_drop {
+            return;
+        }
+        let Ok((controller, holder)) = self.identity.lock().map(|identity| (identity.0.clone(), identity.1.clone())) else { return };
         let _ = holder_exchange(
-            "Release",
-            &self.controller,
-            Some(&self.holder),
+            membrane_protocol::ResidentHolderOperationV1::Release,
+            Some(&controller),
+            Some(&holder),
             None,
-            ACTIVATION_TIMEOUT,
+            Duration::from_secs(2),
+            None,
         );
     }
 }
@@ -315,70 +353,234 @@ mod harness {
     use super::*;
 
     /// Persistent session: acquire once, renew while alive, release on drop.
-    pub fn session_lease() -> Option<HarnessLease> {
-        acquire_with_activation("stdio-mcp", true)
+    pub fn session_lease() -> Result<HarnessLease, String> {
+        acquire_with_activation("stdio-mcp", true, None, true)
     }
 
-    /// Command hook: bounded keep-alive acquisition, no renewal thread (the
-    /// lease is one-shot; expiry handles a crashed hook).
-    pub fn keepalive_lease() -> Option<HarnessLease> {
-        acquire_with_activation("hook", false)
+    /// CLI operations own the engine for their bounded process lifetime.
+    pub fn cli_lease() -> Result<HarnessLease, String> {
+        acquire_with_activation("cli", true, None, true)
     }
 
-    fn acquire_with_activation(_mode: &str, renew: bool) -> Option<HarnessLease> {
-        match acquire_lease(renew) {
-            Ok(lease) => Some(lease),
-            Err(_) => {
-                // Engine down: one bounded activation attempt through the
-                // installer-owned control binary (resolved next to this
-                // client, never from PATH), then try again. Startup belongs
-                // to an authorized access integration, never to an OS
-                // scheduler lane.
-                let activation = std::env::current_exe()
-                    .ok()
-                    .and_then(|exe| exe.parent().map(|dir| dir.join("membrane.exe")))
-                    .map(|control| {
-                        Command::new(control)
-                            .arg("activate")
-                            .stdout(std::process::Stdio::null())
-                            .stderr(std::process::Stdio::null())
-                            .status()
-                    });
-                match activation {
-                    Some(Ok(status)) if status.success() => acquire_lease(renew).ok(),
-                    _ => None,
+    /// Hook ownership is keyed by host session ID. Each hook refreshes the
+    /// same bounded lease; only SessionEnd releases it immediately.
+    pub fn hook_lease(session_id: Option<&str>, session_end: bool) -> Result<HarnessLease, String> {
+        acquire_with_activation("hook", false, session_id, session_end)
+    }
+
+    fn acquire_with_activation(
+        _mode: &str,
+        renew: bool,
+        holder_id: Option<&str>,
+        release_on_drop: bool,
+    ) -> Result<HarnessLease, String> {
+        let deadline = std::time::Instant::now() + ACTIVATION_TIMEOUT;
+        match acquire_lease_with_timeout(renew, holder_id, release_on_drop, Duration::from_secs(1)) {
+            Ok(lease) => return Ok(lease),
+            Err(initial) => {
+                let activation = start_activation()?;
+                let mut last = initial;
+                loop {
+                    let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+                    if remaining.is_zero() {
+                        return Err(format!("activation ownership deadline exceeded: {last}"));
+                    }
+                    match acquire_lease_with_timeout(renew, holder_id, release_on_drop, remaining.min(Duration::from_secs(1))) {
+                        Ok(lease) => { activation.reap(deadline); return Ok(lease); }
+                        Err(error) => last = error,
+                    }
+                    if let Some(error) = activation.failure()? {
+                        if !error.contains("startup lock remained busy") && !error.contains("did not become healthy within") {
+                            return Err(format!("{error}; acquisition: {last}"));
+                        }
+                    }
+                    std::thread::sleep(Duration::from_millis(100).min(deadline.saturating_duration_since(std::time::Instant::now())));
                 }
             }
         }
     }
 
-    fn acquire_lease(renew: bool) -> Result<HarnessLease, String> {
-        let (controller, holder) = holder_exchange("Acquire", None, None, Some(HARNESS_LEASE_TTL_MS), ACTIVATION_TIMEOUT)?;
+    // File-backed diagnostics never wait for EOF from inherited daemon handles.
+    struct ActivationChild {
+        child: Mutex<std::process::Child>,
+        log: std::path::PathBuf,
+    }
+    impl ActivationChild {
+        fn failure(&self) -> Result<Option<String>, String> {
+            let status = self.child.lock().map_err(|_| "activation child lock poisoned")?
+                .try_wait().map_err(|e| format!("activation wait: {e}"))?;
+            Ok(status.filter(|s| !s.success()).map(|s| {
+                let mut bytes = Vec::new();
+                if let Ok(file) = std::fs::File::open(&self.log) { let _ = file.take(8192).read_to_end(&mut bytes); }
+                format!("activate exited with {s}: {}", String::from_utf8_lossy(&bytes))
+            }))
+        }
+        fn reap(self, deadline: std::time::Instant) {
+            std::thread::spawn(move || {
+                while std::time::Instant::now() < deadline {
+                    if self.child.lock().ok().and_then(|mut c| c.try_wait().ok().flatten()).is_some() { return; }
+                    std::thread::sleep(Duration::from_millis(100));
+                }
+            });
+        }
+    }
+    impl Drop for ActivationChild {
+        fn drop(&mut self) {
+            if let Ok(child) = self.child.get_mut() {
+                if child.try_wait().ok().flatten().is_none() { let _ = child.kill(); }
+                let _ = child.wait();
+            }
+            let _ = std::fs::remove_file(&self.log);
+        }
+    }
+    fn start_activation() -> Result<ActivationChild, String> {
+        let control = std::env::current_exe().ok().and_then(|p| p.parent().map(|p| p.join("membrane.exe")))
+            .ok_or("activation control binary not found next to client")?;
+        let mut command = Command::new(control);
+        command.args(["activate", "--engine-only", "--timeout-ms", "15000"]);
+        spawn_activation(command)
+    }
+    fn spawn_activation(mut command: Command) -> Result<ActivationChild, String> {
+        let nonce = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos();
+        let log = std::env::temp_dir().join(format!("membrane-activation-{}-{nonce}.log", std::process::id()));
+        let file = std::fs::OpenOptions::new().write(true).create_new(true).open(&log)
+            .map_err(|e| format!("activation diagnostic file: {e}"))?;
+        command.stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(file);
+        #[cfg(windows)] { use std::os::windows::process::CommandExt; command.creation_flags(0x0800_0000); }
+        match command.spawn() {
+            Ok(child) => Ok(ActivationChild { child: Mutex::new(child), log }),
+            Err(e) => { let _ = std::fs::remove_file(log); Err(format!("activate launch failed: {e}")) }
+        }
+    }
+    #[cfg(test)]
+    mod activation_tests {
+        use super::*;
+        #[test]
+        fn fixture() {
+            if std::env::var_os("MEMBRANE_CAPTURE_FIXTURE").is_none() { return; }
+            let mut child = Command::new(std::env::current_exe().unwrap());
+            child.args(["--exact", "harness::activation_tests::descendant", "--nocapture"])
+                .env("MEMBRANE_CAPTURE_DESCENDANT", "1")
+                .stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null());
+            #[cfg(windows)] { use std::os::windows::process::CommandExt; child.creation_flags(0x0800_0000); }
+            child.spawn().unwrap();
+            eprintln!("activation fixture diagnostic");
+            std::process::exit(7);
+        }
+        #[test]
+        fn descendant() {
+            if std::env::var_os("MEMBRANE_CAPTURE_DESCENDANT").is_some() { std::thread::sleep(Duration::from_secs(4)); }
+        }
+        #[test]
+        fn activation_exit_does_not_wait_for_descendant_stderr() {
+            let mut command = Command::new(std::env::current_exe().unwrap());
+            command.args(["--exact", "harness::activation_tests::fixture", "--nocapture"]).env("MEMBRANE_CAPTURE_FIXTURE", "1");
+            let began = std::time::Instant::now();
+            let child = spawn_activation(command).unwrap();
+            let error = loop {
+                if let Some(error) = child.failure().unwrap() { break error; }
+                assert!(began.elapsed() < Duration::from_secs(3), "capture waited for descendant");
+                std::thread::sleep(Duration::from_millis(10));
+            };
+            assert!(error.contains("activation fixture diagnostic"), "{error}");
+            assert!(error.contains('7'), "{error}");
+        }
+    }
+    fn activate_installed() -> Result<(), String> {
+        let child = start_activation()?;
+        let deadline = std::time::Instant::now() + ACTIVATION_TIMEOUT;
+        loop {
+            if let Some(error) = child.failure()? { return Err(error); }
+            if get_livez(Duration::from_millis(500)).is_ok() { child.reap(deadline); return Ok(()); }
+            if std::time::Instant::now() >= deadline { return Err("activation deadline exceeded".into()); }
+            std::thread::sleep(Duration::from_millis(100));
+        }
+    }
+
+    fn acquire_lease(
+        renew: bool,
+        holder_id: Option<&str>,
+        release_on_drop: bool,
+    ) -> Result<HarnessLease, String> {
+        acquire_lease_with_timeout(renew, holder_id, release_on_drop, ACTIVATION_TIMEOUT)
+    }
+    fn acquire_lease_with_timeout(renew: bool, holder_id: Option<&str>, release_on_drop: bool, timeout: Duration) -> Result<HarnessLease, String> {
+        let (controller, holder) = holder_exchange(
+            membrane_protocol::ResidentHolderOperationV1::Acquire,
+            None,
+            None,
+            Some(HARNESS_LEASE_TTL_MS),
+            timeout,
+            holder_id,
+        )?;
+        let identity = Arc::new(Mutex::new((controller, holder)));
+        let renew_identity = Arc::clone(&identity);
         let stop = Arc::new(AtomicBool::new(false));
+        let mut renew_wake = None;
         if renew {
             let renew_stop = Arc::clone(&stop);
-            let renew_controller = controller.clone();
-            let renew_holder = holder.clone();
+            let (wake_tx, wake_rx) = std::sync::mpsc::channel();
             std::thread::Builder::new()
                 .name("membrane-harness-renew".into())
                 .spawn(move || {
                     while !renew_stop.load(Ordering::Acquire) {
-                        std::thread::sleep(Duration::from_millis(HARNESS_RENEW_INTERVAL_MS));
+                        match wake_rx.recv_timeout(Duration::from_millis(HARNESS_RENEW_INTERVAL_MS)) {
+                            Ok(()) | Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
+                            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
+                        }
                         if renew_stop.load(Ordering::Acquire) {
                             break;
                         }
-                        let _ = holder_exchange(
-                            "Renew",
-                            &renew_controller,
-                            Some(&renew_holder),
+                        let (renew_controller, renew_holder) = renew_identity.lock().map(|identity| (identity.0.clone(), identity.1.clone())).unwrap_or_default();
+                        let renewed = holder_exchange(
+                            membrane_protocol::ResidentHolderOperationV1::Renew,
+                            Some(&renew_controller), Some(&renew_holder),
                             Some(HARNESS_LEASE_TTL_MS),
                             Duration::from_secs(5),
+                            None,
                         );
+                        let renewed = match renewed {
+                            Ok(value) => Some(value),
+                            Err(_) if renew_stop.load(Ordering::Acquire) => None,
+                            Err(_) => {
+                                let replacement = holder_exchange(
+                                    membrane_protocol::ResidentHolderOperationV1::Acquire,
+                                    None, Some(&renew_holder), Some(HARNESS_LEASE_TTL_MS),
+                                    ACTIVATION_TIMEOUT, None,
+                                ).or_else(|_| {
+                                    if renew_stop.load(Ordering::Acquire) {
+                                        return Err("renewal recovery stopped".to_string());
+                                    }
+                                    if let Err(activation_error) = activate_installed() {
+                                        return Err(format!("renewal recovery activation failed: {activation_error}"));
+                                    }
+                                    holder_exchange(
+                                        membrane_protocol::ResidentHolderOperationV1::Acquire,
+                                        None, Some(&renew_holder), Some(HARNESS_LEASE_TTL_MS),
+                                        ACTIVATION_TIMEOUT, None,
+                                    )
+                                });
+                                if renew_stop.load(Ordering::Acquire) {
+                                    if let Ok((controller, holder)) = replacement {
+                                        let _ = holder_exchange(
+                                            membrane_protocol::ResidentHolderOperationV1::Release,
+                                            Some(&controller), Some(&holder), None,
+                                            ACTIVATION_TIMEOUT, None,
+                                        );
+                                    }
+                                    None
+                                } else { replacement.ok() }
+                            }
+                        };
+                        if let Some((controller, holder)) = renewed {
+                            if let Ok(mut identity) = renew_identity.lock() { *identity = (controller, holder); }
+                        }
                     }
                 })
                 .map_err(|error| format!("spawn harness renewal: {error}"))?;
+            renew_wake = Some(wake_tx);
         }
-        Ok(HarnessLease { controller, holder, stop })
+        Ok(HarnessLease { identity, stop, renew_wake, release_on_drop })
     }
 }
 
@@ -388,11 +590,12 @@ mod harness {
 /// credential and the livez identity. The engine re-verifies controller
 /// identity server-side and rejects mismatches.
 fn holder_exchange(
-    operation: &str,
-    _prior_controller: Option<&Value>,
+    operation: membrane_protocol::ResidentHolderOperationV1,
+    prior_controller: Option<&Value>,
     prior_holder: Option<&Value>,
     ttl_ms: Option<u64>,
     timeout: Duration,
+    holder_id: Option<&str>,
 ) -> Result<(Value, Value), String> {
     use membrane_client::{build_loopback_request_headers, LoopbackAuthSigner, LoopbackIdentityFields};
 
@@ -413,17 +616,20 @@ fn holder_exchange(
         startup_generation: field("startupGeneration")?.as_u64().ok_or("livez startupGeneration invalid")?,
         stable_install_root: field("stableInstallRoot")?.as_str().ok_or("livez stableInstallRoot invalid")?.to_string(),
     };
-    let controller = json!({
+    let live_controller = json!({
         "installationId": loopback_identity.installation_id,
         "cortexStoreId": loopback_identity.cortex_store_id,
         "releaseGeneration": loopback_identity.release_generation,
         "startupGeneration": loopback_identity.startup_generation,
         "stableCurrent": loopback_identity.stable_install_root,
     });
+    let controller = prior_controller.cloned().unwrap_or(live_controller);
+    let generated_holder_id = format!("client-process-{}", std::process::id());
+    let holder_id = holder_id.unwrap_or(&generated_holder_id);
     let holder = prior_holder.cloned().unwrap_or_else(|| json!({
         "holderKind": "harness",
-        "holderId": format!("client-process-{}", std::process::id()),
-        "credentialId": format!("client-process-{}-credential", std::process::id()),
+        "holderId": holder_id,
+        "credentialId": format!("{holder_id}-credential"),
     }));
     let now_ms = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -431,9 +637,9 @@ fn holder_exchange(
         .as_millis() as u64;
     let mut request = json!({
         "schemaVersion": 1,
-        "operation": operation,
-        "controller": controller,
-        "holder": holder,
+        "operation": serde_json::to_value(operation).expect("holder operation is serializable"),
+        "controller": controller.clone(),
+        "holder": holder.clone(),
         "observedAtUnixMs": now_ms,
         "lossCursor": null,
     });
@@ -462,15 +668,16 @@ fn holder_exchange(
     .map_err(|error| format!("sign holder request: {error}"))?;
     let (status, response_body) = signed_post_engine("/resident-holder", &headers, &body, timeout)?;
     if !(200..300).contains(&status) {
-        return Err(format!("resident-holder {operation} failed: HTTP {status}"));
+        let detail = String::from_utf8_lossy(&response_body);
+        return Err(format!("resident-holder {operation:?} failed: HTTP {status}: {detail}"));
     }
     let response: Value = serde_json::from_slice(&response_body)
-        .map_err(|error| format!("resident-holder {operation} response invalid: {error}"))?;
+        .map_err(|error| format!("resident-holder {operation:?} response invalid: {error}"))?;
     let active = response
         .pointer("/status/controllerActive")
         .and_then(Value::as_bool)
         .unwrap_or(false);
-    if operation == "Acquire" && !active {
+    if operation == membrane_protocol::ResidentHolderOperationV1::Acquire && !active {
         return Err("resident-holder acquire rejected".to_string());
     }
     let returned_controller = response.get("controller").cloned().unwrap_or(controller);
@@ -489,19 +696,34 @@ fn signed_post_engine(
 ) -> Result<(u16, Vec<u8>), String> {
     let (host, port) = endpoint();
     let address = resolve(&host, port)?;
-    let mut stream = connect(&address)?;
-    let mut request = format!("POST {path} HTTP/1.1\r\nHost: {host}:{port}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n", body.len());
-    for (name, value) in headers {
-        request.push_str(&format!("{name}: {value}\r\n"));
-    }
-    request.push_str("\r\n");
+    let mut stream = match take_pooled(&address) {
+        Some(stream) => stream,
+        None => connect(&address)?,
+    };
+    stream
+        .set_read_timeout(Some(timeout))
+        .and_then(|_| stream.set_write_timeout(Some(timeout)))
+        .map_err(|error| format!("configure holder transport: {error}"))?;
+    let request = render_signed_request(path, headers);
     stream
         .write_all(request.as_bytes())
         .and_then(|_| stream.write_all(body))
         .map_err(|error| format!("send holder request: {error}"))?;
-    let (status, response_body, _reusable) =
+    let (status, response_body, reusable) =
         read_response(&mut stream).map_err(|error| format!("holder exchange failed: {error}"))?;
+    if reusable {
+        return_pooled(stream);
+    }
     Ok((status, response_body))
+}
+
+fn render_signed_request(path: &str, headers: &[(String, String)]) -> String {
+    let mut request = format!("POST {path} HTTP/1.1\r\n");
+    for (name, value) in headers {
+        request.push_str(&format!("{name}: {value}\r\n"));
+    }
+    request.push_str("\r\n");
+    request
 }
 
 /// Unsigned GET /livez (bootstrap identity hint). The engine re-verifies
@@ -509,15 +731,25 @@ fn signed_post_engine(
 fn get_livez(timeout: Duration) -> Result<Vec<u8>, String> {
     let (host, port) = endpoint();
     let address = resolve(&host, port)?;
-    let mut stream = connect(&address)?;
+    let mut stream = match take_pooled(&address) {
+        Some(stream) => stream,
+        None => connect(&address)?,
+    };
+    stream
+        .set_read_timeout(Some(timeout))
+        .and_then(|_| stream.set_write_timeout(Some(timeout)))
+        .map_err(|error| format!("configure livez transport: {error}"))?;
     let request = format!(
-        "GET /livez HTTP/1.1\r\nHost: {host}:{port}\r\nConnection: close\r\n\r\n"
+        "GET /livez HTTP/1.1\r\nHost: {host}:{port}\r\nConnection: keep-alive\r\n\r\n"
     );
     stream
         .write_all(request.as_bytes())
         .map_err(|error| format!("send livez request: {error}"))?;
-    let (status, body, _reusable) =
+    let (status, body, reusable) =
         read_response(&mut stream).map_err(|error| format!("livez unavailable: {error}"))?;
+    if reusable {
+        return_pooled(stream);
+    }
     if !(200..300).contains(&status) {
         return Err(format!("livez unavailable: HTTP {status}"));
     }
@@ -543,7 +775,9 @@ fn request_engine(path: &str, body: &[u8]) -> Result<(u16, Vec<u8>), String> {
     // routes never take the retry once the request was fully sent: the first
     // attempt may already have executed server-side, and a silent retry could
     // double-apply it.
-    let effectful = !path.eq_ignore_ascii_case(HOOK_PATH);
+    // Hooks can record observations or apply enforcement; never retry a
+    // fully sent request whose server outcome is ambiguous.
+    let effectful = true;
     let mut stream = take_pooled(&address).or_else(|| connect(&address).ok());
     let mut last_error = String::new();
     for _ in 0..MAX_ATTEMPTS_PER_REQUEST {
@@ -868,6 +1102,51 @@ mod tests {
         assert_eq!(response.stdout, "exact output\n");
         assert_eq!(response.stderr, "invalid argument\n");
         assert_eq!(response.exit_code, 2);
+    }
+
+    #[test]
+    fn hook_session_identity_is_stable_until_session_end() {
+        assert_eq!(
+            hook_session_identity(br#"{"session_id":"host-session-7","hook_event_name":"UserPromptSubmit"}"#),
+            (Some("host-session-7".to_owned()), false)
+        );
+        assert_eq!(
+            hook_session_identity(br#"{"sessionId":"host-session-7","event":"SessionEnd"}"#),
+            (Some("host-session-7".to_owned()), true)
+        );
+    }
+
+    #[test]
+    fn hook_session_identity_rejects_missing_or_invalid_sessions() {
+        assert_eq!(hook_session_identity(br#"{"event":"SessionEnd"}"#), (None, true));
+        assert_eq!(hook_session_identity(b"not-json"), (None, false));
+        assert_eq!(hook_session_identity(br#"{"session_id":"  "}"#), (None, false));
+    }
+
+    #[test]
+    fn holder_operations_use_protocol_snake_case_wire_names() {
+        assert_eq!(serde_json::to_string(&membrane_protocol::ResidentHolderOperationV1::Acquire).unwrap(), "\"acquire\"");
+        assert_eq!(serde_json::to_string(&membrane_protocol::ResidentHolderOperationV1::Renew).unwrap(), "\"renew\"");
+        assert_eq!(serde_json::to_string(&membrane_protocol::ResidentHolderOperationV1::Release).unwrap(), "\"release\"");
+    }
+
+    #[test]
+    fn signed_holder_request_renders_canonical_headers_once() {
+        use membrane_client::{build_loopback_request_headers, LoopbackAuthSigner, LoopbackIdentityFields, LOOPBACK_NONCE_OCTETS};
+        let signer = LoopbackAuthSigner::from_hex_token(&"00".repeat(32)).unwrap();
+        let identity = LoopbackIdentityFields {
+            installation_id: "install".into(), cortex_store_id: "store".into(),
+            release_generation: "release".into(), startup_generation: 1,
+            stable_install_root: "C:\\ProgramData\\Membrane\\current".into(),
+        };
+        let body = br#"{}"#;
+        let headers = build_loopback_request_headers(&signer, &identity, "POST", "/resident-holder", "127.0.0.1", "application/json", body, [1; LOOPBACK_NONCE_OCTETS], 2_000_000_000).unwrap();
+        let wire = render_signed_request("/resident-holder", &headers);
+        for name in ["host:", "content-length:", "content-type:"] {
+            assert_eq!(wire.lines().filter(|line| line.to_ascii_lowercase().starts_with(name)).count(), 1, "duplicate {name}");
+        }
+        assert!(wire.lines().any(|line| line.eq_ignore_ascii_case("connection: close")));
+        assert!(wire.lines().any(|line| line.eq_ignore_ascii_case("host: 127.0.0.1")));
     }
 
     fn read_response_with_fixture(raw: &[u8]) -> (u16, Vec<u8>, bool) {

@@ -215,9 +215,11 @@ function installedFixture() {
   const root = mkdtempSync(join(tmpdir(), "membrane-installed-binding-"));
   const exe = join(root, "membrane.exe");
   writeFileSync(exe, "native-test-binary");
+  // stdio-mcp/hook probes run the co-installed transport client.
+  writeFileSync(join(root, "membrane-client.exe"), "native-test-client");
   const digest = createHash("sha256").update("native-test-binary").digest("hex");
   const generation = `sha256:${"a".repeat(64)}`;
-  writeFileSync(join(root, "release.json"), JSON.stringify({ releaseGeneration: generation, files: { "membrane.exe": digest } }));
+  writeFileSync(join(root, "release.json"), JSON.stringify({ releaseGeneration: generation, files: { "membrane.exe": digest, "membrane-client.exe": createHash("sha256").update("native-test-client").digest("hex") } }));
   const spawnSync = (_file, args, options = {}) => {
     if (args.join(" ") === "cli build-info") return { status: 0, stdout: JSON.stringify({ target: "x86_64-pc-windows-msvc", release_generation: generation, membrane_source_commit: "b".repeat(40) }), stderr: "" };
     const requests = String(options.input ?? "");

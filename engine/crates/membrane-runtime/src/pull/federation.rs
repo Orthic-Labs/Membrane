@@ -138,7 +138,7 @@ pub fn run_federate(
     // it a build-class budget. A resident Hub keeps freshness warm and
     // returns far faster; this ceiling only bounds the cold one-shot.
     let payload = run_federate_value(task, repo, max_tokens, packet_char_budget_override, packet_char_budget_model,
-        client, session, anchors, scope_grant_id, accepted_receipt_versions, 180_000, "explicit", None, None)?;
+        client, session, anchors, scope_grant_id, accepted_receipt_versions, 180_000, "explicit", None, None, None, None, None)?;
     crate::cli::emit_stdout(format_args!(
         "{}",
         serde_json::to_string_pretty(&payload).map_err(|e| format!("serialize: {e}"))?
@@ -168,7 +168,7 @@ pub fn hook_mode_federate_with_observation(
 ) -> Result<Value, String> {
     run_federate_value(task.to_owned(), repo.to_path_buf(), max_tokens, None, None, client.to_owned(),
         Some(session.to_owned()), Vec::new(), None, Vec::new(), deadline_ms,
-        if ceiling.is_some() { "host_observed" } else { "configured_cap" }, ceiling, None)
+        if ceiling.is_some() { "host_observed" } else { "configured_cap" }, ceiling, None, None, None, None)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -187,7 +187,32 @@ fn run_federate_value(
     budget_policy: &str,
     ceiling: Option<membrane_protocol::RemainingContextCeilingV1>,
     resident: Option<&crate::MemoryStore>,
+    shared_runtime: Option<tokio::runtime::Handle>,
+    inherited_cancellation: Option<tokio_util::sync::CancellationToken>,
+    inherited_deadline: Option<membrane_federation::deadline::Deadline>,
 ) -> Result<Value, String> {
+    let inherited = crate::mcp_executor::inherited_push_control();
+    let inherited_deadline = inherited_deadline.or_else(|| inherited.as_ref().map(|control| control.deadline));
+    let inherited_cancellation = inherited_cancellation.or_else(|| inherited.map(|control| control.cancellation))
+        .unwrap_or_else(|| crate::service::lifecycle_control().cancellation_token());
+    let shared_runtime = shared_runtime.or_else(|| tokio::runtime::Handle::try_current().ok());
+    let started = Instant::now();
+    // Per-stage gateway timings. Concurrent-Pull deadline misses cannot be
+    // attributed (admission vs provider vs planner) without these; they ride
+    // the response as `gatewayStageTimingsMs` alongside federationMetrics.
+    let mut stage_timings = serde_json::Map::new();
+    let mut mark_stage = |name: &str, from: Instant| {
+        stage_timings.insert(
+            name.to_owned(),
+            Value::from(from.elapsed().as_millis() as u64),
+        );
+    };
+    let local_deadline = started + std::time::Duration::from_millis(deadline_ms);
+    let federation_deadline = membrane_federation::deadline::Deadline::at(
+        inherited_deadline.map(|deadline| deadline.instant().min(local_deadline)).unwrap_or(local_deadline),
+    );
+    check_pull_live(federation_deadline, &inherited_cancellation)?;
+    let stage_started = Instant::now();
     let root = repo
         .canonicalize()
         .map_err(|error| format!("resolve repository root: {error}"))?;
@@ -199,40 +224,39 @@ fn run_federate_value(
         None => native_request(&task, &root, max_tokens, deadline_ms, release_generation,
             &client, &session_id, anchors, scope_grant_id.clone(), None),
     };
-    let admitted_grant = admitted_publication_grant(&request)?;
-    let started = Instant::now();
+    mark_stage("request_setup", stage_started);
+    let stage_started = Instant::now();
+    let admitted_grant = admitted_publication_grant_until(&request, Some(federation_deadline))?;
+    mark_stage("grant_admission", stage_started);
+    let stage_started = Instant::now();
     let foreground = matches!(budget_policy, "configured_cap" | "host_observed");
     let store = match resident {
         Some(store) => store.clone(),
         None if foreground => crate::service::open_installed_lexical_store()?,
         None => crate::service::open_installed_store()?,
     };
-    // Same hazard as the request path below: a synchronous entry that built
-    // a runtime inline panicked when it was reached from the resident
-    // Hub's async worker. Drive it on its own thread instead.
-    let (response, native_metrics, freshness) = std::thread::scope(|scope| {
-        scope
-            .spawn(|| {
-                native_federation::runtime()?
-                    .block_on(async {
-                        let bindings = if foreground && resident.is_none() {
-                            federation_sources::NativeSourceBindings::with_ambient_store(&root, scope_grant_id.as_deref(), store.clone())?
-                        } else {
-                            federation_sources::NativeSourceBindings::with_store(&root, scope_grant_id.as_deref(), store.clone())?
-                        };
-                        let native = native_federation::NativeFederation::new(bindings)?;
-                        let response = native
-                            .federate(&request, tokio_util::sync::CancellationToken::new())
-                            .await?;
-                        let freshness = native
-                            .freshness_snapshot()
-                            .ok_or_else(|| "native freshness verdict unavailable".to_owned())?;
-                        Ok::<_, String>((response, native.metrics_snapshot(), freshness))
-                    })
-            })
-            .join()
-            .map_err(|_| "native federation thread panicked".to_owned())?
-    })?;
+    mark_stage("store_open", stage_started);
+    let stage_started = Instant::now();
+    // Resident dispatch borrows engine runtime; standalone compatibility
+    // callers use the scoped bridge.
+    let (response, native_metrics, freshness) = native_federation::run_on_runtime(shared_runtime.as_ref(), async {
+            let bindings = if foreground && resident.is_none() {
+                federation_sources::NativeSourceBindings::with_ambient_store_and_deadline(&root, scope_grant_id.as_deref(), store.clone(), federation_deadline)?
+            } else {
+                federation_sources::NativeSourceBindings::with_store_and_deadline(&root, scope_grant_id.as_deref(), store.clone(), Some(federation_deadline))?
+            };
+            let native = if foreground {
+                native_federation::NativeFederation::hook(bindings)?
+            } else {
+                native_federation::NativeFederation::new(bindings)?
+            };
+            let response = native.federate_until(&request, inherited_cancellation.clone(), federation_deadline).await?;
+            let freshness = native.freshness_snapshot().ok_or_else(|| "native freshness verdict unavailable".to_owned())?;
+            Ok::<_, String>((response, native.metrics_snapshot(), freshness))
+        })?;
+    mark_stage("native_federation", stage_started);
+    let stage_started = Instant::now();
+    check_pull_live(federation_deadline, &inherited_cancellation)?;
     let ccs = native_response_to_ccs(&response, &request, &freshness);
     let provisional_requirement_map = ccs.get("requirementEvidenceMap").cloned();
     let native_receipts = collect_native_receipts(&response);
@@ -250,16 +274,18 @@ fn run_federate_value(
             },
             scope_grant_present: scope_grant_id.is_some(),
             consumer_resolvers: Vec::new(),
-            scope_grant_fence: post_fusion_publication_fence(&admitted_grant)?,
+                scope_grant_fence: post_fusion_publication_fence_until(&admitted_grant, Some(federation_deadline))?,
             gateway_process_ms: started.elapsed().as_secs_f64() * 1000.0,
         },
     )?;
+    mark_stage("envelope", stage_started);
     if let Some(fields) = payload.as_object_mut() {
         fields.insert("transport".to_owned(), Value::String("native".to_owned()));
         fields.insert(
             "federationMetrics".to_owned(),
             serde_json::json!(native_metrics),
         );
+        fields.insert("gatewayStageTimingsMs".to_owned(), Value::Object(stage_timings));
         merge_native_receipts(fields, native_receipts);
         let packet_omissions = fields
             .get("packet")
@@ -283,7 +309,33 @@ fn run_federate_value(
         merge_bm10_accounting(fields, provisional_requirement_map.as_ref(), final_map.as_ref(), final_packet.as_ref());
         fields.insert("budgetPolicy".to_owned(), Value::String(budget_policy.to_owned()));
     }
+    check_pull_live(federation_deadline, &inherited_cancellation)?;
     Ok(payload)
+}
+
+fn check_pull_live(deadline: membrane_federation::deadline::Deadline, cancellation: &tokio_util::sync::CancellationToken) -> Result<(), String> {
+    if cancellation.is_cancelled() { return Err("federation request cancelled".to_owned()); }
+    if deadline.is_exhausted_at(Instant::now()) { return Err("federation deadline exhausted".to_owned()); }
+    Ok(())
+}
+
+/// Record one named gateway stage's duration into the response timing map.
+fn mark_stage_timing(timings: &mut serde_json::Map<String, Value>, name: &str, from: Instant) {
+    timings.insert(name.to_owned(), Value::from(from.elapsed().as_millis() as u64));
+}
+
+/// Attach gateway stage timings to an error refusal body so deadline misses
+/// that never reach a successful envelope remain attributable.
+fn refusal_with_stage_timings(mut refusal: (u16, String), timings: &serde_json::Map<String, Value>) -> (u16, String) {
+    if let Ok(mut value) = serde_json::from_str::<Value>(&refusal.1) {
+        if let Some(fields) = value.as_object_mut() {
+            fields.insert("gatewayStageTimingsMs".to_owned(), Value::Object(timings.clone()));
+            if let Ok(body) = serde_json::to_string(&value) {
+                refusal.1 = body;
+            }
+        }
+    }
+    refusal
 }
 
 /// Resident `/federate` entrypoint. Production routes call this native path;
@@ -299,11 +351,47 @@ pub fn native_route_response_with_store(
     native_route_response_with_deadline(body, resident, None)
 }
 
+/// Resident Pull entrypoint. The Hub supplies its shared runtime plus the
+/// transport-owned control, so timeout cancellation reaches provider work and
+/// no per-request Tokio runtime or blocking pool is created.
+pub(crate) fn native_route_response_with_control(
+    body: &str,
+    resident: Option<&crate::MemoryStore>,
+    control: crate::serve::PushRequestControl,
+    runtime: &tokio::runtime::Handle,
+) -> (u16, String) {
+    native_route_response_with_deadline_and_control(
+        body,
+        resident,
+        Some(control.deadline),
+        Some(control.cancellation),
+        Some(runtime),
+    )
+}
+
 pub(crate) fn native_route_response_with_deadline(
     body: &str,
     resident: Option<&crate::MemoryStore>,
     inherited_deadline: Option<membrane_federation::deadline::Deadline>,
 ) -> (u16, String) {
+    let control = crate::mcp_executor::inherited_push_control();
+    let deadline = match (inherited_deadline, control.as_ref()) {
+        (Some(deadline), Some(control)) => Some(membrane_federation::deadline::Deadline::at(deadline.instant().min(control.deadline.instant()))),
+        (deadline, control) => deadline.or_else(|| control.map(|control| control.deadline)),
+    };
+    let runtime = tokio::runtime::Handle::try_current().ok();
+    native_route_response_with_deadline_and_control(body, resident, deadline,
+        Some(control.map(|control| control.cancellation).unwrap_or_else(|| crate::service::lifecycle_control().cancellation_token())), runtime.as_ref())
+}
+
+fn native_route_response_with_deadline_and_control(
+    body: &str,
+    resident: Option<&crate::MemoryStore>,
+    inherited_deadline: Option<membrane_federation::deadline::Deadline>,
+    inherited_cancellation: Option<tokio_util::sync::CancellationToken>,
+    shared_runtime: Option<&tokio::runtime::Handle>,
+) -> (u16, String) {
+    let inherited_cancellation = inherited_cancellation.unwrap_or_else(|| crate::service::lifecycle_control().cancellation_token());
     let started = Instant::now();
     let value: Value = match serde_json::from_str(body) {
         Ok(value) => value,
@@ -336,6 +424,12 @@ pub(crate) fn native_route_response_with_deadline(
     let local_deadline = started + std::time::Duration::from_millis(deadline_ms);
     let deadline = membrane_federation::deadline::Deadline::at(inherited_deadline
         .map(|inherited| inherited.instant().min(local_deadline)).unwrap_or(local_deadline));
+    // Same per-stage timings as run_federate_value: the host-observed (H8)
+    // route is the production path the concurrency qualification exercises,
+    // so its deadline misses must be attributable too. Timings also ride the
+    // error refusals below, not only successful envelopes.
+    let mut stage_timings = serde_json::Map::new();
+    mark_stage_timing(&mut stage_timings, "request_parse", started);
     let client = value
         .get("client")
         .and_then(Value::as_str)
@@ -401,10 +495,13 @@ pub(crate) fn native_route_response_with_deadline(
             value.get("packetCharBudgetModel").and_then(Value::as_str).map(str::to_owned),
             client, Some(session), anchors, scope_grant_id, vec![2],
             deadline.instant().saturating_duration_since(Instant::now()).as_millis() as u64,
-            "configured_cap", None, resident);
+            "configured_cap", None, resident, shared_runtime.cloned(), Some(inherited_cancellation.clone()), Some(deadline));
         return match result {
             Ok(payload) => (200, payload.to_string()),
-            Err(error) => (503, serde_json::json!({"error":error,"reason":"membrane_retrieval_failed"}).to_string()),
+            Err(error) => refusal_with_stage_timings(
+                (503, serde_json::json!({"error":error,"reason":"membrane_retrieval_failed"}).to_string()),
+                &stage_timings,
+            ),
         };
     }
     let ceiling = match crate::pull::selection::parse_request_time_h8(&value, &session, &task_id) {
@@ -413,9 +510,8 @@ pub(crate) fn native_route_response_with_deadline(
     };
     let loaded_context = current_loaded_context(&value, &session);
     let result = (|| -> Result<Value, NativeRouteError> {
-        if deadline.is_exhausted_at(Instant::now()) {
-            return Err("federation deadline exhausted during owner binding".to_owned().into());
-        }
+        check_pull_live(deadline, &inherited_cancellation)?;
+        let stage_started = Instant::now();
         let release_generation = RuntimeReleaseSource::generation()?;
         let mut request = native_request_with_h8(
             task, &root, max_tokens, deadline_ms, release_generation,
@@ -446,6 +542,7 @@ pub(crate) fn native_route_response_with_deadline(
                 .extensions
                 .insert("consumerCapabilities".to_owned(), capabilities);
         }
+        mark_stage_timing(&mut stage_timings, "request_setup", stage_started);
         if let Some(requirement_facts) = value.get("requirementFacts").cloned() {
             request
                 .extensions
@@ -458,7 +555,10 @@ pub(crate) fn native_route_response_with_deadline(
                     .map_err(|error| format!("serialize cortexTemporalQuery: {error}"))?,
             );
         }
+        let stage_started = Instant::now();
         let admitted_grant = admitted_publication_grant_until(&request, Some(deadline))?;
+        mark_stage_timing(&mut stage_timings, "grant_admission", stage_started);
+        let stage_started = Instant::now();
         let bindings = match resident {
             Some(store) => federation_sources::NativeSourceBindings::with_store_and_deadline(
                 &root,
@@ -473,24 +573,15 @@ pub(crate) fn native_route_response_with_deadline(
                 Some(deadline),
             ),
         }?;
+        mark_stage_timing(&mut stage_timings, "bindings", stage_started);
+        let stage_started = Instant::now();
         let native = native_federation::NativeFederation::new(bindings)?;
-        // This routine is synchronous and is called from two places: a stdio
-        // process with no reactor, and the resident Hub's async worker. Building
-        // a runtime inline panicked in the second case ("Cannot start a runtime
-        // from within a runtime"), which unwound the connection task and closed
-        // the socket with no response at all. Drive the future on its own
-        // thread so the caller's context does not decide whether this works.
-        let response = std::thread::scope(|scope| {
-            scope
-                .spawn(|| {
-                    native_federation::runtime()?
-                        .block_on(
-                            native.federate_until(&request, tokio_util::sync::CancellationToken::new(), deadline),
-                        )
-                })
-                .join()
-                .map_err(|_| "native federation thread panicked".to_owned())?
-        })?;
+        // Dispatch is already off scheduler workers; reuse its engine Handle.
+        let response = native_federation::run_on_runtime(shared_runtime,
+            native.federate_until(&request, inherited_cancellation.clone(), deadline))?;
+        mark_stage_timing(&mut stage_timings, "native_federation", stage_started);
+        let stage_started = Instant::now();
+        check_pull_live(deadline, &inherited_cancellation)?;
         let native_metrics = native.metrics_snapshot();
         let freshness = native
             .freshness_snapshot()
@@ -517,6 +608,7 @@ pub(crate) fn native_route_response_with_deadline(
                 gateway_process_ms: started.elapsed().as_secs_f64() * 1000.0,
             },
         )?;
+        mark_stage_timing(&mut stage_timings, "envelope", stage_started);
         let mut packet = payload
             .get("packet")
             .cloned()
@@ -583,6 +675,7 @@ pub(crate) fn native_route_response_with_deadline(
             fields.insert("status".to_owned(), Value::String("insufficient_confidence".to_owned()));
             fields.insert("transport".to_owned(), Value::String("native".to_owned()));
             fields.insert("federationMetrics".to_owned(), serde_json::json!(native_metrics));
+            fields.insert("gatewayStageTimingsMs".to_owned(), Value::Object(stage_timings.clone()));
             fields.insert("emptyEvidenceSummary".to_owned(), serde_json::json!({
                 "candidateCount": candidate_count, "omissions": reasons, "elided": total.saturating_sub(16),
             }));
@@ -595,6 +688,7 @@ pub(crate) fn native_route_response_with_deadline(
             let final_map = fields.get("requirementEvidenceMap").cloned();
             let final_packet = fields.get("packet").cloned();
             merge_bm10_accounting(fields, provisional_coverage.as_ref(), final_map.as_ref(), final_packet.as_ref());
+            check_pull_live(deadline, &inherited_cancellation)?;
             return Ok(payload);
         }
         let placement_receipt = crate::pull::placement::place(&mut packet);
@@ -636,6 +730,7 @@ pub(crate) fn native_route_response_with_deadline(
             fields.insert("status".to_owned(), Value::String("unchanged_context".to_owned()));
             fields.insert("transport".to_owned(), Value::String("native".to_owned()));
             fields.insert("federationMetrics".to_owned(), serde_json::json!(native_metrics));
+            fields.insert("gatewayStageTimingsMs".to_owned(), Value::Object(stage_timings.clone()));
             fields.insert("finalAdmission".to_owned(), serde_json::json!({
                 "status": "insufficient",
                 "candidateCount": 0,
@@ -651,6 +746,7 @@ pub(crate) fn native_route_response_with_deadline(
             let final_map = fields.get("requirementEvidenceMap").cloned();
             let final_packet = fields.get("packet").cloned();
             merge_bm10_accounting(fields, provisional_coverage.as_ref(), final_map.as_ref(), final_packet.as_ref());
+            check_pull_live(deadline, &inherited_cancellation)?;
             return Ok(payload);
         }
         let push_policy = push_policy_for_request(&value, task);
@@ -658,10 +754,13 @@ pub(crate) fn native_route_response_with_deadline(
         let recovery_scope = crate::pull::recovery::RecoveryScope::new(&root, &session).ok();
         let recovery = recovery_scope.as_ref().and_then(|scope| value.get("pushResolverToken").and_then(Value::as_str).map(|token|
             crate::pull::selection::RecoveryContext {store:&recovery_store, scope, resolver_token:token}));
+        check_pull_live(deadline, &inherited_cancellation)?;
+        let stage_started = Instant::now();
         let selection = crate::pull::selection::select_packet_for_h8_with_recovery(
             &packet, &ceiling, &push_policy, recovery.as_ref(),
         )
         .map_err(NativeRouteError::RequestTime)?;
+        mark_stage_timing(&mut stage_timings, "reduction_selection", stage_started);
         let selected_content = selection.selected_representation.content.clone();
         let previous_packet = loaded_context.as_ref().zip(suppression_catalog.as_ref()).and_then(|(loaded, catalog)| {
             crate::pull::delivery_state::previous_packet(
@@ -684,6 +783,7 @@ pub(crate) fn native_route_response_with_deadline(
             "federationMetrics".to_owned(),
             serde_json::json!(native_metrics),
         );
+        fields.insert("gatewayStageTimingsMs".to_owned(), Value::Object(stage_timings.clone()));
         merge_native_receipts(fields, native_receipts);
         fields.insert(
             "packetReduction".to_owned(),
@@ -733,9 +833,7 @@ pub(crate) fn native_route_response_with_deadline(
                 "droppedCandidateCount": selected_content.get("omissions").and_then(Value::as_array).map_or(0, Vec::len),
             }),
         );
-        if deadline.is_exhausted_at(Instant::now()) {
-            return Err("federation deadline exhausted during owner binding".to_owned().into());
-        }
+        check_pull_live(deadline, &inherited_cancellation)?;
         let final_fence = fence_packet_emission(
             post_fusion_publication_fence_until(&admitted_grant, Some(deadline))?,
         ).map_err(NativeRouteError::PolicyChanged)?;
@@ -798,7 +896,8 @@ pub(crate) fn native_route_response_with_deadline(
                 representation_digest,
                 packet_digest,
             };
-            crate::catalog::record_pending_pull_publication(catalog, &publication)
+            crate::catalog::record_pending_pull_publication_with_control(catalog, &publication,
+                &crate::serve::PushRequestControl { deadline, cancellation: inherited_cancellation.clone() })
                 .map_err(|error| format!("persist final pending Pull publication: {error}"))?;
             fields.insert(
                 "pullPublication".to_owned(),
@@ -811,8 +910,10 @@ pub(crate) fn native_route_response_with_deadline(
                 serde_json::to_value(&handle)
                     .map_err(|error| format!("serialize representation handle: {error}"))?,
             );
+            check_pull_live(deadline, &inherited_cancellation)?;
             crate::pull::delivery_state::record_selected_packet(&selected_content, publication);
         }
+        check_pull_live(deadline, &inherited_cancellation)?;
         Ok(payload)
     })();
     match result {
@@ -824,21 +925,23 @@ pub(crate) fn native_route_response_with_deadline(
                     "{\"error\":\"federation envelope serialization failed\"}".to_owned(),
                 )
             }),
-        Err(NativeRouteError::RequestTime(error)) => request_time_refusal(error),
-        Err(NativeRouteError::PolicyChanged(reason)) => (
-            409,
-            serde_json::json!({
-                "error": "policy_changed",
-                "kind": "publication_fence",
-                "reason": reason,
-            })
-            .to_string(),
-        ),
+        Err(NativeRouteError::RequestTime(error)) =>
+            refusal_with_stage_timings(request_time_refusal(error), &stage_timings),
+        Err(NativeRouteError::PolicyChanged(reason)) =>
+            refusal_with_stage_timings((
+                409,
+                serde_json::json!({
+                    "error": "policy_changed",
+                    "kind": "publication_fence",
+                    "reason": reason,
+                })
+                .to_string(),
+            ), &stage_timings),
         Err(NativeRouteError::Internal(error)) => {
             if error.to_ascii_lowercase().contains("deadline") {
-                federation_timeout_refusal(error, started.elapsed().as_millis() as u64)
+                refusal_with_stage_timings(federation_timeout_refusal(error, started.elapsed().as_millis() as u64), &stage_timings)
             } else {
-                (502, serde_json::json!({"error": error}).to_string())
+                refusal_with_stage_timings((502, serde_json::json!({"error": error}).to_string()), &stage_timings)
             }
         }
     }
@@ -2390,6 +2493,26 @@ mod observability_tests {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cli_and_hook_pull_preserve_cancelled_control_before_owner_binding() {
+        let repo = tempfile::tempdir().unwrap();
+        let cancellation = tokio_util::sync::CancellationToken::new();
+        cancellation.cancel();
+        let control = crate::serve::PushRequestControl {
+            deadline: membrane_federation::deadline::Deadline::at(Instant::now() + std::time::Duration::from_secs(60)),
+            cancellation,
+        };
+        crate::mcp_executor::with_inherited_push_control(control, || {
+            let args = vec!["membrane".to_owned(), "pull".into(), "federate".into(), "--task".into(), "trace".into(),
+                "--repo".into(), repo.path().to_string_lossy().into_owned()];
+            let response = crate::cli::run_cli_captured(&args, &[]);
+            assert_ne!(response.exit_code, 0);
+            assert!(response.stderr.contains("cancelled"), "{}", response.stderr);
+            let response = hook_mode_federate("trace", repo.path(), 100, "test", "session", 60000);
+            assert!(response.unwrap_err().contains("cancelled"));
+        });
+    }
 
     #[test]
     fn cortex_competitive_native_route_rejects_malformed_temporal_extension_before_fanout() {

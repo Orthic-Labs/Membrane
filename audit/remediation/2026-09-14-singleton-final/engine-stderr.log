@@ -1,0 +1,1143 @@
+{"event":"activation_requested","observedAtUnixMs":1789304966620,"pid":206104,"reason":"standalone_daemon"}
+{"event":"owner_acquired","observedAtUnixMs":1789304966635,"pid":206104,"reason":"resident_engine"}
+[startup] embedder: fastembed compiled in, ORT_DYLIB_PATH=\\?\C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24\runtime\resources\semantic-embed-runtime\onnxruntime.dll
+{"enrolledRepoCount":3,"event":"resident_blueprint_initialization","stage":"started"}
+membrane resident on 127.0.0.1:47851 db=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory/cortex-engine.db catalog=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory\catalog.db
+{"event":"ready","observedAtUnixMs":1789304969019,"pid":206104,"reason":"transport"}
+{"event":"holder_status","observedAtUnixMs":1789304978656,"pid":206104,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789304980680,"pid":206104,"reason":"resident_holder"}
+{"event":"background_authority_granted","observedAtUnixMs":1789304981289,"pid":206104,"reason":"holder_active"}
+{"event":"holder_acquired","observedAtUnixMs":1789304981290,"pid":206104,"reason":"resident_holder"}
+{"event":"resident_blueprint_repository_build","root":"\\\\?\\D:\\Claude\\.tmp\\membrane-finish-smoke","stage":"started"}
+{"elapsedMs":75,"event":"resident_blueprint_repository_build","root":"\\\\?\\D:\\Claude\\.tmp\\membrane-finish-smoke","stage":"completed"}
+{"event":"resident_blueprint_repository_build","root":"\\\\?\\D:\\Claude\\legion","stage":"started"}
+{"event":"holder_status","observedAtUnixMs":1789304982707,"pid":206104,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789304984734,"pid":206104,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789304986763,"pid":206104,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789304988788,"pid":206104,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789304990809,"pid":206104,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789304992843,"pid":206104,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789304994880,"pid":206104,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789304996913,"pid":206104,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789304998947,"pid":206104,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789305000975,"pid":206104,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789305003008,"pid":206104,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789305005053,"pid":206104,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789305007084,"pid":206104,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789305009124,"pid":206104,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789305011162,"pid":206104,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789305013209,"pid":206104,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789305015269,"pid":206104,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789305017304,"pid":206104,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789305019339,"pid":206104,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789305021366,"pid":206104,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789305023401,"pid":206104,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789305025436,"pid":206104,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789305027466,"pid":206104,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789305029502,"pid":206104,"reason":"resident_holder"}
+{"event":"background_authority_drained","observedAtUnixMs":1789305031336,"pid":206104,"reason":"final_holder_release"}
+{"event":"holder_released","observedAtUnixMs":1789305031336,"pid":206104,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789305031536,"pid":206104,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789305033561,"pid":206104,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789305035591,"pid":206104,"reason":"resident_holder"}
+{"event":"activation_requested","observedAtUnixMs":1789305182477,"pid":203508,"reason":"standalone_daemon"}
+{"event":"owner_acquired","observedAtUnixMs":1789305182498,"pid":203508,"reason":"resident_engine"}
+[startup] embedder: fastembed compiled in, ORT_DYLIB_PATH=\\?\C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24\runtime\resources\semantic-embed-runtime\onnxruntime.dll
+{"enrolledRepoCount":3,"event":"resident_blueprint_initialization","stage":"started"}
+membrane resident on 127.0.0.1:47851 db=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory/cortex-engine.db catalog=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory\catalog.db
+{"event":"ready","observedAtUnixMs":1789305185332,"pid":203508,"reason":"transport"}
+{"event":"activation_requested","observedAtUnixMs":1789305215954,"pid":200888,"reason":"standalone_daemon"}
+{"event":"owner_acquired","observedAtUnixMs":1789305215971,"pid":200888,"reason":"resident_engine"}
+[startup] embedder: fastembed compiled in, ORT_DYLIB_PATH=\\?\C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24\runtime\resources\semantic-embed-runtime\onnxruntime.dll
+{"enrolledRepoCount":3,"event":"resident_blueprint_initialization","stage":"started"}
+membrane resident on 127.0.0.1:47851 db=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory/cortex-engine.db catalog=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory\catalog.db
+{"event":"ready","observedAtUnixMs":1789305218264,"pid":200888,"reason":"transport"}
+{"event":"holder_status","observedAtUnixMs":1789305226515,"pid":200888,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789305228540,"pid":200888,"reason":"resident_holder"}
+{"event":"background_authority_granted","observedAtUnixMs":1789305228765,"pid":200888,"reason":"holder_active"}
+{"event":"holder_acquired","observedAtUnixMs":1789305228766,"pid":200888,"reason":"resident_holder"}
+{"event":"resident_blueprint_repository_build","root":"\\\\?\\D:\\Claude\\.tmp\\membrane-finish-smoke","stage":"started"}
+{"elapsedMs":44,"event":"resident_blueprint_repository_build","root":"\\\\?\\D:\\Claude\\.tmp\\membrane-finish-smoke","stage":"completed"}
+{"event":"resident_blueprint_repository_build","root":"\\\\?\\D:\\Claude\\legion","stage":"started"}
+{"event":"holder_status","observedAtUnixMs":1789305230563,"pid":200888,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789305232583,"pid":200888,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789305234603,"pid":200888,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789305236626,"pid":200888,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789305238650,"pid":200888,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789305240673,"pid":200888,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789305242697,"pid":200888,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789305244721,"pid":200888,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789305246745,"pid":200888,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789305248769,"pid":200888,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789305250803,"pid":200888,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789305252828,"pid":200888,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789305254899,"pid":200888,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789305256946,"pid":200888,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789305258976,"pid":200888,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789305261006,"pid":200888,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789305263031,"pid":200888,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789305265056,"pid":200888,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789305267092,"pid":200888,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789305269145,"pid":200888,"reason":"resident_holder"}
+{"event":"http_connection_failed","reason":"connection closed before message completed"}
+{"event":"http_connection_failed","reason":"connection closed before message completed"}
+{"event":"holder_status","observedAtUnixMs":1789305272065,"pid":200888,"reason":"resident_holder"}
+{"event":"http_connection_failed","reason":"connection closed before message completed"}
+{"event":"http_connection_failed","reason":"connection closed before message completed"}
+{"event":"holder_status","observedAtUnixMs":1789305277615,"pid":200888,"reason":"resident_holder"}
+{"event":"holder_renewed","observedAtUnixMs":1789305278836,"pid":200888,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789305279681,"pid":200888,"reason":"resident_holder"}
+{"event":"background_authority_drained","observedAtUnixMs":1789305280985,"pid":200888,"reason":"final_holder_release"}
+{"event":"holder_released","observedAtUnixMs":1789305280985,"pid":200888,"reason":"resident_holder"}
+{"event":"http_connection_failed","reason":"connection closed before message completed"}
+{"event":"http_connection_failed","reason":"connection closed before message completed"}
+{"event":"holder_status","observedAtUnixMs":1789305284800,"pid":200888,"reason":"resident_holder"}
+{"event":"http_connection_failed","reason":"connection closed before message completed"}
+{"event":"http_connection_failed","reason":"connection closed before message completed"}
+{"event":"http_connection_failed","reason":"connection closed before message completed"}
+{"event":"http_connection_failed","reason":"connection closed before message completed"}
+{"event":"http_connection_failed","reason":"connection closed before message completed"}
+{"event":"activation_requested","observedAtUnixMs":1789305479396,"pid":213708,"reason":"standalone_daemon"}
+{"event":"owner_acquired","observedAtUnixMs":1789305479414,"pid":213708,"reason":"resident_engine"}
+[startup] embedder: fastembed compiled in, ORT_DYLIB_PATH=\\?\C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24\runtime\resources\semantic-embed-runtime\onnxruntime.dll
+{"enrolledRepoCount":3,"event":"resident_blueprint_initialization","stage":"started"}
+membrane resident on 127.0.0.1:47851 db=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory/cortex-engine.db catalog=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory\catalog.db
+{"event":"ready","observedAtUnixMs":1789305482067,"pid":213708,"reason":"transport"}
+{"event":"holder_status","observedAtUnixMs":1789305490228,"pid":213708,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789305492267,"pid":213708,"reason":"resident_holder"}
+{"event":"background_authority_granted","observedAtUnixMs":1789305493344,"pid":213708,"reason":"holder_active"}
+{"event":"holder_acquired","observedAtUnixMs":1789305493345,"pid":213708,"reason":"resident_holder"}
+{"event":"resident_blueprint_repository_build","root":"\\\\?\\D:\\Claude\\.tmp\\membrane-finish-smoke","stage":"started"}
+{"elapsedMs":110,"event":"resident_blueprint_repository_build","root":"\\\\?\\D:\\Claude\\.tmp\\membrane-finish-smoke","stage":"completed"}
+{"event":"resident_blueprint_repository_build","root":"\\\\?\\D:\\Claude\\legion","stage":"started"}
+{"event":"holder_status","observedAtUnixMs":1789305494577,"pid":213708,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789305496605,"pid":213708,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789305498658,"pid":213708,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789305500781,"pid":213708,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789305502808,"pid":213708,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789305504841,"pid":213708,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789305506870,"pid":213708,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789305508902,"pid":213708,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789305510926,"pid":213708,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789305512952,"pid":213708,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789305514977,"pid":213708,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789305517288,"pid":213708,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789305519319,"pid":213708,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789305521351,"pid":213708,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789305523377,"pid":213708,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789305525402,"pid":213708,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789305527430,"pid":213708,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789305529459,"pid":213708,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789305531488,"pid":213708,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789305533516,"pid":213708,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789305535545,"pid":213708,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789305537572,"pid":213708,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789305539598,"pid":213708,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789305541626,"pid":213708,"reason":"resident_holder"}
+{"event":"background_authority_drained","observedAtUnixMs":1789305542572,"pid":213708,"reason":"final_holder_release"}
+{"event":"holder_released","observedAtUnixMs":1789305542572,"pid":213708,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789305543651,"pid":213708,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789305545676,"pid":213708,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789305547701,"pid":213708,"reason":"resident_holder"}
+{"event":"http_connection_failed","reason":"connection closed before message completed"}
+{"event":"http_connection_failed","reason":"connection closed before message completed"}
+{"event":"http_connection_failed","reason":"connection closed before message completed"}
+{"event":"http_connection_failed","reason":"connection closed before message completed"}
+{"event":"http_connection_failed","reason":"connection closed before message completed"}
+{"event":"http_connection_failed","reason":"connection closed before message completed"}
+{"event":"http_connection_failed","reason":"connection closed before message completed"}
+{"event":"http_connection_failed","reason":"connection closed before message completed"}
+{"event":"activation_requested","observedAtUnixMs":1789305703569,"pid":154944,"reason":"standalone_daemon"}
+{"event":"owner_acquired","observedAtUnixMs":1789305703571,"pid":154944,"reason":"resident_engine"}
+[startup] embedder: fastembed compiled in, ORT_DYLIB_PATH=\\?\C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24\runtime\resources\semantic-embed-runtime\onnxruntime.dll
+{"enrolledRepoCount":3,"event":"resident_blueprint_initialization","stage":"started"}
+membrane resident on 127.0.0.1:47851 db=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory/cortex-engine.db catalog=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory\catalog.db
+{"event":"ready","observedAtUnixMs":1789305707060,"pid":154944,"reason":"transport"}
+{"event":"http_connection_failed","reason":"connection closed before message completed"}
+{"event":"http_connection_failed","reason":"connection closed before message completed"}
+{"event":"http_connection_failed","reason":"connection closed before message completed"}
+{"event":"http_connection_failed","reason":"connection closed before message completed"}
+{"event":"http_connection_failed","reason":"connection closed before message completed"}
+{"event":"http_connection_failed","reason":"connection closed before message completed"}
+{"event":"http_connection_failed","reason":"connection closed before message completed"}
+{"event":"http_connection_failed","reason":"connection closed before message completed"}
+{"event":"activation_requested","observedAtUnixMs":1789305962355,"pid":186100,"reason":"standalone_daemon"}
+{"event":"owner_acquired","observedAtUnixMs":1789305962377,"pid":186100,"reason":"resident_engine"}
+[startup] embedder: fastembed compiled in, ORT_DYLIB_PATH=\\?\C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24\runtime\resources\semantic-embed-runtime\onnxruntime.dll
+{"enrolledRepoCount":3,"event":"resident_blueprint_initialization","stage":"started"}
+membrane resident on 127.0.0.1:47851 db=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory/cortex-engine.db catalog=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory\catalog.db
+{"event":"ready","observedAtUnixMs":1789305965850,"pid":186100,"reason":"transport"}
+{"event":"activation_requested","observedAtUnixMs":1789306022483,"pid":190756,"reason":"standalone_daemon"}
+{"event":"owner_acquired","observedAtUnixMs":1789306022506,"pid":190756,"reason":"resident_engine"}
+[startup] embedder: fastembed compiled in, ORT_DYLIB_PATH=\\?\C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24\runtime\resources\semantic-embed-runtime\onnxruntime.dll
+{"enrolledRepoCount":3,"event":"resident_blueprint_initialization","stage":"started"}
+membrane resident on 127.0.0.1:47851 db=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory/cortex-engine.db catalog=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory\catalog.db
+{"event":"ready","observedAtUnixMs":1789306027331,"pid":190756,"reason":"transport"}
+{"event":"activation_requested","observedAtUnixMs":1789306101090,"pid":188988,"reason":"standalone_daemon"}
+{"event":"owner_acquired","observedAtUnixMs":1789306101092,"pid":188988,"reason":"resident_engine"}
+[startup] embedder: fastembed compiled in, ORT_DYLIB_PATH=\\?\C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24\runtime\resources\semantic-embed-runtime\onnxruntime.dll
+{"enrolledRepoCount":3,"event":"resident_blueprint_initialization","stage":"started"}
+membrane resident on 127.0.0.1:47851 db=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory/cortex-engine.db catalog=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory\catalog.db
+{"event":"ready","observedAtUnixMs":1789306103461,"pid":188988,"reason":"transport"}
+{"event":"activation_requested","observedAtUnixMs":1789307522260,"pid":189784,"reason":"standalone_daemon"}
+{"event":"owner_acquired","observedAtUnixMs":1789307522277,"pid":189784,"reason":"resident_engine"}
+[startup] embedder: fastembed compiled in, ORT_DYLIB_PATH=\\?\C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24\runtime\resources\semantic-embed-runtime\onnxruntime.dll
+{"enrolledRepoCount":3,"event":"resident_blueprint_initialization","stage":"started"}
+membrane resident on 127.0.0.1:47851 db=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory/cortex-engine.db catalog=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory\catalog.db
+{"event":"ready","observedAtUnixMs":1789307526084,"pid":189784,"reason":"transport"}
+{"event":"activation_requested","observedAtUnixMs":1789308313613,"pid":211460,"reason":"standalone_daemon"}
+{"event":"owner_acquired","observedAtUnixMs":1789308313621,"pid":211460,"reason":"resident_engine"}
+[startup] embedder: fastembed compiled in, ORT_DYLIB_PATH=\\?\C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24\runtime\resources\semantic-embed-runtime\onnxruntime.dll
+{"enrolledRepoCount":3,"event":"resident_blueprint_initialization","stage":"started"}
+membrane resident on 127.0.0.1:47851 db=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory/cortex-engine.db catalog=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory\catalog.db
+{"event":"ready","observedAtUnixMs":1789308318089,"pid":211460,"reason":"transport"}
+{"event":"holder_status","observedAtUnixMs":1789308326341,"pid":211460,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789308328368,"pid":211460,"reason":"resident_holder"}
+{"event":"background_authority_granted","observedAtUnixMs":1789308328671,"pid":211460,"reason":"holder_active"}
+{"event":"holder_acquired","observedAtUnixMs":1789308328671,"pid":211460,"reason":"resident_holder"}
+{"event":"resident_blueprint_repository_build","root":"\\\\?\\D:\\Claude\\.tmp\\membrane-finish-smoke","stage":"started"}
+{"elapsedMs":58,"event":"resident_blueprint_repository_build","root":"\\\\?\\D:\\Claude\\.tmp\\membrane-finish-smoke","stage":"completed"}
+{"event":"resident_blueprint_repository_build","root":"\\\\?\\D:\\Claude\\legion","stage":"started"}
+{"event":"holder_status","observedAtUnixMs":1789308330393,"pid":211460,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789308332425,"pid":211460,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789308334453,"pid":211460,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789308336480,"pid":211460,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789308338517,"pid":211460,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789308340549,"pid":211460,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789308342590,"pid":211460,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789308344617,"pid":211460,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789308346649,"pid":211460,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789308348680,"pid":211460,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789308350706,"pid":211460,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789308352734,"pid":211460,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789308354759,"pid":211460,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789308356784,"pid":211460,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789308358811,"pid":211460,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789308360838,"pid":211460,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789308362864,"pid":211460,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789308364891,"pid":211460,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789308366917,"pid":211460,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789308368943,"pid":211460,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789308370980,"pid":211460,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789308373011,"pid":211460,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789308375039,"pid":211460,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789308377072,"pid":211460,"reason":"resident_holder"}
+{"event":"background_authority_drained","observedAtUnixMs":1789308378519,"pid":211460,"reason":"final_holder_release"}
+{"event":"holder_released","observedAtUnixMs":1789308378519,"pid":211460,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789308379100,"pid":211460,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789308381128,"pid":211460,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789308383158,"pid":211460,"reason":"resident_holder"}
+{"event":"activation_requested","observedAtUnixMs":1789308481658,"pid":190440,"reason":"standalone_daemon"}
+{"event":"owner_acquired","observedAtUnixMs":1789308481673,"pid":190440,"reason":"resident_engine"}
+[startup] embedder: fastembed compiled in, ORT_DYLIB_PATH=\\?\C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24\runtime\resources\semantic-embed-runtime\onnxruntime.dll
+{"enrolledRepoCount":3,"event":"resident_blueprint_initialization","stage":"started"}
+membrane resident on 127.0.0.1:47851 db=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory/cortex-engine.db catalog=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory\catalog.db
+{"event":"ready","observedAtUnixMs":1789308485308,"pid":190440,"reason":"transport"}
+{"event":"activation_requested","observedAtUnixMs":1789317961916,"pid":217708,"reason":"standalone_daemon"}
+{"event":"owner_acquired","observedAtUnixMs":1789317961931,"pid":217708,"reason":"resident_engine"}
+[startup] embedder: fastembed compiled in, ORT_DYLIB_PATH=\\?\C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24\runtime\resources\semantic-embed-runtime\onnxruntime.dll
+{"enrolledRepoCount":3,"event":"resident_blueprint_initialization","stage":"started"}
+membrane resident on 127.0.0.1:47851 db=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory/cortex-engine.db catalog=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory\catalog.db
+{"event":"ready","observedAtUnixMs":1789317968312,"pid":217708,"reason":"transport"}
+{"event":"activation_requested","observedAtUnixMs":1789321008615,"pid":219040,"reason":"standalone_daemon"}
+{"event":"owner_acquired","observedAtUnixMs":1789321008616,"pid":219040,"reason":"resident_engine"}
+[startup] embedder: fastembed compiled in, ORT_DYLIB_PATH=\\?\C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24\runtime\resources\semantic-embed-runtime\onnxruntime.dll
+{"enrolledRepoCount":3,"event":"resident_blueprint_initialization","stage":"started"}
+membrane resident on 127.0.0.1:47851 db=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory/cortex-engine.db catalog=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory\catalog.db
+{"event":"ready","observedAtUnixMs":1789321016952,"pid":219040,"reason":"transport"}
+{"event":"holder_status","observedAtUnixMs":1789321024646,"pid":219040,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789321026677,"pid":219040,"reason":"resident_holder"}
+{"event":"background_authority_granted","observedAtUnixMs":1789321027141,"pid":219040,"reason":"holder_active"}
+{"event":"holder_acquired","observedAtUnixMs":1789321027141,"pid":219040,"reason":"resident_holder"}
+{"event":"resident_blueprint_repository_build","root":"\\\\?\\D:\\Claude\\.tmp\\membrane-finish-smoke","stage":"started"}
+{"elapsedMs":63,"event":"resident_blueprint_repository_build","root":"\\\\?\\D:\\Claude\\.tmp\\membrane-finish-smoke","stage":"completed"}
+{"event":"resident_blueprint_repository_build","root":"\\\\?\\D:\\Claude\\legion","stage":"started"}
+{"event":"holder_status","observedAtUnixMs":1789321028701,"pid":219040,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789321030726,"pid":219040,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789321032750,"pid":219040,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789321034774,"pid":219040,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789321036799,"pid":219040,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789321038831,"pid":219040,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789321040858,"pid":219040,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789321042888,"pid":219040,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789321044916,"pid":219040,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789321046941,"pid":219040,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789321048968,"pid":219040,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789321050994,"pid":219040,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789321053022,"pid":219040,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789321055049,"pid":219040,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789321057075,"pid":219040,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789321059100,"pid":219040,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789321061126,"pid":219040,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789321063154,"pid":219040,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789321065181,"pid":219040,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789321067210,"pid":219040,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789321069239,"pid":219040,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789321071264,"pid":219040,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789321073292,"pid":219040,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789321075331,"pid":219040,"reason":"resident_holder"}
+{"event":"background_authority_drained","observedAtUnixMs":1789321076130,"pid":219040,"reason":"final_holder_release"}
+{"event":"holder_released","observedAtUnixMs":1789321076131,"pid":219040,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789321077359,"pid":219040,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789321079389,"pid":219040,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789321081415,"pid":219040,"reason":"resident_holder"}
+{"event":"activation_requested","observedAtUnixMs":1789322060470,"pid":205644,"reason":"standalone_daemon"}
+{"event":"owner_acquired","observedAtUnixMs":1789322060471,"pid":205644,"reason":"resident_engine"}
+[startup] embedder: fastembed compiled in, ORT_DYLIB_PATH=\\?\C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24\runtime\resources\semantic-embed-runtime\onnxruntime.dll
+{"enrolledRepoCount":3,"event":"resident_blueprint_initialization","stage":"started"}
+membrane resident on 127.0.0.1:47851 db=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory/cortex-engine.db catalog=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory\catalog.db
+{"event":"ready","observedAtUnixMs":1789322064665,"pid":205644,"reason":"transport"}
+{"event":"activation_requested","observedAtUnixMs":1789341300542,"pid":219876,"reason":"standalone_daemon"}
+{"event":"owner_acquired","observedAtUnixMs":1789341300543,"pid":219876,"reason":"resident_engine"}
+[startup] embedder: fastembed compiled in, ORT_DYLIB_PATH=\\?\C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24\runtime\resources\semantic-embed-runtime\onnxruntime.dll
+{"enrolledRepoCount":3,"event":"resident_blueprint_initialization","stage":"started"}
+membrane resident on 127.0.0.1:47851 db=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory/cortex-engine.db catalog=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory\catalog.db
+{"event":"ready","observedAtUnixMs":1789341303776,"pid":219876,"reason":"transport"}
+{"event":"drain_requested","observedAtUnixMs":1789341333834,"pid":219876,"reason":"initial_holder_grace_expired"}
+{"event":"resident_blueprint_initialization","stage":"stopped"}
+{"event":"engine_stopped","observedAtUnixMs":1789341334029,"pid":219876,"reason":"resident_engine"}
+{"event":"owner_released","observedAtUnixMs":1789341334029,"pid":219876,"reason":"resident_engine"}
+{"event":"activation_requested","observedAtUnixMs":1789341341200,"pid":206888,"reason":"standalone_daemon"}
+{"event":"owner_acquired","observedAtUnixMs":1789341341201,"pid":206888,"reason":"resident_engine"}
+[startup] embedder: fastembed compiled in, ORT_DYLIB_PATH=\\?\C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24\runtime\resources\semantic-embed-runtime\onnxruntime.dll
+{"enrolledRepoCount":3,"event":"resident_blueprint_initialization","stage":"started"}
+membrane resident on 127.0.0.1:47851 db=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory/cortex-engine.db catalog=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory\catalog.db
+{"event":"ready","observedAtUnixMs":1789341342771,"pid":206888,"reason":"transport"}
+{"event":"drain_requested","observedAtUnixMs":1789341372818,"pid":206888,"reason":"initial_holder_grace_expired"}
+{"event":"resident_blueprint_initialization","stage":"stopped"}
+{"event":"engine_stopped","observedAtUnixMs":1789341372822,"pid":206888,"reason":"resident_engine"}
+{"event":"owner_released","observedAtUnixMs":1789341372822,"pid":206888,"reason":"resident_engine"}
+{"event":"activation_requested","observedAtUnixMs":1789341382152,"pid":26204,"reason":"standalone_daemon"}
+{"event":"owner_acquired","observedAtUnixMs":1789341382153,"pid":26204,"reason":"resident_engine"}
+[startup] embedder: fastembed compiled in, ORT_DYLIB_PATH=\\?\C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24\runtime\resources\semantic-embed-runtime\onnxruntime.dll
+{"enrolledRepoCount":3,"event":"resident_blueprint_initialization","stage":"started"}
+membrane resident on 127.0.0.1:47851 db=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory/cortex-engine.db catalog=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory\catalog.db
+{"event":"ready","observedAtUnixMs":1789341383801,"pid":26204,"reason":"transport"}
+{"event":"drain_requested","observedAtUnixMs":1789341413866,"pid":26204,"reason":"initial_holder_grace_expired"}
+{"event":"resident_blueprint_initialization","stage":"stopped"}
+{"event":"engine_stopped","observedAtUnixMs":1789341414036,"pid":26204,"reason":"resident_engine"}
+{"event":"owner_released","observedAtUnixMs":1789341414036,"pid":26204,"reason":"resident_engine"}
+{"event":"activation_requested","observedAtUnixMs":1789341420005,"pid":209820,"reason":"standalone_daemon"}
+{"event":"owner_acquired","observedAtUnixMs":1789341420006,"pid":209820,"reason":"resident_engine"}
+[startup] embedder: fastembed compiled in, ORT_DYLIB_PATH=\\?\C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24\runtime\resources\semantic-embed-runtime\onnxruntime.dll
+{"event":"activation_requested","observedAtUnixMs":1789341420154,"pid":222948,"reason":"standalone_daemon"}
+{"event":"owner_contended","observedAtUnixMs":1789341420161,"pid":222948,"reason":"owner_lock_held"}
+membrane: engine startup failed: membrane_engine_already_owned: The process cannot access the file because another process has locked a portion of the file. (os error 33)
+{"error":"The system cannot find the path specified. (os error 3)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\membrane-installed-boundary-5724\\repo"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-1lKjNT"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-G39Zxo"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-GG217r"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-dupEMk"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-hgRGGw"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-vQlKuN"}
+{"enrolledRepoCount":4,"event":"resident_blueprint_initialization","stage":"started"}
+membrane resident on 127.0.0.1:47851 db=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory/cortex-engine.db catalog=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory\catalog.db
+{"event":"ready","observedAtUnixMs":1789341421852,"pid":209820,"reason":"transport"}
+{"event":"drain_requested","observedAtUnixMs":1789341451973,"pid":209820,"reason":"initial_holder_grace_expired"}
+{"event":"resident_blueprint_initialization","stage":"stopped"}
+{"event":"engine_stopped","observedAtUnixMs":1789341452087,"pid":209820,"reason":"resident_engine"}
+{"event":"owner_released","observedAtUnixMs":1789341452087,"pid":209820,"reason":"resident_engine"}
+{"event":"activation_requested","observedAtUnixMs":1789341457891,"pid":218196,"reason":"standalone_daemon"}
+{"event":"owner_acquired","observedAtUnixMs":1789341457891,"pid":218196,"reason":"resident_engine"}
+[startup] embedder: fastembed compiled in, ORT_DYLIB_PATH=\\?\C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24\runtime\resources\semantic-embed-runtime\onnxruntime.dll
+{"enrolledRepoCount":3,"event":"resident_blueprint_initialization","stage":"started"}
+membrane resident on 127.0.0.1:47851 db=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory/cortex-engine.db catalog=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory\catalog.db
+{"event":"ready","observedAtUnixMs":1789341459584,"pid":218196,"reason":"transport"}
+{"event":"drain_requested","observedAtUnixMs":1789341489626,"pid":218196,"reason":"initial_holder_grace_expired"}
+{"event":"resident_blueprint_initialization","stage":"stopped"}
+{"event":"engine_stopped","observedAtUnixMs":1789341489770,"pid":218196,"reason":"resident_engine"}
+{"event":"owner_released","observedAtUnixMs":1789341489770,"pid":218196,"reason":"resident_engine"}
+{"event":"activation_requested","observedAtUnixMs":1789341500195,"pid":184132,"reason":"standalone_daemon"}
+{"event":"owner_acquired","observedAtUnixMs":1789341500196,"pid":184132,"reason":"resident_engine"}
+[startup] embedder: fastembed compiled in, ORT_DYLIB_PATH=\\?\C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24\runtime\resources\semantic-embed-runtime\onnxruntime.dll
+{"enrolledRepoCount":3,"event":"resident_blueprint_initialization","stage":"started"}
+membrane resident on 127.0.0.1:47851 db=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory/cortex-engine.db catalog=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory\catalog.db
+{"event":"ready","observedAtUnixMs":1789341501961,"pid":184132,"reason":"transport"}
+{"event":"drain_requested","observedAtUnixMs":1789341532004,"pid":184132,"reason":"initial_holder_grace_expired"}
+{"event":"resident_blueprint_initialization","stage":"stopped"}
+{"event":"engine_stopped","observedAtUnixMs":1789341532072,"pid":184132,"reason":"resident_engine"}
+{"event":"owner_released","observedAtUnixMs":1789341532072,"pid":184132,"reason":"resident_engine"}
+{"event":"activation_requested","observedAtUnixMs":1789341538428,"pid":189928,"reason":"standalone_daemon"}
+{"event":"owner_acquired","observedAtUnixMs":1789341538429,"pid":189928,"reason":"resident_engine"}
+[startup] embedder: fastembed compiled in, ORT_DYLIB_PATH=\\?\C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24\runtime\resources\semantic-embed-runtime\onnxruntime.dll
+{"enrolledRepoCount":3,"event":"resident_blueprint_initialization","stage":"started"}
+membrane resident on 127.0.0.1:47851 db=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory/cortex-engine.db catalog=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory\catalog.db
+{"event":"ready","observedAtUnixMs":1789341540130,"pid":189928,"reason":"transport"}
+{"event":"drain_requested","observedAtUnixMs":1789341570171,"pid":189928,"reason":"initial_holder_grace_expired"}
+{"event":"resident_blueprint_initialization","stage":"stopped"}
+{"event":"engine_stopped","observedAtUnixMs":1789341570320,"pid":189928,"reason":"resident_engine"}
+{"event":"owner_released","observedAtUnixMs":1789341570320,"pid":189928,"reason":"resident_engine"}
+{"event":"activation_requested","observedAtUnixMs":1789341576538,"pid":224540,"reason":"standalone_daemon"}
+{"event":"owner_acquired","observedAtUnixMs":1789341576539,"pid":224540,"reason":"resident_engine"}
+[startup] embedder: fastembed compiled in, ORT_DYLIB_PATH=\\?\C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24\runtime\resources\semantic-embed-runtime\onnxruntime.dll
+{"enrolledRepoCount":3,"event":"resident_blueprint_initialization","stage":"started"}
+membrane resident on 127.0.0.1:47851 db=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory/cortex-engine.db catalog=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory\catalog.db
+{"event":"ready","observedAtUnixMs":1789341578483,"pid":224540,"reason":"transport"}
+{"event":"drain_requested","observedAtUnixMs":1789341608523,"pid":224540,"reason":"initial_holder_grace_expired"}
+{"event":"resident_blueprint_initialization","stage":"stopped"}
+{"event":"engine_stopped","observedAtUnixMs":1789341608675,"pid":224540,"reason":"resident_engine"}
+{"event":"owner_released","observedAtUnixMs":1789341608675,"pid":224540,"reason":"resident_engine"}
+{"event":"activation_requested","observedAtUnixMs":1789341617839,"pid":218596,"reason":"standalone_daemon"}
+{"event":"owner_acquired","observedAtUnixMs":1789341617840,"pid":218596,"reason":"resident_engine"}
+[startup] embedder: fastembed compiled in, ORT_DYLIB_PATH=\\?\C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24\runtime\resources\semantic-embed-runtime\onnxruntime.dll
+{"enrolledRepoCount":3,"event":"resident_blueprint_initialization","stage":"started"}
+membrane resident on 127.0.0.1:47851 db=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory/cortex-engine.db catalog=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory\catalog.db
+{"event":"ready","observedAtUnixMs":1789341619784,"pid":218596,"reason":"transport"}
+{"event":"drain_requested","observedAtUnixMs":1789341649879,"pid":218596,"reason":"initial_holder_grace_expired"}
+{"event":"resident_blueprint_initialization","stage":"stopped"}
+{"event":"engine_stopped","observedAtUnixMs":1789341650062,"pid":218596,"reason":"resident_engine"}
+{"event":"owner_released","observedAtUnixMs":1789341650062,"pid":218596,"reason":"resident_engine"}
+{"event":"activation_requested","observedAtUnixMs":1789341655243,"pid":218064,"reason":"standalone_daemon"}
+{"event":"owner_acquired","observedAtUnixMs":1789341655244,"pid":218064,"reason":"resident_engine"}
+[startup] embedder: fastembed compiled in, ORT_DYLIB_PATH=\\?\C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24\runtime\resources\semantic-embed-runtime\onnxruntime.dll
+{"enrolledRepoCount":3,"event":"resident_blueprint_initialization","stage":"started"}
+membrane resident on 127.0.0.1:47851 db=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory/cortex-engine.db catalog=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory\catalog.db
+{"event":"ready","observedAtUnixMs":1789341656860,"pid":218064,"reason":"transport"}
+{"event":"drain_requested","observedAtUnixMs":1789341686921,"pid":218064,"reason":"initial_holder_grace_expired"}
+{"event":"resident_blueprint_initialization","stage":"stopped"}
+{"event":"engine_stopped","observedAtUnixMs":1789341687174,"pid":218064,"reason":"resident_engine"}
+{"event":"owner_released","observedAtUnixMs":1789341687174,"pid":218064,"reason":"resident_engine"}
+{"event":"activation_requested","observedAtUnixMs":1789341695514,"pid":222260,"reason":"standalone_daemon"}
+{"event":"owner_acquired","observedAtUnixMs":1789341695514,"pid":222260,"reason":"resident_engine"}
+[startup] embedder: fastembed compiled in, ORT_DYLIB_PATH=\\?\C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24\runtime\resources\semantic-embed-runtime\onnxruntime.dll
+{"enrolledRepoCount":3,"event":"resident_blueprint_initialization","stage":"started"}
+membrane resident on 127.0.0.1:47851 db=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory/cortex-engine.db catalog=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory\catalog.db
+{"event":"ready","observedAtUnixMs":1789341697019,"pid":222260,"reason":"transport"}
+{"event":"drain_requested","observedAtUnixMs":1789341727111,"pid":222260,"reason":"initial_holder_grace_expired"}
+{"event":"resident_blueprint_initialization","stage":"stopped"}
+{"event":"engine_stopped","observedAtUnixMs":1789341727165,"pid":222260,"reason":"resident_engine"}
+{"event":"owner_released","observedAtUnixMs":1789341727166,"pid":222260,"reason":"resident_engine"}
+{"event":"activation_requested","observedAtUnixMs":1789341736394,"pid":222216,"reason":"standalone_daemon"}
+{"event":"owner_acquired","observedAtUnixMs":1789341736394,"pid":222216,"reason":"resident_engine"}
+[startup] embedder: fastembed compiled in, ORT_DYLIB_PATH=\\?\C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24\runtime\resources\semantic-embed-runtime\onnxruntime.dll
+{"enrolledRepoCount":3,"event":"resident_blueprint_initialization","stage":"started"}
+membrane resident on 127.0.0.1:47851 db=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory/cortex-engine.db catalog=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory\catalog.db
+{"event":"ready","observedAtUnixMs":1789341737974,"pid":222216,"reason":"transport"}
+{"event":"holder_acquired","observedAtUnixMs":1789341767963,"pid":222216,"reason":"resident_holder"}
+{"event":"drain_requested","observedAtUnixMs":1789341767965,"pid":222216,"reason":"final_holder_release"}
+{"event":"holder_released","observedAtUnixMs":1789341767965,"pid":222216,"reason":"resident_holder"}
+{"event":"resident_blueprint_initialization","stage":"stopped"}
+{"event":"engine_stopped","observedAtUnixMs":1789341768042,"pid":222216,"reason":"resident_engine"}
+{"event":"owner_released","observedAtUnixMs":1789341768042,"pid":222216,"reason":"resident_engine"}
+{"event":"activation_requested","observedAtUnixMs":1789341775154,"pid":208516,"reason":"standalone_daemon"}
+{"event":"owner_acquired","observedAtUnixMs":1789341775155,"pid":208516,"reason":"resident_engine"}
+[startup] embedder: fastembed compiled in, ORT_DYLIB_PATH=\\?\C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24\runtime\resources\semantic-embed-runtime\onnxruntime.dll
+{"enrolledRepoCount":3,"event":"resident_blueprint_initialization","stage":"started"}
+membrane resident on 127.0.0.1:47851 db=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory/cortex-engine.db catalog=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory\catalog.db
+{"event":"ready","observedAtUnixMs":1789341776672,"pid":208516,"reason":"transport"}
+{"event":"drain_requested","observedAtUnixMs":1789341806725,"pid":208516,"reason":"initial_holder_grace_expired"}
+{"event":"resident_blueprint_initialization","stage":"stopped"}
+{"event":"engine_stopped","observedAtUnixMs":1789341806789,"pid":208516,"reason":"resident_engine"}
+{"event":"owner_released","observedAtUnixMs":1789341806789,"pid":208516,"reason":"resident_engine"}
+{"event":"activation_requested","observedAtUnixMs":1789341812501,"pid":223836,"reason":"standalone_daemon"}
+{"event":"owner_acquired","observedAtUnixMs":1789341812502,"pid":223836,"reason":"resident_engine"}
+[startup] embedder: fastembed compiled in, ORT_DYLIB_PATH=\\?\C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24\runtime\resources\semantic-embed-runtime\onnxruntime.dll
+{"enrolledRepoCount":3,"event":"resident_blueprint_initialization","stage":"started"}
+membrane resident on 127.0.0.1:47851 db=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory/cortex-engine.db catalog=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory\catalog.db
+{"event":"ready","observedAtUnixMs":1789341814103,"pid":223836,"reason":"transport"}
+{"event":"drain_requested","observedAtUnixMs":1789341844145,"pid":223836,"reason":"initial_holder_grace_expired"}
+{"event":"resident_blueprint_initialization","stage":"stopped"}
+{"event":"engine_stopped","observedAtUnixMs":1789341844387,"pid":223836,"reason":"resident_engine"}
+{"event":"owner_released","observedAtUnixMs":1789341844387,"pid":223836,"reason":"resident_engine"}
+{"event":"activation_requested","observedAtUnixMs":1789341849972,"pid":204072,"reason":"standalone_daemon"}
+{"event":"owner_acquired","observedAtUnixMs":1789341849973,"pid":204072,"reason":"resident_engine"}
+[startup] embedder: fastembed compiled in, ORT_DYLIB_PATH=\\?\C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24\runtime\resources\semantic-embed-runtime\onnxruntime.dll
+{"enrolledRepoCount":3,"event":"resident_blueprint_initialization","stage":"started"}
+membrane resident on 127.0.0.1:47851 db=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory/cortex-engine.db catalog=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory\catalog.db
+{"event":"ready","observedAtUnixMs":1789341851861,"pid":204072,"reason":"transport"}
+{"event":"drain_requested","observedAtUnixMs":1789341881902,"pid":204072,"reason":"initial_holder_grace_expired"}
+{"event":"resident_blueprint_initialization","stage":"stopped"}
+{"event":"engine_stopped","observedAtUnixMs":1789341882114,"pid":204072,"reason":"resident_engine"}
+{"event":"owner_released","observedAtUnixMs":1789341882114,"pid":204072,"reason":"resident_engine"}
+{"event":"activation_requested","observedAtUnixMs":1789341888948,"pid":221364,"reason":"standalone_daemon"}
+{"event":"owner_acquired","observedAtUnixMs":1789341888949,"pid":221364,"reason":"resident_engine"}
+[startup] embedder: fastembed compiled in, ORT_DYLIB_PATH=\\?\C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24\runtime\resources\semantic-embed-runtime\onnxruntime.dll
+{"enrolledRepoCount":3,"event":"resident_blueprint_initialization","stage":"started"}
+membrane resident on 127.0.0.1:47851 db=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory/cortex-engine.db catalog=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory\catalog.db
+{"event":"ready","observedAtUnixMs":1789341890883,"pid":221364,"reason":"transport"}
+{"event":"drain_requested","observedAtUnixMs":1789341920925,"pid":221364,"reason":"initial_holder_grace_expired"}
+{"event":"resident_blueprint_initialization","stage":"stopped"}
+{"event":"engine_stopped","observedAtUnixMs":1789341921080,"pid":221364,"reason":"resident_engine"}
+{"event":"owner_released","observedAtUnixMs":1789341921080,"pid":221364,"reason":"resident_engine"}
+{"event":"activation_requested","observedAtUnixMs":1789341930674,"pid":146804,"reason":"standalone_daemon"}
+{"event":"owner_acquired","observedAtUnixMs":1789341930675,"pid":146804,"reason":"resident_engine"}
+[startup] embedder: fastembed compiled in, ORT_DYLIB_PATH=\\?\C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24\runtime\resources\semantic-embed-runtime\onnxruntime.dll
+{"enrolledRepoCount":3,"event":"resident_blueprint_initialization","stage":"started"}
+membrane resident on 127.0.0.1:47851 db=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory/cortex-engine.db catalog=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory\catalog.db
+{"event":"ready","observedAtUnixMs":1789341932383,"pid":146804,"reason":"transport"}
+{"event":"drain_requested","observedAtUnixMs":1789341962423,"pid":146804,"reason":"initial_holder_grace_expired"}
+{"event":"resident_blueprint_initialization","stage":"stopped"}
+{"event":"engine_stopped","observedAtUnixMs":1789341962538,"pid":146804,"reason":"resident_engine"}
+{"event":"owner_released","observedAtUnixMs":1789341962538,"pid":146804,"reason":"resident_engine"}
+{"event":"activation_requested","observedAtUnixMs":1789341974393,"pid":225284,"reason":"standalone_daemon"}
+{"event":"owner_acquired","observedAtUnixMs":1789341974393,"pid":225284,"reason":"resident_engine"}
+[startup] embedder: fastembed compiled in, ORT_DYLIB_PATH=\\?\C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24\runtime\resources\semantic-embed-runtime\onnxruntime.dll
+{"enrolledRepoCount":3,"event":"resident_blueprint_initialization","stage":"started"}
+membrane resident on 127.0.0.1:47851 db=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory/cortex-engine.db catalog=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory\catalog.db
+{"event":"ready","observedAtUnixMs":1789341976037,"pid":225284,"reason":"transport"}
+{"event":"drain_requested","observedAtUnixMs":1789342006080,"pid":225284,"reason":"initial_holder_grace_expired"}
+{"event":"resident_blueprint_initialization","stage":"stopped"}
+{"event":"engine_stopped","observedAtUnixMs":1789342006286,"pid":225284,"reason":"resident_engine"}
+{"event":"owner_released","observedAtUnixMs":1789342006286,"pid":225284,"reason":"resident_engine"}
+{"event":"activation_requested","observedAtUnixMs":1789342012676,"pid":199800,"reason":"standalone_daemon"}
+{"event":"owner_acquired","observedAtUnixMs":1789342012677,"pid":199800,"reason":"resident_engine"}
+[startup] embedder: fastembed compiled in, ORT_DYLIB_PATH=\\?\C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24\runtime\resources\semantic-embed-runtime\onnxruntime.dll
+{"enrolledRepoCount":3,"event":"resident_blueprint_initialization","stage":"started"}
+membrane resident on 127.0.0.1:47851 db=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory/cortex-engine.db catalog=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory\catalog.db
+{"event":"ready","observedAtUnixMs":1789342014936,"pid":199800,"reason":"transport"}
+{"event":"drain_requested","observedAtUnixMs":1789342044975,"pid":199800,"reason":"initial_holder_grace_expired"}
+{"event":"resident_blueprint_initialization","stage":"stopped"}
+{"event":"engine_stopped","observedAtUnixMs":1789342045072,"pid":199800,"reason":"resident_engine"}
+{"event":"owner_released","observedAtUnixMs":1789342045072,"pid":199800,"reason":"resident_engine"}
+{"event":"activation_requested","observedAtUnixMs":1789342054483,"pid":200644,"reason":"standalone_daemon"}
+{"event":"owner_acquired","observedAtUnixMs":1789342054484,"pid":200644,"reason":"resident_engine"}
+[startup] embedder: fastembed compiled in, ORT_DYLIB_PATH=\\?\C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24\runtime\resources\semantic-embed-runtime\onnxruntime.dll
+{"enrolledRepoCount":3,"event":"resident_blueprint_initialization","stage":"started"}
+membrane resident on 127.0.0.1:47851 db=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory/cortex-engine.db catalog=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory\catalog.db
+{"event":"ready","observedAtUnixMs":1789342056400,"pid":200644,"reason":"transport"}
+{"event":"drain_requested","observedAtUnixMs":1789342086445,"pid":200644,"reason":"initial_holder_grace_expired"}
+{"event":"resident_blueprint_initialization","stage":"stopped"}
+{"event":"engine_stopped","observedAtUnixMs":1789342086624,"pid":200644,"reason":"resident_engine"}
+{"event":"owner_released","observedAtUnixMs":1789342086624,"pid":200644,"reason":"resident_engine"}
+{"event":"activation_requested","observedAtUnixMs":1789342095399,"pid":224744,"reason":"standalone_daemon"}
+{"event":"owner_acquired","observedAtUnixMs":1789342095400,"pid":224744,"reason":"resident_engine"}
+[startup] embedder: fastembed compiled in, ORT_DYLIB_PATH=\\?\C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24\runtime\resources\semantic-embed-runtime\onnxruntime.dll
+{"enrolledRepoCount":3,"event":"resident_blueprint_initialization","stage":"started"}
+membrane resident on 127.0.0.1:47851 db=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory/cortex-engine.db catalog=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory\catalog.db
+{"event":"ready","observedAtUnixMs":1789342097125,"pid":224744,"reason":"transport"}
+{"event":"drain_requested","observedAtUnixMs":1789342127166,"pid":224744,"reason":"initial_holder_grace_expired"}
+{"event":"resident_blueprint_initialization","stage":"stopped"}
+{"event":"engine_stopped","observedAtUnixMs":1789342127276,"pid":224744,"reason":"resident_engine"}
+{"event":"owner_released","observedAtUnixMs":1789342127276,"pid":224744,"reason":"resident_engine"}
+{"event":"activation_requested","observedAtUnixMs":1789342136895,"pid":205020,"reason":"standalone_daemon"}
+{"event":"owner_acquired","observedAtUnixMs":1789342136897,"pid":205020,"reason":"resident_engine"}
+[startup] embedder: fastembed compiled in, ORT_DYLIB_PATH=\\?\C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24\runtime\resources\semantic-embed-runtime\onnxruntime.dll
+{"enrolledRepoCount":3,"event":"resident_blueprint_initialization","stage":"started"}
+membrane resident on 127.0.0.1:47851 db=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory/cortex-engine.db catalog=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory\catalog.db
+{"event":"ready","observedAtUnixMs":1789342138745,"pid":205020,"reason":"transport"}
+{"event":"drain_requested","observedAtUnixMs":1789342168782,"pid":205020,"reason":"initial_holder_grace_expired"}
+{"event":"resident_blueprint_initialization","stage":"stopped"}
+{"event":"engine_stopped","observedAtUnixMs":1789342169028,"pid":205020,"reason":"resident_engine"}
+{"event":"owner_released","observedAtUnixMs":1789342169028,"pid":205020,"reason":"resident_engine"}
+{"event":"activation_requested","observedAtUnixMs":1789342179574,"pid":222460,"reason":"standalone_daemon"}
+{"event":"owner_acquired","observedAtUnixMs":1789342179575,"pid":222460,"reason":"resident_engine"}
+[startup] embedder: fastembed compiled in, ORT_DYLIB_PATH=\\?\C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24\runtime\resources\semantic-embed-runtime\onnxruntime.dll
+{"enrolledRepoCount":3,"event":"resident_blueprint_initialization","stage":"started"}
+membrane resident on 127.0.0.1:47851 db=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory/cortex-engine.db catalog=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory\catalog.db
+{"event":"ready","observedAtUnixMs":1789342181772,"pid":222460,"reason":"transport"}
+{"event":"drain_requested","observedAtUnixMs":1789342211812,"pid":222460,"reason":"initial_holder_grace_expired"}
+{"event":"resident_blueprint_initialization","stage":"stopped"}
+{"event":"engine_stopped","observedAtUnixMs":1789342212043,"pid":222460,"reason":"resident_engine"}
+{"event":"owner_released","observedAtUnixMs":1789342212043,"pid":222460,"reason":"resident_engine"}
+{"event":"activation_requested","observedAtUnixMs":1789342218393,"pid":210960,"reason":"standalone_daemon"}
+{"event":"owner_acquired","observedAtUnixMs":1789342218393,"pid":210960,"reason":"resident_engine"}
+[startup] embedder: fastembed compiled in, ORT_DYLIB_PATH=\\?\C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24\runtime\resources\semantic-embed-runtime\onnxruntime.dll
+{"enrolledRepoCount":3,"event":"resident_blueprint_initialization","stage":"started"}
+membrane resident on 127.0.0.1:47851 db=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory/cortex-engine.db catalog=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory\catalog.db
+{"event":"ready","observedAtUnixMs":1789342220008,"pid":210960,"reason":"transport"}
+{"event":"drain_requested","observedAtUnixMs":1789342250045,"pid":210960,"reason":"initial_holder_grace_expired"}
+{"event":"resident_blueprint_initialization","stage":"stopped"}
+{"event":"engine_stopped","observedAtUnixMs":1789342250253,"pid":210960,"reason":"resident_engine"}
+{"event":"owner_released","observedAtUnixMs":1789342250253,"pid":210960,"reason":"resident_engine"}
+{"event":"activation_requested","observedAtUnixMs":1789342268672,"pid":224800,"reason":"standalone_daemon"}
+{"event":"owner_acquired","observedAtUnixMs":1789342268673,"pid":224800,"reason":"resident_engine"}
+[startup] embedder: fastembed compiled in, ORT_DYLIB_PATH=\\?\C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24\runtime\resources\semantic-embed-runtime\onnxruntime.dll
+{"enrolledRepoCount":3,"event":"resident_blueprint_initialization","stage":"started"}
+membrane resident on 127.0.0.1:47851 db=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory/cortex-engine.db catalog=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory\catalog.db
+{"event":"ready","observedAtUnixMs":1789342270310,"pid":224800,"reason":"transport"}
+{"event":"drain_requested","observedAtUnixMs":1789342300352,"pid":224800,"reason":"initial_holder_grace_expired"}
+{"event":"resident_blueprint_initialization","stage":"stopped"}
+{"event":"engine_stopped","observedAtUnixMs":1789342300545,"pid":224800,"reason":"resident_engine"}
+{"event":"owner_released","observedAtUnixMs":1789342300545,"pid":224800,"reason":"resident_engine"}
+{"event":"activation_requested","observedAtUnixMs":1789342307225,"pid":204888,"reason":"standalone_daemon"}
+{"event":"owner_acquired","observedAtUnixMs":1789342307226,"pid":204888,"reason":"resident_engine"}
+[startup] embedder: fastembed compiled in, ORT_DYLIB_PATH=\\?\C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24\runtime\resources\semantic-embed-runtime\onnxruntime.dll
+{"enrolledRepoCount":3,"event":"resident_blueprint_initialization","stage":"started"}
+membrane resident on 127.0.0.1:47851 db=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory/cortex-engine.db catalog=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory\catalog.db
+{"event":"ready","observedAtUnixMs":1789342308900,"pid":204888,"reason":"transport"}
+{"event":"drain_requested","observedAtUnixMs":1789342338939,"pid":204888,"reason":"initial_holder_grace_expired"}
+{"event":"resident_blueprint_initialization","stage":"stopped"}
+{"event":"engine_stopped","observedAtUnixMs":1789342339083,"pid":204888,"reason":"resident_engine"}
+{"event":"owner_released","observedAtUnixMs":1789342339083,"pid":204888,"reason":"resident_engine"}
+{"event":"activation_requested","observedAtUnixMs":1789342346456,"pid":219876,"reason":"standalone_daemon"}
+{"event":"owner_acquired","observedAtUnixMs":1789342346457,"pid":219876,"reason":"resident_engine"}
+[startup] embedder: fastembed compiled in, ORT_DYLIB_PATH=\\?\C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24\runtime\resources\semantic-embed-runtime\onnxruntime.dll
+{"enrolledRepoCount":3,"event":"resident_blueprint_initialization","stage":"started"}
+membrane resident on 127.0.0.1:47851 db=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory/cortex-engine.db catalog=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory\catalog.db
+{"event":"ready","observedAtUnixMs":1789342348042,"pid":219876,"reason":"transport"}
+{"event":"drain_requested","observedAtUnixMs":1789342378084,"pid":219876,"reason":"initial_holder_grace_expired"}
+{"event":"resident_blueprint_initialization","stage":"stopped"}
+{"event":"engine_stopped","observedAtUnixMs":1789342378098,"pid":219876,"reason":"resident_engine"}
+{"event":"owner_released","observedAtUnixMs":1789342378098,"pid":219876,"reason":"resident_engine"}
+{"event":"activation_requested","observedAtUnixMs":1789342385681,"pid":196944,"reason":"standalone_daemon"}
+{"event":"owner_acquired","observedAtUnixMs":1789342385682,"pid":196944,"reason":"resident_engine"}
+[startup] embedder: fastembed compiled in, ORT_DYLIB_PATH=\\?\C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24\runtime\resources\semantic-embed-runtime\onnxruntime.dll
+{"enrolledRepoCount":3,"event":"resident_blueprint_initialization","stage":"started"}
+membrane resident on 127.0.0.1:47851 db=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory/cortex-engine.db catalog=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory\catalog.db
+{"event":"ready","observedAtUnixMs":1789342387334,"pid":196944,"reason":"transport"}
+{"event":"drain_requested","observedAtUnixMs":1789342417376,"pid":196944,"reason":"initial_holder_grace_expired"}
+{"event":"resident_blueprint_initialization","stage":"stopped"}
+{"event":"engine_stopped","observedAtUnixMs":1789342417560,"pid":196944,"reason":"resident_engine"}
+{"event":"owner_released","observedAtUnixMs":1789342417560,"pid":196944,"reason":"resident_engine"}
+{"event":"activation_requested","observedAtUnixMs":1789342425493,"pid":191204,"reason":"standalone_daemon"}
+{"event":"owner_acquired","observedAtUnixMs":1789342425493,"pid":191204,"reason":"resident_engine"}
+[startup] embedder: fastembed compiled in, ORT_DYLIB_PATH=\\?\C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24\runtime\resources\semantic-embed-runtime\onnxruntime.dll
+{"enrolledRepoCount":3,"event":"resident_blueprint_initialization","stage":"started"}
+membrane resident on 127.0.0.1:47851 db=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory/cortex-engine.db catalog=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory\catalog.db
+{"event":"ready","observedAtUnixMs":1789342427118,"pid":191204,"reason":"transport"}
+{"event":"drain_requested","observedAtUnixMs":1789342457160,"pid":191204,"reason":"initial_holder_grace_expired"}
+{"event":"resident_blueprint_initialization","stage":"stopped"}
+{"event":"engine_stopped","observedAtUnixMs":1789342457378,"pid":191204,"reason":"resident_engine"}
+{"event":"owner_released","observedAtUnixMs":1789342457378,"pid":191204,"reason":"resident_engine"}
+{"event":"activation_requested","observedAtUnixMs":1789342472054,"pid":213324,"reason":"standalone_daemon"}
+{"event":"owner_acquired","observedAtUnixMs":1789342472055,"pid":213324,"reason":"resident_engine"}
+[startup] embedder: fastembed compiled in, ORT_DYLIB_PATH=\\?\C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24\runtime\resources\semantic-embed-runtime\onnxruntime.dll
+{"enrolledRepoCount":3,"event":"resident_blueprint_initialization","stage":"started"}
+membrane resident on 127.0.0.1:47851 db=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory/cortex-engine.db catalog=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory\catalog.db
+{"event":"ready","observedAtUnixMs":1789342473658,"pid":213324,"reason":"transport"}
+{"event":"drain_requested","observedAtUnixMs":1789342503703,"pid":213324,"reason":"initial_holder_grace_expired"}
+{"event":"resident_blueprint_initialization","stage":"stopped"}
+{"event":"engine_stopped","observedAtUnixMs":1789342503945,"pid":213324,"reason":"resident_engine"}
+{"event":"owner_released","observedAtUnixMs":1789342503946,"pid":213324,"reason":"resident_engine"}
+{"event":"activation_requested","observedAtUnixMs":1789342509745,"pid":209960,"reason":"standalone_daemon"}
+{"event":"owner_acquired","observedAtUnixMs":1789342509746,"pid":209960,"reason":"resident_engine"}
+[startup] embedder: fastembed compiled in, ORT_DYLIB_PATH=\\?\C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24\runtime\resources\semantic-embed-runtime\onnxruntime.dll
+{"enrolledRepoCount":3,"event":"resident_blueprint_initialization","stage":"started"}
+membrane resident on 127.0.0.1:47851 db=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory/cortex-engine.db catalog=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory\catalog.db
+{"event":"ready","observedAtUnixMs":1789342511402,"pid":209960,"reason":"transport"}
+{"event":"drain_requested","observedAtUnixMs":1789342541445,"pid":209960,"reason":"initial_holder_grace_expired"}
+{"event":"resident_blueprint_initialization","stage":"stopped"}
+{"event":"engine_stopped","observedAtUnixMs":1789342541636,"pid":209960,"reason":"resident_engine"}
+{"event":"owner_released","observedAtUnixMs":1789342541636,"pid":209960,"reason":"resident_engine"}
+{"event":"activation_requested","observedAtUnixMs":1789342560366,"pid":184956,"reason":"standalone_daemon"}
+{"event":"owner_acquired","observedAtUnixMs":1789342560366,"pid":184956,"reason":"resident_engine"}
+[startup] embedder: fastembed compiled in, ORT_DYLIB_PATH=\\?\C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24\runtime\resources\semantic-embed-runtime\onnxruntime.dll
+{"enrolledRepoCount":3,"event":"resident_blueprint_initialization","stage":"started"}
+membrane resident on 127.0.0.1:47851 db=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory/cortex-engine.db catalog=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory\catalog.db
+{"event":"ready","observedAtUnixMs":1789342562029,"pid":184956,"reason":"transport"}
+{"event":"drain_requested","observedAtUnixMs":1789342592072,"pid":184956,"reason":"initial_holder_grace_expired"}
+{"event":"resident_blueprint_initialization","stage":"stopped"}
+{"event":"engine_stopped","observedAtUnixMs":1789342592253,"pid":184956,"reason":"resident_engine"}
+{"event":"owner_released","observedAtUnixMs":1789342592253,"pid":184956,"reason":"resident_engine"}
+{"event":"activation_requested","observedAtUnixMs":1789342607851,"pid":207756,"reason":"standalone_daemon"}
+{"event":"owner_acquired","observedAtUnixMs":1789342607852,"pid":207756,"reason":"resident_engine"}
+[startup] embedder: fastembed compiled in, ORT_DYLIB_PATH=\\?\C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24\runtime\resources\semantic-embed-runtime\onnxruntime.dll
+{"enrolledRepoCount":3,"event":"resident_blueprint_initialization","stage":"started"}
+membrane resident on 127.0.0.1:47851 db=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory/cortex-engine.db catalog=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory\catalog.db
+{"event":"ready","observedAtUnixMs":1789342609469,"pid":207756,"reason":"transport"}
+{"event":"activation_requested","observedAtUnixMs":1789349781947,"pid":228384,"reason":"standalone_daemon"}
+{"event":"owner_acquired","observedAtUnixMs":1789349781948,"pid":228384,"reason":"resident_engine"}
+[startup] embedder: fastembed compiled in, ORT_DYLIB_PATH=\\?\C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24\runtime\resources\semantic-embed-runtime\onnxruntime.dll
+{"error":"The system cannot find the path specified. (os error 3)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\membrane-installed-boundary-5724\\repo"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-1lKjNT"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-G39Zxo"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-GG217r"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-dupEMk"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-hgRGGw"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-vQlKuN"}
+{"enrolledRepoCount":4,"event":"resident_blueprint_initialization","stage":"started"}
+membrane resident on 127.0.0.1:47851 db=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory/cortex-engine.db catalog=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory\catalog.db
+{"event":"ready","observedAtUnixMs":1789349783612,"pid":228384,"reason":"transport"}
+{"event":"holder_acquired","observedAtUnixMs":1789349783925,"pid":228384,"reason":"resident_holder"}
+{"event":"drain_requested","observedAtUnixMs":1789349783931,"pid":228384,"reason":"final_holder_release"}
+{"event":"holder_released","observedAtUnixMs":1789349783931,"pid":228384,"reason":"resident_holder"}
+{"event":"resident_blueprint_initialization","stage":"stopped"}
+{"event":"engine_stopped","observedAtUnixMs":1789349784108,"pid":228384,"reason":"resident_engine"}
+{"event":"owner_released","observedAtUnixMs":1789349784108,"pid":228384,"reason":"resident_engine"}
+{"event":"activation_requested","observedAtUnixMs":1789349805684,"pid":163376,"reason":"standalone_daemon"}
+{"event":"owner_acquired","observedAtUnixMs":1789349805685,"pid":163376,"reason":"resident_engine"}
+[startup] embedder: fastembed compiled in, ORT_DYLIB_PATH=\\?\C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24\runtime\resources\semantic-embed-runtime\onnxruntime.dll
+{"error":"The system cannot find the path specified. (os error 3)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\membrane-installed-boundary-5724\\repo"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-1lKjNT"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-G39Zxo"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-GG217r"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-dupEMk"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-hgRGGw"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-vQlKuN"}
+{"enrolledRepoCount":4,"event":"resident_blueprint_initialization","stage":"started"}
+membrane resident on 127.0.0.1:47851 db=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory/cortex-engine.db catalog=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory\catalog.db
+{"event":"ready","observedAtUnixMs":1789349807429,"pid":163376,"reason":"transport"}
+{"event":"holder_acquired","observedAtUnixMs":1789349807648,"pid":163376,"reason":"resident_holder"}
+{"event":"holder_acquired","observedAtUnixMs":1789349808980,"pid":163376,"reason":"resident_holder"}
+{"event":"holder_released","observedAtUnixMs":1789349808982,"pid":163376,"reason":"resident_holder"}
+{"event":"holder_acquired","observedAtUnixMs":1789349809524,"pid":163376,"reason":"resident_holder"}
+{"event":"holder_acquired","observedAtUnixMs":1789349810827,"pid":163376,"reason":"resident_holder"}
+{"event":"holder_released","observedAtUnixMs":1789349810830,"pid":163376,"reason":"resident_holder"}
+{"event":"holder_acquired","observedAtUnixMs":1789349811369,"pid":163376,"reason":"resident_holder"}
+{"event":"holder_acquired","observedAtUnixMs":1789349812572,"pid":163376,"reason":"resident_holder"}
+{"event":"holder_released","observedAtUnixMs":1789349812574,"pid":163376,"reason":"resident_holder"}
+{"event":"holder_acquired","observedAtUnixMs":1789349813112,"pid":163376,"reason":"resident_holder"}
+{"event":"holder_acquired","observedAtUnixMs":1789349814590,"pid":163376,"reason":"resident_holder"}
+{"event":"holder_released","observedAtUnixMs":1789349814592,"pid":163376,"reason":"resident_holder"}
+{"event":"holder_acquired","observedAtUnixMs":1789349815133,"pid":163376,"reason":"resident_holder"}
+{"event":"holder_released","observedAtUnixMs":1789349816439,"pid":163376,"reason":"resident_holder"}
+{"event":"holder_released","observedAtUnixMs":1789349816439,"pid":163376,"reason":"resident_holder"}
+{"event":"holder_released","observedAtUnixMs":1789349816439,"pid":163376,"reason":"resident_holder"}
+{"event":"holder_released","observedAtUnixMs":1789349816439,"pid":163376,"reason":"resident_holder"}
+{"event":"activation_requested","observedAtUnixMs":1789349826971,"pid":140320,"reason":"standalone_daemon"}
+{"event":"owner_acquired","observedAtUnixMs":1789349826973,"pid":140320,"reason":"resident_engine"}
+[startup] embedder: fastembed compiled in, ORT_DYLIB_PATH=\\?\C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24\runtime\resources\semantic-embed-runtime\onnxruntime.dll
+{"error":"The system cannot find the path specified. (os error 3)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\membrane-installed-boundary-5724\\repo"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-1lKjNT"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-G39Zxo"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-GG217r"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-dupEMk"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-hgRGGw"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-vQlKuN"}
+{"enrolledRepoCount":4,"event":"resident_blueprint_initialization","stage":"started"}
+membrane resident on 127.0.0.1:47851 db=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory/cortex-engine.db catalog=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory\catalog.db
+{"event":"ready","observedAtUnixMs":1789349828800,"pid":140320,"reason":"transport"}
+{"event":"holder_acquired","observedAtUnixMs":1789349828944,"pid":140320,"reason":"resident_holder"}
+{"event":"drain_requested","observedAtUnixMs":1789349829820,"pid":140320,"reason":"final_holder_release"}
+{"event":"holder_released","observedAtUnixMs":1789349829820,"pid":140320,"reason":"resident_holder"}
+{"event":"resident_blueprint_initialization","stage":"stopped"}
+{"event":"engine_stopped","observedAtUnixMs":1789349829953,"pid":140320,"reason":"resident_engine"}
+{"event":"owner_released","observedAtUnixMs":1789349829953,"pid":140320,"reason":"resident_engine"}
+{"event":"activation_requested","observedAtUnixMs":1789349860151,"pid":229452,"reason":"standalone_daemon"}
+{"event":"owner_acquired","observedAtUnixMs":1789349860152,"pid":229452,"reason":"resident_engine"}
+[startup] embedder: fastembed compiled in, ORT_DYLIB_PATH=\\?\C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24\runtime\resources\semantic-embed-runtime\onnxruntime.dll
+{"enrolledRepoCount":3,"event":"resident_blueprint_initialization","stage":"started"}
+membrane resident on 127.0.0.1:47851 db=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory/cortex-engine.db catalog=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory\catalog.db
+{"event":"ready","observedAtUnixMs":1789349862076,"pid":229452,"reason":"transport"}
+{"event":"holder_acquired","observedAtUnixMs":1789349863425,"pid":229452,"reason":"resident_holder"}
+{"event":"drain_requested","observedAtUnixMs":1789349863427,"pid":229452,"reason":"final_holder_release"}
+{"event":"holder_released","observedAtUnixMs":1789349863427,"pid":229452,"reason":"resident_holder"}
+{"event":"resident_blueprint_initialization","stage":"stopped"}
+{"event":"engine_stopped","observedAtUnixMs":1789349863511,"pid":229452,"reason":"resident_engine"}
+{"event":"owner_released","observedAtUnixMs":1789349863511,"pid":229452,"reason":"resident_engine"}
+{"event":"activation_requested","observedAtUnixMs":1789349900944,"pid":229628,"reason":"standalone_daemon"}
+{"event":"owner_acquired","observedAtUnixMs":1789349900945,"pid":229628,"reason":"resident_engine"}
+[startup] embedder: fastembed compiled in, ORT_DYLIB_PATH=\\?\C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24\runtime\resources\semantic-embed-runtime\onnxruntime.dll
+{"error":"The system cannot find the path specified. (os error 3)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\membrane-installed-boundary-5724\\repo"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-1lKjNT"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-G39Zxo"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-GG217r"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-dupEMk"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-hgRGGw"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-vQlKuN"}
+{"enrolledRepoCount":4,"event":"resident_blueprint_initialization","stage":"started"}
+membrane resident on 127.0.0.1:47851 db=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory/cortex-engine.db catalog=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory\catalog.db
+{"event":"ready","observedAtUnixMs":1789349902730,"pid":229628,"reason":"transport"}
+{"event":"holder_acquired","observedAtUnixMs":1789349902918,"pid":229628,"reason":"resident_holder"}
+{"event":"drain_requested","observedAtUnixMs":1789349904109,"pid":229628,"reason":"final_holder_release"}
+{"event":"holder_released","observedAtUnixMs":1789349904109,"pid":229628,"reason":"resident_holder"}
+{"event":"resident_blueprint_initialization","stage":"stopped"}
+{"event":"engine_stopped","observedAtUnixMs":1789349904132,"pid":229628,"reason":"resident_engine"}
+{"event":"owner_released","observedAtUnixMs":1789349904132,"pid":229628,"reason":"resident_engine"}
+{"event":"activation_requested","observedAtUnixMs":1789349993042,"pid":229644,"reason":"standalone_daemon"}
+{"event":"owner_acquired","observedAtUnixMs":1789349993044,"pid":229644,"reason":"resident_engine"}
+[startup] embedder: fastembed compiled in, ORT_DYLIB_PATH=\\?\C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24\runtime\resources\semantic-embed-runtime\onnxruntime.dll
+{"enrolledRepoCount":1,"event":"resident_blueprint_initialization","stage":"started"}
+membrane resident on 127.0.0.1:47851 db=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory/cortex-engine.db catalog=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory\catalog.db
+{"event":"ready","observedAtUnixMs":1789349995067,"pid":229644,"reason":"transport"}
+{"event":"holder_status","observedAtUnixMs":1789349996153,"pid":229644,"reason":"resident_holder"}
+{"event":"background_authority_granted","observedAtUnixMs":1789349996769,"pid":229644,"reason":"background_holder_active"}
+{"event":"holder_acquired","observedAtUnixMs":1789349996769,"pid":229644,"reason":"resident_holder"}
+{"event":"resident_blueprint_repository_build","root":"\\\\?\\C:\\Users\\adrds\\AppData\\Local\\Temp\\membrane-windows-qualification-11d166120f174b6d8345d1d561694d71","stage":"started"}
+{"event":"holder_status","observedAtUnixMs":1789349998187,"pid":229644,"reason":"resident_holder"}
+{"elapsedMs":1263,"event":"resident_blueprint_repository_build","root":"\\\\?\\C:\\Users\\adrds\\AppData\\Local\\Temp\\membrane-windows-qualification-11d166120f174b6d8345d1d561694d71","stage":"completed"}
+{"event":"resident_blueprint_initialization","repoCount":1,"stage":"completed"}
+{"event":"holder_status","observedAtUnixMs":1789350000221,"pid":229644,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789350002258,"pid":229644,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789350004292,"pid":229644,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789350006330,"pid":229644,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789350008359,"pid":229644,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789350010490,"pid":229644,"reason":"resident_holder"}
+{"event":"background_authority_drained","observedAtUnixMs":1789350011818,"pid":229644,"reason":"no_background_holder"}
+{"event":"drain_requested","observedAtUnixMs":1789350011818,"pid":229644,"reason":"final_holder_release"}
+{"event":"holder_released","observedAtUnixMs":1789350011818,"pid":229644,"reason":"resident_holder"}
+{"event":"resident_blueprint_initialization","stage":"stopped"}
+{"event":"engine_stopped","observedAtUnixMs":1789350012036,"pid":229644,"reason":"resident_engine"}
+{"event":"owner_released","observedAtUnixMs":1789350012036,"pid":229644,"reason":"resident_engine"}
+{"event":"activation_requested","observedAtUnixMs":1789350224933,"pid":229476,"reason":"standalone_daemon"}
+{"event":"owner_acquired","observedAtUnixMs":1789350224934,"pid":229476,"reason":"resident_engine"}
+[startup] embedder: fastembed compiled in, ORT_DYLIB_PATH=\\?\C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24\runtime\resources\semantic-embed-runtime\onnxruntime.dll
+{"error":"The system cannot find the path specified. (os error 3)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\membrane-installed-boundary-5724\\repo"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-1lKjNT"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-G39Zxo"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-GG217r"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-dupEMk"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-hgRGGw"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-vQlKuN"}
+{"enrolledRepoCount":4,"event":"resident_blueprint_initialization","stage":"started"}
+membrane resident on 127.0.0.1:47851 db=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory/cortex-engine.db catalog=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory\catalog.db
+{"event":"ready","observedAtUnixMs":1789350226569,"pid":229476,"reason":"transport"}
+{"event":"holder_status","observedAtUnixMs":1789350228611,"pid":229476,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789350230655,"pid":229476,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789350232690,"pid":229476,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789350234734,"pid":229476,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789350236759,"pid":229476,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789350238788,"pid":229476,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789350240831,"pid":229476,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789350242878,"pid":229476,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789350244910,"pid":229476,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789350246947,"pid":229476,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789350248981,"pid":229476,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789350251012,"pid":229476,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789350253060,"pid":229476,"reason":"resident_holder"}
+{"event":"drain_requested","observedAtUnixMs":1789350256659,"pid":229476,"reason":"initial_holder_grace_expired"}
+{"event":"resident_blueprint_initialization","stage":"stopped"}
+{"event":"engine_stopped","observedAtUnixMs":1789350256694,"pid":229476,"reason":"resident_engine"}
+{"event":"owner_released","observedAtUnixMs":1789350256694,"pid":229476,"reason":"resident_engine"}
+{"event":"activation_requested","observedAtUnixMs":1789350357804,"pid":230524,"reason":"standalone_daemon"}
+{"event":"owner_acquired","observedAtUnixMs":1789350357806,"pid":230524,"reason":"resident_engine"}
+[startup] embedder: fastembed compiled in, ORT_DYLIB_PATH=\\?\C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24\runtime\resources\semantic-embed-runtime\onnxruntime.dll
+{"error":"The system cannot find the path specified. (os error 3)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\membrane-installed-boundary-5724\\repo"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-1lKjNT"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-G39Zxo"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-GG217r"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-dupEMk"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-hgRGGw"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-vQlKuN"}
+{"enrolledRepoCount":4,"event":"resident_blueprint_initialization","stage":"started"}
+membrane resident on 127.0.0.1:47851 db=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory/cortex-engine.db catalog=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory\catalog.db
+{"event":"ready","observedAtUnixMs":1789350359806,"pid":230524,"reason":"transport"}
+{"event":"holder_status","observedAtUnixMs":1789350361391,"pid":230524,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789350362339,"pid":230524,"reason":"resident_holder"}
+{"event":"drain_requested","observedAtUnixMs":1789350389853,"pid":230524,"reason":"initial_holder_grace_expired"}
+{"event":"resident_blueprint_initialization","stage":"stopped"}
+{"event":"engine_stopped","observedAtUnixMs":1789350389895,"pid":230524,"reason":"resident_engine"}
+{"event":"owner_released","observedAtUnixMs":1789350389895,"pid":230524,"reason":"resident_engine"}
+{"event":"activation_requested","observedAtUnixMs":1789350506070,"pid":230396,"reason":"standalone_daemon"}
+{"event":"owner_acquired","observedAtUnixMs":1789350506071,"pid":230396,"reason":"resident_engine"}
+[startup] embedder: fastembed compiled in, ORT_DYLIB_PATH=\\?\C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24\runtime\resources\semantic-embed-runtime\onnxruntime.dll
+{"error":"The system cannot find the path specified. (os error 3)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\membrane-installed-boundary-5724\\repo"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-1lKjNT"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-G39Zxo"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-GG217r"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-dupEMk"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-hgRGGw"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-vQlKuN"}
+{"enrolledRepoCount":4,"event":"resident_blueprint_initialization","stage":"started"}
+membrane resident on 127.0.0.1:47851 db=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory/cortex-engine.db catalog=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory\catalog.db
+{"event":"ready","observedAtUnixMs":1789350507852,"pid":230396,"reason":"transport"}
+{"event":"holder_acquired","observedAtUnixMs":1789350508047,"pid":230396,"reason":"resident_holder"}
+{"event":"holder_acquired","observedAtUnixMs":1789350515075,"pid":230396,"reason":"resident_holder"}
+{"event":"holder_acquired","observedAtUnixMs":1789350515291,"pid":230396,"reason":"resident_holder"}
+{"event":"holder_released","observedAtUnixMs":1789350515295,"pid":230396,"reason":"resident_holder"}
+{"event":"drain_requested","observedAtUnixMs":1789350515299,"pid":230396,"reason":"final_holder_release"}
+{"event":"holder_released","observedAtUnixMs":1789350515299,"pid":230396,"reason":"resident_holder"}
+{"event":"resident_blueprint_initialization","stage":"stopped"}
+{"event":"engine_stopped","observedAtUnixMs":1789350515317,"pid":230396,"reason":"resident_engine"}
+{"event":"owner_released","observedAtUnixMs":1789350515317,"pid":230396,"reason":"resident_engine"}
+{"event":"activation_requested","observedAtUnixMs":1789352107615,"pid":228540,"reason":"standalone_daemon"}
+{"event":"owner_acquired","observedAtUnixMs":1789352107616,"pid":228540,"reason":"resident_engine"}
+[startup] embedder: fastembed compiled in, ORT_DYLIB_PATH=\\?\C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24\runtime\resources\semantic-embed-runtime\onnxruntime.dll
+{"error":"The system cannot find the path specified. (os error 3)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\membrane-installed-boundary-5724\\repo"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-1lKjNT"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-G39Zxo"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-GG217r"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-dupEMk"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-hgRGGw"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-vQlKuN"}
+{"enrolledRepoCount":4,"event":"resident_blueprint_initialization","stage":"started"}
+membrane resident on 127.0.0.1:47851 db=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory/cortex-engine.db catalog=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory\catalog.db
+{"event":"ready","observedAtUnixMs":1789352109361,"pid":228540,"reason":"transport"}
+{"event":"holder_acquired","observedAtUnixMs":1789352109598,"pid":228540,"reason":"resident_holder"}
+{"event":"drain_requested","observedAtUnixMs":1789352109604,"pid":228540,"reason":"final_holder_release"}
+{"event":"holder_released","observedAtUnixMs":1789352109604,"pid":228540,"reason":"resident_holder"}
+{"event":"resident_blueprint_initialization","stage":"stopped"}
+{"event":"engine_stopped","observedAtUnixMs":1789352109811,"pid":228540,"reason":"resident_engine"}
+{"event":"owner_released","observedAtUnixMs":1789352109811,"pid":228540,"reason":"resident_engine"}
+{"event":"activation_requested","observedAtUnixMs":1789352115523,"pid":229384,"reason":"standalone_daemon"}
+{"event":"owner_acquired","observedAtUnixMs":1789352115524,"pid":229384,"reason":"resident_engine"}
+[startup] embedder: fastembed compiled in, ORT_DYLIB_PATH=\\?\C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24\runtime\resources\semantic-embed-runtime\onnxruntime.dll
+{"error":"The system cannot find the path specified. (os error 3)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\membrane-installed-boundary-5724\\repo"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-1lKjNT"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-G39Zxo"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-GG217r"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-dupEMk"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-hgRGGw"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-vQlKuN"}
+{"enrolledRepoCount":4,"event":"resident_blueprint_initialization","stage":"started"}
+membrane resident on 127.0.0.1:47851 db=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory/cortex-engine.db catalog=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory\catalog.db
+{"event":"ready","observedAtUnixMs":1789352117271,"pid":229384,"reason":"transport"}
+{"event":"drain_requested","observedAtUnixMs":1789352147331,"pid":229384,"reason":"initial_holder_grace_expired"}
+{"event":"resident_blueprint_initialization","stage":"stopped"}
+{"event":"engine_stopped","observedAtUnixMs":1789352147561,"pid":229384,"reason":"resident_engine"}
+{"event":"owner_released","observedAtUnixMs":1789352147561,"pid":229384,"reason":"resident_engine"}
+{"event":"activation_requested","observedAtUnixMs":1789352171030,"pid":228240,"reason":"standalone_daemon"}
+{"event":"owner_acquired","observedAtUnixMs":1789352171031,"pid":228240,"reason":"resident_engine"}
+[startup] embedder: fastembed compiled in, ORT_DYLIB_PATH=\\?\C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24\runtime\resources\semantic-embed-runtime\onnxruntime.dll
+{"error":"The system cannot find the path specified. (os error 3)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\membrane-installed-boundary-5724\\repo"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-1lKjNT"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-G39Zxo"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-GG217r"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-dupEMk"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-hgRGGw"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-vQlKuN"}
+{"enrolledRepoCount":4,"event":"resident_blueprint_initialization","stage":"started"}
+membrane resident on 127.0.0.1:47851 db=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory/cortex-engine.db catalog=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory\catalog.db
+{"event":"ready","observedAtUnixMs":1789352172690,"pid":228240,"reason":"transport"}
+{"event":"holder_status","observedAtUnixMs":1789352173125,"pid":228240,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789352173131,"pid":228240,"reason":"resident_holder"}
+{"event":"background_authority_granted","observedAtUnixMs":1789352173131,"pid":228240,"reason":"background_holder_active"}
+{"event":"holder_acquired","observedAtUnixMs":1789352173131,"pid":228240,"reason":"resident_holder"}
+{"error":"The system cannot find the path specified. (os error 3)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\membrane-installed-boundary-5724\\repo"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-1lKjNT"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-G39Zxo"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-GG217r"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-dupEMk"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-hgRGGw"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-vQlKuN"}
+{"event":"resident_blueprint_repository_build","root":"\\\\?\\D:\\Claude\\.tmp\\membrane-finish-smoke","stage":"started"}
+{"elapsedMs":18,"event":"resident_blueprint_repository_build","root":"\\\\?\\D:\\Claude\\.tmp\\membrane-finish-smoke","stage":"completed"}
+{"event":"resident_blueprint_repository_build","root":"\\\\?\\D:\\Claude\\coderight","stage":"started"}
+{"event":"holder_status","observedAtUnixMs":1789352173635,"pid":228240,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789352175105,"pid":228240,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789352177120,"pid":228240,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789352179139,"pid":228240,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789352181158,"pid":228240,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789352183149,"pid":228240,"reason":"resident_holder"}
+{"event":"holder_renewed","observedAtUnixMs":1789352183150,"pid":228240,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789352183177,"pid":228240,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789352185208,"pid":228240,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789352187243,"pid":228240,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789352189276,"pid":228240,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789352191317,"pid":228240,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789352193170,"pid":228240,"reason":"resident_holder"}
+{"event":"holder_renewed","observedAtUnixMs":1789352193171,"pid":228240,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789352193362,"pid":228240,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789352195427,"pid":228240,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789352197478,"pid":228240,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789352199528,"pid":228240,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789352201581,"pid":228240,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789352203183,"pid":228240,"reason":"resident_holder"}
+{"event":"holder_renewed","observedAtUnixMs":1789352203185,"pid":228240,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789352203642,"pid":228240,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789352205691,"pid":228240,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789352207745,"pid":228240,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789352209806,"pid":228240,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789352210121,"pid":228240,"reason":"resident_holder"}
+{"event":"activation_requested","observedAtUnixMs":1789352219364,"pid":206320,"reason":"standalone_daemon"}
+{"event":"owner_acquired","observedAtUnixMs":1789352219366,"pid":206320,"reason":"resident_engine"}
+[startup] embedder: fastembed compiled in, ORT_DYLIB_PATH=\\?\C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24\runtime\resources\semantic-embed-runtime\onnxruntime.dll
+{"error":"The system cannot find the path specified. (os error 3)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\membrane-installed-boundary-5724\\repo"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-1lKjNT"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-G39Zxo"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-GG217r"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-dupEMk"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-hgRGGw"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-vQlKuN"}
+{"enrolledRepoCount":4,"event":"resident_blueprint_initialization","stage":"started"}
+membrane resident on 127.0.0.1:47851 db=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory/cortex-engine.db catalog=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory\catalog.db
+{"event":"ready","observedAtUnixMs":1789352221112,"pid":206320,"reason":"transport"}
+{"event":"holder_status","observedAtUnixMs":1789352221525,"pid":206320,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789352221871,"pid":206320,"reason":"resident_holder"}
+{"event":"background_authority_granted","observedAtUnixMs":1789352221873,"pid":206320,"reason":"background_holder_active"}
+{"event":"holder_acquired","observedAtUnixMs":1789352221873,"pid":206320,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789352221880,"pid":206320,"reason":"resident_holder"}
+{"event":"holder_acquired","observedAtUnixMs":1789352221906,"pid":206320,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789352221915,"pid":206320,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789352221947,"pid":206320,"reason":"resident_holder"}
+{"error":"The system cannot find the path specified. (os error 3)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\membrane-installed-boundary-5724\\repo"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-1lKjNT"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-G39Zxo"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-GG217r"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-dupEMk"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-hgRGGw"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-vQlKuN"}
+{"event":"resident_blueprint_repository_build","root":"\\\\?\\D:\\Claude\\.tmp\\membrane-finish-smoke","stage":"started"}
+{"elapsedMs":22,"event":"resident_blueprint_repository_build","root":"\\\\?\\D:\\Claude\\.tmp\\membrane-finish-smoke","stage":"completed"}
+{"event":"resident_blueprint_repository_build","root":"\\\\?\\D:\\Claude\\coderight","stage":"started"}
+{"event":"holder_status","observedAtUnixMs":1789352222479,"pid":206320,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789352223007,"pid":206320,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789352223538,"pid":206320,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789352224055,"pid":206320,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789352224574,"pid":206320,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789352225101,"pid":206320,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789352225632,"pid":206320,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789352226161,"pid":206320,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789352226692,"pid":206320,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789352227224,"pid":206320,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789352227756,"pid":206320,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789352228286,"pid":206320,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789352228808,"pid":206320,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789352229335,"pid":206320,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789352229861,"pid":206320,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789352230392,"pid":206320,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789352230918,"pid":206320,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789352231449,"pid":206320,"reason":"resident_holder"}
+{"event":"holder_renewed","observedAtUnixMs":1789352231908,"pid":206320,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789352231972,"pid":206320,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789352232499,"pid":206320,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789352233027,"pid":206320,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789352233557,"pid":206320,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789352234090,"pid":206320,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789352234621,"pid":206320,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789352235153,"pid":206320,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789352235684,"pid":206320,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789352236213,"pid":206320,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789352236741,"pid":206320,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789352237270,"pid":206320,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789352237801,"pid":206320,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789352238330,"pid":206320,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789352238861,"pid":206320,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789352239386,"pid":206320,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789352239913,"pid":206320,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789352240444,"pid":206320,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789352240977,"pid":206320,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789352241505,"pid":206320,"reason":"resident_holder"}
+{"event":"holder_renewed","observedAtUnixMs":1789352241910,"pid":206320,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789352242033,"pid":206320,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789352242562,"pid":206320,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789352243093,"pid":206320,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789352243623,"pid":206320,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789352244144,"pid":206320,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789352244674,"pid":206320,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789352245204,"pid":206320,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789352245734,"pid":206320,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789352246261,"pid":206320,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789352246791,"pid":206320,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789352247325,"pid":206320,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789352247857,"pid":206320,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789352248389,"pid":206320,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789352248921,"pid":206320,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789352249439,"pid":206320,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789352249969,"pid":206320,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789352250502,"pid":206320,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789352251028,"pid":206320,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789352251557,"pid":206320,"reason":"resident_holder"}
+{"event":"background_authority_drained","observedAtUnixMs":1789352251905,"pid":206320,"reason":"no_background_holder_expired"}
+{"event":"holder_renewed","observedAtUnixMs":1789352251913,"pid":206320,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789352252085,"pid":206320,"reason":"resident_holder"}
+{"event":"drain_requested","observedAtUnixMs":1789352252715,"pid":206320,"reason":"final_holder_release"}
+{"event":"holder_released","observedAtUnixMs":1789352252715,"pid":206320,"reason":"resident_holder"}
+{"event":"activation_requested","observedAtUnixMs":1789352346873,"pid":146192,"reason":"standalone_daemon"}
+{"event":"owner_acquired","observedAtUnixMs":1789352346874,"pid":146192,"reason":"resident_engine"}
+[startup] embedder: fastembed compiled in, ORT_DYLIB_PATH=\\?\C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24\runtime\resources\semantic-embed-runtime\onnxruntime.dll
+{"error":"The system cannot find the path specified. (os error 3)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\membrane-installed-boundary-5724\\repo"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-1lKjNT"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-G39Zxo"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-GG217r"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-dupEMk"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-hgRGGw"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-vQlKuN"}
+{"enrolledRepoCount":4,"event":"resident_blueprint_initialization","stage":"started"}
+membrane resident on 127.0.0.1:47851 db=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory/cortex-engine.db catalog=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory\catalog.db
+{"event":"ready","observedAtUnixMs":1789352348549,"pid":146192,"reason":"transport"}
+{"event":"holder_acquired","observedAtUnixMs":1789352348855,"pid":146192,"reason":"resident_holder"}
+{"event":"holder_acquired","observedAtUnixMs":1789352350316,"pid":146192,"reason":"resident_holder"}
+{"event":"holder_released","observedAtUnixMs":1789352350319,"pid":146192,"reason":"resident_holder"}
+{"event":"holder_acquired","observedAtUnixMs":1789352350868,"pid":146192,"reason":"resident_holder"}
+{"event":"holder_acquired","observedAtUnixMs":1789352352135,"pid":146192,"reason":"resident_holder"}
+{"event":"holder_released","observedAtUnixMs":1789352352137,"pid":146192,"reason":"resident_holder"}
+{"event":"holder_acquired","observedAtUnixMs":1789352352674,"pid":146192,"reason":"resident_holder"}
+{"event":"holder_acquired","observedAtUnixMs":1789352353856,"pid":146192,"reason":"resident_holder"}
+{"event":"holder_released","observedAtUnixMs":1789352353858,"pid":146192,"reason":"resident_holder"}
+{"event":"holder_acquired","observedAtUnixMs":1789352354405,"pid":146192,"reason":"resident_holder"}
+{"event":"holder_acquired","observedAtUnixMs":1789352355826,"pid":146192,"reason":"resident_holder"}
+{"event":"holder_released","observedAtUnixMs":1789352355828,"pid":146192,"reason":"resident_holder"}
+{"event":"holder_acquired","observedAtUnixMs":1789352356364,"pid":146192,"reason":"resident_holder"}
+{"event":"holder_released","observedAtUnixMs":1789352357743,"pid":146192,"reason":"resident_holder"}
+{"event":"holder_released","observedAtUnixMs":1789352357743,"pid":146192,"reason":"resident_holder"}
+{"event":"holder_released","observedAtUnixMs":1789352357743,"pid":146192,"reason":"resident_holder"}
+{"event":"holder_released","observedAtUnixMs":1789352357743,"pid":146192,"reason":"resident_holder"}
+ERROR: The specified task name "Membrane Engine" does not exist in the system.
+ERROR: The system cannot find the file specified.
+membrane: membrane_engine_restart_suppressed: three consecutive unclean exits
+ERROR: The specified task name "Membrane Engine" does not exist in the system.
+ERROR: The system cannot find the file specified.
+membrane: membrane_engine_restart_suppressed: three consecutive unclean exits
+ERROR: The specified task name "Membrane Engine" does not exist in the system.
+ERROR: The system cannot find the file specified.
+membrane: membrane_engine_restart_suppressed: three consecutive unclean exits
+ERROR: The specified task name "Membrane Engine" does not exist in the system.
+ERROR: The system cannot find the file specified.
+membrane: membrane_engine_restart_suppressed: three consecutive unclean exits
+{"event":"activation_requested","observedAtUnixMs":1789352765015,"pid":216700,"reason":"standalone_daemon"}
+{"event":"owner_acquired","observedAtUnixMs":1789352765016,"pid":216700,"reason":"resident_engine"}
+[startup] embedder: fastembed compiled in, ORT_DYLIB_PATH=\\?\C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24\runtime\resources\semantic-embed-runtime\onnxruntime.dll
+{"error":"The system cannot find the path specified. (os error 3)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\membrane-installed-boundary-5724\\repo"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-1lKjNT"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-G39Zxo"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-GG217r"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-dupEMk"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-hgRGGw"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-vQlKuN"}
+{"enrolledRepoCount":4,"event":"resident_blueprint_initialization","stage":"started"}
+membrane resident on 127.0.0.1:47851 db=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory/cortex-engine.db catalog=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory\catalog.db
+{"event":"ready","observedAtUnixMs":1789352766644,"pid":216700,"reason":"transport"}
+{"event":"holder_acquired","observedAtUnixMs":1789352766983,"pid":216700,"reason":"resident_holder"}
+{"event":"holder_acquired","observedAtUnixMs":1789352772696,"pid":216700,"reason":"resident_holder"}
+{"event":"holder_acquired","observedAtUnixMs":1789352772840,"pid":216700,"reason":"resident_holder"}
+{"event":"holder_released","observedAtUnixMs":1789352772843,"pid":216700,"reason":"resident_holder"}
+{"event":"drain_requested","observedAtUnixMs":1789352772853,"pid":216700,"reason":"final_holder_release"}
+{"event":"holder_released","observedAtUnixMs":1789352772853,"pid":216700,"reason":"resident_holder"}
+{"event":"resident_blueprint_initialization","stage":"stopped"}
+{"event":"engine_stopped","observedAtUnixMs":1789352772968,"pid":216700,"reason":"resident_engine"}
+{"event":"owner_released","observedAtUnixMs":1789352772968,"pid":216700,"reason":"resident_engine"}
+{"event":"activation_requested","observedAtUnixMs":1789352780467,"pid":229824,"reason":"standalone_daemon"}
+{"event":"owner_acquired","observedAtUnixMs":1789352780468,"pid":229824,"reason":"resident_engine"}
+[startup] embedder: fastembed compiled in, ORT_DYLIB_PATH=\\?\C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24\runtime\resources\semantic-embed-runtime\onnxruntime.dll
+{"error":"The system cannot find the path specified. (os error 3)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\membrane-installed-boundary-5724\\repo"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-1lKjNT"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-G39Zxo"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-GG217r"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-dupEMk"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-hgRGGw"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-vQlKuN"}
+{"enrolledRepoCount":4,"event":"resident_blueprint_initialization","stage":"started"}
+membrane resident on 127.0.0.1:47851 db=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory/cortex-engine.db catalog=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory\catalog.db
+{"event":"ready","observedAtUnixMs":1789352782171,"pid":229824,"reason":"transport"}
+{"event":"holder_acquired","observedAtUnixMs":1789352782445,"pid":229824,"reason":"resident_holder"}
+{"event":"holder_renewed","observedAtUnixMs":1789352792449,"pid":229824,"reason":"resident_holder"}
+{"event":"holder_renewed","observedAtUnixMs":1789352802451,"pid":229824,"reason":"resident_holder"}
+{"event":"holder_renewed","observedAtUnixMs":1789352812515,"pid":229824,"reason":"resident_holder"}
+{"event":"drain_requested","observedAtUnixMs":1789352835323,"pid":229824,"reason":"final_holder_release"}
+{"event":"holder_released","observedAtUnixMs":1789352835323,"pid":229824,"reason":"resident_holder"}
+{"event":"resident_blueprint_initialization","stage":"stopped"}
+{"event":"activation_requested","observedAtUnixMs":1789352895144,"pid":189644,"reason":"standalone_daemon"}
+{"event":"owner_acquired","observedAtUnixMs":1789352895146,"pid":189644,"reason":"resident_engine"}
+[startup] embedder: fastembed compiled in, ORT_DYLIB_PATH=\\?\C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24\runtime\resources\semantic-embed-runtime\onnxruntime.dll
+{"error":"The system cannot find the path specified. (os error 3)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\membrane-installed-boundary-5724\\repo"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-1lKjNT"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-G39Zxo"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-GG217r"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-dupEMk"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-hgRGGw"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-vQlKuN"}
+{"enrolledRepoCount":5,"event":"resident_blueprint_initialization","stage":"started"}
+membrane resident on 127.0.0.1:47851 db=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory/cortex-engine.db catalog=C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\state\tools\.cache/memory\catalog.db
+{"event":"ready","observedAtUnixMs":1789352896992,"pid":189644,"reason":"transport"}
+{"event":"holder_status","observedAtUnixMs":1789352897090,"pid":189644,"reason":"resident_holder"}
+{"event":"background_authority_granted","observedAtUnixMs":1789352897091,"pid":189644,"reason":"background_holder_active"}
+{"event":"holder_acquired","observedAtUnixMs":1789352897091,"pid":189644,"reason":"resident_holder"}
+{"error":"The system cannot find the path specified. (os error 3)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\membrane-installed-boundary-5724\\repo"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-1lKjNT"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-G39Zxo"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-GG217r"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-dupEMk"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-hgRGGw"}
+{"error":"The system cannot find the file specified. (os error 2)","event":"resident_blueprint_enrollment_skipped","reason":"unavailable","root":"C:\\Users\\adrds\\AppData\\Local\\Temp\\psh025-enrolled-vQlKuN"}
+{"event":"resident_blueprint_repository_build","root":"\\\\?\\C:\\Users\\adrds\\AppData\\Local\\Temp\\membrane-windows-qualification-b318fdc169604294a38b756029acc609","stage":"started"}
+{"elapsedMs":1046,"event":"resident_blueprint_repository_build","root":"\\\\?\\C:\\Users\\adrds\\AppData\\Local\\Temp\\membrane-windows-qualification-b318fdc169604294a38b756029acc609","stage":"completed"}
+{"event":"resident_blueprint_repository_build","root":"\\\\?\\D:\\Claude\\.tmp\\membrane-finish-smoke","stage":"started"}
+{"elapsedMs":38,"event":"resident_blueprint_repository_build","root":"\\\\?\\D:\\Claude\\.tmp\\membrane-finish-smoke","stage":"completed"}
+{"event":"resident_blueprint_repository_build","root":"\\\\?\\D:\\Claude\\coderight","stage":"started"}
+{"event":"holder_status","observedAtUnixMs":1789352899037,"pid":189644,"reason":"resident_holder"}
+{"event":"holder_acquired","observedAtUnixMs":1789352899642,"pid":189644,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789352901066,"pid":189644,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789352903101,"pid":189644,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789352905128,"pid":189644,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789352907097,"pid":189644,"reason":"resident_holder"}
+{"event":"holder_renewed","observedAtUnixMs":1789352907099,"pid":189644,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789352907155,"pid":189644,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789352909185,"pid":189644,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789352911216,"pid":189644,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789352913252,"pid":189644,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789352915289,"pid":189644,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789352917116,"pid":189644,"reason":"resident_holder"}
+{"event":"holder_renewed","observedAtUnixMs":1789352917119,"pid":189644,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789352917329,"pid":189644,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789352919358,"pid":189644,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789352921386,"pid":189644,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789352923418,"pid":189644,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789352925448,"pid":189644,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789352927136,"pid":189644,"reason":"resident_holder"}
+{"event":"holder_renewed","observedAtUnixMs":1789352927138,"pid":189644,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789352927493,"pid":189644,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789352929538,"pid":189644,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789352931587,"pid":189644,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789352933621,"pid":189644,"reason":"resident_holder"}
+{"event":"holder_status","observedAtUnixMs":1789352935653,"pid":189644,"reason":"resident_holder"}

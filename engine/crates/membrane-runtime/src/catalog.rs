@@ -1082,6 +1082,14 @@ pub fn record_pending_pull_publication(
     if !publication.is_complete() { return Err(rusqlite::Error::InvalidQuery); }
     let installation_id = &catalog.startup_report.catalog_installation_id;
     let conn = catalog.lock();
+    insert_pending_pull_publication_sql(&conn, installation_id, publication)
+}
+
+fn insert_pending_pull_publication_sql(
+    conn: &Connection,
+    installation_id: &str,
+    publication: &PendingPullPublicationV1,
+) -> rusqlite::Result<bool> {
     Ok(conn.execute(
         "INSERT OR IGNORE INTO pending_pull_publications
           (installation_id, repository_id, request_id, trace_id, task_id, session_id,
@@ -1094,6 +1102,85 @@ pub fn record_pending_pull_publication(
             publication.representation_identity.as_str(), publication.source_ref.as_str(),
             publication.representation_digest.as_str(), publication.packet_digest.as_str()],
     )? > 0)
+}
+
+/// Control-aware Pull publication recording. The resident catalog mutex and
+/// SQLite busy wait are both bounded by request control. A transaction keeps
+/// an insert out of the catalog when cancellation arrives before commit.
+pub(crate) fn record_pending_pull_publication_with_control(
+    catalog: &ContextCatalog,
+    publication: &PendingPullPublicationV1,
+    control: &crate::serve::PushRequestControl,
+) -> Result<bool, String> {
+    if !publication.is_complete() {
+        return Err("invalid pending pull publication".to_owned());
+    }
+    let ready = || {
+        if control.cancellation.is_cancelled() {
+            Err("pull request cancelled during catalog publication".to_owned())
+        } else if control.deadline.is_exhausted_at(std::time::Instant::now()) {
+            Err("pull request deadline exhausted during catalog publication".to_owned())
+        } else {
+            Ok(control.deadline.remaining_at(std::time::Instant::now()))
+        }
+    };
+
+    let mut conn = loop {
+        let remaining = ready()?;
+        match catalog.conn.try_lock() {
+            Ok(conn) => break conn,
+            Err(std::sync::TryLockError::Poisoned(error)) => break error.into_inner(),
+            Err(std::sync::TryLockError::WouldBlock) => {
+                std::thread::sleep(remaining.min(std::time::Duration::from_millis(2)));
+            }
+        }
+    };
+    let installation_id = catalog.startup_report.catalog_installation_id.clone();
+
+    loop {
+        let remaining = ready()?;
+        // Use short busy-handler slices so cancellation is observed while a
+        // different SQLite connection holds the database write lock. Restore
+        // the catalog's normal timeout after each attempt.
+        conn.busy_timeout(remaining.min(std::time::Duration::from_millis(25)))
+            .map_err(|error| error.to_string())?;
+        let attempt = {
+            match conn.transaction() {
+                Err(error) => Err(error.to_string()),
+                Ok(tx) => {
+                    if let Err(error) = ready() {
+                        drop(tx);
+                        Err(error)
+                    } else {
+                        let result = insert_pending_pull_publication_sql(&tx, &installation_id, publication)
+                            .map_err(|error| error.to_string());
+                        match result {
+                            Ok(changed) => match ready() {
+                                Ok(_) => tx.commit().map(|()| changed).map_err(|error| error.to_string()),
+                                Err(error) => {
+                                    drop(tx);
+                                    Err(error)
+                                }
+                            },
+                            Err(error) => {
+                                drop(tx);
+                                Err(error)
+                            }
+                        }
+                    }
+                }
+            }
+        };
+        conn.busy_timeout(std::time::Duration::from_secs(5))
+            .map_err(|error| error.to_string())?;
+        match attempt {
+            Ok(changed) => return Ok(changed),
+            Err(error) if error.contains("database is locked") || error.contains("database table is locked") => {
+                ready()?;
+            }
+            Err(error) => return Err(error),
+        }
+    }
 }
 
 pub fn has_pending_pull_publication(
@@ -1275,6 +1362,73 @@ pub fn health_snapshot(catalog: &ContextCatalog) -> serde_json::Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn test_pending_publication() -> PendingPullPublicationV1 {
+        PendingPullPublicationV1 {
+            repository_id: "repo".into(), request_id: "request".into(), trace_id: "trace".into(),
+            task_id: "task".into(), session_id: "session".into(), context_epoch: 1,
+            publication_id: "publication".into(), representation_identity: "representation".into(),
+            source_ref: "source".into(), representation_digest: "representation-digest".into(),
+            packet_digest: "packet-digest".into(),
+        }
+    }
+
+    fn test_push_control(duration: std::time::Duration) -> crate::serve::PushRequestControl {
+        crate::serve::PushRequestControl {
+            deadline: membrane_federation::deadline::Deadline::after(
+                &membrane_federation::deadline::SystemClock, duration,
+            ),
+            cancellation: tokio_util::sync::CancellationToken::new(),
+        }
+    }
+
+    #[test]
+    fn controlled_pending_publication_skips_write_when_mutex_wait_is_cancelled() {
+        let catalog = ContextCatalog::open_in_memory();
+        let held = catalog.lock();
+        let worker_catalog = catalog.clone();
+        let cancellation = tokio_util::sync::CancellationToken::new();
+        let worker_cancellation = cancellation.clone();
+        let worker = std::thread::spawn(move || {
+            let control = crate::serve::PushRequestControl {
+                deadline: membrane_federation::deadline::Deadline::after(
+                    &membrane_federation::deadline::SystemClock,
+                    std::time::Duration::from_secs(1),
+                ),
+                cancellation: worker_cancellation,
+            };
+            record_pending_pull_publication_with_control(
+                &worker_catalog, &test_pending_publication(), &control,
+            )
+        });
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        cancellation.cancel();
+        let result = worker.join().unwrap();
+        drop(held);
+        assert!(result.is_err());
+        assert!(!has_pending_pull_publication(&catalog, &test_pending_publication()).unwrap());
+    }
+
+    #[test]
+    fn controlled_pending_publication_skips_write_when_expired() {
+        let catalog = ContextCatalog::open_in_memory();
+        let mut control = test_push_control(std::time::Duration::ZERO);
+        control.deadline = membrane_federation::deadline::Deadline::at(std::time::Instant::now());
+        assert!(record_pending_pull_publication_with_control(
+            &catalog, &test_pending_publication(), &control,
+        ).is_err());
+        assert!(!has_pending_pull_publication(&catalog, &test_pending_publication()).unwrap());
+    }
+
+    #[test]
+    fn controlled_pending_publication_persists_when_request_is_live() {
+        let catalog = ContextCatalog::open_in_memory();
+        let control = test_push_control(std::time::Duration::from_secs(1));
+        assert!(record_pending_pull_publication_with_control(
+            &catalog, &test_pending_publication(), &control,
+        ).unwrap());
+        assert!(has_pending_pull_publication(&catalog, &test_pending_publication()).unwrap());
+    }
 
     #[test]
     fn catalog_connections_use_memory_temp_store() {

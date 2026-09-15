@@ -48,7 +48,7 @@ const startedAt = new Date().toISOString();
 rmSync(artifactRoot, { recursive: true, force: true });
 mkdirSync(payload, { recursive: true });
 
-run("cargo", ["build", "--locked", "--manifest-path", "../../engine/Cargo.toml", "--release", "--target", target, "-p", "cortex", "-p", "membrane", "-p", "membrane-runtime", "--bin", "cortex", "--bin", "membrane", "--bin", "membrane-daemon", "--features", "membrane-runtime/fastembed"]);
+run("cargo", ["build", "--locked", "--manifest-path", "../../engine/Cargo.toml", "--release", "--target", target, "-p", "cortex", "-p", "membrane", "-p", "membrane-runtime", "--bin", "cortex", "--bin", "membrane", "--bin", "membrane-client", "--bin", "membrane-daemon", "--features", "membrane-runtime/fastembed"]);
 run("cargo", ["build", "--locked", "--manifest-path", "../membrane-tray-windows/Cargo.toml", "--release", "--target", target, "--features", "membrane-runtime/fastembed"]);
 
 const cargoTarget = output("cargo", ["metadata", "--locked", "--format-version", "1", "--no-deps", "--manifest-path", "engine/Cargo.toml"]);
@@ -57,6 +57,7 @@ const trayTarget = JSON.parse(output("cargo", ["metadata", "--locked", "--format
 const sidecars = [
   [join(engineTarget, target, "release", "cortex.exe"), "cortex.exe"],
   [join(engineTarget, target, "release", "membrane.exe"), "membrane.exe"],
+  [join(engineTarget, target, "release", "membrane-client.exe"), "membrane-client.exe"],
   [join(engineTarget, target, "release", "membrane-daemon.exe"), "membrane-daemon.exe"],
   [join(trayTarget, target, "release", "membrane-tray-windows.exe"), "membrane-tray.exe"],
 ];
@@ -103,6 +104,16 @@ mkdirSync(join(payload, ".antigravity-plugin", "skills"), { recursive: true });
 cpSync(join(repo, "skills", "membrane"), join(payload, ".antigravity-plugin", "skills", "membrane"), { recursive: true });
 cpSync(join(repo, "LICENSE"), join(payload, "LICENSE"));
 cpSync(join(repo, "docs", "product", "legal", "THIRD-PARTY-NOTICES.txt"), join(payload, "THIRD_PARTY_NOTICES.md"));
+
+// Plugin identity/version derives from this release, never from a
+// hand-maintained per-host copy.
+for (const manifestName of ["plugin.json", ".claude-plugin/plugin.json", ".codex-plugin/plugin.json", ".antigravity-plugin/plugin.json"]) {
+  const manifestPath = join(payload, manifestName);
+  if (!existsSync(manifestPath)) continue;
+  const manifestJson = JSON.parse(readFileSync(manifestPath, "utf8"));
+  manifestJson.version = pkg.version;
+  writeFileSync(manifestPath, `${JSON.stringify(manifestJson, null, 2)}\n`);
+}
 
 const files = Object.fromEntries(filesUnder(payload).map((path) => [relative(payload, path).replaceAll("\\", "/"), sha256(path)]));
 const statusSuffix = signing.status;

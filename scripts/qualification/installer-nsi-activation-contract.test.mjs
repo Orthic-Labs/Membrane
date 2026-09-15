@@ -5,8 +5,8 @@ import test from "node:test";
 // The Windows installer does four things and records each: extract the
 // version tree into place and verify it, point the stable junction, register
 // uninstall and shortcuts, and write one log line per step. Silent installs
-// reconcile bindings without residency; interactive installs run `membrane activate` hidden,
-// synchronously and non-fatally with its output captured. The template cannot
+// reconcile bindings without residency; Hub/tray owns resident startup after
+// install. The template cannot
 // be compiled locally, so these tests pin the structural contract.
 const nsi = readFileSync(
   new URL("../../apps/membrane-hub/src-tauri/windows/installer.nsi", import.meta.url),
@@ -26,11 +26,10 @@ const install = section(nsi, "Install");
 const installLines = code(install);
 const uninstall = section(nsi, "Uninstall");
 
-test("silent installs reconcile installed bindings before optional resident activation", () => {
+test("all installs reconcile bindings without starting an engine", () => {
   const bind = install.indexOf('activate --bindings-only --install-root "$INSTDIR\\current"');
-  const resident = install.indexOf('${IfNot} ${Silent}');
-  assert.ok(bind >= 0 && resident > bind);
-  const step = install.slice(install.indexOf('StrCpy $InstallStep "bind-installed-clients"'), resident);
+  assert.ok(bind >= 0);
+  const step = install.slice(install.indexOf('StrCpy $InstallStep "bind-installed-clients"'));
   assert.match(step, /nsExec::ExecToStack \/TIMEOUT=90000/);
   assert.match(step, /bindings\.log/);
   assert.match(step, /\$\{If\} \$R0 != 0\s+Goto install_failed/);
@@ -62,15 +61,11 @@ test("Section Install has exactly one ExecWait, the junction, and never waits on
   assert.doesNotMatch(install, /\bExec\s+'/);
 });
 
-test("interactive installs run activate hidden, captured, and non-fatal", () => {
-  const start = installLines.findIndex((line) => /\$\{IfNot\}\s+\$\{Silent\}/.test(line));
-  assert.ok(start >= 0, "interactive guard is present");
-  const end = installLines.findIndex((line, index) => index > start && /\$\{Else\}/.test(line));
-  const guarded = installLines.slice(start, end).join("\n");
-  assert.match(guarded, /nsExec::ExecToStack \/TIMEOUT=\d+ '"\$INSTDIR\\current\\membrane\.exe" activate --install-root "\$INSTDIR\\current"'/);
-  assert.match(guarded, /activate\.log/);
-  assert.doesNotMatch(guarded, /Goto install_failed|Abort/);
-  assert.match(installLines.slice(end).join("\n"), /\$\{Log\} "activate skipped \(silent install\)"/);
+test("installed clients reconcile through bindings-only activation", () => {
+  const activations = installLines.filter(line => /nsExec::.*membrane\.exe" activate/.test(line));
+  assert.equal(activations.length, 1);
+  assert.match(activations[0], /activate --bindings-only/);
+  assert.match(install, /membrane-tray\.exe" --login-launch/);
 });
 
 test("Section Install invokes no powershell.exe and carries no install.ps1", () => {
@@ -79,9 +74,9 @@ test("Section Install invokes no powershell.exe and carries no install.ps1", () 
 });
 
 test("Section Install extracts straight into the product root and verifies every executable", () => {
-  assert.match(install, /SetOutPath "\$INSTDIR"\s*\n\s*ClearErrors\s*\n\s*\{\{#each resources_dirs\}\}/);
+  assert.match(install, /extract_retry:\s*ClearErrors\s*\{\{#each resources_dirs\}\}/);
   assert.match(install, /File \/a "\/oname=\{\{this\.\[1\]\}\}" "\{\{no-escape @key\}\}"/);
-  for (const exe of ["membrane.exe", "${MAINBINARYNAME}.exe", "membrane-tray.exe", "membrane-daemon.exe", "cortex.exe"]) {
+  for (const exe of ["membrane.exe", "${MAINBINARYNAME}.exe", "membrane-tray.exe", "membrane-client.exe", "cortex.exe"]) {
     assert.ok(install.includes(`"$INSTDIR\\versions\\\${VERSION}\\${exe}"`), exe);
   }
 });
@@ -98,14 +93,18 @@ test("Section Install cuts current over atomically and never recurses into a jun
   assert.match(install, /mklink[^\n]*>> "\$\{INSTALLLOG\}" 2>&1/);
   assert.match(install, /\$\{FileExists\} "\$INSTDIR\\\.current-next\\membrane\.exe"/);
   assert.match(install, /\$\{FileExists\} "\$INSTDIR\\current\\membrane\.exe"/);
-  assert.doesNotMatch(install, /RMDir \/r/, "Section Install never deletes recursively");
+  const recursive = installLines.filter(line => /RMDir \/r/.test(line));
+  assert.ok(recursive.every(line => line.includes('"$INSTDIR\\.install-lock"')), "only install lock is recursively removed during cutover");
   assert.doesNotMatch(nsi, /RMDir \/r "\$INSTDIR\\(current|\.current-next|\.current-previous)"/);
 });
 
 test("Section Install fails closed when extraction sets the error flag", () => {
-  assert.match(install, /StrCpy \$InstallStep "extract-version-tree"\s*\n\s*SetOutPath "\$INSTDIR"\s*\n\s*ClearErrors/);
+  assert.match(install, /StrCpy \$InstallStep "extract-version-tree"\s*\n\s*SetOutPath "\$INSTDIR"/);
   const extract = install.slice(install.indexOf('"extract-version-tree"'), install.indexOf('"extract-version-tree ok"'));
-  assert.match(extract, /\$\{If\} \$\{Errors\}\s*\n\s*StrCpy \$R0 1\s*\n\s*Goto install_failed/);
+  assert.match(extract, /\$\{If\} \$\{Errors\}/);
+  assert.match(extract, /\$2 < 6/);
+  assert.match(extract, /Sleep 5000\s+Goto extract_retry/);
+  assert.match(extract, /StrCpy \$R0 1\s+Goto install_failed/);
 });
 
 test("interactive activation is bounded", () => {
@@ -136,7 +135,7 @@ test("Section Uninstall deactivates without aborting, removes the junction befor
   assert.doesNotMatch(uninstall, /Abort "Membrane deactivation/);
   const rm = uninstall.indexOf('RMDir "$INSTDIR\\current"');
   const guard = uninstall.indexOf("could not be removed as a junction");
-  const firstRecursive = uninstall.indexOf("RMDir /r");
+  const firstRecursive = uninstall.indexOf('RMDir /r "$INSTDIR\\versions"');
   assert.ok(rm >= 0 && guard > rm && firstRecursive > guard, "junction removal and guard precede every recursive delete");
   assert.match(uninstall, /Delete "\$INSTDIR\\integration-journal\.json"/);
   assert.match(uninstall, /RMDir \/r "\$INSTDIR"\n/);

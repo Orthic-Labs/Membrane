@@ -1,0 +1,24 @@
+{
+  "pid": 180740,
+  "events": [
+    {
+      "ms": 9,
+      "event": "send",
+      "id": 1
+    },
+    {
+      "ms": 20019,
+      "event": "waits",
+      "data": "[{\"Id\":243164,\"ThreadState\":5,\"WaitReason\":6},{\"Id\":253368,\"ThreadState\":5,\"WaitReason\":8},{\"Id\":172504,\"ThreadState\":5,\"WaitReason\":8},{\"Id\":253696,\"ThreadState\":5,\"WaitReason\":8},{\"Id\":246240,\"ThreadState\":5,\"WaitReason\":8}]\r\n"
+    },
+    {
+      "ms": 22508,
+      "event": "send",
+      "id": 2
+    },
+    {
+      "ms": 27509,
+      "event": "stdin_end"
+    }
+  ]
+}

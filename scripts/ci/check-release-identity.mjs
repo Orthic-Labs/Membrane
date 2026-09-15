@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import hubReleaseConfig from "../../apps/membrane-hub/right-release.config.mjs";
 import { RUNTIME_SPECS } from "../../apps/membrane-hub/scripts/runtime-inventory.mjs";
@@ -24,8 +26,16 @@ assert.equal(hubReleaseConfig.targets.mac.cargoTarget, "aarch64-apple-darwin", "
 assert.ok(hubReleaseConfig.targets.mac.artifacts.some((path) => /Membrane Hub_.*_aarch64\.dmg$/.test(path)), "Hub macOS installer artifact missing");
 assert.ok(hubReleaseConfig.targets?.win?.signed, "Hub Windows target must be signed");
 assert.ok(hubReleaseConfig.targets.win.artifacts.some((path) => /Membrane[_ ]Hub_.*_x64-setup\.exe$/.test(path)), "Hub Windows installer artifact missing");
-assert.deepEqual(RUNTIME_SPECS.filter(({ delivery }) => delivery === "externalBin").map(({ component }) => component).sort(), ["cortex", "membrane", "membrane-daemon", "membrane-tray"], "Hub sidecar identity drifted");
+assert.deepEqual(RUNTIME_SPECS.filter(({ delivery }) => delivery === "externalBin").map(({ component }) => component).sort(), ["cortex", "membrane-client", "membrane-engine", "membrane-tray"], "Hub sidecar identity drifted");
 assert.ok(!releaseSources.some((value) => /cortex-service|crypt-service|orthic(?:[_-]manifest)?/i.test(value)), "Hub release identity contains retired runtime assets");
+
+const releaseVersion = JSON.parse(readFileSync(join(repoRoot, "apps/membrane-hub/package.json"), "utf8")).version;
+assert.ok(releaseVersion, "Hub package.json must carry the release version");
+for (const manifest of ["plugin.json", ".claude-plugin/plugin.json", ".codex-plugin/plugin.json", ".antigravity-plugin/plugin.json"]) {
+  const plugin = JSON.parse(readFileSync(join(repoRoot, manifest), "utf8"));
+  assert.equal(plugin.version, releaseVersion, `${manifest} version must equal release identity ${releaseVersion}`);
+}
+
 assert.equal(dirty, "", `release identity requires clean Hub release sources:\n${dirty}`);
 
 console.log("release identity OK: Membrane Hub release config + macOS/Windows runtime inventory");

@@ -7,6 +7,7 @@ use crate::dispatch::{
     ActivationInvocation, InitInvocation, InstallInvocation, MembraneMode, ParsedInvocation, UninstallInvocation,
 };
 use crate::{EXIT_INTERNAL_ERROR, EXIT_OK, EXIT_USER_ERROR};
+use std::path::PathBuf;
 
 /// MBR-108: map a parsed mode to the process plane it executes in. The mapping is the single
 /// source of truth referenced by `docs/architecture/runtime-truth.md` and by
@@ -170,7 +171,9 @@ fn dispatch_activation(invocation: &ActivationInvocation) -> DispatchOutcome {
         timeout: std::time::Duration::from_millis(invocation.timeout_ms.clamp(1_000, 120_000)),
         dry_run: invocation.dry_run,
     };
-    let result = if invocation.bindings_only {
+    let result = if invocation.engine_only {
+        crate::activation::activate_engine(options)
+    } else if invocation.bindings_only {
         crate::activation::activate_bindings(options)
     } else {
         crate::activation::activate(options)
@@ -304,7 +307,62 @@ fn dispatch_cli(tail: &[String]) -> DispatchOutcome {
             Err(error) => DispatchOutcome::InternalError(format!("hub.capabilities: {error}")),
         };
     }
-    let mut argv: Vec<String> = Vec::with_capacity(tail.len() + 1);
+    if is_local_metadata_cli(tail) { return dispatch_local_metadata_cli(tail); }
+    dispatch_forwarded_cli(tail)
+}
+
+fn dispatch_forwarded_cli(tail: &[String]) -> DispatchOutcome {
+    let executable = match installed_client_path() {
+        Ok(path) => path,
+        Err(error) => return DispatchOutcome::InternalError(format!("cli forwarding: {error}")),
+    };
+    let mut command = std::process::Command::new(&executable);
+    command.arg("cli").args(tail).stdin(std::process::Stdio::inherit())
+        .stdout(std::process::Stdio::inherit()).stderr(std::process::Stdio::inherit());
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(0x0800_0000);
+    }
+    match command.status() {
+        Ok(status) if status.success() => DispatchOutcome::Ok,
+        Ok(status) => match status.code() {
+            Some(code) if code == EXIT_USER_ERROR => DispatchOutcome::UserError(format!("forwarded CLI exited with {code}")),
+            Some(code) => DispatchOutcome::InternalError(format!("forwarded CLI exited with {code}")),
+            None => DispatchOutcome::InternalError("forwarded CLI terminated by signal".into()),
+        },
+        Err(error) => DispatchOutcome::InternalError(format!("could not launch installed membrane-client {}: {error}", executable.display())),
+    }
+}
+
+fn installed_client_path() -> Result<PathBuf, String> {
+    let engine = std::env::current_exe().map_err(|error| format!("resolve engine path: {error}"))?;
+    let parent = engine.parent().ok_or_else(|| "engine has no parent directory".to_string())?;
+    let stable = crate::activation::default_install_root()?;
+    let parent = std::fs::canonicalize(parent).map_err(|error| format!("canonicalize engine root: {error}"))?;
+    let stable = std::fs::canonicalize(stable).map_err(|error| format!("canonicalize installed root: {error}"))?;
+    if !path_identity_equal(&parent, &stable) {
+        return Err("caller executable is not under installer-owned stable current".into());
+    }
+    let client = parent.join(if cfg!(windows) { "membrane-client.exe" } else { "membrane-client" });
+    if !client.is_file() { return Err(format!("installed sibling client is missing: {}", client.display())); }
+    Ok(client)
+}
+
+fn path_identity_equal(left: &PathBuf, right: &PathBuf) -> bool {
+    if cfg!(windows) {
+        left.to_string_lossy().eq_ignore_ascii_case(&right.to_string_lossy())
+    } else {
+        left == right
+    }
+}
+
+fn is_local_metadata_cli(tail: &[String]) -> bool {
+    matches!(tail.first().map(String::as_str), Some("health" | "build-info"))
+}
+
+fn dispatch_local_metadata_cli(tail: &[String]) -> DispatchOutcome {
+    let mut argv = Vec::with_capacity(tail.len() + 1);
     argv.push("membrane".to_string());
     argv.extend_from_slice(tail);
     let refs: Vec<&str> = argv.iter().map(String::as_str).collect();
@@ -1446,12 +1504,16 @@ mod tests {
     use crate::dispatch::parse_mode;
 
     #[test]
-    fn cli_dispatch_forwards_tail_to_runtime() {
-        let inv = parse_mode(["membrane", "cli", "doctor"].iter().copied()).unwrap();
-        // The dispatch outcome depends on whether the runtime CLI is wired up. We only assert
-        // that the dispatcher routes the call — the runtime may legitimately refuse to start
-        // outside a real install, which is fine for this test.
-        let _ = dispatch(&inv);
+    fn generic_cli_dispatch_uses_only_named_local_metadata_whitelist() {
+        let source = include_str!("modes.rs");
+        let generic = source.split("fn dispatch_cli").nth(1).unwrap().split("fn dispatch_forwarded_cli").next().unwrap();
+        let metadata = source.split("fn dispatch_local_metadata_cli").nth(1).unwrap().split("fn is_installed_lifecycle_control").next().unwrap();
+        assert!(generic.contains("is_local_metadata_cli"));
+        assert!(!generic.contains("run_cli_from"));
+        assert!(is_local_metadata_cli(&["health".into()]));
+        assert!(is_local_metadata_cli(&["build-info".into()]));
+        assert!(!is_local_metadata_cli(&["doctor".into()]));
+        assert!(metadata.contains("run_cli_from"));
     }
 
     #[test]

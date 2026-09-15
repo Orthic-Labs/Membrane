@@ -1,0 +1,8 @@
+{
+  "name": "membrane-client",
+  "product_version": null,
+  "release_generation": "sha256:041bb8df2612c05f0df12bbf2281ea6622a87e115e099e5001ed5d16dc1c0539",
+  "target": "x86_64-pc-windows-msvc",
+  "transport_only": true,
+  "version": "0.1.0"
+}

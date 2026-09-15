@@ -1,0 +1,103 @@
+{
+  "events": [
+    {
+      "ms": 9,
+      "event": "spawn",
+      "slot": 0,
+      "pid": 230272
+    },
+    {
+      "ms": 14,
+      "event": "spawn",
+      "slot": 1,
+      "pid": 251864
+    },
+    {
+      "ms": 18,
+      "event": "spawn",
+      "slot": 2,
+      "pid": 253080
+    },
+    {
+      "ms": 25,
+      "event": "spawn",
+      "slot": 3,
+      "pid": 248936
+    },
+    {
+      "ms": 31,
+      "event": "spawn",
+      "slot": 4,
+      "pid": 244828
+    },
+    {
+      "ms": 5997,
+      "event": "processes",
+      "data": "[{\"ProcessId\":230272,\"ParentProcessId\":237332,\"Name\":\"membrane-client.exe\",\"CreationDate\":\"\\/Date(1789398106530)\\/\"},{\"ProcessId\":251864,\"ParentProcessId\":237332,\"Name\":\"membrane-client.exe\",\"CreationDate\":\"\\/Date(1789398106539)\\/\"},{\"ProcessId\":253080,\"ParentProcessId\":237332,\"Name\":\"membrane-client.exe\",\"CreationDate\":\"\\/Date(1789398106543)\\/\"},{\"ProcessId\":232988,\"ParentProcessId\":230272,\"Name\":\"conhost.exe\",\"CreationDate\":\"\\/Date(1789398106543)\\/\"},{\"ProcessId\":238568,\"ParentProcessId\":251864,\"Name\":\"conhost.exe\",\"CreationDate\":\"\\/Date(1789398106545)\\/\"},{\"ProcessId\":248936,\"ParentProcessId\":237332,\"Name\":\"membrane-client.exe\",\"CreationDate\":\"\\/Date(1789398106548)\\/\"},{\"ProcessId\":249480,\"ParentProcessId\":253080,\"Name\":\"conhost.exe\",\"CreationDate\":\"\\/Date(1789398106550)\\/\"},{\"ProcessId\":244828,\"ParentProcessId\":237332,\"Name\":\"membrane-client.exe\",\"CreationDate\":\"\\/Date(1789398106555)\\/\"},{\"ProcessId\":247232,\"ParentProcessId\":248936,\"Name\":\"conhost.exe\",\"CreationDate\":\"\\/Date(1789398106561)\\/\"},{\"ProcessId\":253676,\"ParentProcessId\":244828,\"Name\":\"conhost.exe\",\"CreationDate\":\"\\/Date(1789398106564)\\/\"},{\"ProcessId\":253308,\"ParentProcessId\":230272,\"Name\":\"membrane.exe\",\"CreationDate\":\"\\/Date(1789398106886)\\/\"},{\"ProcessId\":252240,\"ParentProcessId\":251864,\"Name\":\"membrane.exe\",\"CreationDate\":\"\\/Date(1789398106886)\\/\"},{\"ProcessId\":248384,\"ParentProcessId\":248936,\"Name\":\"membrane.exe\",\"CreationDate\":\"\\/Date(1789398106886)\\/\"},{\"ProcessId\":252392,\"ParentProcessId\":253080,\"Name\":\"membrane.exe\",\"CreationDate\":\"\\/Date(1789398106886)\\/\"},{\"ProcessId\":252600,\"ParentProcessId\":244828,\"Name\":\"membrane.exe\",\"CreationDate\":\"\\/Date(1789398106897)\\/\"},{\"ProcessId\":250088,\"ParentProcessId\":245132,\"Name\":\"membrane-client.exe\",\"CreationDate\":\"\\/Date(1789398108785)\\/\"},{\"ProcessId\":248608,\"ParentProcessId\":250088,\"Name\":\"membrane.exe\",\"CreationDate\":\"\\/Date(1789398109114)\\/\"}]\r\n"
+    },
+    {
+      "ms": 18617,
+      "event": "stdout",
+      "slot": 4,
+      "text": "{\"id\":5,\"jsonrpc\":\"2.0\",\"result\":{\"capabilities\":{\"prompts\":{},\"resources\":{},\"tools\":{}},\"instructions\":\"Use pull for federated context & push for durable Cortex memory. Never expect raw memory CRUD. Membrane workflow prompts are bounded to operations in schemas/registry/operations/operations-index.v1.golden.json and grant no authority beyond those operations. Membrane MCP resources are bounded by the accessGrants declared in schemas/registry/resources/*.json; reads outside those grants return a typed resource_access_denied rejection with no content leak.\",\"protocolVersion\":\"2025-03-26\",\"serverInfo\":{\"name\":\"membrane\",\"version\":\"1.0.0\"}}}\n"
+    },
+    {
+      "ms": 18631,
+      "event": "stdout",
+      "slot": 0,
+      "text": "{\"id\":1,\"jsonrpc\":\"2.0\",\"result\":{\"capabilities\":{\"prompts\":{},\"resources\":{},\"tools\":{}},\"instructions\":\"Use pull for federated context & push for durable Cortex memory. Never expect raw memory CRUD. Membrane workflow prompts are bounded to operations in schemas/registry/operations/operations-index.v1.golden.json and grant no authority beyond those operations. Membrane MCP resources are bounded by the accessGrants declared in schemas/registry/resources/*.json; reads outside those grants return a typed resource_access_denied rejection with no content leak.\",\"protocolVersion\":\"2025-03-26\",\"serverInfo\":{\"name\":\"membrane\",\"version\":\"1.0.0\"}}}\n"
+    },
+    {
+      "ms": 18879,
+      "event": "stdout",
+      "slot": 2,
+      "text": "{\"id\":3,\"jsonrpc\":\"2.0\",\"result\":{\"capabilities\":{\"prompts\":{},\"resources\":{},\"tools\":{}},\"instructions\":\"Use pull for federated context & push for durable Cortex memory. Never expect raw memory CRUD. Membrane workflow prompts are bounded to operations in schemas/registry/operations/operations-index.v1.golden.json and grant no authority beyond those operations. Membrane MCP resources are bounded by the accessGrants declared in schemas/registry/resources/*.json; reads outside those grants return a typed resource_access_denied rejection with no content leak.\",\"protocolVersion\":\"2025-03-26\",\"serverInfo\":{\"name\":\"membrane\",\"version\":\"1.0.0\"}}}\n"
+    },
+    {
+      "ms": 19223,
+      "event": "stdout",
+      "slot": 3,
+      "text": "{\"id\":4,\"jsonrpc\":\"2.0\",\"result\":{\"capabilities\":{\"prompts\":{},\"resources\":{},\"tools\":{}},\"instructions\":\"Use pull for federated context & push for durable Cortex memory. Never expect raw memory CRUD. Membrane workflow prompts are bounded to operations in schemas/registry/operations/operations-index.v1.golden.json and grant no authority beyond those operations. Membrane MCP resources are bounded by the accessGrants declared in schemas/registry/resources/*.json; reads outside those grants return a typed resource_access_denied rejection with no content leak.\",\"protocolVersion\":\"2025-03-26\",\"serverInfo\":{\"name\":\"membrane\",\"version\":\"1.0.0\"}}}\n"
+    },
+    {
+      "ms": 20917,
+      "event": "processes",
+      "data": "[{\"ProcessId\":230272,\"ParentProcessId\":237332,\"Name\":\"membrane-client.exe\",\"CreationDate\":\"\\/Date(1789398106530)\\/\"},{\"ProcessId\":251864,\"ParentProcessId\":237332,\"Name\":\"membrane-client.exe\",\"CreationDate\":\"\\/Date(1789398106539)\\/\"},{\"ProcessId\":253080,\"ParentProcessId\":237332,\"Name\":\"membrane-client.exe\",\"CreationDate\":\"\\/Date(1789398106543)\\/\"},{\"ProcessId\":232988,\"ParentProcessId\":230272,\"Name\":\"conhost.exe\",\"CreationDate\":\"\\/Date(1789398106543)\\/\"},{\"ProcessId\":238568,\"ParentProcessId\":251864,\"Name\":\"conhost.exe\",\"CreationDate\":\"\\/Date(1789398106545)\\/\"},{\"ProcessId\":248936,\"ParentProcessId\":237332,\"Name\":\"membrane-client.exe\",\"CreationDate\":\"\\/Date(1789398106548)\\/\"},{\"ProcessId\":249480,\"ParentProcessId\":253080,\"Name\":\"conhost.exe\",\"CreationDate\":\"\\/Date(1789398106550)\\/\"},{\"ProcessId\":244828,\"ParentProcessId\":237332,\"Name\":\"membrane-client.exe\",\"CreationDate\":\"\\/Date(1789398106555)\\/\"},{\"ProcessId\":247232,\"ParentProcessId\":248936,\"Name\":\"conhost.exe\",\"CreationDate\":\"\\/Date(1789398106561)\\/\"},{\"ProcessId\":253676,\"ParentProcessId\":244828,\"Name\":\"conhost.exe\",\"CreationDate\":\"\\/Date(1789398106564)\\/\"},{\"ProcessId\":228312,\"ParentProcessId\":252240,\"Name\":\"membrane.exe\",\"CreationDate\":\"\\/Date(1789398122701)\\/\"}]\r\n"
+    },
+    {
+      "ms": 41013,
+      "event": "processes",
+      "data": "[{\"ProcessId\":230272,\"ParentProcessId\":237332,\"Name\":\"membrane-client.exe\",\"CreationDate\":\"\\/Date(1789398106530)\\/\"},{\"ProcessId\":251864,\"ParentProcessId\":237332,\"Name\":\"membrane-client.exe\",\"CreationDate\":\"\\/Date(1789398106539)\\/\"},{\"ProcessId\":253080,\"ParentProcessId\":237332,\"Name\":\"membrane-client.exe\",\"CreationDate\":\"\\/Date(1789398106543)\\/\"},{\"ProcessId\":232988,\"ParentProcessId\":230272,\"Name\":\"conhost.exe\",\"CreationDate\":\"\\/Date(1789398106543)\\/\"},{\"ProcessId\":238568,\"ParentProcessId\":251864,\"Name\":\"conhost.exe\",\"CreationDate\":\"\\/Date(1789398106545)\\/\"},{\"ProcessId\":248936,\"ParentProcessId\":237332,\"Name\":\"membrane-client.exe\",\"CreationDate\":\"\\/Date(1789398106548)\\/\"},{\"ProcessId\":249480,\"ParentProcessId\":253080,\"Name\":\"conhost.exe\",\"CreationDate\":\"\\/Date(1789398106550)\\/\"},{\"ProcessId\":244828,\"ParentProcessId\":237332,\"Name\":\"membrane-client.exe\",\"CreationDate\":\"\\/Date(1789398106555)\\/\"},{\"ProcessId\":247232,\"ParentProcessId\":248936,\"Name\":\"conhost.exe\",\"CreationDate\":\"\\/Date(1789398106561)\\/\"},{\"ProcessId\":253676,\"ParentProcessId\":244828,\"Name\":\"conhost.exe\",\"CreationDate\":\"\\/Date(1789398106564)\\/\"},{\"ProcessId\":228312,\"ParentProcessId\":252240,\"Name\":\"membrane.exe\",\"CreationDate\":\"\\/Date(1789398122701)\\/\"}]\r\n"
+    },
+    {
+      "ms": 41019,
+      "event": "exit",
+      "slot": 3,
+      "code": 0
+    },
+    {
+      "ms": 41019,
+      "event": "exit",
+      "slot": 2,
+      "code": 0
+    },
+    {
+      "ms": 41019,
+      "event": "exit",
+      "slot": 4,
+      "code": 0
+    },
+    {
+      "ms": 41020,
+      "event": "exit",
+      "slot": 0,
+      "code": 0
+    },
+    {
+      "ms": 43522,
+      "event": "exit",
+      "slot": 1,
+      "code": null
+    }
+  ]
+}

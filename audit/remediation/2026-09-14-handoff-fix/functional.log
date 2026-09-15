@@ -1,0 +1,1 @@
+{"evidence":"audit/remediation/2026-09-14-handoff-fix/functional.json","stages":{"pull":"success","blueprint":"success","push":"success","readback":"success","SessionStart":"ok","SessionEnd":"ok"},"exactCortexReadback":true}

@@ -150,7 +150,7 @@ fn skipped(reason: &str) -> HookModuleOutputV1 { HookModuleOutputV1::status(Hook
 fn string<'a>(input: &'a HookInputEnvelopeV1, key: &str) -> Option<&'a str> { input.payload.get(key)?.as_str() }
 fn tool(input: &HookInputEnvelopeV1) -> &str { input.tool_name.as_deref().or_else(|| string(input, "tool_name")).or_else(|| string(input, "toolName")).unwrap_or("") }
 fn tool_file(input: &HookInputEnvelopeV1) -> Option<&str> { input.payload.pointer("/tool_input/file_path").and_then(Value::as_str).or_else(|| input.payload.pointer("/tool_input/filePath").and_then(Value::as_str)).or_else(|| string(input, "file_path")).or_else(|| string(input, "filePath")) }
-fn root(input: &HookInputEnvelopeV1) -> PathBuf { env::var_os("WORKSPACE_ROOT").map(PathBuf::from).or_else(|| string(input, "cwd").map(PathBuf::from)).or_else(|| string(input, "working_directory").map(PathBuf::from)).unwrap_or_else(|| env::current_dir().unwrap_or_else(|_| PathBuf::from("."))) }
+fn root(input: &HookInputEnvelopeV1) -> PathBuf { string(input, "cwd").map(PathBuf::from).or_else(|| string(input, "working_directory").map(PathBuf::from)).or_else(|| env::var_os("WORKSPACE_ROOT").map(PathBuf::from)).unwrap_or_else(|| env::current_dir().unwrap_or_else(|_| PathBuf::from("."))) }
 fn home() -> PathBuf { env::var_os("USERPROFILE").or_else(|| env::var_os("HOME")).map(PathBuf::from).unwrap_or_else(|| PathBuf::from(".")) }
 fn claude_memory_root(root: &Path) -> PathBuf { let slug = root.to_string_lossy().replace([':', '\\', '/'], "-"); home().join(".claude/projects").join(slug).join("memory") }
 fn pending_path(root: &Path, session: Option<&str>) -> PathBuf {

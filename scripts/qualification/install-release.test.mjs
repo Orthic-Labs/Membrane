@@ -7,9 +7,7 @@ const lower = source.toLowerCase();
 const nsi = readFileSync(new URL("../../apps/membrane-hub/src-tauri/windows/installer.nsi", import.meta.url), "utf8");
 
 test("installer releases the install lock before binding & suppresses the supervisor task during extract", () => {
-  // Binding runs full activation, which requests a resident start; a fresh
-  // engine refuses to start while .install-lock is held, so bind-under-lock
-  // can only time out. The lock must be released at cutover, before bind.
+  // Binding-only reconciliation runs after cutover and lock release.
   const cutover = nsi.indexOf('"cutover-current ok"');
   const bind = nsi.indexOf('"bind-installed-clients"');
   const lockRelease = nsi.indexOf('RMDir /r "$INSTDIR\\.install-lock"', cutover);
@@ -31,7 +29,7 @@ test("installer releases the install lock before binding & suppresses the superv
   // Login startup targets the tray (which starts and holds the engine),
   // never the engine binary itself.
   assert.ok(nsi.includes('membrane-tray.exe" --login-launch'), "login startup must launch the tray");
-  assert.ok(!nsi.includes('membrane.exe" activate --install-root'), "engine binary must never be a login entry");
+  assert.match(nsi, /ReadRegStr \$R3[\s\S]*membrane\.exe" activate --install-root[\s\S]*WriteRegStr[\s\S]*membrane-tray\.exe" --login-launch/, "legacy engine login must migrate to tray");
   // Bind is registration-only: it must not start the engine.
   assert.ok(nsi.includes('activate --bindings-only --install-root'), "bind step must be bindings-only");
 });
@@ -55,9 +53,13 @@ test("Windows installed qualification is package-only & signature-bound", () => 
 });
 
 test("qualification exercises native stdio MCP discovery & every registry tool", () => {
+  assert.match(source, /Invoke-NativeMcp \$native\.Client -ExerciseAll/);
+  assert.match(source, /Daemon = \$membrane;/);
+  assert.match(source, /\$health\.backgroundAuthority\.active -eq \$true/);
   assert.match(lower, /stdio-mcp/);
   assert.match(lower, /tools\/list/);
-  assert.match(lower, /tools\.count -eq \$alltools\.count/);
+  assert.match(lower, /tools\.count -eq \$publictools\.count/);
+  assert.match(source, /\$publicTools = @\('pull', 'push'\)/);
   assert.match(lower, /membrane\.toolsets\.v1/);
   for (const name of [
     "membrane_context", "membrane_source_read", "membrane_blueprint",
@@ -75,7 +77,7 @@ test("qualification covers tray, popup, renderer, native cutover & forbidden des
   for (const term of [
     "Shell_TrayWnd", "Find-TrayElement", "Assert-TrayAndPopup", "Assert-RendererWindows",
     "Assert-Dashboard", "exactly one visible on-demand dashboard renderer window", "Assert-NativeHostCutover", "TrayProcessId", "DaemonProcessId",
-    "native-only steady-state", "retired interpreter process", "installed daemon is not owned by the installed tray",
+    "native-only steady-state", "retired interpreter process", "installed engine is not a singleton",
     "--open-dashboard", "bootstrapped Hub", "unexpected",
   ]) assert.ok(lower.includes(term.toLowerCase()), term);
   assert.match(lower, /windows notification area is unavailable/);

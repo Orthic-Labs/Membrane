@@ -2,11 +2,11 @@
   "$schema": "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
   "mcpServers": {
     "membrane": {
-      "type": "stdio",
-      "command": "membrane",
-      "args": [
-        "stdio-mcp"
-      ]
+      "type": "streamable-http",
+      "url": "http://127.0.0.1:47851/mcp",
+      "headers": {
+        "Authorization": "Bearer ${MEMBRANE_BEARER_TOKEN}"
+      }
     }
   }
 }

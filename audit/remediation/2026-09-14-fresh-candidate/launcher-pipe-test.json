@@ -1,0 +1,20 @@
+{
+  "pid": 244684,
+  "events": [
+    {
+      "ms": 23013,
+      "event": "processes",
+      "data": "[{\"ProcessId\":244684,\"ParentProcessId\":248968,\"Name\":\"membrane-client.exe\"},{\"ProcessId\":244320,\"ParentProcessId\":235624,\"Name\":\"membrane.exe\"}]\r\n"
+    },
+    {
+      "ms": 23931,
+      "event": "terminate_test_engine",
+      "pid": "244320\r\n"
+    },
+    {
+      "ms": 32769,
+      "event": "exit",
+      "code": null
+    }
+  ]
+}

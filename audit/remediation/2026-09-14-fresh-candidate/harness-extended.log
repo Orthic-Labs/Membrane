@@ -1,0 +1,15 @@
+node:internal/modules/run_main:107
+    triggerUncaughtException(
+    ^
+
+AssertionError [ERR_ASSERTION]: [{"status":"fulfilled","value":{"slot":0,"elapsedMs":17820}},{"status":"fulfilled","value":{"slot":1,"elapsedMs":17242}},{"status":"rejected","error":"RPC timeout: initialize"},{"status":"fulfilled","value":{"slot":3,"elapsedMs":17523}},{"status":"fulfilled","value":{"slot":4,"elapsedMs":17523}}]
+    at file:///D:/Claude/membrane/.tmp-fresh-harness-extended.mjs:130:300 {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: false,
+  expected: true,
+  operator: '==',
+  diff: 'simple'
+}
+
+Node.js v26.8.1

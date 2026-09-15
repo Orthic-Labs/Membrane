@@ -4,7 +4,7 @@
 //! fence), which the dispatcher reaps when the deadline fires before serial
 //! dispatch advances. No `membrane.exe hook-module` child is ever spawned.
 
-use std::{sync::{mpsc, Arc}, time::Duration};
+use std::{sync::{mpsc, Arc}, time::{Duration, Instant}};
 
 use crate::providers::child_process::{ContainmentScope, ScopeGuard};
 
@@ -14,6 +14,9 @@ use membrane_protocol::{
     HookModuleResultV1, HookModuleState, HOOK_MODULE_DEADLINE_MS,
 };
 use serde_json::{json, Value};
+use membrane_federation::deadline::Deadline;
+use tokio::runtime::Handle;
+use tokio_util::sync::CancellationToken;
 
 pub use crate::hook_diagnostics::RecallOutcome;
 
@@ -79,6 +82,29 @@ impl<S: NativeHookService> NativeHookRuntime<S> {
 
     fn invoke(&self, id: HookModuleId, input: &HookInputEnvelopeV1) -> HookModuleResultV1 {
         if !module_event_matches(id, input) { return HookModuleResultV1::skipped(id); }
+        let inherited = crate::mcp_executor::inherited_push_control();
+        if inherited.as_ref().is_some_and(|control| {
+            control.cancellation.is_cancelled() || control.deadline.is_exhausted_at(Instant::now())
+        }) {
+            return HookModuleResultV1::error(id, "request_cancelled");
+        }
+        let module_deadline = Instant::now()
+            .checked_add(Duration::from_millis(HOOK_MODULE_DEADLINE_MS))
+            .unwrap_or_else(Instant::now);
+        let effective_deadline = inherited
+            .as_ref()
+            .map(|control| control.deadline.instant().min(module_deadline))
+            .unwrap_or(module_deadline);
+        let child_cancellation = inherited
+            .as_ref()
+            .map(|control| control.cancellation.child_token())
+            .unwrap_or_else(CancellationToken::new);
+        let child_control = crate::serve::push_request_control(
+            Deadline::at(effective_deadline),
+            child_cancellation.clone(),
+        );
+        let child_guard = child_cancellation.clone().drop_guard();
+        let worker_handle = Handle::try_current().ok();
         // Every module runs on a worker thread under the same deadline, with
         // a leaf-process scope installed: when the deadline fires the scope
         // reaps any leaf helper the module started (today: git) before serial
@@ -97,13 +123,19 @@ impl<S: NativeHookService> NativeHookRuntime<S> {
         let worker_scope = Arc::clone(&scope);
         std::thread::spawn(move || {
             let _guard = ScopeGuard::install(&worker_scope);
+            let _runtime_guard = worker_handle.as_ref().map(|handle| handle.enter());
             // The only detached workers are this dispatch's own modules; the
             // scope above guarantees their leaf processes die with them.
-            let _ = sender.send(Self::execute(&service, enforcement_enabled, id, &input));
+            let output = crate::mcp_executor::with_inherited_push_control(child_control, || {
+                Self::execute(&service, enforcement_enabled, id, &input)
+            });
+            let _ = sender.send(output);
         });
-        match receiver.recv_timeout(Duration::from_millis(HOOK_MODULE_DEADLINE_MS)) {
+        let wait = effective_deadline.saturating_duration_since(Instant::now());
+        let result = match receiver.recv_timeout(wait) {
             Ok(output) => HookModuleResultV1::ok(id, output),
             Err(mpsc::RecvTimeoutError::Timeout) => {
+                child_cancellation.cancel();
                 scope.kill_all();
                 // Best-effort serial isolation: give the worker a short grace
                 // window to observe the reaped leaves and return, then discard
@@ -113,10 +145,13 @@ impl<S: NativeHookService> NativeHookRuntime<S> {
                 HookModuleResultV1::error(id, "module_deadline_exceeded")
             }
             Err(mpsc::RecvTimeoutError::Disconnected) => {
+                child_cancellation.cancel();
                 scope.kill_all();
                 HookModuleResultV1::error(id, "module_execution_failed")
             }
-        }
+        };
+        drop(child_guard);
+        result
     }
 
     fn execute(service: &S, enforcement_enabled: bool, id: HookModuleId, input: &HookInputEnvelopeV1) -> HookModuleOutputV1 {
@@ -201,6 +236,7 @@ mod tests {
     use super::*;
     use membrane_protocol::normalize_hook_payload;
     use serde_json::json;
+    use std::sync::Mutex;
     #[test]
     fn always_emits_fixed_module_order() {
         let input = normalize_hook_payload(json!({"event":"Stop"})).unwrap();
@@ -215,5 +251,32 @@ mod tests {
         let detail = NativeHookRuntime::new(NoNativeHookService, false).dispatch(&input).results[14].output.as_ref().unwrap().detail.clone();
         assert!(detail["outcomeDigest"].as_str().unwrap().starts_with("sha256:"));
         assert_eq!(detail["contentFree"], true);
+    }
+
+    struct ObservingService {
+        observed: Arc<Mutex<Option<(bool, bool)>>>,
+    }
+
+    impl NativeHookService for ObservingService {
+        fn healthy(&self, _input: &HookInputEnvelopeV1, _deadline: Duration) -> Result<bool, String> {
+            let inherited = crate::mcp_executor::inherited_push_control();
+            *self.observed.lock().unwrap() = Some((
+                inherited.is_some(),
+                Handle::try_current().is_ok(),
+            ));
+            Ok(true)
+        }
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+    async fn invoke_worker_inherits_control_and_runtime_handle() {
+        let observed = Arc::new(Mutex::new(None));
+        let runtime = NativeHookRuntime::new(
+            ObservingService { observed: Arc::clone(&observed) },
+            false,
+        );
+        let input = normalize_hook_payload(json!({"event":"SessionStart"})).unwrap();
+        runtime.dispatch(&input);
+        assert_eq!(*observed.lock().unwrap(), Some((true, true)));
     }
 }

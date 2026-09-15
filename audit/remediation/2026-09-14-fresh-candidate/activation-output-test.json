@@ -1,0 +1,20 @@
+{
+  "pid": 244272,
+  "events": [
+    {
+      "ms": 9158,
+      "event": "exit",
+      "code": 0
+    },
+    {
+      "ms": 25018,
+      "event": "bound",
+      "exitCode": 0
+    },
+    {
+      "ms": 25020,
+      "event": "close",
+      "code": 0
+    }
+  ]
+}

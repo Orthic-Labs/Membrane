@@ -1225,6 +1225,9 @@ enum Cmd {
 }
 
 fn open(db: &str) -> Result<MemoryStore, String> {
+    if let Some(store) = crate::service::resident_store_for_db(Path::new(db)) {
+        return Ok(store);
+    }
     MemoryStore::try_open(MemDb::open(db).map_err(|e| e.to_string())?)
 }
 

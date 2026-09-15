@@ -1,0 +1,7 @@
+{
+  "activationExit": true,
+  "startupWait": true,
+  "shutdownStage": true,
+  "h8Timing": true,
+  "timings": true
+}

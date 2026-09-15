@@ -118,7 +118,7 @@ function installedIdentity(context) {
 function installedExecutables(root) {
   const current = join(root, "current");
   const roots = [current, root];
-  const names = new Set(["membrane.exe", "membrane-daemon.exe", "membrane-tray.exe", "membrane-mcp.exe"]);
+  const names = new Set(["membrane.exe", "membrane-client.exe", "membrane-daemon.exe", "membrane-tray.exe", "membrane-mcp.exe"]);
   const found = [];
   for (const base of roots) {
     if (!existsSync(base)) continue;

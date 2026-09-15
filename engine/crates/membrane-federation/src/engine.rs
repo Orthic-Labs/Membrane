@@ -345,8 +345,12 @@ impl FederationEngine {
             // alone survived because its provider derives its own generation
             // independently of this context field. Pass the same value
             // admission checks so a provider's stamp and the admission
-            // binding agree.
-            expected_generation.map(str::to_owned),
+            // binding agree. When freshness is unavailable, admission is
+            // intentionally unconstrained but Cortex still needs a valid
+            // source generation, so retain the release identity as its stamp.
+            expected_generation
+                .map(str::to_owned)
+                .or_else(|| normalized.release_generation.clone()),
             freshness.snapshot.clone(),
             deadline.instant(),
             cancellation,

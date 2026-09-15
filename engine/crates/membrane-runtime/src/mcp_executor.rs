@@ -63,7 +63,7 @@ pub fn with_inherited_push_control<T>(
     dispatch()
 }
 
-fn inherited_push_control() -> Option<crate::serve::PushRequestControl> {
+pub(crate) fn inherited_push_control() -> Option<crate::serve::PushRequestControl> {
     INHERITED_PUSH_CONTROL.with(|slot| slot.borrow().clone())
 }
 
@@ -589,6 +589,13 @@ fn authorize_native_request(
     .map(|_| ())
 }
 
+fn cortex_write_scope(arguments: &Value, root: &str, caller_scope: &str) -> String {
+    match arguments.pointer("/caller/scopeDescriptor/kind").and_then(Value::as_str) {
+        Some("filesystem") => crate::scope::path_to_scope(root),
+        _ => caller_scope.to_owned(),
+    }
+}
+
 fn bounded(value: &Value, operation: &str, code: &str) -> Result<Vec<u8>, Value> {
     let bytes = serde_json::to_vec(value)
         .map_err(|_| error(operation, code, "payload is not serializable"))?;
@@ -1094,8 +1101,9 @@ impl NativeMcpExecutor for RuntimeMcpExecutor {
             let body = arguments.get("body").and_then(Value::as_str).unwrap_or("");
             let caller_id = arguments.get("callerId").and_then(Value::as_str)
                 .filter(|value| !value.trim().is_empty()).unwrap_or(scope);
+            let memory_scope = cortex_write_scope(arguments, root, scope);
             return lifecycle_result(name, crate::cortex_lifecycle::agent_memory_push(
-                &self.store, repository, scope, request_id, caller_id, body,
+                &self.store, repository, &memory_scope, request_id, caller_id, body,
             ));
         }
         let ingress = std::time::Instant::now();
@@ -1433,8 +1441,41 @@ impl NativeMcpExecutor for RuntimeMcpExecutor {
                         };
                         requests.push(Some(request));
                     }
+                    let inherited_control = inherited_push_control();
+                    let resident_handle = tokio::runtime::Handle::try_current().ok();
                     let responses = workspace_fanout(&requests, deadline, |request, deadline| {
-                        crate::pull::federation::native_route_response_with_deadline(request, Some(&self.store), Some(deadline))
+                        match inherited_control.clone() {
+                            Some(control) => {
+                                let control = crate::serve::PushRequestControl {
+                                    deadline: membrane_federation::deadline::Deadline::at(
+                                        control.deadline.instant().min(deadline.instant()),
+                                    ),
+                                    cancellation: control.cancellation.child_token(),
+                                };
+                                match resident_handle.as_ref() {
+                                Some(handle) => crate::pull::federation::native_route_response_with_control(
+                                    request, Some(&self.store), control, handle,
+                                ),
+                                None => crate::pull::federation::native_route_response_with_deadline(
+                                    request, Some(&self.store), Some(deadline),
+                                ),
+                                }
+                            },
+                            None => {
+                                let control = crate::serve::PushRequestControl {
+                                    deadline,
+                                    cancellation: tokio_util::sync::CancellationToken::new(),
+                                };
+                                match resident_handle.as_ref() {
+                                    Some(handle) => crate::pull::federation::native_route_response_with_control(
+                                        request, Some(&self.store), control, handle,
+                                    ),
+                                    None => crate::pull::federation::native_route_response_with_deadline(
+                                        request, Some(&self.store), Some(deadline),
+                                    ),
+                                }
+                            },
+                        }
                     });
                     let mut repository_packets = Vec::new();
                     let mut target_receipts = Vec::new();
@@ -1672,11 +1713,35 @@ impl NativeMcpExecutor for RuntimeMcpExecutor {
                     Ok(request) => request,
                     Err(result) => return result,
                 };
-                let (status, payload) =
-                    match crate::pull::federation::native_route_response_with_store(
-                        &request,
-                        Some(&self.store),
-                    ) {
+                let (status, payload) = match inherited_push_control() {
+                    Some(control) => match tokio::runtime::Handle::try_current() {
+                        Ok(handle) => crate::pull::federation::native_route_response_with_control(
+                            &request, Some(&self.store), control, &handle,
+                        ),
+                        Err(_) => crate::pull::federation::native_route_response_with_store(
+                            &request, Some(&self.store),
+                        ),
+                    },
+                    None => match tokio::runtime::Handle::try_current() {
+                        Ok(handle) => crate::pull::federation::native_route_response_with_control(
+                            &request,
+                            Some(&self.store),
+                            crate::serve::PushRequestControl {
+                                deadline: membrane_federation::deadline::Deadline::at(
+                                    ingress + Duration::from_millis(
+                                        arguments.get("deadlineMs").and_then(Value::as_u64).unwrap_or(2_000).clamp(1, 60_000),
+                                    ),
+                                ),
+                                cancellation: tokio_util::sync::CancellationToken::new(),
+                            },
+                            &handle,
+                        ),
+                        Err(_) => crate::pull::federation::native_route_response_with_store(
+                            &request, Some(&self.store),
+                        ),
+                    },
+                };
+                let (status, payload) = match (status, payload) {
                         (200, payload) => ("ok", payload),
                         (status, payload) => ("unavailable", payload),
                     };
@@ -2702,6 +2767,19 @@ mod hub_transport_tests {
         assert_eq!(workspace_budget_shares(2, 4), vec![1, 1, 0, 0]);
         assert_eq!(workspace_budget_shares(7, 0), Vec::<usize>::new());
         assert_eq!(workspace_budget_shares(4096, 7).iter().sum::<usize>(), 4096);
+    }
+
+    #[test]
+    fn filesystem_push_uses_same_canonical_scope_as_pull() {
+        let arguments = json!({"caller":{"scopeDescriptor":{"kind":"filesystem","path":"membrane"}}});
+        assert_eq!(
+            cortex_write_scope(&arguments, r"D:\Claude\membrane", "membrane"),
+            "D--Claude-membrane"
+        );
+        assert_eq!(
+            cortex_write_scope(&json!({}), r"D:\Claude\membrane", "virtual:tenant:thread"),
+            "virtual:tenant:thread"
+        );
     }
 
     #[test]

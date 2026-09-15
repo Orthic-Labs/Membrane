@@ -1,6 +1,7 @@
 #![cfg_attr(windows, windows_subsystem = "windows")]
 
 mod instance;
+mod installed_holder;
 mod ipc;
 mod placement;
 mod process;
@@ -221,6 +222,7 @@ fn main() -> Result<(), slint::PlatformError> {
     }
     let login_enabled =
         startup::is_enabled_for_current_user(&startup_path).unwrap_or(false);
+    let mut _installed_holder = None;
 
     if let Some(state) = demo_state {
         apply_demo_state(&popover, state);
@@ -234,6 +236,14 @@ fn main() -> Result<(), slint::PlatformError> {
             supervisor.borrow_mut().block_startup(reason, now);
         } else {
             supervisor.borrow_mut().start_process(now);
+            if installed_origin {
+                if let Ok(workspace) = workspace::resolve() {
+                    match installed_holder::InstalledHubLease::acquire(&workspace) {
+                        Ok(lease) => _installed_holder = Some(lease),
+                        Err(error) => supervisor::lifecycle_event("tray_hub_holder_failed", serde_json::json!({"reason": error})),
+                    }
+                }
+            }
             supervisor::lifecycle_event("tray_startup", serde_json::json!({"stage":"resident_attachment_requested"}));
         }
         apply_observation(&popover, &supervisor.borrow(), first_run, login_enabled);

@@ -1,0 +1,1632 @@
+activate-junction exit=1
+install 0.1.24 begin
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+extract-version-tree exit=1
+install 0.1.24 begin
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+install 0.1.24 begin
+stop-running-product ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+bind-installed-clients ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+bind-installed-clients ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+bind-installed-clients ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+extract-version-tree ok
+verify-version-tree exit=1
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+remove-retired-blueprint-runtime ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+bind-installed-clients ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+remove-retired-blueprint-runtime ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+bind-installed-clients ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+remove-retired-blueprint-runtime ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+bind-installed-clients ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+remove-retired-blueprint-runtime ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+bind-installed-clients ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+remove-retired-blueprint-runtime ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+bind-installed-clients ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+remove-retired-blueprint-runtime ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+bind-installed-clients ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+remove-retired-blueprint-runtime ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+bind-installed-clients ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+remove-retired-blueprint-runtime ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+bind-installed-clients ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+remove-retired-blueprint-runtime ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+bind-installed-clients ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+remove-retired-blueprint-runtime ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+bind-installed-clients ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+remove-retired-blueprint-runtime ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+bind-installed-clients ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+remove-retired-blueprint-runtime ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+bind-installed-clients ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+remove-retired-blueprint-runtime ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+bind-installed-clients ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+remove-retired-blueprint-runtime ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+bind-installed-clients ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+remove-retired-blueprint-runtime ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+bind-installed-clients ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+remove-retired-blueprint-runtime ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+bind-installed-clients ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+remove-retired-blueprint-runtime ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+bind-installed-clients ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+remove-retired-blueprint-runtime ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+bind-installed-clients ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+remove-retired-blueprint-runtime ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+bind-installed-clients ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+remove-retired-blueprint-runtime ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+bind-installed-clients ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+remove-retired-blueprint-runtime ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+bind-installed-clients ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+remove-retired-blueprint-runtime ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+bind-installed-clients ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+remove-retired-blueprint-runtime ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+bind-installed-clients ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+remove-retired-blueprint-runtime ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+bind-installed-clients ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+remove-retired-blueprint-runtime ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+bind-installed-clients ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+remove-retired-blueprint-runtime ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+bind-installed-clients ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+remove-retired-blueprint-runtime ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+bind-installed-clients ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+remove-retired-blueprint-runtime ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+bind-installed-clients ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+remove-retired-blueprint-runtime ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+bind-installed-clients ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+remove-retired-blueprint-runtime ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+bind-installed-clients ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+remove-retired-blueprint-runtime ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+bind-installed-clients ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+remove-retired-blueprint-runtime ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+bind-installed-clients ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+remove-retired-blueprint-runtime ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+bind-installed-clients ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+remove-retired-blueprint-runtime ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+bind-installed-clients ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+remove-retired-blueprint-runtime ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+bind-installed-clients ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+remove-retired-blueprint-runtime ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+bind-installed-clients ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+remove-retired-blueprint-runtime ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+bind-installed-clients ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+remove-retired-blueprint-runtime ok
+extract-version-tree exit=1
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+remove-retired-blueprint-runtime ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+bind-installed-clients ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+remove-retired-blueprint-runtime ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+bind-installed-clients ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+remove-retired-blueprint-runtime ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+bind-installed-clients ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+remove-retired-blueprint-runtime ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+bind-installed-clients ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+remove-retired-blueprint-runtime ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+bind-installed-clients ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+remove-retired-blueprint-runtime ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+bind-installed-clients ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+remove-retired-blueprint-runtime ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+bind-installed-clients ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+remove-retired-blueprint-runtime ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+bind-installed-clients ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+remove-retired-blueprint-runtime ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+bind-installed-clients ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+remove-retired-runtime-trees ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+bind-installed-clients ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+remove-retired-runtime-trees ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+bind-installed-clients ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+remove-retired-runtime-trees ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+bind-installed-clients ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+remove-retired-runtime-trees ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+bind-installed-clients ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+remove-retired-runtime-trees ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+bind-installed-clients ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+remove-retired-runtime-trees ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+bind-installed-clients ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+remove-retired-runtime-trees ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+bind-installed-clients ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+remove-retired-runtime-trees ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+bind-installed-clients ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+remove-retired-runtime-trees ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+bind-installed-clients ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+remove-retired-runtime-trees ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+bind-installed-clients ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+remove-retired-runtime-trees ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+bind-installed-clients ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+remove-retired-runtime-trees ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+bind-installed-clients ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+remove-retired-runtime-trees ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+bind-installed-clients ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+remove-retired-runtime-trees ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+bind-installed-clients ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+remove-retired-runtime-trees ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+bind-installed-clients ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+remove-retired-runtime-trees ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+bind-installed-clients ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+remove-retired-runtime-trees ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+bind-installed-clients ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+remove-retired-runtime-trees ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+bind-installed-clients ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+remove-retired-runtime-trees ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+bind-installed-clients ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+remove-retired-runtime-trees ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+bind-installed-clients ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+remove-retired-runtime-trees ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+bind-installed-clients ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=error
+stop-running-product ok
+remove-retired-runtime-trees ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+bind-installed-clients ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+remove-retired-runtime-trees ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+bind-installed-clients ok
+activate skipped (silent install)
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+remove-retired-runtime-trees ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+bind-installed-clients ok
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+remove-retired-runtime-trees ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+bind-installed-clients ok
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+remove-retired-runtime-trees ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+bind-installed-clients ok
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+remove-retired-runtime-trees ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+bind-installed-clients ok
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=timeout
+stop-running-product ok
+remove-retired-runtime-trees ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+bind-installed-clients exit=1
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+remove-retired-runtime-trees ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+bind-installed-clients ok
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=timeout
+stop-running-product ok
+remove-retired-runtime-trees ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+bind-installed-clients ok
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+remove-retired-runtime-trees ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+bind-installed-clients ok
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+remove-retired-runtime-trees ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+bind-installed-clients ok
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+remove-retired-runtime-trees ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+bind-installed-clients ok
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+remove-retired-runtime-trees ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+bind-installed-clients ok
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+remove-retired-runtime-trees ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+bind-installed-clients ok
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+remove-retired-runtime-trees ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+bind-installed-clients ok
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+remove-retired-runtime-trees ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+bind-installed-clients ok
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+remove-retired-runtime-trees ok
+extract-version-tree exit=1
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+remove-retired-runtime-trees ok
+extract-version-tree exit=1
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+remove-retired-runtime-trees ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+bind-installed-clients ok
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+remove-retired-runtime-trees ok
+extract-version-tree exit=1
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+remove-retired-runtime-trees ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+bind-installed-clients ok
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+remove-retired-runtime-trees ok
+extract-version-tree exit=1
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+remove-retired-runtime-trees ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+bind-installed-clients exit=1
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+remove-retired-runtime-trees ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+bind-installed-clients ok
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+remove-retired-runtime-trees ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+bind-installed-clients ok
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+remove-retired-runtime-trees ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+bind-installed-clients exit=1
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+remove-retired-runtime-trees ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+bind-installed-clients ok
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+remove-retired-runtime-trees ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+bind-installed-clients ok
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+remove-retired-runtime-trees ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+bind-installed-clients ok
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+remove-retired-runtime-trees ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+bind-installed-clients ok
+install 0.1.24 complete
+install 0.1.24 begin
+stop-running-product deactivate exit=0
+stop-running-product ok
+remove-retired-runtime-trees ok
+extract-version-tree ok
+verify-version-tree ok
+Junction created for C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\.current-next <<===>> C:\Users\adrds\AppData\Local\Orthic Labs\Membrane\versions\0.1.24
+stage-next-junction ok
+cutover-current ok
+register ok
+bind-installed-clients ok
+install 0.1.24 complete

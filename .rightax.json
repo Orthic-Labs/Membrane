@@ -2,7 +2,7 @@
   "schemaVersion": 2,
   "surfaces": {
     "mcp": {
-      "command": "${ARTIFACT_ROOT}/membrane.exe",
+      "command": "${ARTIFACT_ROOT}/membrane-client.exe",
       "args": ["stdio-mcp"],
       "cwd": "${ARTIFACT_ROOT}",
       "tools": 1

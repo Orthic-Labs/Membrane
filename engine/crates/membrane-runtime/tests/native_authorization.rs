@@ -259,7 +259,7 @@ fn mutating_action_without_task_grant_is_permitted_on_direct_path() {
     assert_eq!(decision.effective_level, AuthorityLevel::WriteProposed);
     assert!(decision.same_root);
 
-    let memory_write = request(
+    let memory_write = self::request(
         &installation,
         installation.caller_repository_id,
         None,

@@ -1,0 +1,438 @@
+{
+  "startedAt": "2026-09-14T10:26:50.903Z",
+  "sampleWarning": "One batch per concurrency; percentiles describe this sample only, not a production baseline.",
+  "results": [
+    {
+      "name": "pull",
+      "concurrency": 1,
+      "requests": [
+        {
+          "elapsedMs": 9570,
+          "httpStatus": 200,
+          "kind": "success",
+          "error": null
+        }
+      ],
+      "p50Ms": 9570,
+      "p95Ms": 9570,
+      "p99Ms": 9570,
+      "throughputPerSec": 0.1044932079414838
+    },
+    {
+      "name": "pull",
+      "concurrency": 5,
+      "requests": [
+        {
+          "elapsedMs": 12852,
+          "httpStatus": 200,
+          "kind": "success",
+          "error": null
+        },
+        {
+          "elapsedMs": 15009,
+          "httpStatus": 200,
+          "kind": "error",
+          "error": null
+        },
+        {
+          "elapsedMs": 15010,
+          "httpStatus": 503,
+          "kind": "rpc-error",
+          "error": {
+            "code": -32000,
+            "message": "mcp deadline exceeded: dispatch did not complete within the admitted deadline"
+          }
+        },
+        {
+          "elapsedMs": 15009,
+          "httpStatus": 503,
+          "kind": "rpc-error",
+          "error": {
+            "code": -32000,
+            "message": "mcp deadline exceeded: dispatch did not complete within the admitted deadline"
+          }
+        },
+        {
+          "elapsedMs": 15010,
+          "httpStatus": 200,
+          "kind": "error",
+          "error": null
+        }
+      ],
+      "p50Ms": 15009,
+      "p95Ms": 15010,
+      "p99Ms": 15010,
+      "throughputPerSec": 0.33306687982946975
+    },
+    {
+      "name": "pull",
+      "concurrency": 20,
+      "requests": [
+        {
+          "elapsedMs": 15021,
+          "httpStatus": 503,
+          "kind": "rpc-error",
+          "error": {
+            "code": -32000,
+            "message": "mcp deadline exceeded: dispatch did not complete within the admitted deadline"
+          }
+        },
+        {
+          "elapsedMs": 15022,
+          "httpStatus": 503,
+          "kind": "rpc-error",
+          "error": {
+            "code": -32000,
+            "message": "mcp deadline exceeded: dispatch did not complete within the admitted deadline"
+          }
+        },
+        {
+          "elapsedMs": 15021,
+          "httpStatus": 503,
+          "kind": "rpc-error",
+          "error": {
+            "code": -32000,
+            "message": "mcp deadline exceeded: dispatch did not complete within the admitted deadline"
+          }
+        },
+        {
+          "elapsedMs": 15019,
+          "httpStatus": 503,
+          "kind": "rpc-error",
+          "error": {
+            "code": -32000,
+            "message": "mcp deadline exceeded: dispatch did not complete within the admitted deadline"
+          }
+        },
+        {
+          "elapsedMs": 15020,
+          "httpStatus": 503,
+          "kind": "rpc-error",
+          "error": {
+            "code": -32000,
+            "message": "mcp deadline exceeded: dispatch did not complete within the admitted deadline"
+          }
+        },
+        {
+          "elapsedMs": 15024,
+          "httpStatus": 200,
+          "kind": "error",
+          "error": null
+        },
+        {
+          "elapsedMs": 15024,
+          "httpStatus": 200,
+          "kind": "error",
+          "error": null
+        },
+        {
+          "elapsedMs": 13421,
+          "httpStatus": 200,
+          "kind": "success",
+          "error": null
+        },
+        {
+          "elapsedMs": 29,
+          "httpStatus": 429,
+          "kind": "rpc-error",
+          "error": "pull_lane_saturated"
+        },
+        {
+          "elapsedMs": 29,
+          "httpStatus": 429,
+          "kind": "rpc-error",
+          "error": "pull_lane_saturated"
+        },
+        {
+          "elapsedMs": 29,
+          "httpStatus": 429,
+          "kind": "rpc-error",
+          "error": "pull_lane_saturated"
+        },
+        {
+          "elapsedMs": 30,
+          "httpStatus": 429,
+          "kind": "rpc-error",
+          "error": "pull_lane_saturated"
+        },
+        {
+          "elapsedMs": 30,
+          "httpStatus": 429,
+          "kind": "rpc-error",
+          "error": "pull_lane_saturated"
+        },
+        {
+          "elapsedMs": 29,
+          "httpStatus": 429,
+          "kind": "rpc-error",
+          "error": "pull_lane_saturated"
+        },
+        {
+          "elapsedMs": 29,
+          "httpStatus": 429,
+          "kind": "rpc-error",
+          "error": "pull_lane_saturated"
+        },
+        {
+          "elapsedMs": 30,
+          "httpStatus": 429,
+          "kind": "rpc-error",
+          "error": "pull_lane_saturated"
+        },
+        {
+          "elapsedMs": 30,
+          "httpStatus": 429,
+          "kind": "rpc-error",
+          "error": "pull_lane_saturated"
+        },
+        {
+          "elapsedMs": 30,
+          "httpStatus": 429,
+          "kind": "rpc-error",
+          "error": "pull_lane_saturated"
+        },
+        {
+          "elapsedMs": 29,
+          "httpStatus": 429,
+          "kind": "rpc-error",
+          "error": "pull_lane_saturated"
+        },
+        {
+          "elapsedMs": 30,
+          "httpStatus": 429,
+          "kind": "rpc-error",
+          "error": "pull_lane_saturated"
+        }
+      ],
+      "p50Ms": 30,
+      "p95Ms": 15024,
+      "p99Ms": 15024,
+      "throughputPerSec": 1.3309376455713051
+    },
+    {
+      "name": "push",
+      "concurrency": 1,
+      "requests": [
+        {
+          "elapsedMs": 560,
+          "httpStatus": 200,
+          "kind": "success",
+          "error": null
+        }
+      ],
+      "p50Ms": 560,
+      "p95Ms": 560,
+      "p99Ms": 560,
+      "throughputPerSec": 1.7857142857142856
+    },
+    {
+      "name": "push",
+      "concurrency": 5,
+      "requests": [
+        {
+          "elapsedMs": 530,
+          "httpStatus": 200,
+          "kind": "success",
+          "error": null
+        },
+        {
+          "elapsedMs": 1456,
+          "httpStatus": 200,
+          "kind": "success",
+          "error": null
+        },
+        {
+          "elapsedMs": 985,
+          "httpStatus": 200,
+          "kind": "success",
+          "error": null
+        },
+        {
+          "elapsedMs": 2016,
+          "httpStatus": 200,
+          "kind": "success",
+          "error": null
+        },
+        {
+          "elapsedMs": 2566,
+          "httpStatus": 200,
+          "kind": "success",
+          "error": null
+        }
+      ],
+      "p50Ms": 1456,
+      "p95Ms": 2016,
+      "p99Ms": 2016,
+      "throughputPerSec": 1.9477989871445265
+    },
+    {
+      "name": "push",
+      "concurrency": 20,
+      "requests": [
+        {
+          "elapsedMs": 422,
+          "httpStatus": 200,
+          "kind": "success",
+          "error": null
+        },
+        {
+          "elapsedMs": 919,
+          "httpStatus": 200,
+          "kind": "success",
+          "error": null
+        },
+        {
+          "elapsedMs": 1669,
+          "httpStatus": 200,
+          "kind": "success",
+          "error": null
+        },
+        {
+          "elapsedMs": 2199,
+          "httpStatus": 200,
+          "kind": "success",
+          "error": null
+        },
+        {
+          "elapsedMs": 2769,
+          "httpStatus": 200,
+          "kind": "success",
+          "error": null
+        },
+        {
+          "elapsedMs": 3295,
+          "httpStatus": 200,
+          "kind": "success",
+          "error": null
+        },
+        {
+          "elapsedMs": 3786,
+          "httpStatus": 200,
+          "kind": "success",
+          "error": null
+        },
+        {
+          "elapsedMs": 4271,
+          "httpStatus": 200,
+          "kind": "success",
+          "error": null
+        },
+        {
+          "elapsedMs": 4791,
+          "httpStatus": 200,
+          "kind": "success",
+          "error": null
+        },
+        {
+          "elapsedMs": 5323,
+          "httpStatus": 200,
+          "kind": "success",
+          "error": null
+        },
+        {
+          "elapsedMs": 5881,
+          "httpStatus": 200,
+          "kind": "success",
+          "error": null
+        },
+        {
+          "elapsedMs": 6452,
+          "httpStatus": 200,
+          "kind": "success",
+          "error": null
+        },
+        {
+          "elapsedMs": 6855,
+          "httpStatus": 200,
+          "kind": "success",
+          "error": null
+        },
+        {
+          "elapsedMs": 7318,
+          "httpStatus": 200,
+          "kind": "success",
+          "error": null
+        },
+        {
+          "elapsedMs": 7832,
+          "httpStatus": 200,
+          "kind": "success",
+          "error": null
+        },
+        {
+          "elapsedMs": 8310,
+          "httpStatus": 200,
+          "kind": "success",
+          "error": null
+        },
+        {
+          "elapsedMs": 34,
+          "httpStatus": 429,
+          "kind": "rpc-error",
+          "error": "mcp_lane_saturated"
+        },
+        {
+          "elapsedMs": 34,
+          "httpStatus": 429,
+          "kind": "rpc-error",
+          "error": "mcp_lane_saturated"
+        },
+        {
+          "elapsedMs": 34,
+          "httpStatus": 429,
+          "kind": "rpc-error",
+          "error": "mcp_lane_saturated"
+        },
+        {
+          "elapsedMs": 34,
+          "httpStatus": 429,
+          "kind": "rpc-error",
+          "error": "mcp_lane_saturated"
+        }
+      ],
+      "p50Ms": 3295,
+      "p95Ms": 7832,
+      "p99Ms": 7832,
+      "throughputPerSec": 2.405580947798893
+    }
+  ],
+  "identity": {
+    "cortexStoreId": "sha256:038c42b7457f5a69e4f841209a3dc68ba40a14fe17fce8b1d6583570d15c8942",
+    "installationId": "610af348-f3ee-45f0-a8c8-9664953cd737",
+    "ok": true,
+    "releaseGeneration": "sha256:ac44820f5b90dc16b573cba5fccca5e27525ae8c98f451261b98b030f2af40c1",
+    "runtimeOrigin": "installed",
+    "serviceGeneration": "sha256:d5613024134077332a43d1fe0ecd654afa1d7fc1fa84824afd6e40ab8a795d43",
+    "stableInstallRoot": "C:\\Users\\adrds\\AppData\\Local\\Orthic Labs\\Membrane\\current",
+    "startupGeneration": 393,
+    "workers": {
+      "detachedRunning": 0,
+      "diagnostics": {
+        "available": 1,
+        "max": 1
+      },
+      "general": {
+        "available": 32,
+        "max": 32
+      },
+      "ingress": {
+        "available": 32,
+        "max": 32
+      },
+      "model": {
+        "available": 8,
+        "executionAvailable": 1,
+        "executionMax": 1,
+        "max": 8
+      },
+      "overloadRejections": {
+        "diagnostics": 0,
+        "general": 0,
+        "ingress": 0,
+        "model": 0,
+        "total": 0
+      }
+    }
+  },
+  "finishedAt": "2026-09-14T10:27:51.855Z"
+}

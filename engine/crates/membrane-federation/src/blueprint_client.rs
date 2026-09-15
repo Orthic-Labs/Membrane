@@ -12,6 +12,7 @@ use membrane_protocol::CandidateV1;
 use membrane_provider_sdk::source::{
     BlueprintResult, BlueprintSource, SourceQuery, SourceResponse, SourceResult, SourceWarning,
 };
+use membrane_provider_sdk::ProviderError;
 use serde_json::{json, Value};
 use std::collections::VecDeque;
 use std::future::Future;
@@ -175,16 +176,17 @@ struct CacheState { entries: VecDeque<CacheEntry> }
 
 /// Direct native Blueprint client. Injected API can be resident service or
 /// one-shot executor; no federation fallback reaches legacy transport.
+#[derive(Clone)]
 pub struct BlueprintClient {
     api: Arc<dyn BlueprintApi>,
-    cache: Mutex<CacheState>,
+    cache: Arc<Mutex<CacheState>>,
     cache_ttl: Duration,
     cache_entries: usize,
 }
 
 impl BlueprintClient {
     pub fn new(api: Arc<dyn BlueprintApi>) -> Self {
-        Self { api, cache: Mutex::new(CacheState::default()), cache_ttl: DEFAULT_CACHE_TTL, cache_entries: DEFAULT_CACHE_ENTRIES }
+        Self { api, cache: Arc::new(Mutex::new(CacheState::default())), cache_ttl: DEFAULT_CACHE_TTL, cache_entries: DEFAULT_CACHE_ENTRIES }
     }
 
     /// Bind direct native graph operation for Hub-off federation. The native
@@ -331,19 +333,55 @@ pub trait ContextualBlueprintSource: Send + Sync {
 impl ContextualBlueprintSource for BlueprintClient {
     fn query_with_context<'life0, 'life1, 'async_trait>(&'life0 self, source: &'life1 SourceQuery, deadline: Instant, cancellation: CancellationToken) -> Pin<Box<dyn Future<Output = SourceResult<BlueprintResult>> + Send + 'async_trait>>
     where 'life0: 'async_trait, 'life1: 'async_trait, Self: 'async_trait {
+        let client = self.clone();
+        let source = source.clone();
         Box::pin(async move {
-            let query = BlueprintQuery::from_source(source, source.generation.clone(), BlueprintBounds::default(), deadline.saturating_duration_since(Instant::now()));
-            let result = self.query_with_cancellation(&query, cancellation).map_err(client_error)?;
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            let lane_budget = if remaining <= Duration::from_secs(3) {
+                remaining.min(Duration::from_millis(500))
+            } else {
+                remaining
+            };
+            let query = BlueprintQuery::from_source(&source, source.generation.clone(), BlueprintBounds::default(), lane_budget);
+            let worker_cancellation = cancellation.clone();
+            let task = tokio::task::spawn_blocking(move || client.query_with_cancellation(&query, worker_cancellation));
+            let result = match tokio::time::timeout(lane_budget, task).await {
+                Ok(joined) => joined
+                    .map_err(|_| ProviderError::Internal("Blueprint blocking task failed".to_owned()))?
+                    .map_err(client_error)?,
+                Err(_) => {
+                    cancellation.cancel();
+                    return Err(ProviderError::DeadlineExceeded);
+                }
+            };
             Ok(source_response(result))
         })
     }
 
     fn resolve_symbol_with_context<'life0, 'life1, 'life2, 'async_trait>(&'life0 self, source: &'life1 SourceQuery, symbol: &'life2 str, deadline: Instant, cancellation: CancellationToken) -> Pin<Box<dyn Future<Output = SourceResult<BlueprintResult>> + Send + 'async_trait>>
     where 'life0: 'async_trait, 'life1: 'async_trait, 'life2: 'async_trait, Self: 'async_trait {
+        let client = self.clone();
+        let source = source.clone();
         let symbol = symbol.to_owned();
         Box::pin(async move {
-            let query = BlueprintQuery::from_source(source, source.generation.clone(), BlueprintBounds::default(), deadline.saturating_duration_since(Instant::now()));
-            let result = self.resolve_symbol_with_cancellation(&query, &symbol, cancellation).map_err(client_error)?;
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            let lane_budget = if remaining <= Duration::from_secs(3) {
+                remaining.min(Duration::from_millis(500))
+            } else {
+                remaining
+            };
+            let query = BlueprintQuery::from_source(&source, source.generation.clone(), BlueprintBounds::default(), lane_budget);
+            let worker_cancellation = cancellation.clone();
+            let task = tokio::task::spawn_blocking(move || client.resolve_symbol_with_cancellation(&query, &symbol, worker_cancellation));
+            let result = match tokio::time::timeout(lane_budget, task).await {
+                Ok(joined) => joined
+                    .map_err(|_| ProviderError::Internal("Blueprint blocking task failed".to_owned()))?
+                    .map_err(client_error)?,
+                Err(_) => {
+                    cancellation.cancel();
+                    return Err(ProviderError::DeadlineExceeded);
+                }
+            };
             Ok(source_response(result))
         })
     }
@@ -436,8 +474,19 @@ fn parse_result(response: BlueprintResponse, request: &BlueprintRequest, query: 
         return Err(native_error(response.error.unwrap_or_else(|| BlueprintError::new("blueprint_unavailable", "request failed"))));
     }
     let raw = response.result.ok_or_else(|| BlueprintClientError::Malformed("successful response has no result".into()))?;
-    let observed = response.generation.or_else(|| raw.get("generationId").and_then(Value::as_str).map(str::to_owned))
-        .ok_or_else(|| BlueprintClientError::Malformed("response has no generation identity".into()))?;
+    let observed = response.generation.or_else(|| raw.get("generationId").and_then(Value::as_str).map(str::to_owned));
+    let observed = match observed {
+        Some(observed) => observed,
+        None => {
+            let state = raw.get("state").and_then(Value::as_str).unwrap_or("unknown");
+            if matches!(state, "missing" | "corrupt" | "unavailable" | "unknown") {
+                return Err(BlueprintClientError::Unavailable(format!(
+                    "repository generation is {state}"
+                )));
+            }
+            return Err(BlueprintClientError::Malformed("response has no generation identity".into()));
+        }
+    };
     if let Some(expected) = query.expected_generation.as_deref().filter(|value| !value.is_empty()) {
         if observed != expected { return Err(BlueprintClientError::GenerationMismatch { expected: expected.to_owned(), observed }); }
     }
@@ -467,8 +516,19 @@ fn parse_status_result(response: BlueprintResponse, request: &BlueprintRequest, 
         return Err(native_error(response.error.unwrap_or_else(|| BlueprintError::new("blueprint_unavailable", "request failed"))));
     }
     let raw = response.result.ok_or_else(|| BlueprintClientError::Malformed("successful response has no result".into()))?;
-    let observed = response.generation.or_else(|| raw.get("generationId").and_then(Value::as_str).map(str::to_owned))
-        .ok_or_else(|| BlueprintClientError::Malformed("response has no generation identity".into()))?;
+    let observed = response.generation.or_else(|| raw.get("generationId").and_then(Value::as_str).map(str::to_owned));
+    let observed = match observed {
+        Some(observed) => observed,
+        None => {
+            let state = raw.get("state").and_then(Value::as_str).unwrap_or("unknown");
+            if matches!(state, "missing" | "corrupt" | "unavailable" | "unknown") {
+                return Err(BlueprintClientError::Unavailable(format!(
+                    "repository generation is {state}"
+                )));
+            }
+            return Err(BlueprintClientError::Malformed("response has no generation identity".into()));
+        }
+    };
     if let Some(expected) = query.expected_generation.as_deref().filter(|value| !value.is_empty()) {
         if observed != expected { return Err(BlueprintClientError::GenerationMismatch { expected: expected.to_owned(), observed }); }
     }

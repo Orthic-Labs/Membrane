@@ -1,0 +1,10 @@
+{
+  "verifiedAt": "2026-09-14T09:59:06.585964+00:00",
+  "sourceFilesVerified": 1342,
+  "sourceDrift": [],
+  "installer": "D:\\Claude\\membrane\\apps\\membrane-hub\\src-tauri\\target\\x86_64-pc-windows-msvc\\release\\bundle\\nsis\\Membrane_Hub_0.1.24_x64-setup.exe",
+  "installerSha256": "7b4927e7539ba316795f69c5ab3c39375acc1ca7f0d433a3b610bcdc88747701",
+  "generation": "sha256:ac44820f5b90dc16b573cba5fccca5e27525ae8c98f451261b98b030f2af40c1",
+  "bytes": 205362705,
+  "status": "verified_before_install"
+}
