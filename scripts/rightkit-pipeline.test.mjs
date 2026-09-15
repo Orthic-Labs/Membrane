@@ -60,7 +60,12 @@ test("equivalence Cargo stages enter through RightKit", () => {
   assert.match(equivalence, /run\(rightkit, \[\s*"cargo",\s*"test"/);
   assert.doesNotMatch(equivalence, /run\("cargo",/);
   for (const [name, command] of Object.entries(packageJson.scripts)) {
-    if (/\bcargo\b/.test(command)) assert.match(command, /\brightkit(?:\.cmd)?\s+cargo\b/, name);
+    if (!/\bcargo\b/.test(command)) continue;
+    if (/\brightkit(?:\.cmd)?\s+cargo\b/.test(command)) continue;
+    const delegated = /^node\s+(scripts\/[\w.-]+\.mjs)\b/.exec(command);
+    assert.ok(delegated, `${name}: cargo work must enter through rightkit, directly or via one named script wrapper`);
+    const wrapper = read(delegated[1]);
+    assert.match(wrapper, /spawnSync\(\s*['"]rightkit['"]\s*,\s*\[\s*['"]cargo['"]/, `${name}: ${delegated[1]} must delegate cargo to rightkit`);
   }
 });
 
