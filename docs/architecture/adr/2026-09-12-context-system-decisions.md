@@ -35,6 +35,19 @@
 | No | Yes | On: harness starts/adopts & holds it |
 | No | No | Off after bounded shutdown; no engine/daemon remains |
 
+## Accepted final-shape amendment — 2026-09-16
+
+Adrian directed direct canon amendments implementing the reviewed final shape. [Final implementation contract](../../canon/implementation-contract.md) & current capability Scope cells govern further implementation. This amendment retains decisions 1–25 and explicitly supersedes older conflicting requirements elsewhere:
+
+- Pull supports bounded-response under explicit caller/configured response budget without claiming whole-transcript fit; host-fit requires trusted fresh exact matched H8 and never silently downgrades. Universal H8 availability is not required for ordinary bounded-response retrieval.
+- Blueprint delegates update/trust/activation/rollback/release integration to canonical Membrane installer; Blueprint retains graph/schema compatibility responsibility.
+- Ledger owns portable skill-document source projections (LDG-032); CTX-034 becomes historical alias. Ordinary session projections LDG-021/025 are excluded. MEM-049 is alias of generic stdio contract MEM-011.
+- Scope is binary: COMMITTED is required; EXCLUDED is not required. No work is deferred. Earlier plans & existing code cannot reactivate excluded work.
+- Retain existing useful retrieval, diagnostics, findings/providers, event storage, Adapt lineage/status & narrow detectors; qualify rather than redesign without evidence.
+- One qualified fusion default, retirement of reserved lanes, scoped host execution & one Adapt-to-Cortex proposal path define final integration.
+
+This amendment changes requirements and scope, not implementation or release proof. Its full disposition and acceptance rules are normative in the implementation contract and six amended canons.
+
 ## Historical decisions preserved
 
 Adapt history records the design path that this decision corrects: `190e952c` created/renamed Adapt & consolidated transcript mining; `8bf6bd63` imported Adapt into Membrane with `/v1/memories:batch`; `601c234c` moved persistence ownership to Cortex; `0bceb850` introduced the later drift that prepared Adapt candidates directly for Pull.

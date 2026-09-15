@@ -37,7 +37,7 @@ const headers = Object.freeze({
 });
 
 const enums = Object.freeze({
-  Scope: new Set(["COMMITTED", "EXPLORATORY", "BACKLOG", "EXCLUDED"]),
+  Scope: new Set(["COMMITTED", "EXCLUDED"]),
   Implementation: new Set(["MISSING", "PARTIAL", "DELIVERED", "UNKNOWN"]),
   Verification: new Set(["PENDING", "FOCUSED_PASS", "FAIL", "STALE", "UNKNOWN"]),
   Qualification: new Set(["NOT_REQUIRED", "PENDING", "PASS", "FAIL", "STALE", "UNKNOWN"]),
@@ -429,6 +429,15 @@ function validateSemanticOwnership(parsed) {
   requireWords("MEM-052", /generic|daemon jobs|admit/i, "MEM-052 must own generic daemon scheduling/admission");
   rejectWords("MEM-052", /learner|proposal sink/i, "MEM-052 overlaps ADP-035 learner semantics");
   requireWords("ADP-035", /learner|proposal sink/i, "ADP-035 must own learner semantics/proposal sink");
+  requireAll("PUL-050", [/bounded[- ]response|response budget/i, /caller|configured/i, /unknown|capacity/i, /host[- ]fit/i, /trusted.*fresh.*(?:exact.*identity[- ]matched|matched).*H8|H8.*trusted.*fresh/i], "PUL-050 must define bounded-response and host-fit gates");
+  requireAll("PUL-050", [/refus.*missing\/stale\/inexact\/malformed\/mismatched/i, /Never silently downgrade modes, discard invalid supplied host evidence/i], "PUL-050 must reject invalid host-fit evidence without downgrade");
+  for (const id of ["PUL-027", "PUL-031", "PUL-051"]) rejectWords(id, /(?:always|universal|every|all).{0,30}H8|H8.{0,30}(?:always|universal|every|all)/i, `${id} must not impose a universal H8 gate`);
+  for (const id of ["BPT-058", "BPT-061", "BPT-062", "BPT-063"]) { requireWords(id, /canonical (?:Membrane )?(?:installer|installation)/i, `${id} must delegate to canonical installer`); requireWords(id, /delegat|installer-owned|canonical.*installer trust admission/i, `${id} must delegate installer ownership`); }
+  requireWords("MEM-053", /transport|wire|forward/i, "MEM-053 must own transport semantics");
+  requireAll("MEM-053", [/Adapt owns.*learner/i, /Cortex owns.*admission/i], "MEM-053 must retain Adapt/Cortex semantic ownership");
+  requireWords("LDG-032", /skill[- ](?:document|doc)|source projection|authoritative/i, "LDG-032 must own skill source projection");
+  requireWords("CTX-034", /historical alias|alias.*LDG-032|LDG-032.*alias/i, "CTX-034 must remain historical alias");
+  requireWords("MEM-049", /historical alias|alias.*MEM-011|MEM-011.*alias/i, "MEM-049 must remain historical alias");
   requireWords("ADP-035", /Cortex|admission boundary/i, "ADP-035 must route proposals through Cortex");
   requireAll("MEM-016", [/single-engine|engine/i, /readiness|health|owner lease/i, /drain|shutdown|typed activation failure/i], "MEM-016 must own single-engine lifecycle readiness and typed activation failure");
   rejectWords("MEM-016", /(?:tray[- ]exclusive|requires?\s+(?:a\s+)?tray|only\s+(?:the\s+)?tray)/i, "MEM-016 must not require tray-owned residency");
@@ -455,9 +464,6 @@ function validateSemanticOwnership(parsed) {
   if (byId.get("PUL-015")?.Implementation !== "PARTIAL") throw new Error("PUL-015 must remain PARTIAL while only shadow activation exists");
   if (byId.get("MEM-024")?.Implementation !== "PARTIAL") throw new Error("MEM-024 must remain PARTIAL until receipt/verdict resolution is correct");
   if (byId.has("BPT-045")) throw new Error("BPT-045 must remain preservation-only legacy alias");
-  const exploratory = capabilities.filter((row) => row.Scope === "EXPLORATORY").map((row) => row.ID).sort();
-  const expectedExploratory = ["ADP-065", "ADP-066", "ADP-067", "ADP-068", "ADP-069", "ADP-070", "ADP-071", "BPT-048", "CTX-033", "CTX-039", "CTX-042", "LDG-023", "PUL-034"];
-  if (JSON.stringify(exploratory) !== JSON.stringify(expectedExploratory)) throw new Error(`exploratory disposition differs: ${exploratory.join(", ")}`);
   for (let left = 0; left < capabilities.length; left += 1) for (let right = left + 1; right < capabilities.length; right += 1) {
     if (similarity(capabilities[left]["Observable behavior"], capabilities[right]["Observable behavior"]) >= 0.9) throw new Error(`semantic duplicate candidates: ${capabilities[left].ID} & ${capabilities[right].ID}`);
   }
@@ -555,21 +561,16 @@ function validatePreservation(everyId, capabilityIds, aliases = new Map()) {
 }
 function safeCell(value) { return String(value).replace(/\|/g, "/").replace(/\r?\n/g, " ").replace(/\s+/g, " ").trim(); }
 function pendingMarkdown(parsed, inventory) {
+  const all = parsed.flatMap((canon) => canon.capabilities);
+  const excluded = all.filter((row) => row.Scope === "EXCLUDED");
   const committed = parsed.flatMap((canon) => canon.capabilities.filter((row) => row.Scope === "COMMITTED").map((row) => ({ ...row, canon })));
-  const exploratory = parsed.flatMap((canon) => canon.capabilities.filter((row) => row.Scope === "EXPLORATORY"));
   const competitiveOpen = committed.filter((row) => !competitivelyClosed(row));
   const lifecycleOpen = committed.filter((row) => !closed(row, row.canon.boundary));
-  const lines = ["# Membrane pending capability work", "", "<!-- GENERATED by scripts/ci/check-atomic-canons.mjs --write. Do not hand-edit. -->", "", `Total capability rows: **${committed.length + exploratory.length}**`, `Committed capability atoms: **${committed.length}**`, `Exploratory capability rows: **${exploratory.length}**`, `Competitive current-best/closed: **${committed.length - competitiveOpen.length}**`, `Competitive pending: **${competitiveOpen.length}**`, `Lifecycle closure-proven: **${committed.length - lifecycleOpen.length}**`, `Lifecycle open/unproven: **${lifecycleOpen.length}**`, `Preserved legacy/spec rows: **${inventory.rows.length}**`, `Unclassified preserved rows: **${inventory.unclassified.length}**`, "", "Atomic & competitive state lives in `docs/canon/*.md`; comparison receipts live in `docs/provenance/foundation/2026-08-31-competitive-comparison/`; lifecycle qualification remains separate. This file is sole competitive pending-work index.", "", "## Canon summary", "", "| Subsystem | Boundary | Committed | Exploratory | Current best/closed | Competitive pending | Lifecycle closed | Groups | Implementations | Qualifications | Decisions |", "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|"];
+  const lines = ["# Membrane pending capability work", "", "<!-- GENERATED by scripts/ci/check-atomic-canons.mjs --write. Do not hand-edit. -->", "", `Total capability rows: **${all.length}**`, `Committed capability atoms: **${committed.length}**`, `Excluded capability rows: **${excluded.length}**`, `Competitive current-best/closed: **${committed.length - competitiveOpen.length}**`, `Competitive pending: **${competitiveOpen.length}**`, `Lifecycle closure-proven: **${committed.length - lifecycleOpen.length}**`, `Lifecycle open/unproven: **${lifecycleOpen.length}**`, `Preserved legacy/spec rows: **${inventory.rows.length}**`, `Unclassified preserved rows: **${inventory.unclassified.length}**`, "", "Atomic & competitive state lives in `docs/canon/*.md`; comparison receipts live in `docs/provenance/foundation/2026-08-31-competitive-comparison/`; lifecycle qualification remains separate. This file is sole competitive pending-work index.", "", "## Canon summary", "", "| Subsystem | Boundary | Required | Excluded | Current best/closed | Competitive pending | Lifecycle closed | Groups | Implementations | Qualifications | Decisions |", "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|"];
   for (const canon of parsed) {
     const capabilities = canon.capabilities.filter((row) => row.Scope === "COMMITTED"), canonCompetitiveOpen = capabilities.filter((row) => !competitivelyClosed(row)).length, canonLifecycleClosed = capabilities.filter((row) => closed(row, canon.boundary)).length;
-    const canonExploratory = canon.capabilities.filter((row) => row.Scope === "EXPLORATORY").length;
-    lines.push(`| [${canon.owner}](../canon/${canon.file}) | ${canon.boundary} | ${capabilities.length} | ${canonExploratory} | ${capabilities.length - canonCompetitiveOpen} | ${canonCompetitiveOpen} | ${canonLifecycleClosed} | ${canon.groups.length} | ${canon.implementations.length} | ${canon.qualifications.length} | ${canon.decisions.length} |`);
-  }
-  lines.push("", "## Exploratory capability rows", "", "Exploratory rows are discovered candidates, not committed product behavior.", "", "| Atom | Candidate behavior |", "|---|---|");
-  for (const canon of parsed) {
-    for (const row of canon.capabilities.filter((candidate) => candidate.Scope === "EXPLORATORY")) {
-      lines.push(`| [${row.ID}](../canon/${canon.file}) | ${safeCell(row["Observable behavior"])} |`);
-    }
+    const canonExcluded = canon.capabilities.filter((row) => row.Scope === "EXCLUDED").length;
+    lines.push(`| [${canon.owner}](../canon/${canon.file}) | ${canon.boundary} | ${capabilities.length} | ${canonExcluded} | ${capabilities.length - canonCompetitiveOpen} | ${canonCompetitiveOpen} | ${canonLifecycleClosed} | ${canon.groups.length} | ${canon.implementations.length} | ${canon.qualifications.length} | ${canon.decisions.length} |`);
   }
   lines.push("", "## Competitive pending capability atoms", "");
   for (const canon of parsed) {
@@ -579,26 +580,42 @@ function pendingMarkdown(parsed, inventory) {
     for (const row of rows) lines.push(`| [${row.ID}](../canon/${canon.file}) | ${row.Competitive} | ${safeCell(row.Action)} | ${safeCell(`implementation=${row.Implementation}; verification=${row.Verification}; qualification=${row.Qualification}; delivery=${row.Delivery}/${canon.boundary}; evidence=${row.Evidence}`)} |`);
     lines.push("");
   }
-  const activeCommitted = committed.length;
-  lines.push("## Preserved supporting specifications", "", "Supporting files retain detail; only this generated file indexes pending state.", "", "| Specification | Canon target |", "|---|---|", `| [Unified implementation & closure plan](MEMBRANE-UNIFIED-IMPLEMENTATION-PLAN.md) | All ${activeCommitted} committed rows across active Membrane, Pull, Cortex, Blueprint, Ledger, & Adapt canons; retired Push history remains in [push.md](../canon/push.md); lifecycle qualification tracked separately |`, "| [Adapt harness efficiency](capabilities/adapt/harness-efficiency.md) | `ADP-036`, `ADP-038`, `ADP-040`, `ADP-043`–`ADP-071` |", "| [Blueprint findings lane](capabilities/blueprint/findings-lane.md) | `BPT-049`, `BPT-050`, `BPT-051`, `BPT-052`, `BPT-065`, `BPT-066`, `BPT-067` |", "| [Pull ambient injection loop](capabilities/pull/ambient-injection-loop.md) | Hook-host delivery of federated context (`PUL-001`, `PUL-002`, `PUL-004`, `PUL-012` wiring); installed-product blockers & acceptance path |", "| [Semantic context advisor](experiments/semantic-context-advisor.md) | `MEM-D003` |", "| [Membrane brand identity](design/membrane-brand-identity.md) | `MEM-D004` |", "| [Hub visual reference](design/hub/hub-mockup.html) | `MEM-D005` |", "", "## Unclassified preserved work", "", inventory.unclassified.length ? `${inventory.unclassified.length} rows require classification.` : "None.", "");
+  lines.push("", "See [implementation contract](../canon/implementation-contract.md) for canonical scope, ownership, & closure rules.");
+  lines.push("", "## Excluded capability rows", "", "These capabilities are not required; no deferred-work queue exists. IDs preserve history & compatibility obligations.", "", "| Atom | Scope | Behavior |", "|---|---|---|");
+  for (const row of excluded) lines.push(`| ${row.ID} | ${row.Scope} | ${safeCell(row["Observable behavior"])} |`);
+  lines.push("## Preserved supporting specifications", "", "Supporting files retain historical detail; current required/excluded Scope & implementation contract govern execution. Only this generated file indexes pending state.", "", "| Specification | Canon target |", "|---|---|", `| [Unified implementation & closure plan](MEMBRANE-UNIFIED-IMPLEMENTATION-PLAN.md) | All ${committed.length} committed rows across active Membrane, Pull, Cortex, Blueprint, Ledger, & Adapt canons; retired Push history remains in [push.md](../canon/push.md); lifecycle qualification tracked separately |`, "| [Adapt harness efficiency](capabilities/adapt/harness-efficiency.md) | `ADP-036`, `ADP-038`, `ADP-040`, `ADP-043`–`ADP-071` |", "| [Blueprint findings lane](capabilities/blueprint/findings-lane.md) | `BPT-049`, `BPT-050`, `BPT-051`, `BPT-052`, `BPT-065`, `BPT-066`, `BPT-067` |", "| [Pull ambient injection loop](capabilities/pull/ambient-injection-loop.md) | Hook-host delivery of federated context (`PUL-001`, `PUL-002`, `PUL-004`, `PUL-012` wiring); installed-product blockers & acceptance path |", "| [Semantic context advisor](experiments/semantic-context-advisor.md) | `MEM-D003` |", "| [Membrane brand identity](design/membrane-brand-identity.md) | `MEM-D004` |", "| [Hub visual reference](design/hub/hub-mockup.html) | `MEM-D005` |", "", "## Unclassified preserved work", "", inventory.unclassified.length ? `${inventory.unclassified.length} rows require classification.` : "None.", "");
   return lines.join("\n");
 }
 function atomReadmeMarkdown(parsed, inventory) {
+  const all = parsed.reduce((sum, canon) => sum + canon.capabilities.length, 0);
+  const excluded = parsed.reduce((sum, canon) => sum + canon.capabilities.filter((row) => row.Scope === "EXCLUDED").length, 0);
   const committed = parsed.reduce((sum, canon) => sum + canon.capabilities.filter((row) => row.Scope === "COMMITTED").length, 0);
-  const exploratory = parsed.reduce((sum, canon) => sum + canon.capabilities.filter((row) => row.Scope === "EXPLORATORY").length, 0);
   const competitiveClosedCount = parsed.reduce((sum, canon) => sum + canon.capabilities.filter(competitivelyClosed).length, 0);
   const lifecycleClosedCount = parsed.reduce((sum, canon) => sum + canon.capabilities.filter((row) => closed(row, canon.boundary)).length, 0);
-  const lines = ["# Membrane atomic capability canons", "", "<!-- GENERATED by scripts/ci/check-atomic-canons.mjs --write. Do not hand-edit. -->", "", "Membrane parent & five active subsystems own current canons. [Retired Push](push.md) preserves historical aliases only. Competitive comparison & lifecycle qualification remain separate; only current-best committed atoms are competitively closed.", "", "## Current inventory", "", "| Canon | Boundary | Committed | Exploratory | Current best/closed | Competitive pending | Lifecycle closed |", "|---|---|---:|---:|---:|---:|---:|"];
+  const lines = ["# Membrane atomic capability canons", "", "<!-- GENERATED by scripts/ci/check-atomic-canons.mjs --write. Do not hand-edit. -->", "", "Membrane parent & five active subsystems own current canons. [Retired Push](push.md) preserves historical aliases only. Competitive comparison & lifecycle qualification remain separate; only current-best committed atoms are competitively closed.", "", "## Current inventory", "", "| Canon | Boundary | Required | Excluded | Current best/closed | Competitive pending | Lifecycle closed |", "|---|---|---:|---:|---:|---:|---:|"];
   for (const canon of parsed) {
     const count = canon.capabilities.filter((row) => row.Scope === "COMMITTED").length, canonCompetitiveClosed = canon.capabilities.filter(competitivelyClosed).length, canonLifecycleClosed = canon.capabilities.filter((row) => closed(row, canon.boundary)).length;
-    const canonExploratory = canon.capabilities.filter((row) => row.Scope === "EXPLORATORY").length;
-    lines.push(`| [${canon.owner}](${canon.file}) | ${canon.boundary} | ${count} | ${canonExploratory} | ${canonCompetitiveClosed} | ${count - canonCompetitiveClosed} | ${canonLifecycleClosed} |`);
+    const canonExcluded = canon.capabilities.filter((row) => row.Scope === "EXCLUDED").length;
+    lines.push(`| [${canon.owner}](${canon.file}) | ${canon.boundary} | ${count} | ${canonExcluded} | ${canonCompetitiveClosed} | ${count - canonCompetitiveClosed} | ${canonLifecycleClosed} |`);
   }
-  lines.push(`| **Total** | — | **${committed}** | **${exploratory}** | **${competitiveClosedCount}** | **${committed - competitiveClosedCount}** | **${lifecycleClosedCount}** |`, "", `Total capability rows: **${committed + exploratory}**`, "", "## Counting & closure", "", "Count only `COMMITTED` capability rows. Groups roll up children & never count. Implementation mechanisms, qualification gates & decisions support capabilities & never count independently.", "", "Competitive closure requires receipt-bound `CURRENT_BEST`; `DONOR_BETTER`, `CURRENT_INCOMPLETE`, & `UNRESOLVED` remain pending. Lifecycle closure remains independently derived from implementation, focused verification, qualification, delivery, & exact acceptance evidence.", "", "## Preservation", "", `Legacy atoms: **${inventory.legacyAtoms.length}**`, `Introduced atomic splits: **${inventory.splits.length}**`, `New capabilities after normalization: **${inventory.introductions.length}**`, `Legacy/specification rows: **${inventory.specRows.length}**`, `Preserved union: **${inventory.rows.length}/${inventory.rows.length}**`, `Unclassified: **${inventory.unclassified.length}**`, "", "See [preservation map](../provenance/migrations/2026-08-30-atomic-canons/preservation-map.md), [competitive comparison](../provenance/foundation/2026-08-31-competitive-comparison/README.md), & generated [pending index](../pending/README.md).", "", "## Register schemas", "", `Group: \`${headers.group.join(" | ")}\``, "", `Capability: \`${headers.capability.join(" | ")}\``, "", `Implementation: \`${headers.implementation.join(" | ")}\``, "", `Qualification: \`${headers.qualification.join(" | ")}\``, "", `Decision: \`${headers.decision.join(" | ")}\``, "");
+  lines.push(`| **Total** | — | **${committed}** | **${excluded}** | **${competitiveClosedCount}** | **${committed - competitiveClosedCount}** | **${lifecycleClosedCount}** |`, "", `Total capability rows: **${all}**`, "", "## Counting & closure", "", "Count only `COMMITTED` capability rows. Groups roll up children & never count. Implementation mechanisms, qualification gates & decisions support capabilities & never count independently.", "", "Competitive closure requires receipt-bound `CURRENT_BEST`; `DONOR_BETTER`, `CURRENT_INCOMPLETE`, & `UNRESOLVED` remain pending. Lifecycle closure remains independently derived from implementation, focused verification, qualification, delivery, & exact acceptance evidence.", "", "## Preservation", "", `Legacy atoms: **${inventory.legacyAtoms.length}**`, `Introduced atomic splits: **${inventory.splits.length}**`, `New capabilities after normalization: **${inventory.introductions.length}**`, `Legacy/specification rows: **${inventory.specRows.length}**`, `Preserved union: **${inventory.rows.length}/${inventory.rows.length}**`, `Unclassified: **${inventory.unclassified.length}**`, "", "See [preservation map](../provenance/migrations/2026-08-30-atomic-canons/preservation-map.md), [competitive comparison](../provenance/foundation/2026-08-31-competitive-comparison/README.md), & generated [pending index](../pending/README.md).", "", "## Register schemas", "", `Group: \`${headers.group.join(" | ")}\``, "", `Capability: \`${headers.capability.join(" | ")}\``, "", `Implementation: \`${headers.implementation.join(" | ")}\``, "", `Qualification: \`${headers.qualification.join(" | ")}\``, "", `Decision: \`${headers.decision.join(" | ")}\``, "");
+  lines.push("", "See [implementation contract](implementation-contract.md) for canonical scope, ownership, & closure rules.");
   return lines.join("\n");
+}
+
+function validateScopeDisposition(parsed) {
+  const excluded = new Set(["MEM-022", "MEM-023", "MEM-032", "MEM-038", "MEM-049", "MEM-051", "PUL-021", "PUL-034", "PUL-039", "PUL-040", "PUL-044", "PUL-045", "PUL-047", "PUL-048", "CTX-023", "CTX-024", "CTX-031", "CTX-033", "CTX-034", "CTX-039", "CTX-042", "BPT-048", "LDG-016", "LDG-021", "LDG-023", "LDG-025", "LDG-027", "ADP-020", "ADP-041", "ADP-043", "ADP-044", "ADP-045", "ADP-046", "ADP-047", "ADP-048", "ADP-049", "ADP-050", "ADP-051", "ADP-052", "ADP-055", "ADP-056", "ADP-060", "ADP-061", "ADP-063", "ADP-064", "ADP-065", "ADP-066", "ADP-067", "ADP-068", "ADP-069", "ADP-070", "ADP-071", "ADP-076", "ADP-077"]);
+  const rows = parsed.flatMap((canon) => canon.capabilities), byId = new Map(rows.map((row) => [row.ID, row]));
+  for (const id of excluded) if (!byId.has(id)) throw new Error(`${id} excluded identity missing`);
+  for (const row of rows) {
+    const expected = excluded.has(row.ID) ? "EXCLUDED" : "COMMITTED";
+    if (row.Scope !== expected) throw new Error(`${row.ID} must remain ${expected}`);
+  }
+  return { excluded };
 }
 function validatePendingSupport(markdown) {
   const required = ["MEMBRANE-UNIFIED-IMPLEMENTATION-PLAN.md", "capabilities/adapt/harness-efficiency.md", "capabilities/blueprint/findings-lane.md", "capabilities/pull/ambient-injection-loop.md", "experiments/semantic-context-advisor.md", "design/membrane-brand-identity.md", "design/hub/hub-mockup.html"];
+  if (!existsSync(path.join(atomDir, "implementation-contract.md")) || !markdown.includes("../canon/implementation-contract.md")) throw new Error("pending index omits ../canon/implementation-contract.md");
   for (const relative of required) {
     if (!existsSync(path.join(root, "docs", "pending", relative))) throw new Error(`missing supporting specification ${relative}`);
     if (!markdown.includes(`](${relative})`)) throw new Error(`pending index omits ${relative}`);
@@ -611,9 +628,9 @@ function validatePendingSupport(markdown) {
   if (JSON.stringify(observed) !== JSON.stringify([...required].sort())) throw new Error(`pending supporting-document inventory differs: ${observed.join(", ")}`);
 }
 
-export const atomicCanonTestHooks = Object.freeze({ proofEvidence, comparisonEvidence, focusedProofLooksExact, closed, competitivelyClosed, similarity, parseCanon, validateHistoricalAliases, validateSemanticOwnership });
+export const atomicCanonTestHooks = Object.freeze({ proofEvidence, comparisonEvidence, focusedProofLooksExact, closed, competitivelyClosed, similarity, parseCanon, validateHistoricalAliases, validateSemanticOwnership, validateScopeDisposition });
 export function validateAtomicCanons({ write = false } = {}) {
-  const canonFiles = readdirSync(atomDir).filter((file) => file.endsWith(".md") && !["README.md", "push.md"].includes(file)).sort();
+  const canonFiles = readdirSync(atomDir).filter((file) => file.endsWith(".md") && !["README.md", "push.md", "implementation-contract.md"].includes(file)).sort();
   const expectedCanonFiles = canons.map((canon) => canon.file).sort();
   if (JSON.stringify(canonFiles) !== JSON.stringify(expectedCanonFiles)) throw new Error(`atomic canon inventory differs: ${canonFiles.join(", ")}`);
   const parsed = canons.map(parseCanon);
@@ -624,6 +641,7 @@ export function validateAtomicCanons({ write = false } = {}) {
   validateReceiptReferences(parsed, aliases);
   validateComparisonReferences(parsed);
   validateSemanticOwnership(parsed);
+  validateScopeDisposition(parsed);
   const inventory = validatePreservation(everyId, capabilityIds, aliases), expectedPending = pendingMarkdown(parsed, inventory), expectedReadme = atomReadmeMarkdown(parsed, inventory);
   validatePendingSupport(expectedPending);
   if (write) { writeFileSync(pendingPath, expectedPending, "utf8"); writeFileSync(atomReadmePath, expectedReadme, "utf8"); }
@@ -633,13 +651,13 @@ export function validateAtomicCanons({ write = false } = {}) {
   }
   const committed = parsed.flatMap((canon) => canon.capabilities.filter((row) => row.Scope === "COMMITTED").map((row) => ({ ...row, canon })));
   const lifecycleClosedRows = committed.filter((row) => closed(row, row.canon.boundary)), competitiveClosedRows = committed.filter(competitivelyClosed);
-  return { canons: parsed.length, capabilityRows: parsed.reduce((sum, canon) => sum + canon.capabilities.length, 0), atoms: committed.length, exploratory: parsed.reduce((sum, canon) => sum + canon.capabilities.filter((row) => row.Scope === "EXPLORATORY").length, 0), competitiveClosed: competitiveClosedRows.length, competitiveOpen: committed.length - competitiveClosedRows.length, lifecycleClosed: lifecycleClosedRows.length, lifecycleOpen: committed.length - lifecycleClosedRows.length, groups: parsed.reduce((sum, canon) => sum + canon.groups.length, 0), implementations: parsed.reduce((sum, canon) => sum + canon.implementations.length, 0), qualifications: parsed.reduce((sum, canon) => sum + canon.qualifications.length, 0), decisions: parsed.reduce((sum, canon) => sum + canon.decisions.length, 0), preservationRows: inventory.rows.length, legacyAtoms: inventory.legacyAtoms.length, introducedSplits: inventory.splits.length, introducedCapabilities: inventory.introductions.length, specRows: inventory.specRows.length, unclassified: inventory.unclassified.length };
+  return { canons: parsed.length, capabilityRows: parsed.reduce((sum, canon) => sum + canon.capabilities.length, 0), atoms: committed.length, excluded: parsed.reduce((sum, canon) => sum + canon.capabilities.filter((row) => row.Scope === "EXCLUDED").length, 0), exploratory: parsed.reduce((sum, canon) => sum + canon.capabilities.filter((row) => row.Scope === "EXPLORATORY").length, 0), competitiveClosed: competitiveClosedRows.length, competitiveOpen: committed.length - competitiveClosedRows.length, lifecycleClosed: lifecycleClosedRows.length, lifecycleOpen: committed.length - lifecycleClosedRows.length, groups: parsed.reduce((sum, canon) => sum + canon.groups.length, 0), implementations: parsed.reduce((sum, canon) => sum + canon.implementations.length, 0), qualifications: parsed.reduce((sum, canon) => sum + canon.qualifications.length, 0), decisions: parsed.reduce((sum, canon) => sum + canon.decisions.length, 0), preservationRows: inventory.rows.length, legacyAtoms: inventory.legacyAtoms.length, introducedSplits: inventory.splits.length, introducedCapabilities: inventory.introductions.length, specRows: inventory.specRows.length, unclassified: inventory.unclassified.length };
 }
 
 const invoked = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 if (invoked) {
   try {
     const result = validateAtomicCanons({ write: process.argv.includes("--write") });
-    console.log(`atomic canons PASS: ${result.canons} canons, ${result.capabilityRows} rows, ${result.atoms} committed, ${result.exploratory} exploratory, ${result.competitiveClosed} current-best/closed, ${result.competitiveOpen} competitive pending, ${result.lifecycleClosed} lifecycle-closed, ${result.preservationRows} preserved, ${result.unclassified} unclassified`);
+    console.log(`atomic canons PASS: ${result.canons} canons, ${result.capabilityRows} rows, ${result.atoms} committed, ${result.excluded} excluded, ${result.competitiveClosed} current-best/closed, ${result.competitiveOpen} competitive pending, ${result.lifecycleClosed} lifecycle-closed, ${result.preservationRows} preserved, ${result.unclassified} unclassified`);
   } catch (error) { console.error(`atomic canons FAIL: ${error.message}`); process.exitCode = 1; }
 }

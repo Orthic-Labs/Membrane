@@ -1,5 +1,8 @@
 # Membrane unified implementation & closure plan
 
+> Superseded execution scope: read [final implementation contract](../canon/implementation-contract.md) & current [atomic canons](../canon/README.md) before using this historical plan. Only current COMMITTED rows are required. References below to six subsystems, independent Push, mandatory deferred detectors, universal host-capacity refusal or independent Blueprint updates are historical, not instructions to implement. Current required/excluded Scope cells & aliases take precedence.
+
+
 Date: 2026-09-08. Owner: **membrane**, Sol/medium, task `01a07e9f-8f38-7463-b35e-f6b6013bb23e`. Coordinator: task `01a07b53-236f-73b0-a1c6-23679b5968e5`. This is one execution reference for the full Membrane lane, not a new competing canon or a completion receipt.
 
 ## 1. Intended outcome
@@ -109,11 +112,11 @@ First reconcile newer Cortex receipts/production callsites against stale canon r
 
 Qualify all already-delivered mechanisms through native installed consumers: admission/DLP/utility, atomic batch/idempotency, duplicate/conflict/quarantine/supersession, temporal recall, lexical/vector/fusion, resolver previews, feedback/unknown outcomes, checkpoints/proposals/review/crash recovery, erasure, backup/restore, exports/imports, projection rebuild, diagnostics, events/skills, completeness, CTX-040 versioned recipes & CTX-041 reversible recall suppression. Preserve evidence across restart, replay & restore. A failed index is not an empty successful recall; database content remains authority.
 
-Reuse `docs/provenance/foundation/2026-09-06-cortex-remaining/` & current later receipts. Verify freshness before reuse. Do not reimplement a mechanism merely because its row is stale. CTX-033, CTX-039 & CTX-042 remain exploratory; ordinary Ledger/Pull integration does not promote them.
+Reuse `docs/provenance/foundation/2026-09-06-cortex-remaining/` & current later receipts. Verify freshness before reuse. Do not reimplement a mechanism merely because its row is stale. CTX-033, CTX-039 & CTX-042 are excluded; ordinary Ledger/Pull integration does not promote them.
 
 ### C. Blueprint: all 68 committed capabilities plus native migration
 
-Port full existing product semantics, not a reduced Rust grep tool. Map every production module, adapter, state owner & test to canonical capability IDs, native destination, parity fixture & deletion gate. Dead code gets a deletion disposition, not a port. Preserve stable IDs; BPT-022/BPT-045 historical splits are not missing capabilities to recreate. BPT-048 remains exploratory.
+Port full existing product semantics, not a reduced Rust grep tool. Map every production module, adapter, state owner & test to canonical capability IDs, native destination, parity fixture & deletion gate. Dead code gets a deletion disposition, not a port. Preserve stable IDs; BPT-022/BPT-045 historical splits are not missing capabilities to recreate. BPT-048 is excluded.
 
 Native slices cover:
 
@@ -138,7 +141,7 @@ Reconcile all 30 committed `LDG-*` rows. Preserve PR #15 owner-native service, g
 
 Close installed path: normal harness request → canonical Ledger owner → grant-filtered exact/FTS/literal/graph candidates → Pull admission → registered-source resolver → actual delivered evidence & receipt. Test revoked/expired grants, stale revisions/hashes/spans, moves/deletes/exclusions, cursor replay, concurrent source change, cross-root attempts, cancellation/deadlines & work/byte budgets. Ignore policy never substitutes for authorization; backlink counts do not grant authority; drift does not automatically falsify facts.
 
-Automatic Ledger publication has an intentionally empty delivery-qualification allowlist in the handoff. Inspect current gate; add only an immutable exact-release qualification receipt after full composition passes. Never enable it simply because compilation succeeds. LDG-028 conversion qualification is per format: original bytes → converter/version/config → normalized projection → index/search → exact resolver/provenance/loss. Unsupported formats remain unadvertised. LDG-029 backlinks, LDG-030 literal source spans & LDG-031 drift need their own acceptance, not only old FTS benchmarks. Keep LDG-023 exploratory.
+Automatic Ledger publication has an intentionally empty delivery-qualification allowlist in the handoff. Inspect current gate; add only an immutable exact-release qualification receipt after full composition passes. Never enable it simply because compilation succeeds. LDG-028 conversion qualification is per format: original bytes → converter/version/config → normalized projection → index/search → exact resolver/provenance/loss. Unsupported formats remain unadvertised. LDG-029 backlinks, LDG-030 literal source spans & LDG-031 drift need their own acceptance, not only old FTS benchmarks. LDG-023 is excluded.
 
 Remove/generalize stale branch-only Ledger workflow & operational branch wording if still present; preserve immutable historical receipts. Do not redesign FTS5 or add a second document authority absent measured need.
 
@@ -150,7 +153,7 @@ Preserve distinct task text/task ID/session ID/request ID/repository/scope, real
 
 Qualify real harness acquisition → eligibility/fusion/coverage → bounded corrective retrieval → Push-selected sole body → resolver follow-up → final model attachment & receipt. Exercise all grant/policy/generation/resolver/deadline/cancellation/capacity changes, unauthorized siblings/outside roots, mixed availability, aggregate pressure, empty/insufficient evidence & false resolver claims. Suppression requires explicit current host retention, restores eligibility on change/expiry/unknown/refresh & cannot suppress protected evidence. Prefix reuse changes neither membership nor authority. Placement only orders admitted evidence.
 
-Keep execution health, evidence sufficiency & delivery outcome distinct; coverage includes partial/missing/contradictory/stale/unsafe/unavailable/not-evaluated with reasons. Measure token/cache/latency effectiveness without false suppression. Preserve one Ledger provider & exact selected-body accounting. Keep PUL-034 exploratory; parent/summary experiments do not become new committed scope. Fix stale branch/provenance wording without rebinding evidence to unreachable history.
+Keep execution health, evidence sufficiency & delivery outcome distinct; coverage includes partial/missing/contradictory/stale/unsafe/unavailable/not-evaluated with reasons. Measure token/cache/latency effectiveness without false suppression. Preserve one Ledger provider & exact selected-body accounting. PUL-034 is excluded; parent/summary experiments do not become new committed scope. Fix stale branch/provenance wording without rebinding evidence to unreachable history.
 
 ### F. Push: recovery hardening & measured final wire
 
@@ -170,7 +173,7 @@ Specific residuals: ADP-041 persisted production multiwriter convergence under c
 
 Later committed rows remain explicit acceptance targets: ADP-074 negotiated scope-bound read-only agent inspection without approval/exposure side effects; ADP-075 readiness from actual producer/consumer bindings with distinct empty/unavailable/blocked/missing-join states; ADP-076 bounded version-bound comparison from host-run baseline/variant outcomes without admission/activation authority; ADP-077 evidence-bound guard-stage eligibility without host blocking/scope-expansion authority.
 
-CodeRight owns its observation, acknowledgement, evaluator & experiment producers. Coordinator assigns explicit host dependencies there. Membrane must report absent H4/H6/H9/H10 facts honestly, never widen contracts solely to turn unavailable into ran. Real held-out cohorts & causal effectiveness require empirical evidence. Guard eligibility is not host authorization; proposals never self-approve; collect no private reasoning. Keep ADP-065..071 exploratory/HOLD. Remove stale operational workflow/branch wording without erasing evidence.
+CodeRight owns its observation, acknowledgement, evaluator & experiment producers. Coordinator assigns explicit host dependencies there. Membrane must report absent H4/H6/H9/H10 facts honestly, never widen contracts solely to turn unavailable into ran. Real held-out cohorts & causal effectiveness require empirical evidence. Guard eligibility is not host authorization; proposals never self-approve; collect no private reasoning. ADP-065..071 are excluded. Remove stale operational workflow/branch wording without erasing evidence.
 
 ## 6. Execution: parallelize independent work, serialize delivery
 

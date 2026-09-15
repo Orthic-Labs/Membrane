@@ -4,7 +4,7 @@ Push context-reduction subsystem is retired by accepted decisions 16–19. This 
 
 ## Current migration map
 
-Each historical ID resolves to exactly one current capability. Merges retain complete source behavior, implementation history & qualification obligations; mapped acceptance is required in addition to destination acceptance. Runtime migration remains unproven.
+Each historical ID resolves to exactly one current capability. Merges retain complete source behavior, implementation history & qualification obligations; mapped acceptance remains binding within current destination scope, host & budget mode; excluded transformations are not new required work. Runtime migration remains unproven.
 
 | Historical ID | Current capability | Owner | Disposition |
 |---|---|---|---|

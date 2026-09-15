@@ -6,21 +6,22 @@ import { atomicCanonTestHooks, validateAtomicCanons } from "./check-atomic-canon
 test("normalized canon inventory is complete & generated indexes are current", () => {
   assert.deepEqual(validateAtomicCanons(), {
     canons: 6,
-    capabilityRows: 352,
-    atoms: 339,
-    exploratory: 13,
-    competitiveClosed: 55,
-    competitiveOpen: 284,
+    capabilityRows: 353,
+    atoms: 299,
+    excluded: 54,
+    exploratory: 0,
+    competitiveClosed: 53,
+    competitiveOpen: 246,
     lifecycleClosed: 0,
-    lifecycleOpen: 339,
+    lifecycleOpen: 299,
     groups: 6,
-    implementations: 353,
-    qualifications: 352,
-    decisions: 93,
+    implementations: 354,
+    qualifications: 353,
+    decisions: 104,
     preservationRows: 728,
     legacyAtoms: 249,
     introducedSplits: 30,
-    introducedCapabilities: 106,
+    introducedCapabilities: 107,
     specRows: 479,
     unclassified: 0,
   });
@@ -98,6 +99,34 @@ test("accepted decision ownership guards reject plausible regressions", () => {
   }
 });
 
+test("final-shape semantic guards reject universal H8, self-updater, & owner swaps", () => {
+  const configs = [
+    ["Membrane", "membrane.md", "MEM"], ["Pull", "pull.md", "PUL"], ["Cortex", "cortex.md", "CTX"],
+    ["Blueprint", "blueprint.md", "BPT"], ["Ledger", "ledger.md", "LDG"], ["Adapt", "adapt.md", "ADP"],
+  ];
+  const parsed = configs.map(([owner, file, prefix]) => atomicCanonTestHooks.parseCanon({ owner, file, prefix, boundary: "RELEASED" }));
+  const mutate = (id, behavior) => parsed.map((canon) => ({ ...canon, capabilities: canon.capabilities.map((row) => row.ID === id ? { ...row, "Observable behavior": behavior } : row) }));
+  assert.throws(() => atomicCanonTestHooks.validateSemanticOwnership(mutate("PUL-027", "Always require H8 host capacity")), /PUL-027/);
+  const budget = parsed.flatMap((canon) => canon.capabilities).find((row) => row.ID === "PUL-050")["Observable behavior"];
+  assert.throws(() => atomicCanonTestHooks.validateSemanticOwnership(mutate("PUL-050", budget.replace("Never silently downgrade modes, discard invalid supplied host evidence", "Allow downgrade to bounded-response when host evidence fails"))), /PUL-050/);
+  assert.throws(() => atomicCanonTestHooks.validateSemanticOwnership(mutate("BPT-058", "Run independent self-updater")), /BPT-058/);
+  assert.throws(() => atomicCanonTestHooks.validateSemanticOwnership(mutate("MEM-053", "Own learner semantics and proposal sink")), /MEM-053/);
+  assert.throws(() => atomicCanonTestHooks.validateSemanticOwnership(mutate("CTX-034", "Current committed skill source")), /CTX-034/);
+});
+
+test("scope disposition keeps excluded rows visible & blocks silent promotion", () => {
+  const configs = [["Membrane", "membrane.md", "MEM"], ["Pull", "pull.md", "PUL"], ["Cortex", "cortex.md", "CTX"], ["Blueprint", "blueprint.md", "BPT"], ["Ledger", "ledger.md", "LDG"], ["Adapt", "adapt.md", "ADP"]];
+  const parsed = configs.map(([owner, file, prefix]) => atomicCanonTestHooks.parseCanon({ owner, file, prefix, boundary: "RELEASED" }));
+  const disposition = atomicCanonTestHooks.validateScopeDisposition(parsed);
+  assert.equal(disposition.excluded.size, 54);
+  const promoted = parsed.map((canon) => ({ ...canon, capabilities: canon.capabilities.map((row) => row.ID === "MEM-022" ? { ...row, Scope: "COMMITTED" } : row) }));
+  assert.throws(() => atomicCanonTestHooks.validateScopeDisposition(promoted), /MEM-022/);
+  for (const scope of ["EXCLUDED", "BACKLOG", "EXPLORATORY"]) {
+    const demoted = parsed.map((canon) => ({ ...canon, capabilities: canon.capabilities.map((row) => row.ID === "MEM-001" ? { ...row, Scope: scope } : row) }));
+    assert.throws(() => atomicCanonTestHooks.validateScopeDisposition(demoted), /MEM-001/);
+  }
+});
+
 test("focused proof requires a live assertion instead of placeholder prose", () => {
   assert.equal(atomicCanonTestHooks.focusedProofLooksExact("rightkit cargo test --manifest-path engine/Cargo.toml -p membrane-runtime --lib", "`serve::tests::expand_anchor_recovers_exact_content_and_rejects_missing`"), true);
   assert.equal(atomicCanonTestHooks.focusedProofLooksExact("cargo test --manifest-path engine/Cargo.toml --workspace --locked --no-fail-fast", "`serve::tests::expand_anchor_recovers_exact_content_and_rejects_missing`", "GitHub Actions managed CI run 123; 0 fail"), true);
@@ -112,8 +141,8 @@ test("Cortex governed-lifecycle additions preserve status boundaries", () => {
   const canon = atomicCanonTestHooks.parseCanon({ owner: "Cortex", file: "cortex.md", prefix: "CTX", boundary: "RELEASED" });
   const byId = new Map(canon.capabilities.map((row) => [row.ID, row]));
   assert.equal(canon.capabilities.length, 43);
-  assert.equal(canon.capabilities.filter((row) => row.Scope === "COMMITTED").length, 40);
-  assert.deepEqual(canon.capabilities.filter((row) => row.Scope === "EXPLORATORY").map((row) => row.ID), ["CTX-033", "CTX-039", "CTX-042"]);
+  assert.equal(canon.capabilities.filter((row) => row.Scope === "COMMITTED").length, 36);
+  assert.deepEqual(canon.capabilities.filter((row) => row.Scope === "EXCLUDED").map((row) => row.ID), ["CTX-023", "CTX-024", "CTX-031", "CTX-033", "CTX-034", "CTX-039", "CTX-042"]);
   for (const id of ["CTX-035", "CTX-040", "CTX-041"]) {
     assert.equal(byId.get(id).Implementation, "DELIVERED");
     assert.equal(byId.get(id).Verification, "FOCUSED_PASS");
@@ -121,8 +150,8 @@ test("Cortex governed-lifecycle additions preserve status boundaries", () => {
     assert.equal(byId.get(id).Delivery, "PUSHED");
   }
   assert.equal(byId.get("CTX-042").Implementation, "MISSING");
-  assert.equal(byId.get("CTX-042").Scope, "EXPLORATORY");
-  assert.equal(byId.get("CTX-039").Scope, "EXPLORATORY");
+  assert.equal(byId.get("CTX-042").Scope, "EXCLUDED");
+  assert.equal(byId.get("CTX-039").Scope, "EXCLUDED");
   assert.equal(byId.get("CTX-021").Implementation, "DELIVERED");
   assert.equal(byId.get("CTX-021").Verification, "FOCUSED_PASS");
   assert.equal(byId.get("CTX-019").Implementation, "DELIVERED");
@@ -131,7 +160,7 @@ test("Cortex governed-lifecycle additions preserve status boundaries", () => {
 
 // Donor intake refines acceptance without inventing delivery or capability rows.
 test("Ripwire intake preserves one qualification per capability and no donor promotion", () => {
-  const cases = [["Blueprint", "blueprint.md", "BPT", 70, 4], ["Ledger", "ledger.md", "LDG", 31, 2], ["Pull", "pull.md", "PUL", 59, 2], ["Adapt", "adapt.md", "ADP", 75, 1], ["Cortex", "cortex.md", "CTX", 43, 1], ["Membrane", "membrane.md", "MEM", 74, 2]];
+  const cases = [["Blueprint", "blueprint.md", "BPT", 70, 4], ["Ledger", "ledger.md", "LDG", 32, 2], ["Pull", "pull.md", "PUL", 59, 2], ["Adapt", "adapt.md", "ADP", 75, 1], ["Cortex", "cortex.md", "CTX", 43, 1], ["Membrane", "membrane.md", "MEM", 74, 2]];
   for (const [owner, file, prefix, count, decisionCount] of cases) {
     const canon = atomicCanonTestHooks.parseCanon({ owner, file, prefix, boundary: "RELEASED" });
     assert.equal(canon.capabilities.length, count, file);
@@ -142,7 +171,9 @@ test("Ripwire intake preserves one qualification per capability and no donor pro
       assert.ok(["PENDING", "STALE"].includes(row.State));
       assert.equal(row.Evidence, "PENDING");
     }
-    for (const row of canon.decisions.slice(-decisionCount)) {
+    const intakeDecisions = canon.decisions.filter((row) => /2026-09-07-ripwire-intake\/README\.md@[a-f0-9]{40}$/.test(row["Authority/evidence"]));
+    assert.equal(intakeDecisions.length, decisionCount);
+    for (const row of intakeDecisions) {
       assert.match(row["Authority/evidence"], /2026-09-07-ripwire-intake\/README\.md@[a-f0-9]{40}$/);
       if (row.Kind === "BACKLOG") assert.equal(row.State, "HOLD");
     }

@@ -6,17 +6,17 @@ Membrane parent & five active subsystems own current canons. [Retired Push](push
 
 ## Current inventory
 
-| Canon | Boundary | Committed | Exploratory | Current best/closed | Competitive pending | Lifecycle closed |
+| Canon | Boundary | Required | Excluded | Current best/closed | Competitive pending | Lifecycle closed |
 |---|---|---:|---:|---:|---:|---:|
-| [Membrane](membrane.md) | RELEASED | 74 | 0 | 12 | 62 | 0 |
-| [Pull](pull.md) | RELEASED | 58 | 1 | 0 | 58 | 0 |
-| [Cortex](cortex.md) | RELEASED | 40 | 3 | 10 | 30 | 0 |
-| [Blueprint](blueprint.md) | RELEASED | 69 | 1 | 20 | 49 | 0 |
-| [Ledger](ledger.md) | RELEASED | 30 | 1 | 3 | 27 | 0 |
-| [Adapt](adapt.md) | RELEASED | 68 | 7 | 10 | 58 | 0 |
-| **Total** | — | **339** | **13** | **55** | **284** | **0** |
+| [Membrane](membrane.md) | RELEASED | 68 | 6 | 12 | 56 | 0 |
+| [Pull](pull.md) | RELEASED | 51 | 8 | 0 | 51 | 0 |
+| [Cortex](cortex.md) | RELEASED | 36 | 7 | 10 | 26 | 0 |
+| [Blueprint](blueprint.md) | RELEASED | 69 | 1 | 18 | 51 | 0 |
+| [Ledger](ledger.md) | RELEASED | 27 | 5 | 3 | 24 | 0 |
+| [Adapt](adapt.md) | RELEASED | 48 | 27 | 10 | 38 | 0 |
+| **Total** | — | **299** | **54** | **53** | **246** | **0** |
 
-Total capability rows: **352**
+Total capability rows: **353**
 
 ## Counting & closure
 
@@ -28,7 +28,7 @@ Competitive closure requires receipt-bound `CURRENT_BEST`; `DONOR_BETTER`, `CURR
 
 Legacy atoms: **249**
 Introduced atomic splits: **30**
-New capabilities after normalization: **106**
+New capabilities after normalization: **107**
 Legacy/specification rows: **479**
 Preserved union: **728/728**
 Unclassified: **0**
@@ -46,3 +46,6 @@ Implementation: `ID | Capability targets | Mechanism | Source/donor | Reuse mode
 Qualification: `ID | Capability targets | Acceptance boundary | State | Evidence | Material revision`
 
 Decision: `ID | Kind | Capability targets | Decision | Authority/evidence | State`
+
+
+See [implementation contract](implementation-contract.md) for canonical scope, ownership, & closure rules.
