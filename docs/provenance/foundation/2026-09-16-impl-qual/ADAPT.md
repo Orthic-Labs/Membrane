@@ -278,3 +278,95 @@ no cargo/rightkit was invoked per lane rules.
 - `adapt.live-status.v1` contract preserved for qual compatibility; the
   additive fields are extensions, not a contract bump.
 - No PR status claimed; no git mutations performed.
+
+<!-- reconcile:start -->
+
+## Reconciliation
+
+Material revision: `40a4d5910f839c3edfe18b611ff6cf957a1aa51c`. Exact source/consumer locators verified against this revision.
+
+| Capability | State | Exact source | Exact consumer | Residual |
+|---|---|---|---|---|
+| ADP-001 | DELIVERED | — | — | COMPLETE |
+| ADP-002 | DELIVERED | `engine/crates/cortex-core/src/transcript.rs` | — | COMPLETE |
+| ADP-003 | DELIVERED | — | — | COMPLETE |
+| ADP-004 | DELIVERED | — | — | COMPLETE |
+| ADP-005 | DELIVERED | — | — | COMPLETE |
+| ADP-006 | DELIVERED | — | — | COMPLETE |
+| ADP-007 | DELIVERED | — | — | COMPLETE |
+| ADP-008 | DELIVERED | — | — | COMPLETE |
+| ADP-009 | DELIVERED | — | — | COMPLETE |
+| ADP-010 | DELIVERED | — | — | COMPLETE |
+| ADP-013 | DELIVERED | — | — | COMPLETE |
+| ADP-014 | DELIVERED | — | — | COMPLETE |
+| ADP-017 | DELIVERED | — | — | COMPLETE |
+| ADP-018 | DELIVERED | — | — | COMPLETE |
+| ADP-021 | DELIVERED | `engine/crates/membrane-adapt/src/learner.rs:113-128` | — | COMPLETE |
+| ADP-026 | DELIVERED | — | — | COMPLETE |
+| ADP-027 | DELIVERED | — | — | COMPLETE |
+| ADP-028 | DELIVERED | — | — | COMPLETE |
+| ADP-029 | DELIVERED | `engine/crates/membrane-adapt/src/gates.rs:31-96`; `engine/crates/membrane-adapt/src/insights/sealed_issue.rs:329-348`; `engine/crates/membrane-runtime/src/store.rs:6712-6778,6789-6889`; `engine/crates/membrane-runtime/src/cli.rs:3183-3250`; `engine/crates/membrane-runtime/src/store.rs:8456` | `engine/crates/membrane-runtime/src/store.rs:2142` | COMPLETE |
+| ADP-031 | DELIVERED | `engine/crates/membrane-runtime/src/adapt_observations.rs` | — | COMPLETE |
+| ADP-032 | DELIVERED | `engine/crates/membrane-adapt/src/context_cost.rs:156-379,587-820`; `engine/crates/membrane-runtime/src/cli.rs:3356` | `engine/crates/membrane-runtime/src/cli.rs:3356` | COMPLETE |
+| ADP-033 | DELIVERED | — | — | COMPLETE |
+| ADP-034 | DELIVERED | `engine/crates/membrane-runtime/src/adapt_service.rs` | `engine/crates/membrane-runtime/src/adapt_admin_qualification.rs` | COMPLETE |
+| ADP-035 | DELIVERED | — | — | COMPLETE |
+| ADP-036 | DELIVERED | `engine/crates/membrane-runtime/src/adapt_effectiveness.rs` | — | COMPLETE |
+| ADP-038 | DELIVERED | — | — | COMPLETE |
+| ADP-040 | DELIVERED | `engine/crates/membrane-runtime/src/adapt_observations.rs` | — | COMPLETE |
+| ADP-042 | DELIVERED | `engine/crates/membrane-adapt/src/lineage.rs:275,308-312,413-422,445,501-512`; `engine/crates/membrane-adapt/src/cli_api.rs:165-177`; `engine/crates/membrane-runtime/src/cli.rs:2998` | `engine/crates/membrane-runtime/src/cli.rs:2998` | COMPLETE |
+| ADP-053 | DELIVERED | `engine/crates/membrane-runtime/src/adapt_efficiency.rs` | — | COMPLETE |
+| ADP-054 | DELIVERED | — | — | COMPLETE |
+| ADP-057 | DELIVERED | — | — | COMPLETE |
+| ADP-058 | DELIVERED | — | — | COMPLETE |
+| ADP-059 | DELIVERED | — | — | COMPLETE |
+| ADP-062 | DELIVERED | — | — | COMPLETE |
+| ADP-072 | DELIVERED | — | — | COMPLETE |
+| ADP-073 | DELIVERED | — | — | COMPLETE |
+| ADP-074 | DELIVERED | `engine/crates/membrane-runtime/src/adapt_service.rs` | `engine/crates/membrane-runtime/src/adapt_admin_qualification.rs` | COMPLETE |
+| ADP-075 | DELIVERED | `scripts/qualification/cases/adp-windows.mjs` | `engine/crates/membrane-runtime/src/adapt_admin_qualification.rs` | COMPLETE |
+
+## Focused verification
+
+| Capability targets | Focused command | Direct test evidence | Result | Run identity/time |
+|---|---|---|---|---|
+| ADP-001 | node --test scripts/qualification/cases/adp-windows.test.mjs | `ADP_001` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `transcript` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; adp-windows suite green, 0 fail (93 tests, 0 fail total) |
+| ADP-002 | node --test scripts/qualification/cases/adp-windows.test.mjs | `ADP_002` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `transcript` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; adp-windows suite green, 0 fail (93 tests, 0 fail total) |
+| ADP-003 | node --test scripts/qualification/cases/adp-windows.test.mjs | `ADP_003` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `adapt_admin_qualification` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; adp-windows suite green, 0 fail (93 tests, 0 fail total) |
+| ADP-004 | node --test scripts/qualification/cases/adp-windows.test.mjs | `ADP_004` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `adapt_admin_qualification` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; adp-windows suite green, 0 fail (93 tests, 0 fail total) |
+| ADP-005 | node --test scripts/qualification/cases/adp-windows.test.mjs | `ADP_005` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `adapt_admin_qualification` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; adp-windows suite green, 0 fail (93 tests, 0 fail total) |
+| ADP-006 | node --test scripts/qualification/cases/adp-windows.test.mjs | `ADP_006` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `adapt_admin_qualification` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; adp-windows suite green, 0 fail (93 tests, 0 fail total) |
+| ADP-007 | node --test scripts/qualification/cases/adp-windows.test.mjs | `ADP_007` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `adapt_admin_qualification` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; adp-windows suite green, 0 fail (93 tests, 0 fail total) |
+| ADP-008 | node --test scripts/qualification/cases/adp-windows.test.mjs | `ADP_008` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `adapt_admin_qualification` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; adp-windows suite green, 0 fail (93 tests, 0 fail total) |
+| ADP-009 | node --test scripts/qualification/cases/adp-windows.test.mjs | `ADP_009` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `adapt_admin_qualification` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; adp-windows suite green, 0 fail (93 tests, 0 fail total) |
+| ADP-010 | node --test scripts/qualification/cases/adp-windows.test.mjs | `ADP_010` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `adapt_admin_qualification` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; adp-windows suite green, 0 fail (93 tests, 0 fail total) |
+| ADP-013 | node --test scripts/qualification/cases/adp-windows.test.mjs | `ADP_013` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `adapt_admin_qualification` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; adp-windows suite green, 0 fail (93 tests, 0 fail total) |
+| ADP-014 | node --test scripts/qualification/cases/adp-windows.test.mjs | `ADP_014` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `adapt_admin_qualification` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; adp-windows suite green, 0 fail (93 tests, 0 fail total) |
+| ADP-017 | node --test scripts/qualification/cases/adp-windows.test.mjs | `ADP_017` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `adapt_admin_qualification` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; adp-windows suite green, 0 fail (93 tests, 0 fail total) |
+| ADP-018 | node --test scripts/qualification/cases/adp-windows.test.mjs | `ADP_018` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `adapt_admin_qualification` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; adp-windows suite green, 0 fail (93 tests, 0 fail total) |
+| ADP-021 | node --test scripts/qualification/cases/adp-windows.test.mjs | `ADP_021` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `LearnerFindingClass::honesty_limit` `HonestyLimitMismatch` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; adp-windows suite green, 0 fail (93 tests, 0 fail total) |
+| ADP-026 | node --test scripts/qualification/cases/adp-windows.test.mjs | `ADP_026` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `sealed_issue` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; adp-windows suite green, 0 fail (93 tests, 0 fail total) |
+| ADP-027 | node --test scripts/qualification/cases/adp-windows.test.mjs | `ADP_027` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `adapt_admin_qualification` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; adp-windows suite green, 0 fail (93 tests, 0 fail total) |
+| ADP-028 | node --test scripts/qualification/cases/adp-windows.test.mjs | `ADP_028` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `adapt_admin_qualification` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; adp-windows suite green, 0 fail (93 tests, 0 fail total) |
+| ADP-029 | node --test scripts/qualification/cases/adp-windows.test.mjs | `ADP_029` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `claims_reserved_adapt_authority` `sealed_issue` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; adp-windows suite green, 0 fail (93 tests, 0 fail total) |
+| ADP-031 | node --test scripts/qualification/cases/adp-windows.test.mjs | `ADP_031` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `adapt_observations` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; adp-windows suite green, 0 fail (93 tests, 0 fail total) |
+| ADP-032 | node --test scripts/qualification/cases/adp-windows.test.mjs | `ADP_032` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `context_cost` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; adp-windows suite green, 0 fail (93 tests, 0 fail total) |
+| ADP-033 | node --test scripts/qualification/cases/adp-windows.test.mjs | `ADP_033` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `regression_case_proposal` `Confirmed` `Reopened` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; adp-windows suite green, 0 fail (93 tests, 0 fail total) |
+| ADP-034 | node --test scripts/qualification/cases/adp-windows.test.mjs | `ADP_034` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `inspect_issues` `inspect_proposals` `membrane_knowledge_proposal` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; adp-windows suite green, 0 fail (93 tests, 0 fail total) |
+| ADP-035 | node --test scripts/qualification/cases/adp-windows.test.mjs | `ADP_035` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `run_adapt_behavioral_review` `AdaptLearnerProposalV1` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; adp-windows suite green, 0 fail (93 tests, 0 fail total) |
+| ADP-036 | node --test scripts/qualification/cases/adp-windows.test.mjs | `ADP_036` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `adapt_effectiveness` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; adp-windows suite green, 0 fail (93 tests, 0 fail total) |
+| ADP-038 | node --test scripts/qualification/cases/adp-windows.test.mjs | `ADP_038` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `adapt_admin_qualification` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; adp-windows suite green, 0 fail (93 tests, 0 fail total) |
+| ADP-040 | node --test scripts/qualification/cases/adp-windows.test.mjs | `ADP_040` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `h4_to_h6_exact_execution_episode_binding` `exact_loaded_exposure_binding` `adapt_observations` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; adp-windows suite green, 0 fail (93 tests, 0 fail total) |
+| ADP-042 | node --test scripts/qualification/cases/adp-windows.test.mjs | `ADP_042` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `adapt_admin_qualification` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; adp-windows suite green, 0 fail (93 tests, 0 fail total) |
+| ADP-053 | node --test scripts/qualification/cases/adp-windows.test.mjs | `ADP_053` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `Unavailable` `adapt_efficiency` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; adp-windows suite green, 0 fail (93 tests, 0 fail total) |
+| ADP-054 | node --test scripts/qualification/cases/adp-windows.test.mjs | `ADP_054` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `adapt_admin_qualification` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; adp-windows suite green, 0 fail (93 tests, 0 fail total) |
+| ADP-057 | node --test scripts/qualification/cases/adp-windows.test.mjs | `ADP_057` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `adapt_admin_qualification` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; adp-windows suite green, 0 fail (93 tests, 0 fail total) |
+| ADP-058 | node --test scripts/qualification/cases/adp-windows.test.mjs | `ADP_058` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `adapt_admin_qualification` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; adp-windows suite green, 0 fail (93 tests, 0 fail total) |
+| ADP-059 | node --test scripts/qualification/cases/adp-windows.test.mjs | `ADP_059` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `adapt_admin_qualification` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; adp-windows suite green, 0 fail (93 tests, 0 fail total) |
+| ADP-062 | node --test scripts/qualification/cases/adp-windows.test.mjs | `ADP_062` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `adapt_admin_qualification` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; adp-windows suite green, 0 fail (93 tests, 0 fail total) |
+| ADP-072 | node --test scripts/qualification/cases/adp-windows.test.mjs | `ADP_072` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `clarification` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; adp-windows suite green, 0 fail (93 tests, 0 fail total) |
+| ADP-073 | node --test scripts/qualification/cases/adp-windows.test.mjs | `ADP_073` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `ProposalStore` `proposal_state` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; adp-windows suite green, 0 fail (93 tests, 0 fail total) |
+| ADP-074 | node --test scripts/qualification/cases/adp-windows.test.mjs | `ADP_074` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `inspect_issues` `inspect_proposals` `adapt_service` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; adp-windows suite green, 0 fail (93 tests, 0 fail total) |
+| ADP-075 | node --test scripts/qualification/cases/adp-windows.test.mjs | `ADP_075` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `adapt_admin_qualification` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; adp-windows suite green, 0 fail (93 tests, 0 fail total) |
+
+<!-- reconcile:end -->

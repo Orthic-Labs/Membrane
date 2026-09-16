@@ -255,3 +255,39 @@ Next dependency: (a) owning lanes fix `hook_diagnostics.rs:198` /
 installed case row; (c) PR-2 repoints `native.skills`; (d)
 `pnpm run release:local:win:unsigned` then produces the installer-owned
 `current` root for `run_installed` + delivery evidence.
+
+<!-- reconcile:start -->
+
+## Reconciliation
+
+Material revision: `40a4d5910f839c3edfe18b611ff6cf957a1aa51c`. Exact source/consumer locators verified against this revision.
+
+| Capability | State | Exact source | Exact consumer | Residual |
+|---|---|---|---|---|
+| LDG-001 | DELIVERED | `engine/crates/membrane-runtime/src/ledger/doc_spine.rs`; `engine/crates/membrane-runtime/src/ledger/policy.rs`; `engine/crates/membrane-runtime/src/ledger/reconcile.rs`; `engine/crates/membrane-runtime/src/ledger/service.rs` | `engine/crates/membrane-runtime/src/ledger/qualification_core.rs` | COMPLETE |
+| LDG-002 | DELIVERED | `engine/crates/membrane-runtime/src/ledger/index.rs`; `engine/crates/membrane-runtime/src/ledger/outline.rs` | `engine/crates/membrane-runtime/src/ledger/outline.rs` | COMPLETE |
+| LDG-003 | DELIVERED | `engine/crates/membrane-runtime/src/ledger/index.rs`; `engine/crates/membrane-runtime/src/ledger/db.rs` | `engine/crates/membrane-runtime/src/ledger/db.rs` | COMPLETE |
+| LDG-004 | DELIVERED | `engine/crates/membrane-runtime/src/ledger/index.rs`; `engine/crates/membrane-runtime/src/ledger/outline.rs`; `engine/crates/membrane-runtime/src/ledger/doc_spine.rs` | `engine/crates/membrane-runtime/src/ledger/doc_spine.rs` | COMPLETE |
+| LDG-005 | DELIVERED | `engine/crates/membrane-runtime/src/ledger/resolve.rs:219-301`; `engine/crates/membrane-runtime/src/ledger/resolve.rs` | `engine/crates/membrane-runtime/src/ledger/resolve.rs` | COMPLETE |
+| LDG-006 | DELIVERED | `engine/crates/membrane-runtime/src/ledger/resolve.rs`; `engine/crates/membrane-runtime/src/ledger/outline.rs`; `engine/crates/membrane-runtime/src/ledger/service.rs` | `engine/crates/membrane-runtime/src/ledger/service.rs` | COMPLETE |
+| LDG-007 | DELIVERED | `engine/crates/membrane-runtime/src/ledger/index.rs:512-590`; `engine/crates/membrane-runtime/src/ledger/index.rs` | `engine/crates/membrane-runtime/src/ledger/index.rs` | COMPLETE |
+| LDG-008 | DELIVERED | `engine/crates/membrane-runtime/src/ledger/query.rs` | — | COMPLETE |
+| LDG-009 | DELIVERED | `engine/crates/membrane-runtime/src/ledger/index.rs` | — | COMPLETE |
+| LDG-010 | DELIVERED | `engine/crates/membrane-runtime/src/ledger/db.rs:50-95`; `engine/crates/membrane-runtime/src/ledger/index.rs:153-375` | `engine/crates/membrane-runtime/src/ledger/index.rs:153-375` | COMPLETE |
+| LDG-011 | DELIVERED | — | — | COMPLETE |
+| LDG-012 | DELIVERED | `engine/crates/membrane-runtime/src/ledger/index.rs`; `engine/crates/membrane-runtime/src/ledger/service.rs` | `engine/crates/membrane-runtime/src/ledger/service.rs` | COMPLETE |
+| LDG-013 | DELIVERED | `engine/crates/membrane-runtime/src/ledger/doc_spine.rs:203-227` | — | COMPLETE |
+| LDG-014 | DELIVERED | — | — | COMPLETE |
+| LDG-015 | DELIVERED | `engine/crates/membrane-runtime/src/ledger/link_projection.rs` | — | COMPLETE |
+| LDG-017 | DELIVERED | `engine/crates/membrane-runtime/src/ledger/doc_spine.rs` | `engine/crates/membrane-runtime/src/ledger/qualification_lifecycle.rs:202` | COMPLETE |
+| LDG-018 | DELIVERED | `engine/crates/membrane-runtime/src/ledger/doc_spine.rs` | — | COMPLETE |
+| LDG-019 | DELIVERED | `engine/crates/membrane-runtime/src/ledger/service.rs`; `engine/crates/membrane-runtime/src/ledger/erasure.rs` | `engine/crates/membrane-runtime/src/ledger/erasure.rs` | COMPLETE |
+| LDG-020 | DELIVERED | `engine/crates/membrane-runtime/src/ledger/doc_projection.rs:73-145` | — | COMPLETE |
+| LDG-024 | DELIVERED | `engine/crates/membrane-runtime/src/ledger/doc_spine.rs`; `engine/crates/membrane-runtime/src/ledger/db.rs` | `engine/crates/membrane-runtime/src/ledger/db.rs` | COMPLETE |
+| LDG-026 | DELIVERED | `engine/crates/membrane-runtime/src/ledger/identifier.rs`; `engine/crates/membrane-runtime/src/ledger/service.rs` | `engine/crates/membrane-runtime/src/ledger/service.rs` | COMPLETE |
+| LDG-028 | DELIVERED | `engine/crates/membrane-runtime/src/ledger/document_conversion.rs` | — | COMPLETE |
+| LDG-029 | DELIVERED | — | — | COMPLETE |
+| LDG-030 | DELIVERED | `engine/crates/membrane-runtime/src/ledger/query.rs` | — | COMPLETE |
+| LDG-031 | DELIVERED | `engine/crates/membrane-runtime/src/ledger/diagnostics.rs` | — | COMPLETE |
+
+<!-- reconcile:end -->

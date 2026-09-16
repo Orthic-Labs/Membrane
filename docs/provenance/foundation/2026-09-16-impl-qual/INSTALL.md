@@ -89,3 +89,41 @@ Tests:
 ## NEXT DEPENDENCY
 
 Managed CI run (RightKit `cargo` on GitHub Actions) to compile `activation.rs` and run Rust test rows, then the installed-qualification harness (`install-release.ps1`) on a Windows host to produce the live installed-boundary evidence every host atom still lacks.
+
+<!-- reconcile:start -->
+
+## Reconciliation
+
+Material revision: `40a4d5910f839c3edfe18b611ff6cf957a1aa51c`. Exact source/consumer locators verified against this revision.
+
+| Capability | State | Exact source | Exact consumer | Residual |
+|---|---|---|---|---|
+| MEM-018 | DELIVERED | `engine/crates/membrane-runtime/src/installation_manifest.rs:23-145`; `engine/crates/membrane-runtime/src/ledger/service.rs:515-516`; `engine/crates/membrane-runtime/src/serve.rs:2373-2388`; `engine/crates/membrane-runtime/src/installation_manifest.rs` | `engine/crates/membrane-runtime/src/installation_manifest.rs` | COMPLETE |
+| MEM-019 | DELIVERED | `engine/crates/cortex-store/src/installation_identity.rs:81`; `engine/crates/membrane-runtime/src/installation_manifest.rs:5,96-143`; `engine/crates/membrane-runtime/src/service.rs:1034-1035`; `engine/crates/cortex-store/src/installation_identity.rs` | `engine/crates/cortex/tests/installation_identity.rs` | COMPLETE |
+| MEM-020 | DELIVERED | `engine/crates/membrane/src/activation.rs:492`; `engine/crates/membrane/src/activation.rs:1953-2210` | `engine/crates/membrane/src/activation.rs:1953-2210` | COMPLETE |
+| MEM-021 | DELIVERED | — | — | COMPLETE |
+| MEM-045 | DELIVERED | `engine/crates/membrane/src/activation.rs:3303`; `engine/crates/membrane/src/activation.rs:146` | `engine/crates/membrane/src/activation.rs:146` | COMPLETE |
+| MEM-046 | DELIVERED | `engine/crates/membrane/src/activation.rs:3882` | — | COMPLETE |
+| MEM-047 | DELIVERED | `engine/crates/membrane/src/modes.rs:379,477-479`; `engine/crates/membrane-runtime/src/host_observation_ingress.rs:19-23` | `engine/crates/membrane-runtime/src/adapt_efficiency_qualification.rs:14-15` | COMPLETE |
+| MEM-048 | DELIVERED | `engine/crates/membrane/src/activation.rs` | — | COMPLETE |
+| MEM-057 | DELIVERED | — | — | COMPLETE |
+| MEM-058 | DELIVERED | — | — | COMPLETE |
+| MEM-059 | DELIVERED | — | — | COMPLETE |
+| MEM-060 | DELIVERED | `scripts/qualification/install-release.ps1` | — | COMPLETE |
+| MEM-067 | DELIVERED | `engine/crates/membrane/src/activation.rs:2391-2502`; `engine/crates/membrane-runtime/src/hook.rs`; `engine/crates/membrane-runtime/src/hook_diagnostics.rs` | `engine/crates/membrane-runtime/src/hook_diagnostics.rs` | COMPLETE |
+| MEM-069 | DELIVERED | `engine/crates/membrane/src/activation.rs:52,63,77,88`; `engine/crates/membrane/src/activation.rs:2719-2732` | `engine/crates/membrane/src/activation.rs:2719-2732` | COMPLETE |
+
+## Focused verification
+
+| Capability targets | Focused command | Direct test evidence | Result | Run identity/time |
+|---|---|---|---|---|
+| MEM-018 | node --test scripts/qualification/cases/mem-lifecycle-windows.test.mjs | `MEM_018` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `installation_id` `installation_manifest` `package-portable-windows` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; mem-lifecycle-windows suite green, 0 fail (93 tests, 0 fail total) |
+| MEM-019 | node --test scripts/qualification/cases/mem-lifecycle-windows.test.mjs | `MEM_019` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `installation_id` `with_identity_lock` `atomic_replace_prepared_if_fingerprint` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; mem-lifecycle-windows suite green, 0 fail (93 tests, 0 fail total) |
+| MEM-020 | node --test scripts/qualification/cases/mem-lifecycle-windows.test.mjs | `MEM_020` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `activate_internal` `ensure_isolated_user_path` `without_path_entry` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; mem-lifecycle-windows suite green, 0 fail (93 tests, 0 fail total) |
+| MEM-021 | node --test scripts/qualification/cases/mem-lifecycle-windows.test.mjs | `MEM_021` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `background_review` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; mem-lifecycle-windows suite green, 0 fail (93 tests, 0 fail total) |
+| MEM-057 | node --test scripts/qualification/cases/mem-lifecycle-windows.test.mjs | `MEM_057` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `install_failed` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; mem-lifecycle-windows suite green, 0 fail (93 tests, 0 fail total) |
+| MEM-058 | node --test scripts/qualification/cases/mem-lifecycle-windows.test.mjs | `MEM_058` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `install_failed` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; mem-lifecycle-windows suite green, 0 fail (93 tests, 0 fail total) |
+| MEM-059 | node --test scripts/qualification/cases/mem-lifecycle-windows.test.mjs | `MEM_059` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `background_review` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; mem-lifecycle-windows suite green, 0 fail (93 tests, 0 fail total) |
+| MEM-060 | node --test scripts/qualification/cases/mem-lifecycle-windows.test.mjs | `MEM_060` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `background_review` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; mem-lifecycle-windows suite green, 0 fail (93 tests, 0 fail total) |
+
+<!-- reconcile:end -->

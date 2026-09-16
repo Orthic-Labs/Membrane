@@ -149,3 +149,57 @@ projection; the Pull planner/route changes above are already in place.
   a second probe rather than the plan-time proof.
 - **PUL-019-style vocabulary dependency** (PULL-A lane): none of this
   lane's changes alter refusal/coverage vocabularies; no interaction.
+
+<!-- reconcile:start -->
+
+## Reconciliation
+
+Material revision: `40a4d5910f839c3edfe18b611ff6cf957a1aa51c`. Exact source/consumer locators verified against this revision.
+
+| Capability | State | Exact source | Exact consumer | Residual |
+|---|---|---|---|---|
+| PUL-027 | DELIVERED | `engine/crates/membrane-runtime/tests/push_residual_qualification.rs` | — | COMPLETE |
+| PUL-028 | DELIVERED | — | — | COMPLETE |
+| PUL-029 | DELIVERED | `engine/crates/membrane-runtime/tests/pull_post_merge_acceptance.rs` | `engine/crates/membrane-runtime/tests/pull_residual_qualification.rs` | COMPLETE |
+| PUL-030 | DELIVERED | — | — | COMPLETE |
+| PUL-031 | DELIVERED | — | — | COMPLETE |
+| PUL-032 | DELIVERED | — | — | COMPLETE |
+| PUL-033 | DELIVERED | `engine/crates/membrane-runtime/src/mcp_executor.rs:1777-1795` | — | COMPLETE |
+| PUL-035 | DELIVERED | `engine/crates/membrane-runtime/src/push/packet_selection.rs:61` | — | COMPLETE |
+| PUL-036 | DELIVERED | — | — | COMPLETE |
+| PUL-037 | DELIVERED | `engine/crates/membrane-runtime/tests/pull_acknowledgement.rs` | — | COMPLETE |
+| PUL-041 | DELIVERED | `engine/crates/membrane-runtime/src/mcp_executor.rs:1388-1443` | — | COMPLETE |
+| PUL-042 | DELIVERED | `engine/crates/membrane-runtime/src/pull/federation.rs:1646` | — | COMPLETE |
+| PUL-043 | DELIVERED | `engine/crates/membrane-runtime/src/serve.rs` | `engine/crates/membrane-runtime/tests/push_residual_qualification.rs` | COMPLETE |
+| PUL-046 | DELIVERED | `engine/crates/membrane-runtime/src/push/packet_selection.rs:84-99` | — | COMPLETE |
+| PUL-049 | DELIVERED | `engine/crates/membrane-runtime/tests/push_end_to_end.rs` | `engine/crates/membrane-runtime/tests/push_qualification.rs` | COMPLETE |
+| PUL-050 | DELIVERED | `engine/crates/membrane-protocol/src/federation.rs` | — | COMPLETE |
+| PUL-051 | DELIVERED | `engine/crates/membrane-runtime/src/hook_diagnostics.rs` | — | COMPLETE |
+| PUL-052 | DELIVERED | `engine/crates/membrane-runtime/src/push/packet_selection.rs:87-98` | — | COMPLETE |
+| PUL-053 | DELIVERED | — | — | COMPLETE |
+| PUL-054 | DELIVERED | — | — | COMPLETE |
+| PUL-055 | DELIVERED | `engine/crates/membrane-runtime/src/push/recovery.rs` | — | COMPLETE |
+| PUL-056 | DELIVERED | — | — | COMPLETE |
+| PUL-057 | DELIVERED | `engine/crates/membrane-runtime/src/push/packet_selection.rs:70-83` | — | COMPLETE |
+| PUL-058 | DELIVERED | `engine/crates/membrane-runtime/src/push/packet_selection.rs:105-107` | — | COMPLETE |
+| PUL-059 | DELIVERED | `engine/crates/membrane-runtime/src/push/recovery.rs` | — | COMPLETE |
+| PUL-060 | DELIVERED | `engine/crates/membrane-runtime/src/push/packet_selection.rs:41`; `engine/crates/membrane-runtime/src/push/recovery.rs` | `engine/crates/membrane-runtime/src/push/recovery.rs` | COMPLETE |
+
+## Focused verification
+
+| Capability targets | Focused command | Direct test evidence | Result | Run identity/time |
+|---|---|---|---|---|
+| PUL-027 | node --test scripts/qualification/cases/pul-windows.test.mjs | `PUL_027` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `select_packet_for_h8_with_recovery` `select_packet_for_token_budget` `select_packet_for_h8_with_recovery` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; pul-windows suite green, 0 fail (93 tests, 0 fail total) |
+| PUL-028 | node --test scripts/qualification/cases/pul-windows.test.mjs | `PUL_028` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `insert_budget_mode_fields` `budgetMode` `requestedBudgetMode` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; pul-windows suite green, 0 fail (93 tests, 0 fail total) |
+| PUL-029 | node --test scripts/qualification/cases/pul-windows.test.mjs | `PUL_029` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `post_fusion_publication_fence_until` `fence_packet_emission` `admitted_publication_grant_until` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; pul-windows suite green, 0 fail (93 tests, 0 fail total) |
+| PUL-030 | node --test scripts/qualification/cases/pul-windows.test.mjs | `PUL_030` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `fence_packet_emission` `NativeRouteError::PolicyChanged` `policy_changed` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; pul-windows suite green, 0 fail (93 tests, 0 fail total) |
+| PUL-031 | node --test scripts/qualification/cases/pul-windows.test.mjs | `PUL_031` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `fusionReceipt` `correctiveRetrieval` `publicationFence` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; pul-windows suite green, 0 fail (93 tests, 0 fail total) |
+| PUL-032 | node --test scripts/qualification/cases/pul-windows.test.mjs | `PUL_032` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `telemetry` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; pul-windows suite green, 0 fail (93 tests, 0 fail total) |
+| PUL-033 | node --test scripts/qualification/cases/pul-windows.test.mjs | `PUL_033` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `insufficientConfidence` `unchanged_context` `mcp_executor` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; pul-windows suite green, 0 fail (93 tests, 0 fail total) |
+| PUL-035 | node --test scripts/qualification/cases/pul-windows.test.mjs | `PUL_035` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `can_resolve` `consumer_resolver_unavailable` `packet_selection` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; pul-windows suite green, 0 fail (93 tests, 0 fail total) |
+| PUL-036 | node --test scripts/qualification/cases/pul-windows.test.mjs | `PUL_036` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `publication_grant_lookup` `post_fusion_publication_fence_until` `policy_changed` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; pul-windows suite green, 0 fail (93 tests, 0 fail total) |
+| PUL-037 | node --test scripts/qualification/cases/pul-windows.test.mjs | `PUL_037` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `suppressionReceipts` `delivery_state` `delivery_acknowledgement` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; pul-windows suite green, 0 fail (93 tests, 0 fail total) |
+| PUL-041 | node --test scripts/qualification/cases/pul-windows.test.mjs | `PUL_041` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `workspace_budget_shares` `requestId` `mcp_executor` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; pul-windows suite green, 0 fail (93 tests, 0 fail total) |
+| PUL-042 | node --test scripts/qualification/cases/pul-windows.test.mjs | `PUL_042` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `negotiated_consumer_resolvers` `consumer_resolvers` `envelope_from_ccs` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; pul-windows suite green, 0 fail (93 tests, 0 fail total) |
+
+<!-- reconcile:end -->

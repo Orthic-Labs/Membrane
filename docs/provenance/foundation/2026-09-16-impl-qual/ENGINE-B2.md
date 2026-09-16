@@ -60,3 +60,40 @@ Commands run (permitted set only — no direct Cargo, no rightkit, no git mutati
 3. **Proposal-queue drain consumer (MEM-053)** — `drain_background_proposals` exists and is cursor-safe (CLI `cli.rs:6584`), but nothing schedules it in the daemon/serve path; whether scheduled drain is Membrane-owned or Cortex-lifecycle-owned needs an owner decision. Transport-to-sink handoff itself is live.
 4. **Provider mid-call cancellation (MEM-062)** — execution is blocking and bounded (2s loopback timeout, request deadline), not interruptible mid-call; cancellation binds at admission/pre-execution boundaries. A provider-side cancellation check would require the provider interface to accept a token — interface lives in `background_review.rs` (owned) but loopback server semantics are cross-boundary.
 5. **MEM-070–074** — mechanisms verified present and bounded; all remain canon `UNKNOWN/STALE` for RELEASED qualification, and retirement requires PR-4 inventory sign-off. No unsupported Codex/Claude interception claim was made or found.
+
+<!-- reconcile:start -->
+
+## Reconciliation
+
+Material revision: `40a4d5910f839c3edfe18b611ff6cf957a1aa51c`. Exact source/consumer locators verified against this revision.
+
+| Capability | State | Exact source | Exact consumer | Residual |
+|---|---|---|---|---|
+| MEM-052 | DELIVERED | `engine/crates/membrane-protocol/src/background_review.rs`; `engine/crates/membrane-runtime/src/bin/membrane-daemon.rs` | `engine/crates/membrane-runtime/src/bin/membrane-daemon.rs` | COMPLETE |
+| MEM-053 | DELIVERED | `engine/crates/membrane-runtime/src/cli.rs:6584`; `engine/crates/membrane-runtime/src/background_review_input.rs`; `engine/crates/membrane-runtime/src/serve.rs` | `engine/crates/membrane-runtime/src/serve.rs` | COMPLETE |
+| MEM-061 | DELIVERED | — | — | COMPLETE |
+| MEM-062 | DELIVERED | — | — | COMPLETE |
+| MEM-063 | DELIVERED | — | — | COMPLETE |
+| MEM-064 | DELIVERED | — | — | COMPLETE |
+| MEM-065 | DELIVERED | — | — | COMPLETE |
+| MEM-066 | DELIVERED | — | — | COMPLETE |
+| MEM-070 | DELIVERED | `engine/crates/membrane-runtime/src/cli.rs:4344` | — | COMPLETE |
+| MEM-071 | DELIVERED | `engine/crates/membrane-mcp/src/tools.rs:21`; `engine/crates/membrane-runtime/src/mcp_executor.rs`; `engine/crates/membrane-mcp/src/host_push_tool_egress.rs` | `engine/crates/membrane-mcp/src/host_push_tool_egress.rs` | COMPLETE |
+| MEM-072 | DELIVERED | `engine/crates/membrane-runtime/src/cli.rs:4355` | — | COMPLETE |
+| MEM-073 | DELIVERED | — | — | COMPLETE |
+| MEM-074 | DELIVERED | `engine/crates/membrane-runtime/src/providers/child_process.rs:305` | — | COMPLETE |
+
+## Focused verification
+
+| Capability targets | Focused command | Direct test evidence | Result | Run identity/time |
+|---|---|---|---|---|
+| MEM-052 | node --test scripts/qualification/cases/semantic-producer-windows.test.mjs | `MEM_052` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `from_workspace_root` `from_config_path` `input_tokens` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; semantic-producer-windows suite green, 0 fail (93 tests, 0 fail total) |
+| MEM-053 | node --test scripts/qualification/cases/semantic-producer-windows.test.mjs | `MEM_053` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `publish_background_review_input` `load_background_semantic_input` `durable_reviewed_through_seq` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; semantic-producer-windows suite green, 0 fail (93 tests, 0 fail total) |
+| MEM-061 | node --test scripts/qualification/cases/mem-lifecycle-windows.test.mjs | `MEM_061` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `BackgroundReviewJobKindV1` `CortexMemoryCandidateExtraction` `job_kind` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; mem-lifecycle-windows suite green, 0 fail (93 tests, 0 fail total) |
+| MEM-062 | node --test scripts/qualification/cases/mem-lifecycle-windows.test.mjs | `MEM_062` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `cancel_all_locked` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; mem-lifecycle-windows suite green, 0 fail (93 tests, 0 fail total) |
+| MEM-063 | node --test scripts/qualification/cases/mem-lifecycle-windows.test.mjs | `MEM_063` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `attempts` `completed_jobs` `finish_with_completion` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; mem-lifecycle-windows suite green, 0 fail (93 tests, 0 fail total) |
+| MEM-064 | node --test scripts/qualification/cases/mem-lifecycle-windows.test.mjs | `MEM_064` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `min_elapsed_ms` `activity_threshold` `observe_idle` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; mem-lifecycle-windows suite green, 0 fail (93 tests, 0 fail total) |
+| MEM-065 | node --test scripts/qualification/cases/mem-lifecycle-windows.test.mjs | `MEM_065` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `budget_remaining` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; mem-lifecycle-windows suite green, 0 fail (93 tests, 0 fail total) |
+| MEM-066 | node --test scripts/qualification/cases/mem-lifecycle-windows.test.mjs | `MEM_066` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `observe_locked_with_turn_tokens` `persist_observations` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; mem-lifecycle-windows suite green, 0 fail (93 tests, 0 fail total) |
+
+<!-- reconcile:end -->

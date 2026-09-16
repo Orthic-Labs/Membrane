@@ -298,3 +298,91 @@ it — or, if PR-1 lands, supersede it by re-adding the fields.
 Next dependency: a permitted Rust build + `cargo test -p membrane-runtime`
 run, then an installed build so `qualification cortex CTX-043` and the
 registered `CTX_043` case can produce native/installed evidence.
+
+<!-- reconcile:start -->
+
+## Reconciliation
+
+Material revision: `40a4d5910f839c3edfe18b611ff6cf957a1aa51c`. Exact source/consumer locators verified against this revision.
+
+| Capability | State | Exact source | Exact consumer | Residual |
+|---|---|---|---|---|
+| CTX-001 | DELIVERED | `engine/crates/cortex-store/src/memdb.rs:2331` | `engine/crates/membrane-runtime/src/cortex_qualification_core.rs:78` | COMPLETE |
+| CTX-002 | DELIVERED | `engine/crates/membrane-runtime/src/cortex_lifecycle.rs:695` | — | COMPLETE |
+| CTX-003 | DELIVERED | `engine/crates/membrane-runtime/src/store.rs:9356` | — | COMPLETE |
+| CTX-004 | DELIVERED | `engine/crates/membrane-runtime/src/cortex_lifecycle.rs:1326-1356`; `engine/crates/cortex-store/src/memdb.rs` | `engine/crates/cortex-store/src/memdb.rs` | COMPLETE |
+| CTX-005 | DELIVERED | — | — | COMPLETE |
+| CTX-006 | DELIVERED | `engine/crates/membrane-runtime/src/store.rs:9848`; `engine/crates/membrane-runtime/src/store.rs:9470-9556` | `engine/crates/membrane-runtime/src/store.rs:9470-9556` | COMPLETE |
+| CTX-007 | DELIVERED | `engine/crates/membrane-runtime/src/store.rs:9643-9729` | — | COMPLETE |
+| CTX-008 | DELIVERED | `engine/crates/membrane-runtime/src/store.rs:4409` | — | COMPLETE |
+| CTX-009 | DELIVERED | `engine/crates/membrane-runtime/src/cortex_lifecycle.rs:1285-1289` | — | COMPLETE |
+| CTX-010 | DELIVERED | `engine/crates/membrane-runtime/src/cortex_lifecycle.rs:171-183` | — | COMPLETE |
+| CTX-011 | DELIVERED | — | — | COMPLETE |
+| CTX-012 | DELIVERED | — | — | COMPLETE |
+| CTX-013 | DELIVERED | — | — | COMPLETE |
+| CTX-014 | DELIVERED | `engine/crates/membrane-runtime/src/cortex_lifecycle.rs:1290-1334` | — | COMPLETE |
+| CTX-015 | DELIVERED | — | — | COMPLETE |
+| CTX-016 | DELIVERED | — | — | COMPLETE |
+| CTX-017 | DELIVERED | — | — | COMPLETE |
+| CTX-018 | DELIVERED | `engine/crates/membrane-runtime/src/cortex_qualification_lifecycle.rs:42` | — | COMPLETE |
+| CTX-019 | DELIVERED | — | — | COMPLETE |
+| CTX-020 | DELIVERED | — | — | COMPLETE |
+| CTX-021 | DELIVERED | `engine/crates/membrane-runtime/src/cortex_lifecycle.rs` | — | COMPLETE |
+| CTX-022 | DELIVERED | — | — | COMPLETE |
+| CTX-025 | DELIVERED | `engine/crates/membrane-runtime/src/store.rs:9989-10156`; `engine/crates/membrane-runtime/src/cortex_lifecycle.rs:413-447` | `engine/crates/membrane-runtime/src/cortex_lifecycle.rs:413-447` | COMPLETE |
+| CTX-026 | DELIVERED | `engine/crates/membrane-runtime/src/store.rs:10268-10295` | — | COMPLETE |
+| CTX-027 | DELIVERED | — | — | COMPLETE |
+| CTX-028 | DELIVERED | — | — | COMPLETE |
+| CTX-029 | DELIVERED | — | — | COMPLETE |
+| CTX-030 | DELIVERED | — | — | COMPLETE |
+| CTX-032 | DELIVERED | — | — | COMPLETE |
+| CTX-035 | DELIVERED | — | — | COMPLETE |
+| CTX-036 | DELIVERED | `engine/crates/membrane-runtime/src/store.rs:10304-10440` | — | COMPLETE |
+| CTX-037 | DELIVERED | — | — | COMPLETE |
+| CTX-038 | DELIVERED | — | — | COMPLETE |
+| CTX-040 | DELIVERED | — | — | COMPLETE |
+| CTX-041 | DELIVERED | — | — | COMPLETE |
+| CTX-043 | DELIVERED | `engine/crates/membrane-runtime/src/cortex_lifecycle.rs`; `engine/crates/membrane-runtime/src/store.rs` | `scripts/qualification/cases/ctx-windows.mjs` | COMPLETE |
+
+## Focused verification
+
+| Capability targets | Focused command | Direct test evidence | Result | Run identity/time |
+|---|---|---|---|---|
+| CTX-001 | node --test scripts/qualification/cases/ctx-windows.test.mjs | `CTX_001` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `LATEST_SCHEMA_VERSION` `ensure_memory_schema` `user_version` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; ctx-windows suite green, 0 fail (93 tests, 0 fail total) |
+| CTX-002 | node --test scripts/qualification/cases/ctx-windows.test.mjs | `CTX_002` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `PREGATE_PRODUCERS` `PREGATE_EPISTEMIC_CLASSES` `cortex_lifecycle` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; ctx-windows suite green, 0 fail (93 tests, 0 fail total) |
+| CTX-003 | node --test scripts/qualification/cases/ctx-windows.test.mjs | `CTX_003` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `try_admit_idempotent_observed` `Immediate` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; ctx-windows suite green, 0 fail (93 tests, 0 fail total) |
+| CTX-004 | node --test scripts/qualification/cases/ctx-windows.test.mjs | `CTX_004` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `authority` `influence_class` `sensitivity` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; ctx-windows suite green, 0 fail (93 tests, 0 fail total) |
+| CTX-005 | node --test scripts/qualification/cases/ctx-windows.test.mjs | `CTX_005` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `legacy_put_result` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; ctx-windows suite green, 0 fail (93 tests, 0 fail total) |
+| CTX-006 | node --test scripts/qualification/cases/ctx-windows.test.mjs | `CTX_006` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `admission_near_duplicate_scan` `Immediate` `UpdateMetadataOnly` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; ctx-windows suite green, 0 fail (93 tests, 0 fail total) |
+| CTX-007 | node --test scripts/qualification/cases/ctx-windows.test.mjs | `CTX_007` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `ConflictQuarantined` `memory_quarantine` `cortex_agent_memory_source_v1` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; ctx-windows suite green, 0 fail (93 tests, 0 fail total) |
+| CTX-008 | node --test scripts/qualification/cases/ctx-windows.test.mjs | `CTX_008` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `apply_lifecycle_input_on` `superseded` `superseded_by` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; ctx-windows suite green, 0 fail (93 tests, 0 fail total) |
+| CTX-009 | node --test scripts/qualification/cases/ctx-windows.test.mjs | `CTX_009` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `cortex_store::temporal` `resolve_memory` `cortex_lifecycle` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; ctx-windows suite green, 0 fail (93 tests, 0 fail total) |
+| CTX-010 | node --test scripts/qualification/cases/ctx-windows.test.mjs | `CTX_010` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `cortex_lifecycle_review_signals_v1` `lifecycle_reviews_due` `cortex_lifecycle` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; ctx-windows suite green, 0 fail (93 tests, 0 fail total) |
+| CTX-011 | node --test scripts/qualification/cases/ctx-windows.test.mjs | `CTX_011` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `cortex_fts5` `fts5_lexical_hits` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; ctx-windows suite green, 0 fail (93 tests, 0 fail total) |
+| CTX-012 | node --test scripts/qualification/cases/ctx-windows.test.mjs | `CTX_012` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `embedding` `embedding_q` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; ctx-windows suite green, 0 fail (93 tests, 0 fail total) |
+| CTX-013 | node --test scripts/qualification/cases/ctx-windows.test.mjs | `CTX_013` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `cortex_qualification_core` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; ctx-windows suite green, 0 fail (93 tests, 0 fail total) |
+| CTX-014 | node --test scripts/qualification/cases/ctx-windows.test.mjs | `CTX_014` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `resolve_memory` `raw_sha256` `cortex_lifecycle` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; ctx-windows suite green, 0 fail (93 tests, 0 fail total) |
+| CTX-015 | node --test scripts/qualification/cases/ctx-windows.test.mjs | `CTX_015` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `cortex_qualification_core` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; ctx-windows suite green, 0 fail (93 tests, 0 fail total) |
+| CTX-016 | node --test scripts/qualification/cases/ctx-windows.test.mjs | `CTX_016` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `cortex_qualification_core` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; ctx-windows suite green, 0 fail (93 tests, 0 fail total) |
+| CTX-017 | node --test scripts/qualification/cases/ctx-windows.test.mjs | `CTX_017` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `memory_relation` `supports` `contradicts` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; ctx-windows suite green, 0 fail (93 tests, 0 fail total) |
+| CTX-018 | node --test scripts/qualification/cases/ctx-windows.test.mjs | `CTX_018` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `checkpoint_control` `cortex_qualification_lifecycle` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; ctx-windows suite green, 0 fail (93 tests, 0 fail total) |
+| CTX-019 | node --test scripts/qualification/cases/ctx-windows.test.mjs | `CTX_019` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `promotion_control` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; ctx-windows suite green, 0 fail (93 tests, 0 fail total) |
+| CTX-020 | node --test scripts/qualification/cases/ctx-windows.test.mjs | `CTX_020` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `pending_review_control` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; ctx-windows suite green, 0 fail (93 tests, 0 fail total) |
+| CTX-021 | node --test scripts/qualification/cases/ctx-windows.test.mjs | `CTX_021` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `review_boundary_control` `cortex_lifecycle` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; ctx-windows suite green, 0 fail (93 tests, 0 fail total) |
+| CTX-022 | node --test scripts/qualification/cases/ctx-windows.test.mjs | `CTX_022` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `review_due_control` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; ctx-windows suite green, 0 fail (93 tests, 0 fail total) |
+| CTX-025 | node --test scripts/qualification/cases/ctx-windows.test.mjs | `CTX_025` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `hard_erase` `memories` `erase_agent_memory_sources_on` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; ctx-windows suite green, 0 fail (93 tests, 0 fail total) |
+| CTX-026 | node --test scripts/qualification/cases/ctx-windows.test.mjs | `CTX_026` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `backup_cortex` `agent_sources` `cortex_backup_digest` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; ctx-windows suite green, 0 fail (93 tests, 0 fail total) |
+| CTX-027 | node --test scripts/qualification/cases/ctx-windows.test.mjs | `CTX_027` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `export_control` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; ctx-windows suite green, 0 fail (93 tests, 0 fail total) |
+| CTX-028 | node --test scripts/qualification/cases/ctx-windows.test.mjs | `CTX_028` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `vault_control` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; ctx-windows suite green, 0 fail (93 tests, 0 fail total) |
+| CTX-029 | node --test scripts/qualification/cases/ctx-windows.test.mjs | `CTX_029` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `reindex_control` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; ctx-windows suite green, 0 fail (93 tests, 0 fail total) |
+| CTX-030 | node --test scripts/qualification/cases/ctx-windows.test.mjs | `CTX_030` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `projection_control` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; ctx-windows suite green, 0 fail (93 tests, 0 fail total) |
+| CTX-032 | node --test scripts/qualification/cases/ctx-windows.test.mjs | `CTX_032` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `metrics_control` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; ctx-windows suite green, 0 fail (93 tests, 0 fail total) |
+| CTX-035 | node --test scripts/qualification/cases/ctx-windows.test.mjs | `CTX_035` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `explain_control` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; ctx-windows suite green, 0 fail (93 tests, 0 fail total) |
+| CTX-036 | node --test scripts/qualification/cases/ctx-windows.test.mjs | `CTX_036` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `restore_cortex` `agent_sources` `Immediate` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; ctx-windows suite green, 0 fail (93 tests, 0 fail total) |
+| CTX-037 | node --test scripts/qualification/cases/ctx-windows.test.mjs | `CTX_037` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `import_control` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; ctx-windows suite green, 0 fail (93 tests, 0 fail total) |
+| CTX-038 | node --test scripts/qualification/cases/ctx-windows.test.mjs | `CTX_038` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `bounded_list_control` `lower_bound` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; ctx-windows suite green, 0 fail (93 tests, 0 fail total) |
+| CTX-040 | node --test scripts/qualification/cases/ctx-windows.test.mjs | `CTX_040` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `recipe_control` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; ctx-windows suite green, 0 fail (93 tests, 0 fail total) |
+| CTX-041 | node --test scripts/qualification/cases/ctx-windows.test.mjs | `CTX_041` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `suppression_control` `hard_erase` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; ctx-windows suite green, 0 fail (93 tests, 0 fail total) |
+| CTX-043 | node --test scripts/qualification/cases/ctx-windows.test.mjs | `CTX_043` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `memory_id` `push_source_control` `cortex_lifecycle` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; ctx-windows suite green, 0 fail (93 tests, 0 fail total) |
+
+<!-- reconcile:end -->

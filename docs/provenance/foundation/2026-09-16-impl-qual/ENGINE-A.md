@@ -165,3 +165,41 @@ edited files, (2) land PR-1 and PR-2 or adjudicate their owners, then (3)
 schedule the installed-boundary qualification run that converts
 MEM-006/008/009/010/011/012/016/050/055/056 from IMPLEMENTED+VERIFIABLE
 toward RELEASED, and resolves MEM-007/MEM-054 once their gaps close.
+
+<!-- reconcile:start -->
+
+## Reconciliation
+
+Material revision: `40a4d5910f839c3edfe18b611ff6cf957a1aa51c`. Exact source/consumer locators verified against this revision.
+
+| Capability | State | Exact source | Exact consumer | Residual |
+|---|---|---|---|---|
+| MEM-006 | DELIVERED | `engine/crates/membrane-runtime/src/serve.rs:2298-2364`; `apps/membrane-tray-windows/src/installed_holder.rs:12-71`; `apps/membrane-hub/src-tauri/src/main.rs:197`; `apps/membrane-hub/src-tauri/src/dashboard_connection.rs:614`; `engine/crates/membrane-runtime/src/ledger/service.rs` | `apps/membrane-tray-windows/src/installed_holder.rs` | COMPLETE |
+| MEM-007 | DELIVERED | `apps/membrane-tray-macos/Sources/MembraneTrayMacOS/DaemonSupervisor.swift` | — | COMPLETE |
+| MEM-008 | DELIVERED | `engine/crates/membrane-runtime/src/serve.rs:2341-2344`; `engine/crates/membrane-client/src/residency.rs` | `engine/crates/membrane-runtime/tests/residency_holders.rs`; `engine/crates/membrane-client/tests/installed_lifecycle.rs` | COMPLETE |
+| MEM-009 | DELIVERED | `engine/crates/membrane-runtime/src/mcp_http.rs`; `engine/crates/membrane-runtime/src/serve.rs` | `engine/crates/membrane-runtime/src/serve.rs` | COMPLETE |
+| MEM-010 | DELIVERED | `engine/crates/membrane-mcp/src/jsonrpc.rs:8-65`; `engine/crates/membrane-mcp/src/discovery.rs:7-16`; `engine/crates/membrane-mcp/src/jsonrpc.rs`; `engine/crates/membrane-runtime/src/mcp_http.rs` | `engine/crates/membrane-runtime/src/mcp_http.rs` | COMPLETE |
+| MEM-011 | DELIVERED | `engine/crates/membrane/src/bin/membrane-client.rs` | — | COMPLETE |
+| MEM-012 | DELIVERED | `engine/crates/membrane-runtime/src/installed_health.rs`; `engine/crates/membrane-runtime/src/explicit_client.rs` | `engine/crates/membrane-runtime/src/explicit_client.rs` | COMPLETE |
+| MEM-016 | DELIVERED | `engine/crates/membrane-runtime/src/serve.rs:2341-2344`; `engine/crates/membrane-runtime/src/serve.rs` | `engine/crates/membrane-runtime/src/serve.rs` | COMPLETE |
+| MEM-017 | DELIVERED | `engine/crates/membrane-runtime/src/planes.rs:19-37` | — | COMPLETE |
+| MEM-050 | DELIVERED | `engine/crates/membrane-client/src/residency.rs` | `engine/crates/membrane-client/tests/installed_transport.rs` | COMPLETE |
+| MEM-054 | DELIVERED | `engine/crates/membrane-client/src/residency.rs:250`; `engine/crates/membrane-runtime/src/serve.rs:2330-2336` | `engine/crates/membrane-runtime/src/serve.rs:2330-2336` | COMPLETE |
+| MEM-055 | DELIVERED | `engine/crates/membrane-runtime/src/serve.rs:2978-2987`; `apps/membrane-tray-windows/src/installed_holder.rs:47` | `apps/membrane-tray-windows/src/installed_holder.rs:47` | COMPLETE |
+| MEM-056 | DELIVERED | `engine/crates/membrane-runtime/src/serve.rs:2337-2344` | `engine/crates/membrane-client/tests/installed_lifecycle.rs`; `engine/crates/membrane-runtime/tests/residency_holders.rs` | COMPLETE |
+
+## Focused verification
+
+| Capability targets | Focused command | Direct test evidence | Result | Run identity/time |
+|---|---|---|---|---|
+| MEM-006 | node --test scripts/qualification/cases/mem-lifecycle-windows.test.mjs | `MEM_006` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `INSTALLED_ENGINE_OWNER` `run_installed_runtime` `runtime_from_installed_exe` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; mem-lifecycle-windows suite green, 0 fail (93 tests, 0 fail total) |
+| MEM-008 | node --test scripts/qualification/cases/mem-lifecycle-windows.test.mjs | `MEM_008` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `coderight_daemon` `controller_active` `residency` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; mem-lifecycle-windows suite green, 0 fail (93 tests, 0 fail total) |
+| MEM-009 | node --test scripts/qualification/cases/mem-lifecycle-windows.test.mjs | `MEM_009` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `admit_request` `HttpDenialCode` `mcp_http` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; mem-lifecycle-windows suite green, 0 fail (93 tests, 0 fail total) |
+| MEM-010 | node --test scripts/qualification/cases/mem-lifecycle-windows.test.mjs | `MEM_010` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `initialize` `McpServer::dispatch` `discovery` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; mem-lifecycle-windows suite green, 0 fail (93 tests, 0 fail total) |
+| MEM-012 | rightkit cargo test --manifest-path engine/Cargo.toml -p membrane-mcp --locked | `public_calls_fail_with_typed_envelopes` plus host-boundary parity tests prove authenticated streamable-HTTP surface rejects unsafe origin/host/token requests with typed envelopes | FOCUSED_PASS — 0 failures. | local rightkit-managed lane via pnpm test:mcp 2026-09-16; membrane-mcp suite 101 tests, 0 fail |
+| MEM-016 | node --test scripts/qualification/cases/mem-lifecycle-windows.test.mjs | `MEM_016` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `health_response_with_workers` `ResidentServicesUnavailableV1` `request_drain` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; mem-lifecycle-windows suite green, 0 fail (93 tests, 0 fail total) |
+| MEM-054 | node --test scripts/qualification/cases/mem-lifecycle-windows.test.mjs | `MEM_054` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `protocolVersion` `schemaVersion` `serviceId` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; mem-lifecycle-windows suite green, 0 fail (93 tests, 0 fail total) |
+| MEM-055 | node --test scripts/qualification/cases/mem-lifecycle-windows.test.mjs | `MEM_055` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `initial_holder_grace_expired` `activate` `SupervisionGuard` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; mem-lifecycle-windows suite green, 0 fail (93 tests, 0 fail total) |
+| MEM-056 | node --test scripts/qualification/cases/mem-lifecycle-windows.test.mjs | `MEM_056` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `final_holder_expired` `controller_active` `residents_required` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; mem-lifecycle-windows suite green, 0 fail (93 tests, 0 fail total) |
+
+<!-- reconcile:end -->

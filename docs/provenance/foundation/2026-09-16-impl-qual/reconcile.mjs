@@ -73,6 +73,12 @@ const STATUS_OVERRIDE = {
   "MEM-074": "DELIVERED-UNVERIFIED",
 };
 
+// Checker-pinned partial atoms: check-atomic-canons.mjs requires these to
+// remain PARTIAL (PUL-001 deterministic requirement detail, PUL-015 shadow
+// activation only, MEM-024 receipt/verdict resolution). The lane reports
+// overstate them; the canon must not.
+const GUARDED_PARTIAL = new Set(["PUL-001", "PUL-015", "MEM-024"]);
+
 // ---------------------------------------------------------------------------
 // Focused coverage: suites that EXECUTE per-atom cases (verified 93 pass / 0
 // fail on the run date). Resolve-only suites (ldg/mem-windows export
@@ -151,8 +157,8 @@ function citationCandidates(cite, lane) {
   const hits = basenameMap.get(cite.split("/").at(-1)) ?? [];
   const suffix = hits.filter((h) => cite.includes("/") && h.endsWith(`/${cite}`));
   const preferred = hits.filter((h) => lane.crates.some((c) => h.startsWith(c + "/")));
-  const ordered = [...suffix, ...preferred.filter((p) => !suffix.includes(p))];
-  candidates.push(...(ordered.length ? ordered : hits.length === 1 ? hits : []));
+  const ordered = [...suffix, ...preferred.filter((p) => !suffix.includes(p)), ...hits.filter((p) => !suffix.includes(p) && !preferred.includes(p))];
+  candidates.push(...ordered);
   return candidates;
 }
 function resolveCitation(cite, lane, span) {
@@ -348,7 +354,8 @@ for (const lane of LANES) {
         };
       }
     }
-    atomUpdates.set(atom, { implementation: "DELIVERED", focused, laneFile, source: srcText, consumer: conText });
+    const impl = GUARDED_PARTIAL.has(atom) ? "PARTIAL" : "DELIVERED";
+    atomUpdates.set(atom, { implementation: impl, focused, laneFile, source: srcText, consumer: conText });
     (laneAtoms.get(laneFile) ?? laneAtoms.set(laneFile, []).get(laneFile)).push(atom);
   }
 }
@@ -381,7 +388,7 @@ for (const [laneFile, atoms] of laneAtoms) {
     "| Capability | State | Exact source | Exact consumer | Residual |", "|---|---|---|---|---|"];
   for (const atom of [...atoms].sort()) {
     const u = atomUpdates.get(atom);
-    rec.push(`| ${atom} | DELIVERED | ${u.source} | ${u.consumer} | COMPLETE |`);
+    rec.push(`| ${atom} | ${u.implementation} | ${u.source} | ${u.consumer} | ${u.implementation === "DELIVERED" ? "COMPLETE" : "PARTIAL — checker-pinned residual detail pending"} |`);
   }
   const focusedAtoms = atoms.filter((a) => atomUpdates.get(a).focused);
   if (focusedAtoms.length) {
@@ -400,6 +407,41 @@ for (const laneFile of laneAtoms.keys()) execFileSync("git", ["add", "--", laneF
 const blobHash = (rel) => execFileSync("git", ["hash-object", path.join(ROOT, rel)], { cwd: ROOT, encoding: "utf8" }).trim();
 
 // ---------------------------------------------------------------------------
+// Stage 1b: comparison supersession receipt. Every upgraded COMMITTED atom whose
+// frozen comparison disposition is CURRENT_INCOMPLETE moves to UNRESOLVED —
+// the comparison predates this implementation slice. A fresh competitive pass
+// is required before any CURRENT_BEST claim.
+// ---------------------------------------------------------------------------
+const SUP_FILE = "docs/provenance/foundation/2026-09-16-impl-qual/comparison-supersession.md";
+const superseded = new Map(); // atom -> canon owner file
+for (const canonFile of new Set(LANES.map((l) => l.canon))) {
+  // Read HEAD so a prior generator run cannot mask rows it already flipped.
+  const headMd = execFileSync("git", ["show", `HEAD:docs/canon/${canonFile}`], { cwd: ROOT, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+  for (const r of parseRows(headMd.replace(/\r\n/g, "\n").split("\n"), CAP_H)) {
+    if (r.cells[3] === "COMMITTED" && r.cells[11] === "CURRENT_INCOMPLETE" && atomUpdates.has(r.cells[0])) {
+      superseded.set(r.cells[0], canonFile);
+    }
+  }
+}
+let supHash = null;
+if (superseded.size) {
+  const prevDispositions = new Map();
+  const out = ["# Comparison supersession — implementation slice", "",
+    `Revision: \`${REVISION}\`. The implementation slice delivered capability rows whose frozen competitive disposition was \`CURRENT_INCOMPLETE\`. Each disposition below is superseded to \`UNRESOLVED\`: the prior comparison measured a partial/missing implementation and no longer describes the delivered mechanism. A fresh competitive comparison is required before any \`CURRENT_BEST\` claim.`, "",
+    "| Atom | Scope | Competitive disposition | Best mechanism | Current evidence | Donor evidence | Gap / action |", "|---|---|---|---|---|---|---|"];
+  for (const atom of [...superseded.keys()].sort()) {
+    const u = atomUpdates.get(atom);
+    out.push(`| ${atom} | COMMITTED | UNRESOLVED | Delivered mechanism per lane evidence | ${u.laneFile} — delivered at ${REVISION} | D0 | Run fresh competitive comparison against delivered implementation. |`);
+    prevDispositions.set(atom, true);
+  }
+  out.push("");
+  writeFileSync(path.join(ROOT, SUP_FILE), out.join("\n"));
+  execFileSync("git", ["add", "--", SUP_FILE], { cwd: ROOT });
+  supHash = blobHash(SUP_FILE);
+  console.log(`superseded CURRENT_INCOMPLETE -> UNRESOLVED: ${superseded.size} atoms (${SUP_FILE})`);
+}
+
+// ---------------------------------------------------------------------------
 // Stage 2: rewrite canon capability + implementation-register rows.
 // ---------------------------------------------------------------------------
 for (const canonFile of new Set(LANES.map((l) => l.canon))) {
@@ -407,6 +449,13 @@ for (const canonFile of new Set(LANES.map((l) => l.canon))) {
   const lines = readFileSync(abs, "utf8").replace(/\r\n/g, "\n").split("\n");
   const caps = parseRows(lines, CAP_H);
   const impls = parseRows(lines, IMPL_H);
+  // Baseline from HEAD so a prior generator run cannot downgrade or erase
+  // focused-pass state already recorded there.
+  let prevCaps = new Map();
+  try {
+    const headMd = execFileSync("git", ["show", `HEAD:docs/canon/${canonFile}`], { cwd: ROOT, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+    for (const r of parseRows(headMd.replace(/\r\n/g, "\n").split("\n"), CAP_H)) prevCaps.set(r.cells[0], r.cells);
+  } catch { /* file new at HEAD */ }
   const rowByIndex = new Map();
   for (const r of [...caps, ...impls]) rowByIndex.set(r.index, r.cells);
   const dirty = new Set();
@@ -418,16 +467,33 @@ for (const canonFile of new Set(LANES.map((l) => l.canon))) {
     if (!u) continue;
     if (cap.cells[3] !== "COMMITTED") { skippedScope++; continue; }
     const hash = blobHash(u.laneFile);
-    cap.cells[5] = "DELIVERED";
-    cap.cells[6] = u.focused ? "FOCUSED_PASS" : "PENDING";
-    cap.cells[8] = "PUSHED";
-    cap.cells[9] = u.focused ? "RECONCILE_EVIDENCE" : "VERIFY";
-    cap.cells[10] = `Acceptance: ${atom}; Revision: ${REVISION}; Receipt: ${u.laneFile}@${hash}; Freshness: ${DATE}`;
+    const prev = prevCaps.get(atom);
+    const wasFocused = (prev ? prev[6] : cap.cells[6]) === "FOCUSED_PASS";
+    cap.cells[5] = u.implementation;
+    if (u.focused) cap.cells[6] = "FOCUSED_PASS";
+    else if (wasFocused) cap.cells[6] = "FOCUSED_PASS";
+    else cap.cells[6] = "PENDING";
+    const rank = { UNKNOWN: -1, LOCAL: 0, COMMITTED: 1, PUSHED: 2, RELEASED: 3 };
+    if ((rank[cap.cells[8]] ?? -1) < rank.PUSHED) cap.cells[8] = "PUSHED";
+    cap.cells[9] = u.focused || wasFocused ? "RECONCILE_EVIDENCE" : "VERIFY";
+    // CURRENT_INCOMPLETE is only valid while implementation is partial/missing;
+    // a delivered atom supersedes that comparison until a fresh one runs.
+    if (superseded.has(atom)) {
+      cap.cells[11] = "UNRESOLVED";
+      cap.cells[12] = `Receipt: ${SUP_FILE}@${supHash}; Atom: ${atom}; Compared: ${REVISION}`;
+    }
+    // Preserve the prior evidence receipt for rows whose FOCUSED_PASS was
+    // proven elsewhere — the new lane receipt carries no focused row for them.
+    if (!wasFocused || u.focused) {
+      cap.cells[10] = `Acceptance: ${atom}; Revision: ${REVISION}; Receipt: ${u.laneFile}@${hash}; Freshness: ${DATE}`;
+    } else if (prev) {
+      cap.cells[10] = prev[10];
+    }
     dirty.add(cap.index);
     upgraded++;
     for (const impl of impls) {
-      if (impl.cells[1].split(",").map((t) => t.trim()).includes(atom) && impl.cells[5] !== "DELIVERED") {
-        impl.cells[5] = "DELIVERED";
+      if (impl.cells[1].split(",").map((t) => t.trim()).includes(atom) && impl.cells[5] !== u.implementation) {
+        impl.cells[5] = u.implementation;
         dirty.add(impl.index);
       }
     }
