@@ -77,13 +77,13 @@ test("Windows release is signed, sealed & stays local", () => {
   assert.match(tauriConfig.app.security.csp, /object-src 'none'/);
   assert.doesNotMatch(tauriConfig.app.security.csp, /unsafe-(?:inline|eval)/);
   assert.match(nsisTemplate, /!define INSTALLIDENTITY "Membrane Hub"/);
-  assert.match(nsisTemplate, /CurrentVersion\\Run" "Membrane" .*membrane-client\.exe.* activate /);
+  assert.match(nsisTemplate, /CurrentVersion\\Run" "Membrane" '"\$INSTDIR\\current\\membrane-tray\.exe" --login-launch'/);
   assert.match(nsisTemplate, /DeleteRegValue HKCU .*CurrentVersion\\Run" "Membrane Tray"/);
   assert.match(nsisTemplate, /Function RunTray[\s\S]*RunAsUser "\$INSTDIR\\current\\membrane-tray\.exe"/);
   assert.doesNotMatch(nsisTemplate, /RunAsUser "\$INSTDIR\\\$\{MAINBINARYNAME\}\.exe"/);
   assert.match(nsisTemplate, /CreateShortcut .*\$INSTDIR\\current\\membrane-tray\.exe" "--open-dashboard"/);
   assert.match(nsisTemplate, /CheckIfAppIsRunning "membrane-tray\.exe"/);
-  assert.match(nsisTemplate, /CheckIfAppIsRunning "membrane-client\.exe"/);
+  assert.match(nsisTemplate, /CheckIfAppIsRunning "membrane\.exe"/);
   // Section Install lays versions/<v> down and points current; activation is the product's own command, never awaited by the installer.
   assert.doesNotMatch(nsisTemplate, /install\.ps1/);
   // The installer must not invoke powershell.exe at all — the runner's Windows
@@ -91,18 +91,21 @@ test("Windows release is signed, sealed & stays local", () => {
   assert.doesNotMatch(nsisTemplate, /powershell(\.exe)?/i);
   assert.doesNotMatch(nsisTemplate, /Expand-Archive/);
   assert.doesNotMatch(nsisTemplate, /CopyFiles|PLUGINSDIR\\release/);
-  assert.match(nsisTemplate, /SetOutPath "\$INSTDIR"\s*\n\s*ClearErrors\s*\n\s*\{\{#each resources_dirs\}\}/);
+  assert.match(nsisTemplate, /SetOutPath "\$INSTDIR"\s*\n\s*StrCpy \$2 0\s*\n\s*extract_retry:\s*\n\s*ClearErrors\s*\n\s*\{\{#each resources_dirs\}\}/);
   assert.match(nsisTemplate, /mklink \/J "\$INSTDIR\\\.current-next"/);
   assert.match(nsisTemplate, /Rename "\$INSTDIR\\\.current-next" "\$INSTDIR\\current"/);
   assert.doesNotMatch(nsisTemplate, /\$"/, 'NSIS escapes a quote as $\\"; $" is not an escape and breaks every ExecWait built with it');
-  assert.equal((nsisTemplate.match(/nsExec::ExecToStack[^\n]*membrane-client\.exe" activate --install-root/g) ?? []).length, 1);
-  assert.doesNotMatch(nsisTemplate, /ExecWait[^\n]*membrane-client\.exe" activate/);
+  // Install/activation control lives in the engine binary: the transport
+  // client (membrane-client.exe) owns no installer control and rejects these
+  // modes.
+  assert.equal((nsisTemplate.match(/nsExec::ExecToStack[^\n]*membrane\.exe" activate --bindings-only --install-root/g) ?? []).length, 1);
+  assert.doesNotMatch(nsisTemplate, /ExecWait[^\n]*" activate /);
   assert.doesNotMatch(nsisTemplate, /PLUGINSDIR\\release\\installer-release/);
   const installSection = nsisTemplate.slice(nsisTemplate.indexOf("\nSection Install"), nsisTemplate.indexOf("\nSectionEnd", nsisTemplate.indexOf("\nSection Install")));
   assert.equal((installSection.match(/ExecWait\b/g) ?? []).length, 1, "only the junction step waits on an external process");
   assert.match(nsisTemplate, /Abort "Membrane installation failed at \$InstallStep/);
   assert.doesNotMatch(nsisTemplate, /File "\$\{MAINBINARYSRCPATH\}"/);
-  assert.match(nsisTemplate, /membrane-client\.exe.*deactivate --install-root/);
+  assert.match(nsisTemplate, /membrane\.exe" deactivate --install-root/);
   assert.match(nsisTemplate, /Function RemoveRetiredRuntimeAt/);
   assert.match(nsisTemplate, /FindFirst \$0 \$1 "\$INSTDIR\\versions\\\*"/);
   assert.match(nsisTemplate, /Push "\$INSTDIR\\runtime\\blueprint"/);
@@ -174,7 +177,7 @@ test("Windows package creates raw EXE before signing, then bundles without rebui
 });
 
 test("installed Windows qualification binds package evidence & exercises native cutover lifecycle", () => {
-  for (const term of ["Get-AuthenticodeSignature", "ReleaseManifest", "Sbom", "Get-FileHash", "PreviousInstaller", "uninstall.exe", "/health", "tools/list", "msedgewebview2", "membrane native host", "cortex native host", "native-only steady-state", "WINDIR\\System32"]) assert.ok(qualification.toLowerCase().includes(term.toLowerCase()), term);
+  for (const term of ["Get-AuthenticodeSignature", "ReleaseManifest", "Sbom", "Get-FileHash", "PreviousInstaller", "uninstall.exe", "/health", "tools/list", "msedgewebview2", "membrane engine sidecar", "cortex native host", "native-only steady-state", "WINDIR\\System32"]) assert.ok(qualification.toLowerCase().includes(term.toLowerCase()), term);
   assert.match(qualification, /Invoke-Installer \$installerPath[\s\S]*Invoke-Installer \$previousPath[\s\S]*Invoke-Installer \$installerPath/);
   assert.doesNotMatch(qualification, /Invoke-WebRequest|curl|upload/i);
   const buildInputsJson = JSON.stringify(config.buildInputs);

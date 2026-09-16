@@ -14,6 +14,11 @@ use sha2::{Digest, Sha256};
 
 pub const SESSION_DOCUMENT_PROJECTION_SCHEMA_VERSION: u32 = 1;
 
+/// Reserved identity prefix for derived session documents. Registration
+/// mechanisms only ever issue `ledger.doc:` identities, so this prefix can
+/// never collide with a registered source artifact.
+pub const SESSION_DOCUMENT_ID_PREFIX: &str = "session-projection:";
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SessionProjectionSourceCursor {
@@ -108,6 +113,8 @@ pub enum SessionProjectionError {
     InvalidCursor,
     #[error("session projection source content hash is empty")]
     MissingSourceHash,
+    #[error("session projection may not attach to a registered source identity")]
+    RegisteredSource,
     #[error("ledger session projection: {0}")]
     Projection(String),
 }
@@ -228,7 +235,7 @@ impl SessionDocumentProjectionBuilder {
         let content_hash = sha256(&markdown);
         Ok(SessionDocumentProjectionV1 {
             schema_version: SESSION_DOCUMENT_PROJECTION_SCHEMA_VERSION,
-            document_id: format!("session-projection:{}", input.session_id),
+            document_id: format!("{SESSION_DOCUMENT_ID_PREFIX}{}", input.session_id),
             session_id: input.session_id.clone(),
             title,
             markdown,
@@ -266,12 +273,33 @@ impl SessionDocumentProjectionV1 {
 }
 
 /// Store generated Markdown through Ledger's existing hash-bound projection mechanism.
+///
+/// LDG-021/LDG-025 remain excluded, so indexing stays fail-closed. A derived
+/// session document may only ever write under the reserved
+/// `session-projection:` identity space and may never attach to a registered
+/// source artifact. Every recall and resolution lane joins
+/// `ledger_doc_artifacts`, so this write-side check is the boundary that keeps
+/// session projections non-recallable while the retired rows exist.
 pub fn index_session_projection(
     db: &LedgerDb,
     document: &SessionDocumentProjectionV1,
     source_revision: &str,
     index_generation: i64,
 ) -> Result<(), SessionProjectionError> {
+    if !document.document_id.starts_with(SESSION_DOCUMENT_ID_PREFIX) {
+        return Err(SessionProjectionError::RegisteredSource);
+    }
+    let registered: bool = db
+        .lock()
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM ledger_doc_artifacts WHERE doc_id=?1)",
+            [&document.document_id],
+            |row| row.get(0),
+        )
+        .map_err(|error| SessionProjectionError::Projection(error.to_string()))?;
+    if registered {
+        return Err(SessionProjectionError::RegisteredSource);
+    }
     let input = DocumentProjectionStoreInputV1 {
         parent_doc_id: document.document_id.clone(),
         source_content_hash: document.source_content_hash.clone(),

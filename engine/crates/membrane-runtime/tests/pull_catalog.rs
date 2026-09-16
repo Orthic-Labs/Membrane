@@ -1018,6 +1018,7 @@ fn frozen_fixture_p95_under_50ms_above_direct_admission() {
             trace_id_override: None,
             scope_grant_present: true,
             consumer_resolvers: Vec::new(),
+            reserved_lanes: None,
         };
         let t = std::time::Instant::now();
         let _ = cortex_core::planner::plan(&input).unwrap();

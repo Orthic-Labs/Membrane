@@ -340,7 +340,11 @@ pub enum ExecutionObservationKindV1 {
     CompletionAccepted,
     CompletionRejected,
     MembraneRetrieval,
+    /// Pull delivery/reduction facts carried under a retired-Push compat name.
+    /// Not a public `push` Cortex write; a versioned rename is deferred until
+    /// a consumer-facing change is acceptable.
     PushReduction,
+    /// Pull restore facts under the same retired-Push compat naming.
     PushRestore,
     EvaluatorOutcome,
 }

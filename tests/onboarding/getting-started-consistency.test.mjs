@@ -10,6 +10,10 @@ const read = (path) => readFileSync(join(root, path), "utf8");
 const doc = read("docs/product/getting-started.md");
 const mcp = JSON.parse(read("mcp.json"));
 const claudePlugin = JSON.parse(read(".claude-plugin/plugin.json"));
+const hooksManifest = JSON.parse(read("hooks/hooks.json"));
+const codexHooks = JSON.parse(read("hooks/codex-hooks.json"));
+const codexMcp = JSON.parse(read(".mcp.json"));
+const codexPlugin = JSON.parse(read(".codex-plugin/plugin.json"));
 const tools = read("engine/crates/membrane-mcp/src/tools.rs");
 const hub = read("engine/crates/membrane-protocol/src/hub.rs");
 const product = read("docs/product/README.md");
@@ -29,9 +33,11 @@ test("Claude projection is installed-path bound & ships hooks", () => {
   assert.equal(server?.type, "http");
   assert.equal(server?.url, "http://127.0.0.1:47851/mcp");
   assert.equal(server?.headers?.Authorization, "Bearer ${MEMBRANE_BEARER_TOKEN}");
+  // The plugin hook surface lives in hooks/hooks.json (Claude auto-loads it
+  // from the plugin root; inline plugin.json hooks would double-register).
   const hookEvents = ["SessionStart", "UserPromptSubmit", "PreCompact", "PostCompact", "PreToolUse", "PostToolUse", "PostToolUseFailure", "Stop", "TaskCompleted", "SessionEnd"];
   for (const event of hookEvents) {
-    const hooks = claudePlugin.hooks?.[event];
+    const hooks = hooksManifest.hooks?.[event];
     assert.ok(Array.isArray(hooks) && hooks.length > 0, event);
     const command = hooks[0].hooks?.[0]?.command;
     assert.equal(
@@ -41,6 +47,26 @@ test("Claude projection is installed-path bound & ships hooks", () => {
     );
     assert.doesNotMatch(command, /D:[\\/]Claude|node(?:\.exe)?|node_modules|\.mjs|(?:^|[\\/])(?:dist|target)(?:[\\/]|$)|python(?:\.exe)?/i);
   }
+});
+
+test("Codex projection uses verified bearer env binding & Codex event set", () => {
+  // `.mcp.json` is the Codex plugin MCP declaration; the verified bearer
+  // field is `bearerTokenEnvVar`, and no literal token may appear.
+  assert.equal(codexMcp.mcpServers?.membrane?.url, "http://127.0.0.1:47851/mcp");
+  assert.equal(codexMcp.mcpServers?.membrane?.bearerTokenEnvVar, "MEMBRANE_BEARER_TOKEN");
+  assert.equal(codexPlugin.mcpServers, "./.mcp.json");
+  assert.equal(codexPlugin.hooks, "./hooks/codex-hooks.json");
+  const codexEvents = ["SessionStart", "UserPromptSubmit", "PreCompact", "PostCompact", "PreToolUse", "PostToolUse", "Stop", "SessionEnd"];
+  for (const event of codexEvents) {
+    const hooks = codexHooks.hooks?.[event];
+    assert.ok(Array.isArray(hooks) && hooks.length > 0, event);
+    const command = hooks[0].hooks?.[0]?.command;
+    // Codex substitutes CLAUDE_PLUGIN_ROOT for plugin hooks (compat).
+    assert.equal(command, '"${CLAUDE_PLUGIN_ROOT}/membrane-client.exe" hook', event);
+  }
+  // Host event sets only carry events the host supports.
+  assert.ok(!codexHooks.hooks?.PostToolUseFailure, "Codex lacks PostToolUseFailure");
+  assert.ok(!codexHooks.hooks?.TaskCompleted, "Codex lacks TaskCompleted");
 });
 
 test("quickstart states native Windows runtime authority", () => {

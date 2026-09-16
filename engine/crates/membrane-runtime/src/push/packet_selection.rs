@@ -1,7 +1,7 @@
 //! Materialization and measurement under one planner-owned capacity observation.
 use cortex_core::planner::{BlockV1, ContextPacketV1};
 use membrane_protocol::host_observation::RemainingContextCeilingV1;
-use membrane_protocol::push::{PacketReductionPlanV1,PacketReductionRepresentationV1,PacketReductionSelectionReceiptV1,PACKET_REDUCTION_SELECTION_RECEIPT_SCHEMA_VERSION};
+use membrane_protocol::push::{PacketReductionPlanV1,PacketReductionRepresentationV1,PacketReductionSelectionError,PacketReductionSelectionReceiptV1,PACKET_REDUCTION_SELECTION_RECEIPT_SCHEMA_VERSION};
 use serde_json::Value;
 use std::path::Path;
 use super::prep::{PushPolicy,is_code_ext,is_structured_text};
@@ -157,6 +157,50 @@ pub fn select_packet_for_h8_with_recovery(packet: &ContextPacketV1, ceiling: &Re
         schema_version:PACKET_REDUCTION_SELECTION_RECEIPT_SCHEMA_VERSION,
         plan_ref:selected.parent_ref.clone(), ceiling_id:ceiling.ceiling_id.clone(), session_id:ceiling.session_id.clone(),
         selected_representation_id:selected.id.clone(), selected_tokens:selected.tokens, remaining_tokens,
+        estimator_basis:plan.estimator_basis.clone(), decision:"selected".into(),
+    };
+    Ok(PacketReductionSelectionV1 { plan, selected_representation:selected, selection_receipt:receipt })
+}
+
+/// Bounded-response selection (implementation-contract §"Pull budget
+/// contract", PUL-050/051): the same measured full/reduced/floor ladder and
+/// protected-item invariants as `select_packet_for_h8_with_recovery`, but the
+/// capacity bound is the caller's declared response budget in
+/// `o200k_base/1` tokens rather than a host observation. No host identity is
+/// invented — the receipt names the declared budget instead of a ceiling
+/// identity. A budget below the minimum viable representation is the typed
+/// `NoRepresentationFits` refusal: never a partial, truncated, or
+/// protected-evidence-dropping emission.
+pub fn select_packet_for_token_budget(packet: &ContextPacketV1, budget_tokens: u64,
+    policy: &PushPolicy, recovery: Option<&RecoveryContext<'_>>)
+    -> Result<PacketReductionSelectionV1, PacketReductionRequestError> {
+    if budget_tokens == 0 {
+        return Err(PacketReductionRequestError::Selection(
+            PacketReductionSelectionError::NoRepresentationFits {
+                remaining_tokens: 0, minimum_viable_tokens: u64::MAX }));
+    }
+    let basis = membrane_protocol::host_observation::EstimatorBasisV1::new("o200k_base", "1");
+    let plan = build_with_recovery(packet, basis, policy, recovery)?;
+    let mut selected: Option<&PacketReductionRepresentationV1> = None;
+    for representation in &plan.representations {
+        if representation.tokens <= budget_tokens
+            && selected.as_ref().map_or(true, |current| representation.tokens > current.tokens)
+        {
+            selected = Some(representation);
+        }
+    }
+    let selected = selected
+        .ok_or(PacketReductionSelectionError::NoRepresentationFits {
+            remaining_tokens: budget_tokens,
+            minimum_viable_tokens: plan.minimum_viable_tokens })
+        .map_err(PacketReductionRequestError::Selection)?
+        .clone();
+    let receipt = PacketReductionSelectionReceiptV1 {
+        schema_version:PACKET_REDUCTION_SELECTION_RECEIPT_SCHEMA_VERSION,
+        plan_ref:selected.parent_ref.clone(), ceiling_id:format!("budget://declared/{budget_tokens}"),
+        session_id:packet.trace_id.clone(),
+        selected_representation_id:selected.id.clone(), selected_tokens:selected.tokens,
+        remaining_tokens:budget_tokens.saturating_sub(selected.tokens),
         estimator_basis:plan.estimator_basis.clone(), decision:"selected".into(),
     };
     Ok(PacketReductionSelectionV1 { plan, selected_representation:selected, selection_receipt:receipt })

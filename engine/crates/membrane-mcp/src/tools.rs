@@ -77,6 +77,11 @@ fn schema(name: &str) -> Value {
         return value;
     }
     if name == "push" {
+        // Durable-memory write only (MEM-068): every advertised field is one
+        // the executor honors. `keywords`/`lifecycle` were dropped from the
+        // schema because `agent_memory_push` accepts neither — advertising
+        // them silently discarded agent intent while `additionalProperties:
+        // false` now returns a typed memory_envelope_invalid instead.
         return json!({
             "type":"object",
             "required":["repository","caller","requestId","body"],
@@ -86,9 +91,7 @@ fn schema(name: &str) -> Value {
                 "requestId":{"type":"string","minLength":1,"maxLength":256},
                 "callerId":{"type":"string","minLength":1,"maxLength":256},
                 "taskGrantLevel":{"type":"string","enum":["read-only","write-proposed","write-trusted","admin"]},
-                "body":{"type":"string","minLength":1,"maxLength":8388608,"description":"Exact UTF-8 body stored as immutable Cortex source bytes."},
-                "keywords":{"type":"array","items":{"type":"string","minLength":1,"maxLength":256},"maxItems":64,"uniqueItems":true},
-                "lifecycle":{"type":"object"}
+                "body":{"type":"string","minLength":1,"maxLength":8388608,"description":"Exact UTF-8 body stored as immutable Cortex source bytes."}
             },
             "additionalProperties":false
         });
@@ -108,19 +111,19 @@ fn schema(name: &str) -> Value {
     }
     let (required, mut properties) = match name {
         "membrane_context" => (
-            // The runtime refuses every request without remainingContextCeiling
-            // (RequestTimeH8Error::Missing), so the tool must advertise it.
-            // Leaving it undeclared made the one entry tool impossible to call
-            // correctly from its own schema.
+            // Pull budget contract (PUL-050): `remainingContextCeiling` is
+            // required-by-contract under host_fit and optional under
+            // bounded_response — it is no longer in `required` because the
+            // declared mode, not the schema, decides. A supplied-but-invalid
+            // H8 still refuses rather than being dropped.
             vec![
                 "task",
                 "taskId",
                 "sessionId",
                 "repository",
                 "caller",
-                "remainingContextCeiling",
             ],
-            json!({"task":{"type":"string","minLength":1,"pattern":"\\S"},"taskId":{"type":"string","minLength":1,"description":"Stable task identity; distinct from task prose"},"sessionId":{"type":"string","minLength":1,"description":"Stable host session identity; distinct from caller.scopeId"},"requestId":{"type":"string","minLength":1},"generation":{"type":"string","minLength":1},"repository":{"type":"string"},"caller":caller(),"budget":{"type":"integer","minimum":1,"description":"Legacy native budget units (1024 tokens each); prefer budgetTokens"},"budgetTokens":{"type":"integer","minimum":1,"description":"Explicit final Pull attention ceiling in tokens"},"scope":{"type":"string","enum":["repo","workspace"]},"workspaceTargets":{"type":"array","description":"Optional repository-id subset for workspace scope. Omit to use the caller plus all explicitly granted child repositories.","items":{"type":"string","minLength":1},"maxItems":32,"uniqueItems":true},"deadlineMs":{"type":"integer","minimum":1},"scopeGrantId":{"type":"string","minLength":1},"anchors":{"type":"array","items":{"type":"string","minLength":1},"maxItems":64},"refresh":{"type":"boolean"},"consumerCapabilities":{"type":"object","description":"Negotiated capabilities of the consuming host. Resolver-only representations are eligible only when their resolver is listed here.","properties":{"resolvers":{"type":"array","items":{"type":"string","enum":["membrane_source_read","membrane_memory_read"]},"maxItems":32,"uniqueItems":true},"retainsDeliveredEvidence":{"type":"boolean"}},"additionalProperties":false},"sufficiencyContract":{"type":"object","description":"Optional planner-authored SufficiencyContractV1 (membrane-sufficiency-v1); transported verbatim to federate, never derived from task prose"},"remainingContextCeiling":remaining_context_ceiling(),"pushResolverToken":{"type":"string","minLength":64,"maxLength":64}}),
+            json!({"task":{"type":"string","minLength":1,"pattern":"\\S"},"taskId":{"type":"string","minLength":1,"description":"Stable task identity; distinct from task prose"},"sessionId":{"type":"string","minLength":1,"description":"Stable host session identity; distinct from caller.scopeId"},"requestId":{"type":"string","minLength":1},"generation":{"type":"string","minLength":1},"repository":{"type":"string"},"caller":caller(),"budget":{"type":"integer","minimum":1,"description":"Legacy native budget units (1024 tokens each); prefer budgetTokens"},"budgetTokens":{"type":"integer","minimum":1,"description":"Explicit final Pull attention ceiling in tokens"},"budgetMode":{"type":"string","enum":["bounded_response","host_fit"],"description":"Response budget contract. bounded_response fits the emitted result under responseBudget without requiring host capacity; host_fit requires a validated remainingContextCeiling and fits under it. Absent a declaration, a supplied H8 means host_fit and its absence means bounded_response."},"responseBudget":{"type":"integer","minimum":1,"description":"Declared response budget in o200k_base/1 tokens for bounded_response"},"responseBudgetTokens":{"type":"integer","minimum":1,"description":"Explicit-token spelling of responseBudget"},"scope":{"type":"string","enum":["repo","workspace"]},"workspaceTargets":{"type":"array","description":"Optional repository-id subset for workspace scope. Omit to use the caller plus all explicitly granted child repositories.","items":{"type":"string","minLength":1},"maxItems":32,"uniqueItems":true},"deadlineMs":{"type":"integer","minimum":1},"scopeGrantId":{"type":"string","minLength":1},"anchors":{"type":"array","items":{"type":"string","minLength":1},"maxItems":64},"refresh":{"type":"boolean"},"consumerCapabilities":{"type":"object","description":"Negotiated capabilities of the consuming host. Resolver-only representations are eligible only when their resolver is listed here.","properties":{"resolvers":{"type":"array","items":{"type":"string","enum":["membrane_source_read","membrane_memory_read"]},"maxItems":32,"uniqueItems":true},"retainsDeliveredEvidence":{"type":"boolean"}},"additionalProperties":false},"sufficiencyContract":{"type":"object","description":"Optional planner-authored SufficiencyContractV1 (membrane-sufficiency-v1); transported verbatim to federate, never derived from task prose"},"remainingContextCeiling":remaining_context_ceiling(),"pushResolverToken":{"type":"string","minLength":64,"maxLength":64}}),
         ),
         "membrane_source_read" => (
             vec![
@@ -421,6 +424,35 @@ mod tool_result_tests {
             "taskGrantLevel": "write-proposed"
         });
         validate_arguments("push", &arguments).expect("declared task grant reaches executor");
+    }
+
+    #[test]
+    fn public_push_rejects_fields_the_executor_does_not_honor() {
+        // MEM-068: a durable-memory write advertises exactly the fields the
+        // Cortex admission route consumes. A non-memory destination field or
+        // a silently-dropped hint (keywords/lifecycle) fails closed instead
+        // of being accepted and discarded.
+        let base = json!({
+            "repository": "repo",
+            "caller": {"root": "C:/repo", "repositoryId": "repo", "scopeId": "scope"},
+            "requestId": "request",
+            "body": "durable memory"
+        });
+        for extra in [
+            json!({"destination": "scratchpad"}),
+            json!({"keywords": ["stale"]}),
+            json!({"lifecycle": {"class": "pinned"}}),
+        ] {
+            let mut arguments = base.as_object().unwrap().clone();
+            for (key, value) in extra.as_object().unwrap() {
+                arguments.insert(key.clone(), value.clone());
+            }
+            assert!(
+                validate_arguments("push", &Value::Object(arguments)).is_err(),
+                "push accepted executor-unsupported field {extra}"
+            );
+        }
+        validate_arguments("push", &base).expect("minimal push arguments still validate");
     }
 }
 

@@ -91,6 +91,7 @@ const pluginContract = assemblePortableCore({
   outputDir: portableCore,
   pluginManifestPath: join(repo, "plugin.json"),
   mcpManifestPath: join(repo, "mcp.json"),
+  hooksManifestPath: join(repo, "hooks", "hooks.json"),
   skills: [{ id: "membrane", visibility: "public", sourceRoot: repo, sourceDir: join(repo, "skills", "membrane") }],
   clientProjections: CLIENT_PROJECTION_KINDS,
 });
@@ -100,6 +101,15 @@ for (const entry of readdirSync(portableCore)) cpSync(join(portableCore, entry),
 for (const entry of [".claude-plugin", ".codex-plugin", ".antigravity-plugin"]) cpSync(join(repo, entry), join(payload, entry), { recursive: true });
 mkdirSync(join(payload, ".agents", "skills"), { recursive: true });
 cpSync(join(repo, "skills", "membrane"), join(payload, ".agents", "skills", "membrane"), { recursive: true });
+mkdirSync(join(payload, ".agents", "plugins"), { recursive: true });
+cpSync(join(repo, ".agents", "plugins", "marketplace.json"), join(payload, ".agents", "plugins", "marketplace.json"));
+// Codex reads the plugin root `.mcp.json` (the portable-core copy carries the
+// generic Claude-shape alias). Overlay it with the Codex manifest, whose
+// `bearerTokenEnvVar` field is the verified bearer binding, and with the
+// Codex-scoped hook event set (the shared hooks/hooks.json keeps the Claude
+// event superset; Codex resolves ${CLAUDE_PLUGIN_ROOT} for compatibility).
+cpSync(join(repo, ".mcp.json"), join(payload, ".mcp.json"));
+cpSync(join(repo, "hooks", "codex-hooks.json"), join(payload, "hooks", "codex-hooks.json"));
 mkdirSync(join(payload, ".antigravity-plugin", "skills"), { recursive: true });
 cpSync(join(repo, "skills", "membrane"), join(payload, ".antigravity-plugin", "skills", "membrane"), { recursive: true });
 cpSync(join(repo, "LICENSE"), join(payload, "LICENSE"));
@@ -113,6 +123,58 @@ for (const manifestName of ["plugin.json", ".claude-plugin/plugin.json", ".codex
   const manifestJson = JSON.parse(readFileSync(manifestPath, "utf8"));
   manifestJson.version = pkg.version;
   writeFileSync(manifestPath, `${JSON.stringify(manifestJson, null, 2)}\n`);
+}
+// Post-overlay/post-stamp closure: every host-facing artifact must exist in
+// the exact payload tree and agree on identity, transport, and hook target
+// before the payload can be called a release candidate. This runs after all
+// overlays so a stale descriptor or missing hook file cannot ship silently.
+{
+  const required = [
+    "plugin.json", "mcp.json", ".mcp.json", "mcp_config.json",
+    "hooks/hooks.json", "hooks/codex-hooks.json",
+    ".claude-plugin/plugin.json", ".claude-plugin/marketplace.json",
+    ".codex-plugin/plugin.json",
+    ".agents/plugins/marketplace.json", ".agents/skills/membrane/SKILL.md",
+    ".antigravity-plugin/plugin.json", ".antigravity-plugin/mcp_config.json",
+  ];
+  for (const relative of required) {
+    const path = join(payload, relative);
+    if (!existsSync(path)) throw new Error(`payload plugin surface missing: ${relative}`);
+    JSON.parse(readFileSync(path, "utf8"));
+  }
+  for (const manifestName of ["plugin.json", ".claude-plugin/plugin.json", ".codex-plugin/plugin.json", ".antigravity-plugin/plugin.json"]) {
+    const stamped = JSON.parse(readFileSync(join(payload, manifestName), "utf8"));
+    if (stamped.version !== pkg.version) {
+      throw new Error(`${manifestName} version ${stamped.version} != release ${pkg.version}`);
+    }
+  }
+  // Hooks must invoke the installed client transport, never the engine binary.
+  for (const hooksName of ["hooks/hooks.json", "hooks/codex-hooks.json"]) {
+    const hooksJson = readFileSync(join(payload, hooksName), "utf8");
+    if (!hooksJson.includes("membrane-client")) {
+      throw new Error(`${hooksName} does not invoke membrane-client`);
+    }
+    if (/membrane\.exe/.test(hooksJson)) {
+      throw new Error(`${hooksName} still invokes the engine binary`);
+    }
+  }
+  // Codex plugin MCP binding must use the verified bearer env field and the
+  // loopback listener; no literal token may appear in any manifest.
+  const codexMcp = JSON.parse(readFileSync(join(payload, ".mcp.json"), "utf8"));
+  if (codexMcp.mcpServers?.membrane?.bearerTokenEnvVar !== "MEMBRANE_BEARER_TOKEN") {
+    throw new Error("payload .mcp.json lacks bearerTokenEnvVar binding");
+  }
+  if (codexMcp.mcpServers?.membrane?.url !== "http://127.0.0.1:47851/mcp") {
+    throw new Error("payload .mcp.json URL drifted from the installed listener");
+  }
+  const claudePlugin = JSON.parse(readFileSync(join(payload, ".claude-plugin", "plugin.json"), "utf8"));
+  if (claudePlugin.mcpServers?.membrane?.headers?.Authorization !== "Bearer ${MEMBRANE_BEARER_TOKEN}") {
+    throw new Error("Claude plugin lacks bearer header binding");
+  }
+  const codexPlugin = JSON.parse(readFileSync(join(payload, ".codex-plugin", "plugin.json"), "utf8"));
+  if (codexPlugin.hooks !== "./hooks/codex-hooks.json" || codexPlugin.mcpServers !== "./.mcp.json") {
+    throw new Error("Codex plugin manifest does not reference codex hooks/.mcp.json");
+  }
 }
 
 const files = Object.fromEntries(filesUnder(payload).map((path) => [relative(payload, path).replaceAll("\\", "/"), sha256(path)]));

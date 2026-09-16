@@ -170,8 +170,23 @@ fn erase_control() -> Result<Value, String> {
         return Err("erase left canonical row".into());
     }
     if store.try_delete(&id)? { return Err("erase was not idempotent".into()); }
-    Ok(proof("CTX-025", "canonical_erase", json!({"memoryId":id,"tombstoneAbsent":true,
-        "negativeControls":["repeat_erase_is_noop","scope_list_omits_erased"]})))
+    // §16.4 hard erase is the atom's declared mechanism: one governed
+    // transaction clears every payload-bearing projection (canonical row,
+    // quarantine copy, links, tombstone, FTS5 document, CTX-043 source
+    // rows, live suppression), retains only the content-free erase event,
+    // and is idempotent on an already-erased id.
+    let hard = seed(&store, "ctx-025-hard", "hard erase fixture")?;
+    if !store.hard_erase(&hard)? {
+        return Err("hard erase reported nothing removed".into());
+    }
+    if store.try_list(Some(SCOPE))?.iter().any(|r| r.0 == hard) {
+        return Err("hard erase left canonical row".into());
+    }
+    if store.hard_erase(&hard)? {
+        return Err("hard erase was not idempotent".into());
+    }
+    Ok(proof("CTX-025", "canonical_erase", json!({"memoryId":id,"hardErased":hard,"tombstoneAbsent":true,
+        "negativeControls":["repeat_erase_is_noop","repeat_hard_erase_is_noop","scope_list_omits_erased"]})))
 }
 
 fn backup_control() -> Result<Value, String> {
@@ -405,6 +420,85 @@ fn suppression_control() -> Result<Value, String> {
         "negativeControls":["unsigned_suppress_refused","stale_revision_refused","scope_mismatch_refused"]})))
 }
 
+/// CTX-043 push source fidelity: the submitted body is the immutable
+/// admission record. The control exercises the production push path —
+/// exact-byte retention, dedup binding, idempotent replay, typed conflict,
+/// exact source-byte recovery through resolve, sealed backup/restore, and
+/// governed-only erase — reporting only content-free facts (byte counts,
+/// statuses, typed refusal codes), never payload.
+fn push_source_control() -> Result<Value, String> {
+    let store = MemoryStore::new();
+    let body = "café\n  spaced  body"; // unicode + newline + doubled spaces
+    let pushed = cortex_lifecycle::agent_memory_push(&store, REPO, SCOPE, "ctx-043-request", "ctx-043-caller", body)
+        .map_err(|e| e.to_string())?;
+    if pushed["status"] != "stored"
+        || pushed["rawBodyBytes"].as_u64() != Some(body.len() as u64)
+        || pushed["contentHash"].as_str() != Some(crate::digest::digest_bytes(body.as_bytes()).as_str())
+        || pushed["authority"] != "A2"
+    {
+        return Err("push did not report exact-byte admission".into());
+    }
+    let id = pushed["memoryId"].as_str().ok_or("push omitted memory identity")?;
+    // A byte-distinct body that normalizes equal dedups into the same record
+    // yet keeps its own immutable source row.
+    let merged = cortex_lifecycle::agent_memory_push(&store, REPO, SCOPE, "ctx-043-request-2", "ctx-043-caller",
+        "café spaced body").map_err(|e| e.to_string())?;
+    if merged["memoryId"] != pushed["memoryId"] || merged["dedup"]["merged"] != true {
+        return Err("normalized-equal push did not dedup into the existing record".into());
+    }
+    // The submitted (non-canonical) bytes resolve exactly by their raw hash.
+    let raw = cortex_lifecycle::resolve_memory(&store, SCOPE, id,
+        &crate::digest::digest_str("café spaced body"), 0, 12_000).map_err(|e| e.to_string())?;
+    if raw["content"] != "café spaced body" || raw["sourceRecord"]["served"] != "immutableSource" {
+        return Err("immutable source bytes did not resolve exactly".into());
+    }
+    let replay = cortex_lifecycle::agent_memory_push(&store, REPO, SCOPE, "ctx-043-request", "ctx-043-caller", body)
+        .map_err(|e| e.to_string())?;
+    if replay["status"] != "replayed" || replay["memoryId"] != pushed["memoryId"] {
+        return Err("push replay was not idempotent".into());
+    }
+    if cortex_lifecycle::agent_memory_push(&store, REPO, SCOPE, "ctx-043-request", "ctx-043-caller", "different")
+        .map_err(|e| e.code) != Err("memory_push_idempotency_conflict")
+    {
+        return Err("requestId rebind to different bytes was accepted".into());
+    }
+    {
+        let db = store.db().lock();
+        if db.execute("UPDATE cortex_agent_memory_source_v1 SET raw_body='x'", []).is_ok()
+            || db.execute("DELETE FROM cortex_agent_memory_source_v1", []).is_ok()
+        {
+            return Err("immutable source row accepted an ungoverned mutation".into());
+        }
+    }
+    // Backup seals the source rows; restore reinserts them; erase clears them.
+    let backup = store.backup_cortex()?;
+    if backup.agent_sources.len() != 2 {
+        return Err("sealed backup omitted push-source rows".into());
+    }
+    let mut tampered = backup.clone();
+    tampered.agent_sources[0].raw_sha256 = "sha256:forged".into();
+    if store.restore_cortex(&tampered).is_ok() {
+        return Err("tampered source seal was accepted".into());
+    }
+    store.restore_cortex(&backup)?;
+    if !store.hard_erase(id)? {
+        return Err("hard erase reported nothing removed".into());
+    }
+    let remaining: i64 = store.db().lock().query_row(
+        "SELECT COUNT(*) FROM cortex_agent_memory_source_v1 WHERE memory_id=?1",
+        rusqlite::params![id], |row| row.get(0),
+    ).map_err(|e| e.to_string())?;
+    if remaining != 0 {
+        return Err("hard erase left payload-bearing source rows".into());
+    }
+    Ok(proof("CTX-043", "push_immutable_source_fidelity", json!({
+        "memoryId":id,"exactBytes":true,"dedupBound":true,"replayIdempotent":true,
+        "sealed":true,"erased":true,
+        "negativeControls":["source_update_refused","source_delete_refused",
+            "request_id_conflict_refused","tampered_source_seal_refused"]
+    })))
+}
+
 fn walk_files(root: &Path) -> Vec<std::path::PathBuf> {
     let mut out = Vec::new();
     let mut stack = vec![root.to_path_buf()];
@@ -429,6 +523,7 @@ pub(crate) fn run(case_id: &str) -> Result<Value, String> {
         "CTX-031" | "CTX-032" => metrics_control(case_id), "CTX-034" => skill_control(),
         "CTX-035" => explain_control(), "CTX-036" => restore_control(), "CTX-037" => import_control(),
         "CTX-038" => bounded_list_control(), "CTX-040" => recipe_control(), "CTX-041" => suppression_control(),
+        "CTX-043" => push_source_control(),
         _ => Err(format!("unsupported native Cortex lifecycle case: {case_id}")),
     }
 }
@@ -442,4 +537,5 @@ mod tests {
     #[test] fn background_controls_fail_closed() { assert_eq!(run("CTX-023").unwrap()["proof"]["unknownProposalRefused"], true); }
     #[test] fn backup_restore_and_exports_are_sealed() { assert_eq!(run("CTX-026").unwrap()["proof"]["digestVerified"], true); assert_eq!(run("CTX-036").unwrap()["proof"]["readbackEquivalent"], true); }
     #[test] fn recipe_and_suppression_are_bound() { assert_eq!(run("CTX-040").unwrap()["proof"]["digestBound"], true); assert_eq!(run("CTX-041").unwrap()["proof"]["unsignedMutation"], false); }
+    #[test] fn push_source_fidelity_is_native() { assert_eq!(run("CTX-043").unwrap()["proof"]["exactBytes"], true); }
 }

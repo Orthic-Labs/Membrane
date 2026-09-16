@@ -2324,8 +2324,15 @@ async fn dispatch(
                 {
                     return Err("resident holder controller draining".to_string());
                 }
+                let services_unavailable = resident_services_unavailable(&state);
                 let response = controller
-                    .dispatch_authoritative(identity, now_unix_ms, request, resident_services_ready(&state))
+                    .dispatch_authoritative_reporting(
+                        identity,
+                        now_unix_ms,
+                        request,
+                        services_unavailable.is_none(),
+                        services_unavailable,
+                    )
                     .map_err(|error| error.to_string())?;
                 let background_active = response.status.hub_holders > 0
                     || response.status.coderight_daemon_holders > 0;
@@ -2773,6 +2780,36 @@ async fn detailed_health(State(state): State<AppState>, _uri: Uri) -> Response {
     }
 }
 
+/// MEM-054 handshake seam: the declared per-subsystem compatibility surface
+/// on /health. A CodeRight consumer binds index identity/schema, Blueprint
+/// provider/schema readiness, and the Adapt contract versions — plus the
+/// `pull`/`push` public capabilities — with typed incompatibility instead of
+/// probing an alternate runtime, store, or port.
+fn service_capabilities_payload(cortex_store_id: &str, blueprint_ready: bool) -> Value {
+    json!({
+        "ledgerIndex": {
+            // Every Ledger index is owned by this installation's Cortex
+            // store; its identity is that store identity and its versions are
+            // the projection/FTS schema contracts the index is built under.
+            "identity": cortex_store_id,
+            "projectionSchema": crate::ledger::index::PROJECTION_SCHEMA_VERSION,
+            "ftsSchema": crate::ledger::index::FTS_SCHEMA_VERSION,
+        },
+        "blueprint": {
+            "provider": "native-rust",
+            "providerVersion": membrane_blueprint::graph::PROVIDER_VERSION,
+            "graphSchema": membrane_blueprint::graph::GRAPH_SCHEMA_VERSION,
+            "ready": blueprint_ready,
+        },
+        "adaptContractVersions": [
+            crate::adapt::ADAPT_PROPOSAL_SERVICE_CONTRACT,
+            membrane_adapt::learner::ADAPT_LEARNER_CONTRACT,
+            membrane_adapt::detector_contract::INSIGHTS_DETECTOR_CATALOG_CONTRACT,
+            membrane_adapt::detector_contract::INSIGHTS_INPUT_CONTRACT,
+        ],
+    })
+}
+
 /// Health must stay answerable while the diagnostics lane is busy. During
 /// holder-authorized watcher catch-up the single diagnostics worker is the
 /// contended resource, so a generic overload body hides WHY the engine is
@@ -2797,7 +2834,11 @@ fn degraded_health_payload(store: &MemoryStore, reason: &str) -> (u16, String) {
         "nativeOnly": true,
         "runtimeOrigin": runtime_origin(),
         "subsystems": ["pull", "push", "cortex", "blueprint", "ledger", "adapt"],
-        "capabilities": ["memory", "diagnostics"],
+        "capabilities": ["memory", "diagnostics", "pull", "push"],
+        "serviceCapabilities": service_capabilities_payload(
+            &store.cortex_store_id(),
+            blueprint_watcher.get("watcherReady").and_then(Value::as_bool).unwrap_or(false),
+        ),
         "serviceGeneration": crate::release_identity::service_generation(),
         "releaseGeneration": crate::release_identity::release_generation(),
         "watcherRunning": blueprint_watcher.get("watcherRunning").cloned().unwrap_or(json!(false)),
@@ -3060,7 +3101,7 @@ fn build_router_inner(
         // All landed resident subsystems are served by the native runtime.
         "nativeOnly": true,
         "subsystems": ["pull", "push", "cortex", "blueprint", "ledger", "adapt"],
-        "capabilities": ["memory", "diagnostics"],
+        "capabilities": ["memory", "diagnostics", "pull", "push"],
     });
     let diagnostics_store = state.store.as_ref().clone();
     let app = Router::new()
@@ -5670,8 +5711,12 @@ fn health_response_with_workers(
     payload["nativeOnly"] = json!(true);
     payload["runtimeOrigin"] = json!(runtime_origin());
     payload["subsystems"] = json!(["pull", "push", "cortex", "blueprint", "ledger", "adapt"]);
-    payload["capabilities"] = json!(["memory", "diagnostics"]);
+    payload["capabilities"] = json!(["memory", "diagnostics", "pull", "push"]);
     let blueprint_watcher = crate::service::resident_blueprint_status();
+    payload["serviceCapabilities"] = service_capabilities_payload(
+        &store.cortex_store_id(),
+        blueprint_watcher.get("watcherReady").and_then(Value::as_bool).unwrap_or(false),
+    );
     payload["watcherRunning"] = blueprint_watcher
         .get("watcherRunning")
         .cloned()
@@ -5784,7 +5829,19 @@ fn installed_resident_identity(
     })
 }
 
-fn resident_services_ready(state: &AppState) -> bool {
+/// The typed reason resident services are withheld, or `None` when the full
+/// resident service set is healthy. Holder status must name the actual
+/// failing check — a store fault is not a watcher fault — so each gate maps
+/// to its own `ResidentServicesUnavailableV1` variant in evaluation order.
+///
+/// Transport-admission state is not a resident health input, but a closed
+/// admission or absent resident identity is reported as `Draining` rather
+/// than a subsystem fault. The watcher gate is conditional on background
+/// authority: an intentionally idle watcher (no hub/daemon holder) and an
+/// unconfigured corpus are not watcher faults.
+fn resident_services_unavailable(
+    state: &AppState,
+) -> Option<membrane_protocol::ResidentServicesUnavailableV1> {
     let watcher = crate::service::resident_blueprint_status();
     let background_authorized = crate::service::lifecycle_control().background_authority_open();
     let watcher_has_error = watcher
@@ -5797,21 +5854,28 @@ fn resident_services_ready(state: &AppState) -> bool {
         == 0;
     if state.resident_identity.is_none()
         || !crate::service::lifecycle_control().admission_open()
-        || state
-            .store
-            .detailed_health_json()
-            .get("ok")
-            .and_then(Value::as_bool)
-            != Some(true)
-        || (background_authorized && watcher_has_error)
-        || (background_authorized && !no_repositories_configured
-            && (watcher.get("watcherRunning").and_then(Value::as_bool) != Some(true)
-                || watcher.get("watcherReady").and_then(Value::as_bool) != Some(true)))
     {
-        return false;
+        return Some(membrane_protocol::ResidentServicesUnavailableV1::Draining);
+    }
+    if state
+        .store
+        .detailed_health_json()
+        .get("ok")
+        .and_then(Value::as_bool)
+        != Some(true)
+    {
+        return Some(membrane_protocol::ResidentServicesUnavailableV1::StoreUnavailable);
+    }
+    if background_authorized
+        && (watcher_has_error
+            || (!no_repositories_configured
+                && (watcher.get("watcherRunning").and_then(Value::as_bool) != Some(true)
+                    || watcher.get("watcherReady").and_then(Value::as_bool) != Some(true))))
+    {
+        return Some(membrane_protocol::ResidentServicesUnavailableV1::BlueprintWatcherUnavailable);
     }
 
-    state.catalog.as_deref().is_none_or(|catalog| {
+    let catalog_ready = state.catalog.as_deref().is_none_or(|catalog| {
         std::panic::catch_unwind(|| catalog::health_snapshot(catalog))
             .ok()
             .and_then(|snapshot| {
@@ -5822,7 +5886,8 @@ fn resident_services_ready(state: &AppState) -> bool {
             })
             .as_deref()
             == Some("ok")
-    })
+    });
+    (!catalog_ready).then_some(membrane_protocol::ResidentServicesUnavailableV1::CatalogUnavailable)
 }
 
 fn loopback_identity(
@@ -6347,6 +6412,7 @@ fn planner_post_plan_context(
                 trace_id_override: None,
                 scope_grant_present: true,
                 consumer_resolvers: Vec::new(),
+                reserved_lanes: None,
             };
             let out = match plan_context(&input) {
                 Ok(out) => out,

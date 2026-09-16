@@ -38,7 +38,7 @@ const TRUTH_SCHEMA = "membrane.product-truth.v1";
 const AXIS_IDS = ["pull", "push", "cortex", "blueprint", "ledger", "adapt"];
 
 // Number words the README prose may use for the tool count claim.
-const NUMBER_WORDS = { six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12 };
+const NUMBER_WORDS = { two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12 };
 
 function canonicalJson(value) {
   if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
@@ -199,7 +199,9 @@ function renderTruthDoc(truth) {
 /** Extract the README's claimed MCP tool count and the tool names it lists. */
 function readmeToolClaim(readmeText) {
   const bulletLine = readmeText.split("\n").find((line) => /tools over stdio/i.test(line)) || "";
-  const listed = [...bulletLine.matchAll(/`?(membrane_[a-z_]+)`?/g)].map((m) => m[1]);
+  // Public tools are bare names (pull, push); retired membrane_* names are
+  // internal operations, still recognized so a stale README stays detectable.
+  const listed = [...bulletLine.matchAll(/`(pull|push|membrane_[a-z_]+)`/g)].map((m) => m[1]);
   const wordMatch = bulletLine.match(/([a-z]+)\s+tools over stdio/i);
   const claimedWordCount = wordMatch ? NUMBER_WORDS[wordMatch[1].toLowerCase()] ?? null : null;
   return { listed, claimedWordCount, bulletLine };

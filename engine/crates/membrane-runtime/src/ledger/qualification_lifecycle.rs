@@ -7,8 +7,9 @@
 
 use super::{
     diagnostics, doc_spine, document_conversion, limits::WorkBudget, link_projection, query,
-    resolve, LedgerDb,
+    resolve, skill_documents, LedgerDb,
 };
+use membrane_protocol::ReadPathV1;
 use rusqlite::OptionalExtension;
 use serde_json::{json, Value};
 use std::{
@@ -21,7 +22,7 @@ use tempfile::TempDir;
 
 const CASES: &[&str] = &[
     "LDG-017", "LDG-018", "LDG-019", "LDG-020", "LDG-021", "LDG-022", "LDG-024", "LDG-025",
-    "LDG-026", "LDG-027", "LDG-028", "LDG-029", "LDG-030", "LDG-031",
+    "LDG-026", "LDG-027", "LDG-028", "LDG-029", "LDG-030", "LDG-031", "LDG-032",
 ];
 
 struct Fixture {
@@ -116,6 +117,7 @@ fn source_marker(case_id: &str) -> &'static str {
         "LDG-029" => "resolved inbound references with source/target hashes",
         "LDG-030" => "literal source byte range and punctuation-safe negative",
         "LDG-031" => "named source manifests and deterministic structural drift",
+        "LDG-032" => "skill-document adapter reuses registration/index/resolution with source-bound hits, grant narrowing, drift and erasure refusal",
         _ => "unknown",
     }
 }
@@ -142,6 +144,7 @@ pub(crate) fn run(case_id: &str) -> Result<Value, String> {
         "LDG-029" => run_029(&fixture)?,
         "LDG-030" => run_030(&fixture)?,
         "LDG-031" => run_031(&fixture)?,
+        "LDG-032" => run_032(&fixture)?,
         _ => unreachable!(),
     };
     evidence(&normalized, value, source_marker(&normalized))
@@ -599,13 +602,127 @@ fn run_031(f: &Fixture) -> Result<Value, String> {
     )
 }
 
+fn run_032(f: &Fixture) -> Result<Value, String> {
+    fs::create_dir_all(f.root.join("tools/skills/deploy")).map_err(|e| e.to_string())?;
+    fs::write(
+        f.root.join("tools/skills/deploy/SKILL.md"),
+        "# Deploy\n\nskill needle gamma\n",
+    )
+    .map_err(|e| e.to_string())?;
+    sync(&f.db, &f.root)?;
+    let entries = skill_documents::catalog(&f.db, &f.root_text, None, &budget())?;
+    if entries.len() != 1 || entries[0].skill_id != "deploy" {
+        return Err("skill catalog did not surface exactly the registered skill".into());
+    }
+    let outcome =
+        skill_documents::search(&f.db, &f.root_text, "skill needle gamma", 4, None, &budget())?;
+    let deploy = outcome
+        .skills
+        .iter()
+        .find(|skill| skill.skill_id == "deploy")
+        .ok_or("skill search omitted registered skill")?;
+    if !deploy.hit.source_ref.ends_with("/tools/skills/deploy/SKILL.md")
+        || deploy.hit.expected_span_hash.len() != 64
+        || deploy.hit.expected_content_hash.len() != 64
+        || deploy.hit.expected_revision.is_empty()
+        || deploy.hit.ledger_generation <= 0
+    {
+        return Err("skill hit lost source/revision/span binding".into());
+    }
+    // Grant narrowing is fail-closed: a grant over an unrelated path empties
+    // the lane rather than widening it.
+    let narrowed = skill_documents::search(
+        &f.db,
+        &f.root_text,
+        "skill needle gamma",
+        4,
+        Some(vec![ReadPathV1 {
+            path: "docs/guide.md".into(),
+            start_line: 1,
+            end_line: u32::MAX,
+        }]),
+        &budget(),
+    )?;
+    if !narrowed.skills.is_empty() {
+        return Err("caller grant widened into ungranted skill documents".into());
+    }
+    // The document's top-level span set is source-verified and covers the
+    // whole file; drift fails before a ticket. A headed SKILL.md binds a
+    // real section node — Ledger creates no document node for it.
+    let ticketed = skill_documents::document_hits(&f.db, &f.root_text, &entries[0], &budget())?;
+    let length = "# Deploy\n\nskill needle gamma\n".len();
+    if ticketed.is_empty()
+        || ticketed.first().map(|s| s.hit.start_byte) != Some(0)
+        || ticketed.last().map(|s| s.hit.end_byte) != Some(length)
+        || ticketed.iter().any(|s| s.hit.node_kind == "document")
+    {
+        return Err("skill document spans did not cover the source".into());
+    }
+    // A grant covering the document admits it; a partial grant refuses.
+    let whole = [ReadPathV1 {
+        path: "tools/skills/deploy/SKILL.md".into(),
+        start_line: 1,
+        end_line: u32::MAX,
+    }];
+    skill_documents::document_hits_granted(&f.db, &f.root_text, &entries[0], &whole, &budget())?;
+    let partial = [ReadPathV1 {
+        path: "tools/skills/deploy/SKILL.md".into(),
+        start_line: 2,
+        end_line: 3,
+    }];
+    if skill_documents::document_hits_granted(&f.db, &f.root_text, &entries[0], &partial, &budget())
+        .is_ok()
+    {
+        return Err("partial grant ticketed a whole skill document".into());
+    }
+    fs::write(
+        f.root.join("tools/skills/deploy/SKILL.md"),
+        "# Deploy\n\nchanged bytes\n",
+    )
+    .map_err(|e| e.to_string())?;
+    if skill_documents::document_hits(&f.db, &f.root_text, &entries[0], &budget()).is_ok() {
+        return Err("drifted skill source still materialized a hit".into());
+    }
+    // Restore the source, then an erasure fence removes the skill from both
+    // the catalog and the scoped lane.
+    fs::write(
+        f.root.join("tools/skills/deploy/SKILL.md"),
+        "# Deploy\n\nskill needle gamma\n",
+    )
+    .map_err(|e| e.to_string())?;
+    f.db.lock()
+        .execute(
+            "INSERT OR REPLACE INTO ledger_erasure_fences VALUES (?1,?2,?3)",
+            rusqlite::params![
+                f.root_text,
+                resolve::digest("tools/skills/deploy/SKILL.md".as_bytes()),
+                crate::time::now_millis() as i64
+            ],
+        )
+        .map_err(|e| e.to_string())?;
+    if !skill_documents::catalog(&f.db, &f.root_text, None, &budget())?.is_empty() {
+        return Err("erased skill remained in the catalog".into());
+    }
+    let after =
+        skill_documents::search(&f.db, &f.root_text, "skill needle gamma", 4, None, &budget())?;
+    if !after.skills.is_empty() {
+        return Err("erased skill remained resolvable through the adapter".into());
+    }
+    Ok(json!({
+        "skillId":"deploy","catalogEntries":entries.len(),"hitBound":true,
+        "grantNarrowedEmpty":true,"grantCoveringDocument":true,
+        "partialGrantRefused":true,"driftRefused":true,"erasureRefused":true,
+        "negative":"no Cortex/store skill body is consulted or emitted"
+    }))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn registry_is_explicit_and_excludes_exploratory_case() {
-        assert_eq!(CASES.len(), 14);
+        assert_eq!(CASES.len(), 15);
         assert!(!CASES.contains(&"LDG-023"));
     }
 

@@ -6,7 +6,7 @@
 //! neither a cursor nor an agent-supplied root can increase read authority.
 
 use super::{doc_spine, index, limits::WorkBudget, policy::SourcePolicy, query,
-    resolve::{self, ResolveRequest}, LedgerDb};
+    resolve::{self, ResolveRequest}, skill_documents, LedgerDb};
 use crate::authorization::{self, AuthorizationRequest};
 use membrane_protocol::ReadPathV1;
 use rusqlite::{params, OptionalExtension};
@@ -206,6 +206,106 @@ impl LedgerService {
         })
     }
 
+    /// Index-only catalog of registered portable skill documents under this
+    /// caller's enrolled source authority (LDG-032).
+    ///
+    /// The catalog mirrors `search` semantics: repository enrollment is the
+    /// authority, an explicit task grant narrows enumeration to granted paths
+    /// when present, and the worktree is reconciled first so rows reflect
+    /// current source. Entries carry source identity, revision, content hash
+    /// and generation only — never bodies.
+    pub(crate) fn skill_catalog(
+        &self,
+        caller: &Caller,
+        ranges: Option<Vec<ReadPathV1>>,
+        grant_id: Option<&str>,
+        budget: &WorkBudget,
+    ) -> Result<Vec<skill_documents::SkillDocumentEntryV1>, String> {
+        self.run(caller, "context", budget, |db| {
+            validate_task_grant(grant_id, caller, None, None)?;
+            Self::sync_locked(db, caller, budget)?;
+            skill_documents::catalog(db, &caller.root, ranges.as_deref(), budget)
+        })
+    }
+
+    /// Search portable skill documents through the existing scoped query path
+    /// and issue a resolution ticket per emitted hit (LDG-032).
+    ///
+    /// `ranges` carries the caller's grant narrowing exactly as `search` does;
+    /// the adapter intersects it with the registered skill-document set so a
+    /// grant can narrow the lane but never widen it. Each returned pair is the
+    /// complete `membrane_source_read` binding Pull needs for candidate
+    /// materialization — hit plus owner-issued ticket.
+    pub(crate) fn skill_documents(
+        &self,
+        caller: &Caller,
+        task: &str,
+        k: usize,
+        ranges: Option<Vec<ReadPathV1>>,
+        grant_id: Option<&str>,
+        budget: &WorkBudget,
+    ) -> Result<(query::QueryResult, Vec<skill_documents::TicketedSkillDocumentV1>), String> {
+        self.run(caller, "context", budget, |db| {
+            validate_task_grant(grant_id, caller, None, None)?;
+            Self::sync_locked(db, caller, budget)?;
+            let outcome = skill_documents::search(db, &caller.root, task, k, ranges, budget)?;
+            let mut skills = Vec::new();
+            for skill in outcome.skills {
+                budget.check()?;
+                let ticket = issue_ticket(db, caller, &skill.hit, grant_id)?;
+                skills.push(skill_documents::TicketedSkillDocumentV1 {
+                    skill_id: skill.skill_id,
+                    title: skill.title,
+                    hit: skill.hit,
+                    ticket,
+                });
+            }
+            validate_task_grant(grant_id, caller, None, None)?;
+            Ok((outcome.result, skills))
+        })
+    }
+
+    /// Materialize one catalog entry as ticketed top-level spans after the
+    /// caller has selected it (LDG-032). Drift, erasure or policy loss fails
+    /// closed before a ticket is issued, and a caller grant must cover the
+    /// whole source — a grant may narrow selection, never widen it.
+    pub(crate) fn skill_document_hits(
+        &self,
+        caller: &Caller,
+        skill_id: &str,
+        ranges: Option<Vec<ReadPathV1>>,
+        grant_id: Option<&str>,
+        budget: &WorkBudget,
+    ) -> Result<Vec<skill_documents::TicketedSkillDocumentV1>, String> {
+        self.run(caller, "context", budget, |db| {
+            validate_task_grant(grant_id, caller, None, None)?;
+            Self::sync_locked(db, caller, budget)?;
+            let entry = skill_documents::catalog(db, &caller.root, None, budget)?
+                .into_iter()
+                .find(|entry| entry.skill_id == skill_id)
+                .ok_or("ledger_skill_missing")?;
+            let skills = match &ranges {
+                Some(ranges) => {
+                    skill_documents::document_hits_granted(db, &caller.root, &entry, ranges, budget)?
+                }
+                None => skill_documents::document_hits(db, &caller.root, &entry, budget)?,
+            };
+            let mut ticketed = Vec::new();
+            for skill in skills {
+                budget.check()?;
+                let ticket = issue_ticket(db, caller, &skill.hit, grant_id)?;
+                ticketed.push(skill_documents::TicketedSkillDocumentV1 {
+                    skill_id: skill.skill_id,
+                    title: skill.title,
+                    hit: skill.hit,
+                    ticket,
+                });
+            }
+            validate_task_grant(grant_id, caller, None, None)?;
+            Ok(ticketed)
+        })
+    }
+
     pub(crate) fn operation(&self, arguments: &Value, budget: &WorkBudget) -> Result<Value, String> {
         let caller = Caller::from_arguments(arguments)?;
         let operation = arguments.get("operation").and_then(Value::as_str).ok_or("ledger_operation_required")?;
@@ -378,6 +478,60 @@ impl LedgerService {
                     _ => super::diagnostics::drift(db,&caller.root,&doc,&required_string(arguments,"fromManifest")?,&required_string(arguments,"toManifest")?,budget),
                 }
             }),
+            // LDG-032 portable skill-document adapter lane. Same grant
+            // resolution as "recall": a scope grant narrows to granted paths
+            // and binds tickets; without one, repository enrollment is the
+            // authority. Every hit carries the membrane_source_read binding.
+            "skillCatalog" | "skillDocuments" | "skillDocument" => {
+                let grant_id = arguments.get("scopeGrantId").and_then(Value::as_str);
+                let ranges = if let Some(grant_id) = grant_id {
+                    let task_id = arguments.get("taskId").and_then(Value::as_str)
+                        .filter(|value| !value.trim().is_empty())
+                        .ok_or("ledger_task_id_required")?;
+                    let session_id = arguments.get("sessionId").and_then(Value::as_str)
+                        .filter(|value| !value.trim().is_empty())
+                        .ok_or("ledger_session_id_required")?;
+                    validate_task_grant(Some(grant_id), &caller, Some(task_id), Some(session_id))?;
+                    let grant = crate::catalog::lookup_grant(&self.catalog, grant_id)
+                        .map_err(|e|e.to_string())?.ok_or("ledger_scope_grant_missing")?;
+                    if grant.read_paths.is_empty() { return Err("ledger_scope_ranges_unavailable".into()); }
+                    Some(grant.read_paths)
+                } else { None };
+                match operation {
+                    "skillCatalog" => {
+                        let entries = self.skill_catalog(&caller, ranges, grant_id, budget)?;
+                        Ok(json!({"schemaVersion":"ledger.skill-catalog.v1","skills":entries}))
+                    }
+                    "skillDocuments" => {
+                        let query = arguments.get("query").and_then(Value::as_str).ok_or("ledger_query_required")?;
+                        let k = arguments.get("k").and_then(Value::as_u64).unwrap_or(6) as usize;
+                        let (result, skills) = self.skill_documents(&caller, query, k, ranges, grant_id, budget)?;
+                        let mut value = serde_json::to_value(result).map_err(|e| e.to_string())?;
+                        let mut entries = Vec::with_capacity(skills.len());
+                        for skill in skills {
+                            let mut hit = serde_json::to_value(&skill.hit).map_err(|e| e.to_string())?;
+                            hit["ledgerTicket"] = json!(skill.ticket);
+                            entries.push(json!({"skillId":skill.skill_id,"title":skill.title,"hit":hit}));
+                        }
+                        value["skills"] = json!(entries);
+                        Ok(value)
+                    }
+                    _ => {
+                        let skill_id = required_string(arguments, "skillId")?;
+                        let skills = self.skill_document_hits(&caller, &skill_id, ranges, grant_id, budget)?;
+                        let mut entries = Vec::with_capacity(skills.len());
+                        let mut title = String::new();
+                        for skill in skills {
+                            title = skill.title.clone();
+                            let mut hit = serde_json::to_value(&skill.hit).map_err(|e| e.to_string())?;
+                            hit["ledgerTicket"] = json!(skill.ticket);
+                            entries.push(hit);
+                        }
+                        Ok(json!({"schemaVersion":"ledger.skill-document.v1",
+                            "skillId":skill_id,"title":title,"hits":entries}))
+                    }
+                }
+            }
             _ => Err("ledger_operation_unsupported".into()),
         }
     }

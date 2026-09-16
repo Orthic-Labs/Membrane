@@ -128,6 +128,88 @@ fn workspace_budget_shares(max_tokens: usize, targets: usize) -> Vec<usize> {
         .collect()
 }
 
+/// Effective Pull budget contract for one context request (PUL-050).
+/// `ceiling` is the strictly-validated H8 when the host supplied one; it is
+/// `None` only under bounded-response. `cap_tokens` is the emitted packet's
+/// bound: the validated H8 estimate when present (the route already fits
+/// under the tighter of budget and ceiling), otherwise the declared
+/// response budget.
+struct NativeBudgetContract {
+    mode: crate::pull::federation::PullBudgetMode,
+    ceiling: Option<membrane_protocol::host_observation::RemainingContextCeilingV1>,
+    response_budget: u64,
+    cap_tokens: u64,
+}
+
+fn resolve_native_budget_contract(
+    arguments: &Value,
+    max_tokens: usize,
+    name: &str,
+) -> Result<NativeBudgetContract, Value> {
+    let declared = crate::pull::federation::declared_budget_mode(arguments)
+        .map_err(|(_, refusal)| refusal_to_error(name, &refusal))?;
+    let h8_supplied = arguments
+        .get("remainingContextCeiling")
+        .is_some_and(|value| !value.is_null());
+    let mode = declared.unwrap_or(if h8_supplied {
+        crate::pull::federation::PullBudgetMode::HostFit
+    } else {
+        crate::pull::federation::PullBudgetMode::BoundedResponse
+    });
+    let ceiling = match (mode, h8_supplied) {
+        (crate::pull::federation::PullBudgetMode::BoundedResponse, false) => None,
+        _ => match serde_json::from_value::<
+            membrane_protocol::host_observation::RemainingContextCeilingV1,
+        >(arguments["remainingContextCeiling"].clone())
+        {
+            Ok(value) => Some(value),
+            Err(_) => {
+                return Err(error(name, "context_capacity_invalid", "validated H8 is required"))
+            }
+        },
+    };
+    let (response_budget, _) = crate::pull::federation::declared_response_budget(
+        arguments,
+        max_tokens,
+    )
+    .map_err(|(_, refusal)| refusal_to_error(name, &refusal))?;
+    let cap_tokens = ceiling
+        .as_ref()
+        .and_then(|ceiling| ceiling.remaining_tokens.estimate.value)
+        .map(|estimate| estimate.min(response_budget))
+        .unwrap_or(response_budget);
+    Ok(NativeBudgetContract { mode, ceiling, response_budget, cap_tokens })
+}
+
+fn refusal_to_error(name: &str, refusal: &str) -> Value {
+    let parsed: Value = serde_json::from_str(refusal).unwrap_or_else(|_| {
+        json!({"error":"request_time_selection_refused","kind":"budget_contract_invalid","reason":""})
+    });
+    let code = parsed
+        .get("error")
+        .and_then(Value::as_str)
+        .unwrap_or("request_time_selection_refused");
+    let kind = parsed.get("kind").and_then(Value::as_str).unwrap_or("budget_contract_invalid");
+    let reason = parsed.get("reason").and_then(Value::as_str).unwrap_or("");
+    error(name, code, format!("{kind}: {reason}"))
+}
+
+fn fit_native_budget_response(
+    name: &str,
+    envelope: Value,
+    contract: &NativeBudgetContract,
+) -> Result<Value, crate::pull::recovery::RecoveryError> {
+    match contract.ceiling.as_ref() {
+        Some(ceiling) => crate::pull::egress::fit_native_response(envelope, ceiling),
+        // Host capacity is unobserved; the declared response budget bounds the
+        // emitted result and `deliveryMeasurement` reports it as such.
+        None => crate::pull::egress::fit_native_response_to_budget(
+            envelope,
+            contract.response_budget,
+        ),
+    }
+}
+
 /// Two joined workers share one ingress deadline. Results retain caller order;
 /// an expired queued target is never submitted to its owners.
 fn workspace_fanout<T: Sync, R: Send>(
@@ -1259,7 +1341,8 @@ impl NativeMcpExecutor for RuntimeMcpExecutor {
                     Some("insights") => crate::adapt_service::inspect_issues(&self.store,&storage_scope,requested_limit as usize),
                     Some("status") => crate::adapt_service::status(&self.store,&storage_scope,Some(scope)),
                     Some("proposals") => self.store.db().reference_events(&storage_scope,"adapt.comparison",requested_limit.max(1) as usize)
-                        .map(|page| json!({"comparisons":page,"pending_proposals":null,"reason":"pending_proposal_registry_unavailable"})),
+                        .and_then(|page| crate::adapt_service::inspect_proposals(&self.store,&storage_scope,requested_limit as usize)
+                            .map(|proposals| json!({"comparisons":page,"proposals":proposals}))),
                     _ => Err("unsupported read-only Adapt operation".into()),
                 };
                 match result {
@@ -1374,17 +1457,23 @@ impl NativeMcpExecutor for RuntimeMcpExecutor {
                         }
                         None => None,
                     };
-                    let ceiling: membrane_protocol::host_observation::RemainingContextCeilingV1 =
-                        match serde_json::from_value(arguments["remainingContextCeiling"].clone()) {
-                            Ok(value) => value,
-                            Err(_) => {
-                                return error(
-                                    name,
-                                    "context_capacity_invalid",
-                                    "validated H8 is required",
-                                )
-                            }
-                        };
+                    let budget_contract = match resolve_native_budget_contract(
+                        arguments,
+                        max_tokens,
+                        name,
+                    ) {
+                        Ok(contract) => contract,
+                        Err(result) => return result,
+                    };
+                    if budget_contract.mode == crate::pull::federation::PullBudgetMode::HostFit
+                        && budget_contract.ceiling.is_none()
+                    {
+                        return error(
+                            name,
+                            "context_capacity_invalid",
+                            "host_fit requires a validated H8 observation",
+                        );
+                    }
                     let shares = workspace_budget_shares(max_tokens, targets.len());
                     let mut requests = Vec::with_capacity(targets.len());
                     for (target, allocation) in targets.iter().zip(shares.iter().copied()) {
@@ -1401,8 +1490,15 @@ impl NativeMcpExecutor for RuntimeMcpExecutor {
                             "session": session_id,
                             "sessionId": session_id,
                             "refresh": arguments.get("refresh").and_then(Value::as_bool).unwrap_or(false),
-                            "remainingContextCeiling": arguments["remainingContextCeiling"].clone(),
+                            // Per-target requests stay in the request's declared
+                            // mode; each target's own bound is its `maxTokens`
+                            // share. The observed ceiling is forwarded only when
+                            // the host supplied one.
+                            "budgetMode": budget_contract.mode.as_str(),
                         });
+                        if let Some(ceiling) = budget_contract.ceiling.as_ref() {
+                            body["remainingContextCeiling"] = serde_json::to_value(ceiling).unwrap_or(Value::Null);
+                        }
                         if let Some(scope_grant_id) = scope_grant_id.as_deref() {
                             body["scopeGrantId"] = Value::String(scope_grant_id.to_owned());
                         }
@@ -1577,7 +1673,7 @@ impl NativeMcpExecutor for RuntimeMcpExecutor {
                             "degradationReason": "workspace_no_deliverable_evidence",
                             "sufficiencyEvaluated": arguments.get("sufficiencyContract").is_some()
                         }));
-                        return crate::pull::egress::fit_native_response(result, &ceiling)
+                        return fit_native_budget_response(name, result, &budget_contract)
                             .unwrap_or_else(|failure| error(name, "context_delivery_invalid", failure.to_string()));
                     }
 
@@ -1613,7 +1709,7 @@ impl NativeMcpExecutor for RuntimeMcpExecutor {
                             "degradationReason": if overall_status == "complete" { "none" } else { "workspace_partial" },
                             "sufficiencyEvaluated": arguments.get("sufficiencyContract").is_some()
                         }));
-                        match crate::pull::egress::fit_native_response(result, &ceiling) {
+                        match fit_native_budget_response(name, result, &budget_contract) {
                             Ok(fitted) => return fitted,
                             Err(crate::pull::recovery::RecoveryError::Limit)
                                 if repository_packets.len() > 1 =>
@@ -1698,9 +1794,17 @@ impl NativeMcpExecutor for RuntimeMcpExecutor {
                 if let Some(task_id) = arguments.get("taskId").and_then(Value::as_str) {
                     body["taskId"] = json!(task_id);
                 }
-                // The runtime refuses every context request without this
-                // (RequestTimeH8Error::Missing). Carry the host observation
-                // verbatim; Membrane never derives or defaults capacity.
+                // Budget contract (PUL-050): forward the caller's declared mode
+                // and response budget verbatim; the route resolves them under
+                // the same two-mode contract as /federate.
+                for field in ["budgetMode", "budgetPolicy", "responseBudget", "responseBudgetTokens"] {
+                    if let Some(value) = arguments.get(field).cloned() {
+                        body[field] = value;
+                    }
+                }
+                // Host-fit requires this observation; bounded-response does
+                // not. Carry a supplied observation verbatim; Membrane never
+                // derives or defaults capacity.
                 if let Some(ceiling) = arguments.get("remainingContextCeiling").cloned() {
                     body["remainingContextCeiling"] = ceiling;
                 }
@@ -1771,8 +1875,13 @@ impl NativeMcpExecutor for RuntimeMcpExecutor {
                     let error_code = if code == "policy_changed" { "policy_changed" } else if code == "request_time_selection_refused" { "request_time_selection_refused" } else { "context_unavailable" };
                     return error(name, error_code, detail);
                 }
-                let ceiling: membrane_protocol::host_observation::RemainingContextCeilingV1 = match serde_json::from_value(arguments["remainingContextCeiling"].clone()) {
-                    Ok(value) => value, Err(_) => return error(name,"context_capacity_invalid","validated H8 is required"),
+                let budget_contract = match resolve_native_budget_contract(
+                    arguments,
+                    max_tokens,
+                    name,
+                ) {
+                    Ok(contract) => contract,
+                    Err(result) => return result,
                 };
                 if matches!(federated.get("status").and_then(Value::as_str), Some("insufficient_confidence" | "unchanged_context")) {
                     let result = success(name, json!({
@@ -1790,7 +1899,7 @@ impl NativeMcpExecutor for RuntimeMcpExecutor {
                         "degradationReason": federated.get("degradationReason").filter(|v| !v.is_null()).cloned().unwrap_or_else(|| json!("none")),
                         "sufficiencyEvaluated": federated.get("insufficientConfidence").is_some(),
                     }));
-                    return crate::pull::egress::fit_native_response(result, &ceiling)
+                    return fit_native_budget_response(name, result, &budget_contract)
                         .unwrap_or_else(|failure| error(name, "context_delivery_invalid", failure.to_string()));
                 }
                 let selection: crate::pull::selection::PacketReductionSelectionV1 = match serde_json::from_value(federated["packetReduction"].clone()) {
@@ -1799,7 +1908,7 @@ impl NativeMcpExecutor for RuntimeMcpExecutor {
                 // Reuse the already validated ladder; no provider re-execution,
                 // guessed ceiling, or post-fit silent truncation is permitted.
                 for representation in &selection.plan.representations {
-                    if representation.tokens > ceiling.remaining_tokens.estimate.value.unwrap_or(0)
+                    if representation.tokens > budget_contract.cap_tokens
                     {
                         continue;
                     }
@@ -1827,7 +1936,7 @@ impl NativeMcpExecutor for RuntimeMcpExecutor {
                         "degradationReason":federated.get("degradationReason").filter(|v| !v.is_null()).cloned().unwrap_or_else(|| json!("none")),
                         "sufficiencyEvaluated":sufficiency_evaluated,
                     }));
-                    match crate::pull::egress::fit_native_response(result,&ceiling) {
+                    match fit_native_budget_response(name, result, &budget_contract) {
                         Ok(fitted) => return fitted,
                         Err(crate::pull::recovery::RecoveryError::Limit) => continue,
                         Err(failure) => {

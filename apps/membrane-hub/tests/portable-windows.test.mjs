@@ -78,7 +78,20 @@ test("portable payload is signed, hashed & includes activation plus Agent Plugin
   assert.match(candidateBuild, /assemblePortableCore/);
   assert.match(candidateCheck, /retired JavaScript runtime path/);
   assert.match(packager, /\["hook", "--help"\]/);
-  assert.match(candidateCheck, /candidate native hook authority unavailable/);
+  assert.match(packager, /hooksManifestPath/);
+  // The candidate gate must probe the authenticated MCP transport against the
+  // exact staged binaries, not argv-level `hook --help`.
+  assert.match(candidateCheck, /probeCandidateMcp/);
+  assert.match(candidateCheck, /initialize/);
+  assert.match(candidateCheck, /tools\/list/);
+  assert.match(candidateCheck, /MEMBRANE_CANDIDATE_TRANSPORT_PROBE/);
+  assert.doesNotMatch(candidateCheck, /"hook",\s*"--help"/);
+  for (const surface of [".mcp.json", "hooks/codex-hooks.json", ".agents/plugins/marketplace.json", ".claude-plugin/marketplace.json"]) {
+    assert.ok(candidateCheck.includes(surface), surface);
+  }
+  for (const surface of [".mcp.json", "hooks/codex-hooks.json", '".agents", "plugins", "marketplace.json"']) {
+    assert.ok(candidateBuild.includes(surface) || packager.includes(surface), surface);
+  }
   assert.match(candidateCheck, /candidate archive includes retired runtime tree/);
   const installer = readFileSync(new URL("../src-tauri/windows/installer.nsi", import.meta.url), "utf8");
   assert.match(installer, /RemoveRetiredRuntimeTrees/);

@@ -136,13 +136,25 @@ impl BlueprintOperation for NativeBlueprintOperation {
                 let (generation, source_observation) = load_current_with_observation(&db_path)?;
                 ensure_generation(request, &generation)?;
                 context.check()?;
-                let mut result = query::execute_query(&generation, request, context)?;
+                // The freshness receipt compares the sealed basis against a
+                // bounded live VCS observation; stale paths are confined to
+                // files this generation actually indexed.
+                let indexed_paths: HashSet<String> =
+                    generation.files.iter().map(|file| file.path.clone()).collect();
+                let receipt = generation_freshness_receipt(
+                    &root,
+                    &generation.generation_id,
+                    source_observation.as_ref(),
+                    Some(&indexed_paths),
+                );
+                let mut effective_request = request.clone();
+                apply_freshness_suppression(&mut effective_request, &receipt);
+                let mut result = query::execute_query(&generation, &effective_request, context)?;
                 if let Some(observation) = source_observation {
                     if let Value::Object(object) = &mut result {
                         object.insert("sourceObservation".into(), observation);
                     }
                 }
-                let receipt = sealed_freshness_receipt(&generation.generation_id, result.get("sourceObservation"));
                 if let Value::Object(object) = &mut result { object.insert("freshnessReceipt".into(), receipt); }
                 context.check()?;
                 Ok(result)
@@ -1028,7 +1040,7 @@ fn status(request: &BlueprintRequest, context: &RequestContext, root: &Path, db_
         }
         Err(error) => return Err(error),
     };
-    let freshness = sealed_freshness_receipt(&generation.generation_id, source_observation.as_ref());
+    let freshness = generation_freshness_receipt(root, &generation.generation_id, source_observation.as_ref(), None);
     context.check()?;
     let state = match freshness.get("freshness").and_then(Value::as_str) {
         Some("fresh") => "fresh",
@@ -1141,41 +1153,86 @@ fn architecture_changes(request: &BlueprintRequest, context: &RequestContext, ro
     if let Value::Object(object) = &mut value {
         object.insert("view".into(), json!("changes"));
         object.insert("generationId".into(), json!(generation.generation_id.clone()));
-        object.insert("freshnessReceipt".into(), sealed_freshness_receipt(&generation.generation_id, source_observation.as_ref()));
+        let indexed_paths: HashSet<String> =
+            generation.files.iter().map(|file| file.path.clone()).collect();
+        object.insert("freshnessReceipt".into(), generation_freshness_receipt(root, &generation.generation_id, source_observation.as_ref(), Some(&indexed_paths)));
     }
     context.check()?;
     Ok(value)
 }
 
-/// Report the source boundary sealed with this generation. Ordinary reads do
-/// not inspect the repository; watcher or explicit refresh owns observation.
-fn sealed_freshness_receipt(generation_id: &str, source_observation: Option<&Value>) -> Value {
-    let indexed_revision = source_observation.and_then(|value| value.get("head")).and_then(Value::as_str).map(str::to_owned);
-    let indexed_fingerprint = source_observation.and_then(|value| value.get("statusDigest")).and_then(Value::as_str).map(str::to_owned);
-    let current = crate::freshness::CurrentSourceState {
-        available: indexed_revision.is_some() && indexed_fingerprint.is_some(),
-        vcs_revision: indexed_revision.clone(),
-        dirty: source_observation.and_then(|value| value.get("dirty")).and_then(Value::as_bool),
-        worktree_fingerprint: indexed_fingerprint.clone(),
+/// Build the freshness receipt for a sealed generation. The receipt compares
+/// the sealed-at basis against a bounded live VCS observation (`git rev-parse
+/// HEAD` plus `git status --porcelain=v1 -z`, each time- and output-bounded),
+/// so a repository edit after the last refresh surfaces as
+/// `changed_since_generation` instead of an old-fresh result. Reads stay
+/// non-mutating: the probe is read-only, and changed-path enumeration runs
+/// lazily only when drift is detected. `indexed_paths`, when supplied,
+/// confines `staleSources` to paths this generation actually indexed.
+fn generation_freshness_receipt(
+    root: &Path,
+    generation_id: &str,
+    source_observation: Option<&Value>,
+    indexed_paths: Option<&HashSet<String>>,
+) -> Value {
+    let indexed_revision = source_observation
+        .and_then(|value| value.get("head").or_else(|| value.get("baseCommit")))
+        .and_then(Value::as_str)
+        .map(str::to_owned);
+    let indexed_fingerprint = source_observation
+        .and_then(|value| value.get("statusDigest").or_else(|| value.get("worktreeFingerprint")))
+        .and_then(Value::as_str)
+        .map(str::to_owned);
+    let basis = crate::freshness::GenerationFreshnessBasis {
+        indexed_revision,
+        indexed_worktree_fingerprint: indexed_fingerprint,
     };
-    let basis = crate::freshness::GenerationFreshnessBasis { indexed_revision: indexed_revision.clone(), indexed_worktree_fingerprint: indexed_fingerprint.clone() };
+    let current = crate::freshness_observation::observe_current_vcs_state(root);
+    let live_observed = current.available;
+    let changed_basis = basis.clone();
+    let changed_current = current.clone();
     let receipt = crate::freshness_receipt::build_freshness_receipt(
         Some(generation_id.to_owned()),
         None,
         basis,
         current,
-        || crate::freshness_receipt::ChangedPaths::complete(Vec::new()),
-        |_| true,
+        move || crate::freshness_observation::changed_paths_for_freshness(root, &changed_basis, &changed_current),
+        |path| indexed_paths.map_or(true, |paths| paths.contains(path)),
     );
     let mut value = serde_json::to_value(receipt).unwrap_or_else(|_| json!({"schema":"BlueprintFreshnessReceiptV1","generationId":generation_id,"freshness":"unavailable"}));
     if let Value::Object(object) = &mut value {
         let sealed_at = source_observation.and_then(|observation| observation.get("sealedAtUnixMs")).and_then(Value::as_u64);
-        object.insert("observationMode".into(), json!("sealed_generation"));
-        object.insert("liveSourceObserved".into(), json!(false));
+        object.insert("observationMode".into(), json!(if live_observed { "live_observation" } else { "sealed_generation" }));
+        object.insert("liveSourceObserved".into(), json!(live_observed));
         object.insert("sealedAtUnixMs".into(), sealed_at.map_or(Value::Null, Value::from));
         object.insert("ageMs".into(), sealed_at.map(|sealed| now_unix_ms().saturating_sub(sealed)).map_or(Value::Null, Value::from));
     }
     value
+}
+
+/// Drive query-time stale-source suppression from a freshness receipt. A
+/// `changed_since_generation` verdict marks every changed path stale for the
+/// served generation; an incomplete enumeration suppresses the whole
+/// generation rather than guessing which rows remain trustworthy. Other
+/// verdicts leave the request untouched.
+fn apply_freshness_suppression(request: &mut BlueprintRequest, receipt: &Value) {
+    if receipt.get("freshness").and_then(Value::as_str) != Some("changed_since_generation") {
+        return;
+    }
+    let stale = receipt.get("staleSources");
+    let paths = stale
+        .and_then(|value| value.get("paths"))
+        .cloned()
+        .unwrap_or_else(|| json!([]));
+    let whole_generation = stale
+        .and_then(|value| value.get("complete"))
+        .and_then(Value::as_bool)
+        == Some(false);
+    if !request.input.is_object() {
+        request.input = json!({});
+    }
+    request.input["staleSourcePaths"] = paths;
+    request.input["staleWholeGeneration"] = json!(whole_generation);
 }
 
 fn now_unix_ms() -> u64 {

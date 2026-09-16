@@ -42,6 +42,7 @@ pub fn run(
         trace_id_override: None,
         scope_grant_present: false,
         consumer_resolvers: Vec::new(),
+        reserved_lanes: None,
     };
     match plan(&input) {
         Ok(out) => print_output(&out),

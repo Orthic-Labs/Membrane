@@ -32,6 +32,12 @@ pub enum BackgroundReviewJobKindV1 {
     AdaptBehavioralReview,
     CortexSemanticDream,
     CortexMemoryCandidateExtraction,
+    /// MEM-061/062: deterministic read-only corpus-health/maintenance job —
+    /// the committed second live consumer proving the scheduler is generic
+    /// rather than review-specific. Zero-token input; executes read-only
+    /// integrity/statistics work against the corpus; cancellation binds at
+    /// the same admission/shutdown boundaries as review jobs.
+    CorpusHealthMaintenance,
 }
 
 impl BackgroundReviewJobKindV1 {
@@ -40,6 +46,7 @@ impl BackgroundReviewJobKindV1 {
             Self::AdaptBehavioralReview => "adapt_behavioral_review",
             Self::CortexSemanticDream => "cortex_semantic_dream",
             Self::CortexMemoryCandidateExtraction => "cortex_memory_candidate_extraction",
+            Self::CorpusHealthMaintenance => "corpus_health_maintenance",
         }
     }
 }

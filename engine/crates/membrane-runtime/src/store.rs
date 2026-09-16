@@ -429,6 +429,47 @@ pub(crate) enum AdmissionDispositionV1 {
     },
 }
 
+/// Map a typed §16.3 admission disposition onto the legacy id-or-error
+/// contract every `try_put_*` wrapper shares: `Inserted`/`NoOp`/
+/// `UpdateMetadataOnly` all name a real, active, recallable record, so the id
+/// is `Ok`; `ConflictQuarantined` admitted nothing, so it is the `Err` a
+/// legacy caller already treats as "did not admit".
+fn legacy_put_result(disposition: AdmissionDispositionV1) -> Result<String, String> {
+    match disposition {
+        AdmissionDispositionV1::Inserted { id } => Ok(id),
+        AdmissionDispositionV1::NoOp { existing_id } => Ok(existing_id),
+        AdmissionDispositionV1::UpdateMetadataOnly { existing_id } => Ok(existing_id),
+        AdmissionDispositionV1::ConflictQuarantined {
+            candidate_id,
+            conflicts_with,
+            similarity,
+        } => Err(format!(
+            "admission conflict: {candidate_id} was not admitted as active truth — \
+             near-identical to {conflicts_with} (similarity {similarity:.3}); the \
+             candidate is preserved in quarantine for review, not silently discarded"
+        )),
+    }
+}
+
+/// A CTX-043 immutable push-source row awaiting the memory id admission
+/// resolves. `try_admit_idempotent_observed` inserts it into
+/// `cortex_agent_memory_source_v1` inside the same immediate transaction
+/// that resolves the target, so an admitted push can never commit without
+/// its submitted bytes on record — and a rolled-back admission leaves no
+/// orphaned source row either.
+#[derive(Clone, Copy)]
+pub(crate) struct PendingAgentSourceRow<'a> {
+    pub request_id: &'a str,
+    pub repository_id: &'a str,
+    /// The caller-declared scope (what the replay check queries), not the
+    /// normalized scope the canonical id embeds.
+    pub scope_id: &'a str,
+    pub caller_id: &'a str,
+    pub raw_body: &'a [u8],
+    pub raw_sha256: &'a str,
+    pub caller_input_json: &'a str,
+}
+
 struct TasteCanonicalPoolGuard {
     expected_sha256: String,
     excluded_record_payloads: BTreeMap<String, String>,
@@ -3654,6 +3695,7 @@ impl MemoryStore {
                 Some(restored_metadata),
                 &context,
                 &MemoryLifecycleInputV1::default(),
+                &[],
             )?;
             // `Inserted`/`UpdateMetadataOnly`/`NoOp` all resolve the
             // candidate into, or against, active truth in `memories` — the
@@ -9212,7 +9254,7 @@ impl MemoryStore {
         // disposition (including which existing record it conflicts with, and
         // the similarity score) should call
         // [`try_admit_with_record_metadata_observed`] directly.
-        match self.try_admit_with_record_metadata_observed(
+        legacy_put_result(self.try_admit_with_record_metadata_observed(
             name,
             content,
             scope,
@@ -9222,20 +9264,58 @@ impl MemoryStore {
             supplied_metadata,
             context,
             lifecycle,
-        )? {
-            AdmissionDispositionV1::Inserted { id } => Ok(id),
-            AdmissionDispositionV1::NoOp { existing_id } => Ok(existing_id),
-            AdmissionDispositionV1::UpdateMetadataOnly { existing_id } => Ok(existing_id),
-            AdmissionDispositionV1::ConflictQuarantined {
-                candidate_id,
-                conflicts_with,
-                similarity,
-            } => Err(format!(
-                "admission conflict: {candidate_id} was not admitted as active truth — \
-                 near-identical to {conflicts_with} (similarity {similarity:.3}); the \
-                 candidate is preserved in quarantine for review, not silently discarded"
-            )),
+            &[],
+        )?)
+    }
+
+    /// CTX-043 agent-push write: the governed admission path plus
+    /// caller-declared keyword hints and the caller's immutable source row.
+    /// Extra keywords union into the durable `keywords` projection on insert
+    /// (and into the merged record on a duplicate admission) so a caller's
+    /// retrieval hints actually reach recall; they never reach content,
+    /// authority, or provenance. `pending_source` is inserted inside the same
+    /// admission transaction, bound to whichever memory id admission
+    /// resolves — so source fidelity and canonical admission commit or roll
+    /// back together.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn try_put_attributed_lifecycle_keywords_observed(
+        &self,
+        name: &str,
+        content: &str,
+        scope: &str,
+        tier: MemoryTier,
+        artifact_family: &str,
+        producer: &str,
+        record_type: &str,
+        context: &MemoryEventContext,
+        lifecycle: &MemoryLifecycleInputV1,
+        extra_keywords: &[String],
+        pending_source: Option<PendingAgentSourceRow<'_>>,
+    ) -> Result<String, String> {
+        if !crate::context_telemetry::registered_artifact_family(artifact_family)
+            || !valid_registry_token(producer)
+            || !valid_registry_token(record_type)
+        {
+            return Err("memory write attribution is invalid or unregistered".into());
         }
+        legacy_put_result(self.try_admit_idempotent_observed(
+            name,
+            content,
+            scope,
+            tier,
+            &crate::time::now_iso(),
+            &[],
+            Some(MemoryRecordMetadata {
+                artifact_family: artifact_family.into(),
+                producer: producer.into(),
+                record_type: record_type.into(),
+            }),
+            context,
+            lifecycle,
+            None,
+            extra_keywords,
+            pending_source,
+        )?)
     }
 
     /// §16.3 typed write admission — the primary entry point. `Err` is
@@ -9254,6 +9334,7 @@ impl MemoryStore {
         supplied_metadata: Option<MemoryRecordMetadata>,
         context: &MemoryEventContext,
         lifecycle: &MemoryLifecycleInputV1,
+        extra_keywords: &[String],
     ) -> Result<AdmissionDispositionV1, String> {
         self.try_admit_idempotent_observed(
             name,
@@ -9265,6 +9346,8 @@ impl MemoryStore {
             supplied_metadata,
             context,
             lifecycle,
+            None,
+            extra_keywords,
             None,
         )
     }
@@ -9282,6 +9365,8 @@ impl MemoryStore {
         context: &MemoryEventContext,
         lifecycle: &MemoryLifecycleInputV1,
         admission_receipt: Option<(&str, &str)>,
+        extra_keywords: &[String],
+        pending_source: Option<PendingAgentSourceRow<'_>>,
     ) -> Result<AdmissionDispositionV1, String> {
         if updated_at.trim().is_empty() {
             return Err("updated_at is required".into());
@@ -9382,6 +9467,15 @@ impl MemoryStore {
         // instead of a second silent record. Same-id rewrites (the update
         // path) skip the scan entirely — that is governed by
         // lifecycle/supersession, not the pre-filter.
+        // Caller-declared keyword hints (agent push): they union into the
+        // derived `keywords` projection — recall vocabulary only — and never
+        // reach content, source_ids, authority, or provenance.
+        let mut entry_keywords = keywords_of(&format!("{name} {content}"));
+        for keyword in extra_keywords {
+            if !entry_keywords.iter().any(|existing| existing == keyword) {
+                entry_keywords.push(keyword.clone());
+            }
+        }
         if existing.is_none() {
             let normalized = Self::normalized_admission_text(content);
             let near_duplicate = Self::admission_near_duplicate_scan(&tx, &scope, &id, &normalized)
@@ -9393,11 +9487,13 @@ impl MemoryStore {
                     // A different logical id is not provenance by itself: only
                     // union when the incoming write actually names source/
                     // evidence refs the existing record does not already have.
-                    let existing_source_ids: Vec<String> = tx
+                    // Caller keyword hints union the same way — recall
+                    // vocabulary the merged record did not already carry.
+                    let existing_projection: Option<(String, String)> = tx
                         .query_row(
-                            "SELECT source_ids FROM memories WHERE id = ?1",
+                            "SELECT source_ids, keywords FROM memories WHERE id = ?1",
                             rusqlite::params![hit.existing_id],
-                            |r| r.get::<_, String>(0),
+                            |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)),
                         )
                         .optional()
                         .map_err(|e| {
@@ -9405,8 +9501,14 @@ impl MemoryStore {
                                 "admission dedup source lookup failed for {}: {e}",
                                 hit.existing_id
                             ))
-                        })?
-                        .and_then(|raw| serde_json::from_str::<Vec<String>>(&raw).ok())
+                        })?;
+                    let existing_source_ids: Vec<String> = existing_projection
+                        .as_ref()
+                        .and_then(|(raw, _)| serde_json::from_str::<Vec<String>>(raw).ok())
+                        .unwrap_or_default();
+                    let mut union_keywords: Vec<String> = existing_projection
+                        .as_ref()
+                        .and_then(|(_, raw)| serde_json::from_str::<Vec<String>>(raw).ok())
                         .unwrap_or_default();
                     let mut union = existing_source_ids;
                     let mut added_new = false;
@@ -9416,16 +9518,26 @@ impl MemoryStore {
                             added_new = true;
                         }
                     }
+                    for keyword in extra_keywords {
+                        if !union_keywords.iter().any(|existing| existing == keyword) {
+                            union_keywords.push(keyword.clone());
+                            added_new = true;
+                        }
+                    }
                     if added_new {
                         // Union provenance atomically; authority, validity and
                         // canonical content are not touched.
                         let union_json = serde_json::to_string(&union).map_err(|e| {
                             self.persist_error(format!("source_ids serialize failed: {e}"))
                         })?;
+                        let union_keywords_json =
+                            serde_json::to_string(&union_keywords).map_err(|e| {
+                                self.persist_error(format!("keywords serialize failed: {e}"))
+                            })?;
                         let now = crate::time::now_iso();
                         tx.execute(
-                            "UPDATE memories SET source_ids = ?2, updated_at = ?3 WHERE id = ?1",
-                            rusqlite::params![hit.existing_id, union_json, now],
+                            "UPDATE memories SET source_ids = ?2, keywords = ?3, updated_at = ?4 WHERE id = ?1",
+                            rusqlite::params![hit.existing_id, union_json, union_keywords_json, now],
                         )
                         .map_err(|e| {
                             self.persist_error(format!("admission metadata union failed: {e}"))
@@ -9445,11 +9557,27 @@ impl MemoryStore {
                                 "similarity": hit.similarity,
                                 "exact": hit.exact,
                                 "added_source_ids": source_ids,
+                                "added_keywords": extra_keywords,
                             })),
                         )
                         .map_err(|e| {
                             self.persist_error(format!("memory admission event failed: {e}"))
                         })?;
+                        // CTX-043: the pushed submission's immutable source
+                        // row binds the merged record inside this same
+                        // transaction — memory admission and source admission
+                        // commit or roll back together.
+                        if let Some(pending) = pending_source {
+                            crate::cortex_lifecycle::insert_agent_memory_source_pending_on(
+                                &tx, &hit.existing_id, pending,
+                            )
+                            .map_err(|e| {
+                                self.persist_error(format!(
+                                    "agent source admission failed for {}: {e}",
+                                    hit.existing_id
+                                ))
+                            })?;
+                        }
                         persist_admission_receipt(&AdmissionDispositionV1::UpdateMetadataOnly {
                             existing_id: hit.existing_id.clone(),
                         })?;
@@ -9486,6 +9614,20 @@ impl MemoryStore {
                     .map_err(|e| {
                         self.persist_error(format!("memory admission event failed: {e}"))
                     })?;
+                    // CTX-043: same atomic source-row binding as the
+                    // update-metadata-only arm — a deduplicated push still
+                    // records its own immutable submission row.
+                    if let Some(pending) = pending_source {
+                        crate::cortex_lifecycle::insert_agent_memory_source_pending_on(
+                            &tx, &hit.existing_id, pending,
+                        )
+                        .map_err(|e| {
+                            self.persist_error(format!(
+                                "agent source admission failed for {}: {e}",
+                                hit.existing_id
+                            ))
+                        })?;
+                    }
                     persist_admission_receipt(&AdmissionDispositionV1::NoOp {
                         existing_id: hit.existing_id.clone(),
                     })?;
@@ -9505,9 +9647,8 @@ impl MemoryStore {
                 let now = crate::time::now_iso();
                 let tier_json =
                     serde_json::to_string(&tier).unwrap_or_else(|_| "\"Episodic\"".into());
-                let keywords_json =
-                    serde_json::to_string(&keywords_of(&format!("{name} {content}")))
-                        .unwrap_or_else(|_| "[]".into());
+                let keywords_json = serde_json::to_string(&entry_keywords)
+                    .unwrap_or_else(|_| "[]".into());
                 let source_ids_json = serde_json::to_string(source_ids)
                     .map_err(|e| self.persist_error(format!("source_ids serialize failed: {e}")))?;
                 let reason = format!(
@@ -9593,7 +9734,7 @@ impl MemoryStore {
             tier,
             embedding: Some(embedding),
             content: content.to_string(),
-            keywords: keywords_of(&format!("{name} {content}")),
+            keywords: entry_keywords,
             score: 0.6,
             created_at,
             access_count: access as u32,
@@ -9614,6 +9755,14 @@ impl MemoryStore {
             Some(&metadata),
         )
         .map_err(|e| self.persist_error(format!("memory {event_kind} event failed: {e}")))?;
+        // CTX-043: the pushed submission's immutable source row inserts in the
+        // same transaction that committed the canonical record it binds.
+        if let Some(pending) = pending_source {
+            crate::cortex_lifecycle::insert_agent_memory_source_pending_on(&tx, &id, pending)
+                .map_err(|e| {
+                    self.persist_error(format!("agent source admission failed for {id}: {e}"))
+                })?;
+        }
         persist_admission_receipt(&AdmissionDispositionV1::Inserted { id: id.clone() })?;
         tx.commit()
             .map_err(|e| self.persist_error(format!("memory commit failed: {e}")))?;
@@ -9841,13 +9990,20 @@ impl MemoryStore {
         let tx = conn
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(|e| self.persist_error(format!("hard erase transaction failed: {e}")))?;
+        // The CTX-043 source table may not exist yet on a store that has
+        // never seen a push; ensure it inside this transaction so the
+        // payload probe below and the gated erase both have it.
+        crate::cortex_lifecycle::ensure_memory_schema(&tx)
+            .map_err(|e| self.persist_error(format!("hard erase schema ensure failed: {e}")))?;
         // A payload may exist only in `memories`, only in `memory_quarantine`
-        // (already relocated by prune or a §16.3 conflict disposition), or
-        // both. Erasure must clear every projection it is found in, so the
-        // existence check spans both tables — `memories` first, since
-        // `artifact_family`/`producer`/`record_type` live only there;
-        // `memory_quarantine` has no equivalent columns, so a quarantine-only
-        // row erases with default metadata.
+        // (already relocated by prune or a §16.3 conflict disposition), only
+        // in the CTX-043 immutable source table (a pushed body whose canonical
+        // row is already gone), or in any combination. Erasure must clear
+        // every projection it is found in, so the existence check spans all
+        // three — `memories` first, since `artifact_family`/`producer`/
+        // `record_type` live only there; the other tables have no equivalent
+        // columns, so a quarantine-only or source-only row erases with
+        // default metadata.
         let found = tx
             .query_row(
                 "SELECT scope_id, artifact_family, producer, record_type FROM memories WHERE id = ?1",
@@ -9865,7 +10021,7 @@ impl MemoryStore {
             )
             .optional()
             .map_err(|e| self.persist_error(format!("hard erase lookup failed for {id}: {e}")))?;
-        let Some((scope_id, metadata)) = (match found {
+        let found = match found {
             Some(found) => Some(found),
             None => tx
                 .query_row(
@@ -9878,11 +10034,34 @@ impl MemoryStore {
                     self.persist_error(format!("hard erase quarantine lookup failed for {id}: {e}"))
                 })?
                 .map(|scope_id| (scope_id, MemoryRecordMetadata::default())),
+        };
+        let Some((scope_id, metadata)) = (match found {
+            Some(found) => Some(found),
+            None => tx
+                .query_row(
+                    "SELECT scope_id FROM cortex_agent_memory_source_v1 WHERE memory_id = ?1 LIMIT 1",
+                    rusqlite::params![id],
+                    |row| row.get::<_, String>(0),
+                )
+                .optional()
+                .map_err(|e| {
+                    self.persist_error(format!("hard erase source lookup failed for {id}: {e}"))
+                })?
+                .map(|scope_id| (scope_id, MemoryRecordMetadata::default())),
         }) else {
             return Ok(false);
         };
         // Reversibility ends here by explicit governed act; every payload-bearing
         // projection this store owns is cleared in the same transaction.
+        // CTX-043/CTX-025: the immutable push-source rows bound to this id are
+        // payload-bearing Cortex state — erasure must clear them too. This is
+        // the ONLY delete the source table's immutable-delete trigger permits
+        // (see `erase_agent_memory_sources_on`); the content-free `hard_erase`
+        // event logged below is the erasure evidence that remains.
+        crate::cortex_lifecycle::erase_agent_memory_sources_on(&tx, id)
+            .map_err(|e| {
+                self.persist_error(format!("hard erase source rows failed for {id}: {e}"))
+            })?;
         tx.execute("DELETE FROM memories WHERE id = ?1", rusqlite::params![id])
             .map_err(|e| self.persist_error(format!("hard erase failed for {id}: {e}")))?;
         tx.execute(
@@ -9914,6 +10093,18 @@ impl MemoryStore {
             .map_err(|e| {
                 self.persist_error(format!("hard erase tombstone failed for {id}: {e}"))
             })?;
+        // A recall-suppression decision bound to the erased payload must not
+        // silently gate a future record that reuses this id — resolve gates
+        // on memory_id alone. The signed decision receipt stays in
+        // cortex_reviewed_controls_v1 as content-free evidence; the live
+        // suppression state is erased with the payload it bound.
+        tx.execute(
+            "DELETE FROM cortex_recall_suppression_v1 WHERE memory_id = ?1",
+            rusqlite::params![id],
+        )
+        .map_err(|e| {
+            self.persist_error(format!("hard erase suppression failed for {id}: {e}"))
+        })?;
         // Lexical projection: CTX-011 made runtime lexical recall a genuine
         // reader of `cortex_fts5` (`fts5_lexical_hits`), so "every projection"
         // is not just a §16.4 formality here — a surviving row really could
@@ -10077,6 +10268,11 @@ impl MemoryStore {
             .map_err(|e| format!("backup relations read failed: {e}"))?;
         relations.extend(rows);
         drop(statement);
+        // CTX-043: the immutable push-source rows are Cortex-owned durable
+        // payload too — sealed into the same envelope so a restore reproduces
+        // the admission records, not just the projections derived from them.
+        let agent_sources = crate::cortex_lifecycle::agent_memory_sources_on(&conn)
+            .map_err(|e| format!("backup agent-source read failed: {e}"))?;
         let payload_sha256 = cortex_backup_digest(
             CORTEX_BACKUP_SCHEMA_VERSION,
             &memories,
@@ -10084,6 +10280,7 @@ impl MemoryStore {
             &links,
             &suppression,
             &relations,
+            &agent_sources,
         );
         Ok(CortexBackupV1 {
             schema_version: CORTEX_BACKUP_SCHEMA_VERSION.to_owned(),
@@ -10094,6 +10291,7 @@ impl MemoryStore {
             links,
             suppression,
             relations,
+            agent_sources,
             payload_sha256,
         })
     }
@@ -10104,15 +10302,15 @@ impl MemoryStore {
     /// rebuilds the in-memory registry from the restored rows so public recall
     /// alone drives that proof.
     pub fn restore_cortex(&self, backup: &CortexBackupV1) -> Result<usize, String> {
-        // Two accepted formats. v2 is current; v1 is accepted because it was
-        // taken before `sensitivity`/`derivation`/`memory_relation` existed —
-        // refusing it would strand every backup made before this fix, while
-        // restoring it yields exactly what it recorded: the explicit
-        // `unavailable_legacy` marker (never a guessed `public`) and no
-        // relations. Each version is digest-verified with its own field set,
-        // so a v1 seal still validates and a v1 envelope can never be replayed
-        // as if it carried v2 fields.
+        // Three accepted formats. v3 is current; v2 predates the CTX-043
+        // push-source section and v1 predates `sensitivity`/`derivation`/
+        // `memory_relation` — refusing either would strand every backup made
+        // before those fixes, while restoring them yields exactly what they
+        // recorded. Each version is digest-verified with its own field set,
+        // so an older seal still validates and an older envelope can never be
+        // replayed as if it carried fields it could not express.
         if backup.schema_version != CORTEX_BACKUP_SCHEMA_VERSION
+            && backup.schema_version != CORTEX_BACKUP_SCHEMA_VERSION_LEGACY_V2
             && backup.schema_version != CORTEX_BACKUP_SCHEMA_VERSION_LEGACY_V1
         {
             return Err(format!(
@@ -10127,6 +10325,14 @@ impl MemoryStore {
                 "backup schema membrane.cortex-backup.v1 cannot carry relations".to_owned(),
             );
         }
+        if backup.schema_version != CORTEX_BACKUP_SCHEMA_VERSION
+            && !backup.agent_sources.is_empty()
+        {
+            return Err(format!(
+                "backup schema {} cannot carry agent memory source records",
+                backup.schema_version
+            ));
+        }
         let expected = cortex_backup_digest(
             &backup.schema_version,
             &backup.memories,
@@ -10134,6 +10340,7 @@ impl MemoryStore {
             &backup.links,
             &backup.suppression,
             &backup.relations,
+            &backup.agent_sources,
         );
         if backup.payload_sha256 != expected {
             return Err("backup payload digest mismatch".into());
@@ -10143,7 +10350,13 @@ impl MemoryStore {
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(|e| self.persist_error(format!("restore transaction failed: {e}")))?;
         // Wipe first, atomically with the restore: a partial restore never
-        // coexists with stale rows.
+        // coexists with stale rows. The CTX-043 source table is wiped through
+        // the same governed erase gate `hard_erase` uses — its rows reference
+        // `memories`, so they clear before the memory wipe either way.
+        crate::cortex_lifecycle::ensure_memory_schema(&tx)
+            .map_err(|e| self.persist_error(format!("restore schema ensure failed: {e}")))?;
+        crate::cortex_lifecycle::erase_all_agent_memory_sources_on(&tx)
+            .map_err(|e| self.persist_error(format!("restore source wipe failed: {e}")))?;
         tx.execute("DELETE FROM memories", [])
             .map_err(|e| self.persist_error(format!("restore wipe failed: {e}")))?;
         tx.execute("DELETE FROM memory_quarantine", [])
@@ -10206,6 +10419,18 @@ impl MemoryStore {
                 self.persist_error(format!(
                     "restore relations failed for {}: {e}",
                     relation.relation_id
+                ))
+            })?;
+        }
+        // CTX-043: source rows reinsert after `memories` (their foreign key
+        // target) and only from a v3 envelope; a v1/v2 envelope legitimately
+        // carries none. The update trigger makes verbatim reinsert the only
+        // thing restore can do — there is no rewrite path for these rows.
+        for row in &backup.agent_sources {
+            crate::cortex_lifecycle::insert_agent_memory_source_on(&tx, row).map_err(|e| {
+                self.persist_error(format!(
+                    "restore agent source failed for {}:{}: {e}",
+                    row.scope_id, row.request_id
                 ))
             })?;
         }
@@ -10447,6 +10672,8 @@ impl MemoryStore {
             &MemoryEventContext::new("proposal_admission"),
             &lifecycle,
             Some((proposal_id, payload_hash)),
+            &[],
+            None,
         )?;
         self.reload_registry_from_db()?;
         Ok(Self::reviewed_disposition_json(disposition, utility))
@@ -11554,10 +11781,15 @@ pub enum StoreError {
     Durable(String),
 }
 
-/// Current §16.4 envelope format. v2 added the CTX-004 `sensitivity`/
-/// `derivation` columns and the CTX-017 `memory_relation` section, all of
-/// them *inside* the sealed digest.
-const CORTEX_BACKUP_SCHEMA_VERSION: &str = "membrane.cortex-backup.v2";
+/// Current §16.4 envelope format. v3 adds the CTX-043 immutable push-source
+/// section *inside* the sealed digest; v2 added the CTX-004 `sensitivity`/
+/// `derivation` columns and the CTX-017 `memory_relation` section.
+const CORTEX_BACKUP_SCHEMA_VERSION: &str = "membrane.cortex-backup.v3";
+/// Pre-CTX-043 envelope. Still restorable: a v2 backup was taken before the
+/// push-source table was sealed, so restoring it with no source rows is the
+/// truthful reading of what it recorded. Its digest verifies with the v2
+/// field set, so existing v2 seals keep validating unchanged.
+const CORTEX_BACKUP_SCHEMA_VERSION_LEGACY_V2: &str = "membrane.cortex-backup.v2";
 /// Pre-CTX-004/CTX-017 envelope. Still restorable: a v1 backup was taken
 /// before those columns/tables existed, so restoring it with the explicit
 /// `unavailable_legacy` marker and no relations is the truthful reading of
@@ -11669,6 +11901,12 @@ pub struct CortexBackupV1 {
     /// predates the `memory_relation` table.
     #[serde(default)]
     pub relations: Vec<CortexBackupRelationV1>,
+    /// CTX-043 immutable push-source records (submitted bytes + caller
+    /// input verbatim). Absent (empty) in a v1/v2 envelope, which predates
+    /// the sealed source section; restore refuses a pre-v3 envelope that
+    /// nonetheless carries them.
+    #[serde(default)]
+    pub agent_sources: Vec<crate::cortex_lifecycle::AgentMemorySourceRowV1>,
     pub payload_sha256: String,
 }
 
@@ -11755,8 +11993,9 @@ fn hash_opt_len_prefixed(hasher: &mut sha2::Sha256, bytes: Option<&[u8]>) {
 /// `envelope_version` selects the sealed field set: a v1 envelope is hashed
 /// exactly as it was when it was written (no `sensitivity`/`derivation`, no
 /// relation section), a v2 envelope seals the CTX-004 columns and the CTX-017
-/// relation table. The two digests are domain-separated, so a v1 envelope can
-/// never be re-labelled v2 (or vice versa) and still verify.
+/// relation table, and a v3 envelope additionally seals the CTX-043 immutable
+/// push-source section. The digests are domain-separated per version, so an
+/// older envelope can never be re-labelled as a newer one and still verify.
 fn cortex_backup_digest(
     envelope_version: &str,
     memories: &[CortexBackupRowV1],
@@ -11764,9 +12003,12 @@ fn cortex_backup_digest(
     links: &[CortexBackupLinkV1],
     suppression: &[CortexBackupSuppressionV1],
     relations: &[CortexBackupRelationV1],
+    agent_sources: &[crate::cortex_lifecycle::AgentMemorySourceRowV1],
 ) -> String {
     use sha2::{Digest, Sha256};
-    let seals_v2_fields = envelope_version == CORTEX_BACKUP_SCHEMA_VERSION;
+    let seals_v2_fields = envelope_version == CORTEX_BACKUP_SCHEMA_VERSION
+        || envelope_version == CORTEX_BACKUP_SCHEMA_VERSION_LEGACY_V2;
+    let seals_v3_fields = envelope_version == CORTEX_BACKUP_SCHEMA_VERSION;
     let mut hasher = Sha256::new();
     // v2: length-prefixed, presence-tagged field encoding (see
     // `hash_len_prefixed`/`hash_opt_len_prefixed`). v1 hashed NUL-joined
@@ -11884,6 +12126,30 @@ fn cortex_backup_digest(
             }
         }
         hash_len_prefixed(&mut hasher, b"\x01relations-end");
+    }
+    // CTX-043 immutable push-source section. Domain-separated and
+    // unconditionally tagged for v3 so an envelope with zero source rows is
+    // still distinguishable from a v2 envelope that could not carry any.
+    // `raw_body` hashes as its raw bytes — length-prefixed, so a binary body
+    // can never be confused with a field boundary.
+    if seals_v3_fields {
+        hash_len_prefixed(&mut hasher, b"\x01agent-sources");
+        for row in agent_sources {
+            for field in [
+                row.memory_id.as_str(),
+                row.request_id.as_str(),
+                row.repository_id.as_str(),
+                row.scope_id.as_str(),
+                row.caller_id.as_str(),
+                row.raw_sha256.as_str(),
+                row.caller_input_json.as_str(),
+            ] {
+                hash_len_prefixed(&mut hasher, field.as_bytes());
+            }
+            hash_len_prefixed(&mut hasher, &row.raw_body);
+            hash_len_prefixed(&mut hasher, row.recorded_at_ms.to_le_bytes().as_slice());
+        }
+        hash_len_prefixed(&mut hasher, b"\x01agent-sources-end");
     }
     format!("sha256:{}", hex::encode(hasher.finalize()))
 }
@@ -13673,6 +13939,7 @@ mod tests {
             &legacy.links,
             &legacy.suppression,
             &legacy.relations,
+            &legacy.agent_sources,
         );
 
         store
@@ -13885,6 +14152,7 @@ mod tests {
         let links = Vec::new();
         let suppression = Vec::new();
         let relations = Vec::new();
+        let agent_sources = Vec::new();
         let payload_sha256 = cortex_backup_digest(
             CORTEX_BACKUP_SCHEMA_VERSION,
             &memories,
@@ -13892,6 +14160,7 @@ mod tests {
             &links,
             &suppression,
             &relations,
+            &agent_sources,
         );
         let backup = CortexBackupV1 {
             schema_version: CORTEX_BACKUP_SCHEMA_VERSION.to_owned(),
@@ -13902,6 +14171,7 @@ mod tests {
             links,
             suppression,
             relations,
+            agent_sources,
             payload_sha256,
         };
         let error = store
@@ -13968,6 +14238,7 @@ mod tests {
             &empty_links,
             &empty_suppression,
             &[],
+            &[],
         );
         let digest_b = cortex_backup_digest(
             CORTEX_BACKUP_SCHEMA_VERSION,
@@ -13975,6 +14246,7 @@ mod tests {
             &[],
             &empty_links,
             &empty_suppression,
+            &[],
             &[],
         );
         assert_ne!(

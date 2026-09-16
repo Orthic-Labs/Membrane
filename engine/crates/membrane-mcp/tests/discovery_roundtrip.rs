@@ -45,11 +45,23 @@ fn pull_schema_covers_blueprint_cortex_and_ledger_evidence() {
     for provider in ["Pull", "Blueprint", "Cortex", "Ledger"] {
         assert!(description.contains(provider), "Pull schema must name {provider} coverage");
     }
-    assert_eq!(pull["inputSchema"]["required"], json!(["task", "taskId", "sessionId", "repository", "caller", "remainingContextCeiling"]));
+    // PUL-050: remainingContextCeiling is required-by-contract only under
+    // host_fit; bounded_response admits unknown host capacity, so H8 cannot
+    // sit in the blanket `required` array.
+    assert_eq!(pull["inputSchema"]["required"], json!(["task", "taskId", "sessionId", "repository", "caller"]));
+    assert_eq!(pull["inputSchema"]["properties"]["budgetMode"]["enum"], json!(["bounded_response", "host_fit"]));
     assert_eq!(pull["inputSchema"]["properties"]["consumerCapabilities"]["properties"]["resolvers"]["items"]["enum"], json!(["membrane_source_read", "membrane_memory_read"]));
+    // bounded_response: no H8, declares only the response budget.
     validate_arguments("pull", &json!({
         "task":"retrieve context", "taskId":"task", "sessionId":"session", "repository":"repo",
         "caller":{"root":"C:/repo","repositoryId":"repo","scopeId":"session"},
+        "budgetMode":"bounded_response", "responseBudgetTokens":4000
+    })).unwrap();
+    // host_fit: supplied H8 still validates through the schema.
+    validate_arguments("pull", &json!({
+        "task":"retrieve context", "taskId":"task", "sessionId":"session", "repository":"repo",
+        "caller":{"root":"C:/repo","repositoryId":"repo","scopeId":"session"},
+        "budgetMode":"host_fit",
         "remainingContextCeiling":{"schemaVersion":1,"ceilingId":"ceiling","sessionId":"session","taskId":{},"requestedAtUnixMs":1,"remainingTokens":{},"provenanceReceipt":{}}
     })).unwrap();
 }

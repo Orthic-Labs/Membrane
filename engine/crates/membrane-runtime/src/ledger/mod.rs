@@ -28,5 +28,6 @@ pub mod query_alias;
 pub(crate) mod reconcile;
 pub mod resolve;
 pub mod session_projection;
+pub(crate) mod skill_documents;
 
 pub use db::LedgerDb;

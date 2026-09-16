@@ -120,10 +120,12 @@ fn rollback_with_inconsistent_receipt_is_rejected() {
     assert_eq!(result["reason"], "rollback_receipt_invalid");
 }
 
-/// A self-consistent rollback receipt naming a real prior-app directory
-/// restores those files into the repository root.
+/// A self-consistent rollback receipt naming a real prior-app directory is
+/// verified (receipt-bound digests) and delegated to the canonical Membrane
+/// installer. Blueprint never performs the file-level restore itself, so
+/// the live app tree must be untouched.
 #[test]
-fn rollback_with_consistent_receipt_restores_prior_app_dir() {
+fn rollback_with_consistent_receipt_verifies_binding_and_delegates() {
     let dir = tempdir().unwrap();
     let root = fs::canonicalize(dir.path()).unwrap();
     let app = root.join("app-current");
@@ -147,15 +149,18 @@ fn rollback_with_consistent_receipt_restores_prior_app_dir() {
     assert!(response.ok);
     let result = response.result.unwrap();
     assert_eq!(result["ok"], true);
-    assert_eq!(result["rolledBack"], true);
-    assert_eq!(fs::read(app.join("marker.txt")).unwrap(), b"prior-version-content");
+    assert_eq!(result["delegated"], true);
+    assert_eq!(result["delegate"], "membrane_installer");
+    assert_eq!(result["verifiedBinding"]["priorAppDigest"], prior_digest);
+    // The installer's transaction never ran: the live app dir is untouched.
+    assert_eq!(fs::read(app.join("marker.txt")).unwrap(), b"current-version-content");
 }
 
-/// Without a manifest, a non-dry-run update backs up the live store (a
-/// no-op when no store exists yet) and reports the atomic swap as deferred
-/// when an artifact directory is staged.
+/// Without a verified manifest, an artifact directory is an unsafe
+/// transition and is refused. Nothing is backed up, staged, or swapped —
+/// the canonical installer owns the update transaction.
 #[test]
-fn update_without_manifest_backs_up_and_stages_artifact() {
+fn update_without_verified_manifest_refuses_artifact_without_mutation() {
     let dir = tempdir().unwrap();
     let root = fs::canonicalize(dir.path()).unwrap();
     let artifact = tempdir().unwrap();
@@ -165,11 +170,27 @@ fn update_without_manifest_backs_up_and_stages_artifact() {
     });
     assert!(response.ok);
     let result = response.result.unwrap();
+    assert_eq!(result["ok"], false);
+    assert_eq!(result["reason"], "artifact_manifest_unverified");
+    assert!(!root.join(".agent").join("update-staged").exists());
+}
+
+/// A field-only update request (no artifact) verifies cleanly and delegates
+/// the transaction to the canonical installer, reporting graph/schema
+/// compatibility as admission evidence without mutating the store.
+#[test]
+fn update_delegates_transaction_and_reports_graph_compatibility() {
+    let dir = tempdir().unwrap();
+    let root = fs::canonicalize(dir.path()).unwrap();
+    let response = run(&root, |input| {
+        input["channel"] = "stable".into();
+    });
+    assert!(response.ok);
+    let result = response.result.unwrap();
     assert_eq!(result["ok"], true);
-    assert_eq!(result["staged"], true);
-    let staged_file = root.join(".agent").join("update-staged").join("app-file.txt");
-    assert!(staged_file.exists());
-    let omissions = result["omissions"].as_array().unwrap();
-    assert!(!omissions.is_empty());
-    assert_eq!(omissions[0]["code"], "orchestration_out_of_scope");
+    assert_eq!(result["delegated"], true);
+    assert_eq!(result["delegate"], "membrane_installer");
+    assert_eq!(result["graphCompatibility"]["state"], "missing");
+    assert_eq!(result["graphCompatibility"]["compatible"], false);
+    assert!(!root.join(".agent").join("update-staged").exists());
 }

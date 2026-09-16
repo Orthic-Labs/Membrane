@@ -47,7 +47,12 @@ impl Provider for LedgerProvider {
     }
 }
 
-fn materialize(owner: &LedgerService, context: &ProviderContext, budget: &WorkBudget) -> Result<ProviderOutput,String> {
+/// Enrolled caller plus grant-narrowed ranges, shared by the document lane
+/// (LDG-022) and the skill-document lane (LDG-032). Both lanes apply the same
+/// grant binding checks before any source work happens.
+fn enrolled_caller(
+    context: &ProviderContext,
+) -> Result<(Caller, Option<Vec<membrane_protocol::ReadPathV1>>, Option<String>), String> {
     let caller = Caller::enrolled(Path::new(&context.repository_root),&context.repository_id)?;
     caller.authorize("context")?;
     let (ranges, grant_id) = match &context.scope_grant {
@@ -73,10 +78,15 @@ fn materialize(owner: &LedgerService, context: &ProviderContext, budget: &WorkBu
                 if start_line == 0 || end_line < start_line { return Err("ledger_range_grant_invalid".into()); }
                 ranges.push(membrane_protocol::ReadPathV1 {path:path.into(),start_line,end_line});
             }
-            (Some(ranges),Some(grant.id.as_str()))
+            (Some(ranges),Some(grant.id.clone()))
         }
     };
-    let (result,tickets) = owner.search(&caller,&context.task,12,false,ranges,grant_id,budget)?;
+    Ok((caller, ranges, grant_id))
+}
+
+fn materialize(owner: &LedgerService, context: &ProviderContext, budget: &WorkBudget) -> Result<ProviderOutput,String> {
+    let (caller, ranges, grant_id) = enrolled_caller(context)?;
+    let (result,tickets) = owner.search(&caller,&context.task,12,false,ranges,grant_id.as_deref(),budget)?;
     let generation = context.freshness.generation.clone().or(context.release_generation.clone());
     let observed_count = result.hits.len();
     let mut candidates = Vec::new();
@@ -101,9 +111,120 @@ fn materialize(owner: &LedgerService, context: &ProviderContext, budget: &WorkBu
             severity:WarningSeverity::Warning,detail_id:Some("ledger_source_incomplete".into()),stage:Some("source".into()),message:None});
     }
     caller.authorize("context")?;
-    validate_task_grant(grant_id,&caller,None,Some(&context.session_id))?;
+    validate_task_grant(grant_id.as_deref(),&caller,None,Some(&context.session_id))?;
     budget.check()?;
     Ok(output)
+}
+
+/// Native portable skill-document candidate adapter (LDG-032). This is the
+/// production Pull skill-document provider lane: it enumerates registered
+/// `tools/skills/<name>/SKILL.md` projections through the daemon-owned
+/// `LedgerService` skill adapter and emits `membrane_source_read`-bound
+/// candidates — the same source/revision/span/ticket binding as the document
+/// lane. Cortex's `skill-read` resolver is never used; separately admitted
+/// durable skill insights remain a Cortex lane, not this index.
+///
+/// Registration lives in `pull/native_federation.rs` (`ProviderId::Skills`).
+pub(crate) struct LedgerSkillProvider { owner: Option<Arc<LedgerService>> }
+impl LedgerSkillProvider {
+    pub(crate) fn new(owner: Option<Arc<LedgerService>>) -> Self { Self { owner } }
+}
+
+const MAX_SKILL_CANDIDATES: usize = 5;
+
+impl Provider for LedgerSkillProvider {
+    fn provide<'life0, 'life1, 'async_trait>(&'life0 self, context: &'life1 ProviderContext)
+        -> Pin<Box<dyn Future<Output=Result<ProviderOutput,ProviderError>> + Send + 'async_trait>>
+    where 'life0:'async_trait, 'life1:'async_trait, Self:'async_trait
+    {
+        Box::pin(async move {
+            if context.is_cancelled() { return Ok(gap(ReasonCode::ProviderCancelled,"ledger_cancelled")); }
+            if context.is_deadline_exhausted() { return Ok(gap(ReasonCode::DeadlineExhausted,"ledger_deadline_exceeded")); }
+            let Some(owner) = self.owner.clone() else { return Ok(gap(ReasonCode::ProviderUnavailable,"ledger_owner_unavailable")); };
+            let context = context.clone();
+            let cancellation = context.cancellation.child_token();
+            let guard = CancelWork(cancellation.clone());
+            let budget = WorkBudget::new(context.deadline,cancellation);
+            let result = tokio::task::spawn_blocking(move || skill_materialize(&owner,&context,&budget)).await;
+            drop(guard);
+            Ok(match result {
+                Ok(Ok(output)) => output,
+                Ok(Err(reason)) => {
+                    let code = if reason.contains("grant") || reason.contains("denied") || reason.contains("enrolled") {
+                        ReasonCode::ScopeGrantInvalid
+                    } else if reason.contains("deadline") { ReasonCode::DeadlineExhausted }
+                    else if reason.contains("cancelled") { ReasonCode::ProviderCancelled }
+                    else { ReasonCode::ProviderUnavailable };
+                    gap(code,&safe_reason(&reason))
+                }
+                Err(_) => gap(ReasonCode::ProviderFailed,"ledger_worker_failed"),
+            })
+        })
+    }
+}
+
+fn skill_materialize(owner: &LedgerService, context: &ProviderContext, budget: &WorkBudget) -> Result<ProviderOutput,String> {
+    let (caller, ranges, grant_id) = enrolled_caller(context)?;
+    let (result, skills) = owner.skill_documents(
+        &caller, &context.task, MAX_SKILL_CANDIDATES, ranges, grant_id.as_deref(), budget)?;
+    let generation = context.freshness.generation.clone().or(context.release_generation.clone());
+    let observed_count = skills.len();
+    let mut candidates = Vec::new();
+    for skill in &skills {
+        candidates.push(candidate_for_skill(
+            skill, &caller.repository_id, caller.envelope(), &context.session_id,
+        )?);
+    }
+    let mut output = ProviderOutputV1 {schema_version:PROVIDER_OUTPUT_SCHEMA_VERSION,provider:ProviderId::Skills,
+        status:if result.complete {FederationProviderStatusV1::Complete}else{FederationProviderStatusV1::Partial},
+        generation:generation.clone(),candidates,warnings:Vec::new(),omissions:Vec::new(),
+        diagnostics:Some(ProviderDiagnosticsV1 {provider:ProviderId::Skills,elapsed_ms:None,generation,
+            attributes:BTreeMap::from([("provenance".into(),"ledger-source-owner".into()),
+                ("ledger_generation".into(),result.publication_generation.to_string()),
+                ("representation".into(),"index_only".into()),
+                ("mode".into(),"live".into())])}),
+        extensions:BTreeMap::from([("ledger".into(),json!({"observedCandidates":observed_count,
+            "complete":result.complete,"omissions":result.omissions,"lane":result.lane,
+            "sourceBytesChecked":result.source_bytes_checked,"policyDigest":result.policy_digest,
+            "publicationGeneration":result.publication_generation,"delivered":true}))])};
+    if !result.complete {
+        output.warnings.push(ProviderWarningV1 {provider:ProviderId::Skills,reason:ReasonCode::ProviderFailed,
+            severity:WarningSeverity::Warning,detail_id:Some("ledger_source_incomplete".into()),stage:Some("source".into()),message:None});
+    }
+    caller.authorize("context")?;
+    validate_task_grant(grant_id.as_deref(),&caller,None,Some(&context.session_id))?;
+    budget.check()?;
+    Ok(output)
+}
+
+/// The skills-lane counterpart of [`candidate_for_hit`]: identical
+/// `membrane_source_read` resolver envelope and hash/span/generation binding,
+/// with the candidate identity and trust class the Pull skills lane expects.
+fn candidate_for_skill(
+    skill: &super::skill_documents::TicketedSkillDocumentV1,
+    repository_id: &str,
+    caller: serde_json::Value,
+    session_id: &str,
+) -> Result<CandidateV1, String> {
+    let hit = &skill.hit;
+    let mut arguments = serde_json::to_value(hit.resolve_request()).map_err(|e|e.to_string())?;
+    arguments["repository"] = json!(repository_id);
+    arguments["caller"] = caller;
+    arguments["ledgerTicket"] = json!(skill.ticket);
+    arguments["sessionId"] = json!(session_id);
+    let resolver = json!({"tool":"membrane_source_read","arguments":arguments}).to_string();
+    let text = format!("Skill document: {} ({}, {} bytes). Resolve the captured document span.",
+        skill.title,hit.source_ref,hit.end_byte-hit.start_byte);
+    let estimated_tokens = cortex_core::estimate_tokens(&format!("{text}\n{resolver}")) as u32;
+    Ok(CandidateV1 {id:format!("skills:{}",skill.skill_id),layer:7,provider:Some(ProviderId::Skills.as_str().into()),
+        source_kind:"skill".into(),source_ref:format!("{}#{}",hit.source_ref,hit.node_id),
+        source_hash:format!("sha256:{}",hit.expected_span_hash),trust_class:"workspace_tracked".into(),
+        instruction_policy:"data_only".into(),provider_score:hit.score.clamp(0.0,1.0),
+        score_components:BTreeMap::from([("lexical".into(),hit.score),("freshness".into(),1.0)]),
+        base_commit:Some(hit.expected_revision.clone()),overlay_digest:Some(hit.expected_content_hash.clone()),
+        freshness_class:Some(if hit.source_kind=="imported_snapshot" {FreshnessClass::CommittedSnapshot}else{FreshnessClass::Current}),
+        snapshot_id:Some(format!("ledger:{}",hit.ledger_generation)),estimated_tokens,
+        protected:false,exact:true,recoverable:true,resolver,text})
 }
 
 fn candidate_for_hit(
@@ -158,6 +279,32 @@ mod tests {
         assert!(candidate.recoverable);
         assert!(candidate.resolver.contains("expectedSpanHash"));
         assert!(candidate.resolver.contains("ticket-1"));
+    }
+
+    #[test]
+    fn skill_candidate_carries_source_read_binding_not_cortex_resolver() {
+        let hit = super::super::query::LedgerHit {
+            doc_id: "doc-skill".into(), node_id: "node-skill".into(),
+            source_ref: "doc://tools/skills/deploy/SKILL.md".into(), anchor_id: "anchor-s".into(),
+            expected_content_hash: "content-hash".into(), expected_revision: "rev-1".into(),
+            expected_span_hash: "span-hash".into(), ledger_generation: 3,
+            source_kind: "worktree".into(), node_kind: "document".into(),
+            start_byte: 0, end_byte: 120, lane: "ledger_skill".into(), score: 0.8,
+            literal_range: None,
+        };
+        let skill = super::super::skill_documents::TicketedSkillDocumentV1 {
+            skill_id: "deploy".into(), title: "Deploy".into(), hit, ticket: "ticket-s".into(),
+        };
+        let candidate = candidate_for_skill(
+            &skill, "repo-1", json!({"root":"/repo","repositoryId":"repo-1"}), "session-1",
+        ).unwrap();
+        assert_eq!(candidate.id, "skills:deploy");
+        assert_eq!(candidate.provider.as_deref(), Some("skills"));
+        assert_eq!(candidate.source_kind, "skill");
+        assert!(candidate.exact && candidate.recoverable);
+        assert!(candidate.resolver.contains("membrane_source_read"));
+        assert!(candidate.resolver.contains("ticket-s"));
+        assert!(!candidate.resolver.contains("cortex"));
     }
 }
 fn safe_reason(reason:&str)->String {

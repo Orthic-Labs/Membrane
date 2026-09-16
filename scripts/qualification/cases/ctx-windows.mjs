@@ -14,7 +14,7 @@
 // bare boolean.
 //
 // What this module DOES provide, and what IS real and executable now:
-//   - CTX_001 .. CTX_041 (per installedCaseIds): source-bound structural
+//   - CTX_001 .. CTX_041 plus CTX_043 (per installedCaseIds): source-bound structural
 //     attestations for direct unit checks, plus row-specific native controls
 //     when registry execution supplies an installed CLI. Installed controls
 //     invoke `qualification cortex <id>` in installer-owned `current` and
@@ -550,6 +550,11 @@ export function CTX_041(options) {
   return structuralCheck("CTX-041", options, "engine/crates/membrane-runtime/src/store.rs",
     [/suppress/i, /resume/i]);
 }
+export function CTX_043(options) {
+  return structuralCheck("CTX-043", options,
+    ["engine/crates/membrane-runtime/src/cortex_lifecycle.rs", "engine/crates/membrane-runtime/src/store.rs"],
+    [/cortex_agent_memory_source_v1|agent_memory_push_with_input/i, /hard_erase|agent_sources/i]);
+}
 
 // ---------------------------------------------------------------------------
 // BM06 — Governed durable projection (Required Amendment, owned this lane).
@@ -796,6 +801,7 @@ export const CTX_CASES = {
   CTX_011, CTX_012, CTX_013, CTX_014, CTX_015, CTX_016, CTX_017, CTX_018, CTX_019, CTX_020,
   CTX_021, CTX_022, CTX_023, CTX_024, CTX_025, CTX_026, CTX_027, CTX_028, CTX_029, CTX_030,
   CTX_031, CTX_032, CTX_034, CTX_035, CTX_036, CTX_037, CTX_038, CTX_040, CTX_041,
+  CTX_043,
   BM06, BM07, OPT_02,
 };
 

@@ -389,6 +389,7 @@ mod tests {
                 .map(str::to_owned)
                 .collect(),
             capabilities: vec!["memory".into(), "diagnostics".into()],
+            service_capabilities: None,
         }
     }
 

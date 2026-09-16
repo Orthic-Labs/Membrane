@@ -2,6 +2,7 @@
 //! This module only reads an already assembled report; it never mutates data-plane state.
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use std::collections::BTreeMap;
 
 pub const SCHEMA_VERSION: u32 = 1;
 pub const MAX_ITEMS: usize = 64;
@@ -18,6 +19,22 @@ pub struct SentinelList {
     pub count: Option<u64>,
     pub ids: Vec<String>,
 }
+/// One MEM-029 health dimension as projected for the Hub. `state` is
+/// `observed` when the producer's source read succeeded and `not_evaluated`
+/// when it was unavailable — a dimension never silently converts to zero.
+/// `count` exists only for observed dimensions; `ids` are bounded
+/// drill-down identities (memory or relation ids), never content.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct SentinelDimension {
+    pub state: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub count: Option<u64>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub ids: Vec<String>,
+    #[serde(default)]
+    pub reason: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MemorySentinelView {
     #[serde(rename = "schemaVersion")]
@@ -29,6 +46,12 @@ pub struct MemorySentinelView {
     pub working: SentinelList,
     #[serde(rename = "taskCriteria")]
     pub task_criteria: SentinelList,
+    /// Additive MEM-029 dimension map (duplication, relationIntegrity,
+    /// isolation, provenanceGaps, lifecycleAnomaly, projectionDrift,
+    /// observedRecall, crowding, reviewBacklog). Absent/empty on reports
+    /// produced before this field existed — never fabricated.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub dimensions: BTreeMap<String, SentinelDimension>,
     pub evidence: EvidenceState,
     pub gate: GateState,
 }
@@ -84,6 +107,43 @@ pub fn project(report: &Value) -> MemorySentinelView {
         scratchpad: list(data.get("scratchpad")),
         working: list(data.get("working")),
         task_criteria: list(data.get("taskCriteria")),
+        dimensions: data
+            .get("dimensions")
+            .and_then(Value::as_object)
+            .map(|object| {
+                object
+                    .iter()
+                    .take(MAX_ITEMS)
+                    .map(|(name, value)| {
+                        let dimension = SentinelDimension {
+                            state: value
+                                .get("state")
+                                .and_then(Value::as_str)
+                                .unwrap_or("unknown")
+                                .into(),
+                            count: value.get("count").and_then(Value::as_u64),
+                            ids: value
+                                .get("ids")
+                                .and_then(Value::as_array)
+                                .map(|a| {
+                                    a.iter()
+                                        .take(MAX_ITEMS)
+                                        .filter_map(Value::as_str)
+                                        .map(str::to_owned)
+                                        .collect()
+                                })
+                                .unwrap_or_default(),
+                            reason: value
+                                .get("reason")
+                                .and_then(Value::as_str)
+                                .unwrap_or("unknown — no evidence")
+                                .into(),
+                        };
+                        (name.clone(), dimension)
+                    })
+                    .collect()
+            })
+            .unwrap_or_default(),
         evidence: EvidenceState {
             state: evidence
                 .get("state")
@@ -116,5 +176,41 @@ pub fn project(report: &Value) -> MemorySentinelView {
                 .and_then(Value::as_bool)
                 .unwrap_or(false),
         },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn absent_dimensions_stay_absent_in_the_projection() {
+        let view = project(&json!({"lifecycle": {"active": 2}}));
+        assert!(view.dimensions.is_empty());
+        // …and an empty map stays off the wire entirely.
+        assert!(serde_json::to_value(&view)
+            .unwrap()
+            .get("dimensions")
+            .is_none());
+    }
+
+    #[test]
+    fn observed_and_unavailable_dimensions_project_distinctly() {
+        let view = project(&json!({
+            "dimensions": {
+                "isolation": {"state": "observed", "count": 3, "ids": ["m1", "m2", "m3"], "reason": "no incident edge"},
+                "provenanceGaps": {"state": "not_evaluated", "reason": "source_unavailable"}
+            }
+        }));
+        let isolation = &view.dimensions["isolation"];
+        assert_eq!(isolation.state, "observed");
+        assert_eq!(isolation.count, Some(3));
+        assert_eq!(isolation.ids, vec!["m1", "m2", "m3"]);
+        let gaps = &view.dimensions["provenanceGaps"];
+        assert_eq!(gaps.state, "not_evaluated");
+        assert_eq!(gaps.count, None);
+        assert!(gaps.ids.is_empty());
+        let wire = serde_json::to_value(&view).unwrap();
+        assert!(wire["dimensions"]["provenanceGaps"].get("count").is_none());
     }
 }

@@ -25,17 +25,5 @@
         "Authorization": "Bearer ${MEMBRANE_BEARER_TOKEN}"
       }
     }
-  },
-  "hooks": {
-    "SessionStart": [{"hooks": [{"type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/membrane-client.exe\" hook"}]}],
-    "UserPromptSubmit": [{"hooks": [{"type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/membrane-client.exe\" hook"}]}],
-    "PreCompact": [{"hooks": [{"type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/membrane-client.exe\" hook"}]}],
-    "PostCompact": [{"hooks": [{"type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/membrane-client.exe\" hook"}]}],
-    "PreToolUse": [{"matcher": ".*", "hooks": [{"type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/membrane-client.exe\" hook"}]}],
-    "PostToolUse": [{"matcher": ".*", "hooks": [{"type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/membrane-client.exe\" hook"}]}],
-    "PostToolUseFailure": [{"matcher": ".*", "hooks": [{"type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/membrane-client.exe\" hook"}]}],
-    "Stop": [{"hooks": [{"type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/membrane-client.exe\" hook"}]}],
-    "TaskCompleted": [{"hooks": [{"type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/membrane-client.exe\" hook"}]}],
-    "SessionEnd": [{"hooks": [{"type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/membrane-client.exe\" hook"}]}]
   }
 }

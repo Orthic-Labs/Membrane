@@ -139,13 +139,28 @@ pub(crate) fn recall_attempt(input: &HookInputEnvelopeV1, task: &str) -> RecallO
     let session = input.session_id.as_deref().unwrap_or("host-native");
     let client = input.payload.get("client").and_then(Value::as_str).or_else(|| input.payload.get("client_id").and_then(Value::as_str)).unwrap_or_else(|| if input.payload.get("turn_id").is_some() { "codex" } else { "claude" });
     // Host integrations may provide either canonical camelCase or native
-    // snake_case envelope fields. Parse only a validated H8 observation;
-    // absence remains explicit instead of inventing a context window.
-    let observed_ceiling = input.payload.get("remainingContextCeiling")
-        .or_else(|| input.payload.get("remaining_context_ceiling"))
-        .cloned()
-        .and_then(|value| serde_json::from_value::<membrane_protocol::RemainingContextCeilingV1>(value).ok())
-        .filter(|ceiling| ceiling.validate().is_ok());
+    // snake_case envelope fields. Absence remains explicit instead of
+    // inventing a context window; a supplied-but-invalid observation is a
+    // typed refusal below — never silently discarded into configured_cap.
+    let ceiling_field = input.payload.get("remainingContextCeiling")
+        .or_else(|| input.payload.get("remaining_context_ceiling"));
+    let (observed_ceiling, invalid_observation) = match ceiling_field {
+        Some(value) if !value.is_null() => {
+            match serde_json::from_value::<membrane_protocol::RemainingContextCeilingV1>(value.clone())
+                .map_err(|error| error.to_string())
+                .and_then(|ceiling| {
+                    ceiling
+                        .validate()
+                        .map_err(|error| error.to_string())
+                        .map(|_| ceiling)
+                })
+            {
+                Ok(ceiling) => (Some(ceiling), None),
+                Err(error) => (None, Some(error)),
+            }
+        }
+        _ => (None, None),
+    };
     let max_tokens = env::var("MEMBRANE_HOOK_RECALL_MAX_TOKENS").ok().and_then(|value| value.parse::<u64>().ok()).filter(|value| *value > 0)
         .or_else(|| input.payload.get("max_tokens").and_then(Value::as_u64)).unwrap_or(DEFAULT_HOOK_RECALL_MAX_TOKENS) as usize;
     // Resident holder first: reuse warm services when an authenticated local
@@ -156,6 +171,13 @@ pub(crate) fn recall_attempt(input: &HookInputEnvelopeV1, task: &str) -> RecallO
     stages.insert("envelope_ms".to_owned(), json!(started.elapsed().as_millis() as u64));
     let resident = resident_endpoint(&root);
     stages.insert("credential_ms".to_owned(), json!(started.elapsed().as_millis() as u64));
+    if let Some(error) = invalid_observation {
+        // PUL-050: supplied host evidence that fails validation must surface
+        // as a typed refusal; falling through to configured_cap would discard
+        // the observation to obtain success.
+        return with_stage_timings(RecallOutcome { context: None, sufficient: false, reason: "membrane_retrieval_failed",
+            detail: json!({"transport":"hook","reason":"host_observation_invalid","error":error}) }, stages, started);
+    }
     if let Some((port, token)) = resident {
         let mut body = json!({"task": task, "repo": root, "maxTokens": max_tokens, "client": client, "session": session, "budgetPolicy": if observed_ceiling.is_some() { "host_observed" } else { "configured_cap" }, "maxWaitMs": RECALL_RESIDENT_BUDGET_MS});
         if let Some(ceiling) = observed_ceiling.as_ref() {

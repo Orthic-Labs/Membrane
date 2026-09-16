@@ -18,7 +18,7 @@ pub use binding::{
     KnownCandidate, INSTALLED_LOOPBACK_HOST, INSTALLED_LOOPBACK_PORT,
 };
 pub use error::ClientError;
-pub use handshake::{CompatibilityRequirement, ServiceIdentity};
+pub use handshake::{CompatibilityRequirement, ServiceCapabilities, ServiceIdentity};
 pub use memory_backend::{
     CallOptions, CancellationToken, MemoryBackendCall, MemoryBackendClient, MemoryTransport,
 };

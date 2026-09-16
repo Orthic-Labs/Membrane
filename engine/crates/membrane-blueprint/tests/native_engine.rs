@@ -316,23 +316,69 @@ fn empty_refresh_discovers_source_changes_instead_of_reporting_fresh() {
     assert!(error.starts_with("blueprint_incremental_unsupported:"));
 }
 
+fn git(root: &std::path::Path, args: &[&str]) {
+    let status = std::process::Command::new("git")
+        .arg("-C")
+        .arg(root)
+        .args(args)
+        .status()
+        .expect("git invocation failed");
+    assert!(status.success(), "git {:?} failed", args);
+}
+
 #[test]
-fn status_uses_bounded_freshness_without_full_construction_receipt() {
+fn status_observes_live_source_without_full_construction_receipt() {
     let root = tempdir().unwrap();
+    git(root.path(), &["init", "--quiet"]);
+    git(root.path(), &["config", "user.email", "test@example.invalid"]);
+    git(root.path(), &["config", "user.name", "Freshness Test"]);
+    // Keep Blueprint's own artifacts out of the worktree observation so the
+    // status digest and changed-path set reflect only source files.
+    fs::write(root.path().join(".gitignore"), ".agent/\n").unwrap();
     fs::write(root.path().join("main.rs"), "fn entry() {}\n").unwrap();
+    git(root.path(), &["add", ".gitignore", "main.rs"]);
+    git(root.path(), &["commit", "--quiet", "-m", "seed"]);
     let operation = NativeBlueprintOperation;
     execute(&operation, &request("initial", Operation::Build, root.path())).unwrap();
     let receipt = root.path().join(".agent/graph/full-constructions.jsonl");
     let before = fs::read_to_string(&receipt).unwrap();
     let before_generation = result_generation_identity(root.path());
-    fs::write(root.path().join("main.rs"), "fn changed() {}\n").unwrap();
+
+    // Clean worktree: live observation matches the sealed basis.
     let result = execute(&operation, &request("status", Operation::Status, root.path())).unwrap();
     assert_eq!(result["state"], "fresh");
     assert_eq!(result["freshnessReceipt"]["freshness"], "fresh");
-    assert_eq!(result["freshnessReceipt"]["observationMode"], "sealed_generation");
-    assert_eq!(result["freshnessReceipt"]["liveSourceObserved"], false);
+    assert_eq!(result["freshnessReceipt"]["observationMode"], "live_observation");
+    assert_eq!(result["freshnessReceipt"]["liveSourceObserved"], true);
+
+    // Worktree edit without refresh must never report old-fresh.
+    fs::write(root.path().join("main.rs"), "fn changed() {}\n").unwrap();
+    let result = execute(&operation, &request("status", Operation::Status, root.path())).unwrap();
+    assert_eq!(result["state"], "stale");
+    assert_eq!(result["freshnessReceipt"]["freshness"], "changed_since_generation");
+    assert_eq!(result["freshnessReceipt"]["liveSourceObserved"], true);
+    assert_eq!(
+        result["freshnessReceipt"]["staleSources"]["paths"].as_array().unwrap(),
+        &vec![Value::String("main.rs".into())]
+    );
+
+    // Reads never mutate the store: generation identity and the
+    // full-construction receipt are byte-identical.
     assert_eq!(before_generation, result_generation_identity(root.path()));
     assert_eq!(before, fs::read_to_string(receipt).unwrap());
+}
+
+#[test]
+fn status_without_vcs_reports_unavailable_instead_of_old_fresh() {
+    let root = tempdir().unwrap();
+    fs::write(root.path().join("main.rs"), "fn entry() {}\n").unwrap();
+    let operation = NativeBlueprintOperation;
+    execute(&operation, &request("initial", Operation::Build, root.path())).unwrap();
+    fs::write(root.path().join("main.rs"), "fn changed() {}\n").unwrap();
+    let result = execute(&operation, &request("status", Operation::Status, root.path())).unwrap();
+    assert_eq!(result["state"], "unavailable");
+    assert_eq!(result["freshnessReceipt"]["freshness"], "unavailable");
+    assert_eq!(result["freshnessReceipt"]["liveSourceObserved"], false);
 }
 
 #[test]

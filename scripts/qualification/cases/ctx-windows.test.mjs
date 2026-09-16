@@ -16,6 +16,7 @@ const REQUIRED_CTX_IDS = [
   "CTX-011", "CTX-012", "CTX-013", "CTX-014", "CTX-015", "CTX-016", "CTX-017", "CTX-018", "CTX-019", "CTX-020",
   "CTX-021", "CTX-022", "CTX-023", "CTX-024", "CTX-025", "CTX-026", "CTX-027", "CTX-028", "CTX-029", "CTX-030",
   "CTX-031", "CTX-032", "CTX-034", "CTX-035", "CTX-036", "CTX-037", "CTX-038", "CTX-040", "CTX-041",
+  "CTX-043",
 ];
 
 // Rows whose canonicalImplementationRow already records a documented

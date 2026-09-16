@@ -71,7 +71,19 @@ fn main() {
             return;
         }
         Some("--version") | Some("-V") => {
-            println!("membrane {}", env!("CARGO_PKG_VERSION"));
+            // MEM-003: an installed binary reports the product version from
+            // the release.json shipped beside it; a bare build (no installed
+            // layout) falls back to its crate version, never a fabricated
+            // product number.
+            let version = std::env::current_exe()
+                .ok()
+                .and_then(|exe| exe.parent().map(|dir| dir.join("release.json")))
+                .and_then(|path| std::fs::read(&path).ok())
+                .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok())
+                .and_then(|release| release.get("version").and_then(serde_json::Value::as_str).map(str::to_owned))
+                .filter(|version| !version.trim().is_empty())
+                .unwrap_or_else(|| env!("CARGO_PKG_VERSION").to_owned());
+            println!("membrane {version}");
             return;
         }
         _ => {}

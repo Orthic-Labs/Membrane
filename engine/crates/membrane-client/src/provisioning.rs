@@ -278,6 +278,7 @@ mod tests {
                 native_only: true,
                 subsystems: vec![],
                 capabilities: vec![],
+                service_capabilities: None,
             },
         }
     }

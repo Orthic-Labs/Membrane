@@ -27,6 +27,7 @@ fn binding() -> ResidentControllerBinding {
         startup_generation: 1, runtime_origin: "installed".into(),
         stable_install_root: Some(r"C:\Membrane\current".into()), protocol_version: 1,
         schema_version: 1, native_only: true, subsystems: vec![], capabilities: vec![],
+        service_capabilities: None,
     };
     ResidentControllerBinding::from_canonical(
         bind_candidate(candidate, identity, &CompatibilityRequirement::default()).unwrap(),

@@ -19,9 +19,10 @@ use membrane_runtime::background_review_input::{
     BackgroundReviewInputSnapshotV1,
 };
 use membrane_runtime::installed_health;
+use membrane_runtime::adapt_service::AdaptFirstPartySemanticReviewProvider;
 use membrane_runtime::background_review::{
     execute_background_semantic_review, AuthenticatedLoopbackSemanticReviewProvider,
-    BackgroundSemanticReviewProvider, DeterministicFirstPartySemanticReviewProvider,
+    BackgroundSemanticReviewProvider,
     BackgroundReviewCompletion, BackgroundReviewCursorStore, BackgroundReviewProducer,
     BackgroundReviewScheduler, BackgroundSemanticReviewInputV1,
     JsonlBackgroundReviewObservationSink, JsonlBackgroundReviewProposalAdmission,
@@ -49,6 +50,11 @@ enum ControlSignal {
 
 const CORTEX_DB_RELATIVE_PATH: &str = "tools/.cache/memory/cortex-engine.db";
 const BACKGROUND_REVIEW_TICK: Duration = Duration::from_millis(250);
+/// MEM-061: deterministic read-only corpus-health cadence. Long enough that
+/// the maintenance kind can never starve review kinds through the shared
+/// activity/min-elapsed gates; a deferred tick is an observed scheduler
+/// decision, not a retry storm.
+const CORPUS_HEALTH_INTERVAL_MS: u64 = 900_000;
 
 /// Host activity/foreground snapshot consumed by daemon scheduler. It is
 /// separate from lifecycle stdin, preserving tray-daemon control ownership.
@@ -64,6 +70,7 @@ struct DaemonBackgroundExecutor {
     provider: Box<dyn BackgroundSemanticReviewProvider>,
     cursor_store: BackgroundReviewCursorStore,
     proposal_sink: JsonlBackgroundReviewProposalAdmission,
+    last_corpus_health_unix_ms: u64,
 }
 
 impl DaemonBackgroundExecutor {
@@ -72,8 +79,8 @@ impl DaemonBackgroundExecutor {
             match AuthenticatedLoopbackSemanticReviewProvider::from_environment(bearer_token) {
                 Ok(loopback) => (Box::new(loopback), "authenticated_loopback"),
                 Err(_) => (
-                    Box::new(DeterministicFirstPartySemanticReviewProvider::new()),
-                    "deterministic_first_party",
+                    Box::new(AdaptFirstPartySemanticReviewProvider::new()),
+                    "first_party_dispatch",
                 ),
             };
         eprintln!("membrane-daemon background-semantic-provider={provider_label}");
@@ -81,6 +88,7 @@ impl DaemonBackgroundExecutor {
             provider,
             cursor_store: BackgroundReviewCursorStore::default(),
             proposal_sink: JsonlBackgroundReviewProposalAdmission::from_workspace_root(root),
+            last_corpus_health_unix_ms: 0,
         }
     }
 
@@ -88,7 +96,17 @@ impl DaemonBackgroundExecutor {
         background_review_input_path(root)
     }
 
-    fn tick(&mut self, root: &PathBuf, scheduler: &BackgroundReviewScheduler, now: u64) {
+    fn tick(
+        &mut self,
+        root: &PathBuf,
+        scheduler: &BackgroundReviewScheduler,
+        control: &LifecycleControl,
+        now: u64,
+    ) {
+        // The maintenance kind ticks on its own cadence regardless of whether
+        // a review snapshot is pending; single-flight is per-kind so both can
+        // be admitted under one scheduler.
+        self.tick_corpus_health(root, scheduler, control, now);
         let provider = self.provider.as_ref();
         let input_path = Self::input_path(root);
         let snapshot = match fs::read_to_string(&input_path)
@@ -108,6 +126,23 @@ impl DaemonBackgroundExecutor {
             scheduler.observe_deferred(BackgroundReviewReasonV1::InvalidJob, now);
             return;
         }
+        // Corpus-health jobs are daemon-scheduled on their own cadence; a
+        // snapshot claiming that kind is not semantic-review input and must
+        // never reach the semantic executor.
+        if snapshot.job_kind
+            == membrane_protocol::background_review::BackgroundReviewJobKindV1::CorpusHealthMaintenance
+        {
+            scheduler.observe_deferred(BackgroundReviewReasonV1::InvalidJob, now);
+            return;
+        }
+        // A request whose execution window already lapsed is withdrawn work,
+        // not an admission: starting it would reserve token budget and burn a
+        // retry attempt on a provider call that can only refuse as TimeGate.
+        // Its stale activity signal is deliberately not credited either.
+        if snapshot.deadline_unix_ms <= now {
+            scheduler.observe_deferred(BackgroundReviewReasonV1::TimeGate, now);
+            return;
+        }
         let production = BackgroundReviewProducer::new(scheduler).admit(
             &snapshot.activity,
             snapshot.job_kind,
@@ -119,6 +154,14 @@ impl DaemonBackgroundExecutor {
         else {
             return;
         };
+        // Drain or parent-close on the control thread can revoke background
+        // authority while this tick is mid-flight. Re-check before touching
+        // cursor input or the provider so a revoked job ends as a HubInactive
+        // cancellation rather than executing under a drained permit.
+        if !control.background_authority_open() {
+            scheduler.set_hub_active(false, now);
+            return;
+        }
         let input = match load_background_semantic_input(root, &self.cursor_store, &snapshot) {
             Ok(input) => input,
             Err(reason) => {
@@ -130,6 +173,12 @@ impl DaemonBackgroundExecutor {
                 return;
             }
         };
+        // The request may have lapsed while cursor input loaded; cancel the
+        // admitted job instead of handing a dead request to the provider.
+        if snapshot.deadline_unix_ms <= now {
+            scheduler.cancel(&job.job_id, now);
+            return;
+        }
         let _execution = execute_background_semantic_review(
             scheduler,
             &job,
@@ -140,6 +189,82 @@ impl DaemonBackgroundExecutor {
             snapshot.deadline_unix_ms,
             now,
         );
+    }
+
+    /// MEM-061/062: deterministic read-only corpus-health maintenance, the
+    /// committed second live consumer proving the scheduler is generic over
+    /// job kinds rather than review-specific. Admitted through the same
+    /// single-flight/authority gates; its interval reservation prevents a
+    /// deferred decision from becoming a retry storm, and the same drain,
+    /// parent-close, and mid-tick revocation paths cancel it.
+    fn tick_corpus_health(
+        &mut self,
+        root: &PathBuf,
+        scheduler: &BackgroundReviewScheduler,
+        control: &LifecycleControl,
+        now: u64,
+    ) {
+        if now.saturating_sub(self.last_corpus_health_unix_ms) < CORPUS_HEALTH_INTERVAL_MS {
+            return;
+        }
+        self.last_corpus_health_unix_ms = now;
+        if !control.background_authority_open() {
+            return;
+        }
+        // Interval bucket makes the job id deterministic and unique per run;
+        // replaying an already-completed id is refused by the terminal-id
+        // gate, so identity and dedup stay honest.
+        let job = membrane_protocol::background_review::BackgroundReviewJobV1 {
+            schema_version:
+                membrane_protocol::background_review::BackgroundReviewJobV1::SCHEMA_VERSION,
+            job_id: format!("corpus-health-{}", now / CORPUS_HEALTH_INTERVAL_MS),
+            kind: membrane_protocol::background_review::BackgroundReviewJobKindV1::CorpusHealthMaintenance,
+            turn_id: "corpus-health".to_owned(),
+            input_tokens: 0,
+            requested_at_unix_ms: now,
+        };
+        let membrane_runtime::background_review::BackgroundReviewDecision::Started { .. } =
+            scheduler.start(job.clone(), now)
+        else {
+            return;
+        };
+        // Authority may drain between admission and execution; a revoked job
+        // must end as a HubInactive cancellation, never run under a dead
+        // permit.
+        if !control.background_authority_open() {
+            scheduler.set_hub_active(false, now);
+            return;
+        }
+        let completion = match run_corpus_health_check(root) {
+            Ok(()) => BackgroundReviewCompletion::Completed,
+            Err(reason) => BackgroundReviewCompletion::FailedWithReason(reason),
+        };
+        let _ = scheduler.finish_with_completion(&job.job_id, completion, now);
+    }
+}
+
+/// Read-only corpus probe behind the CorpusHealthMaintenance kind: open the
+/// store without migrations or outbox effects, require `PRAGMA quick_check`
+/// to answer `ok`. Any miss is a typed failure on the job receipt, never a
+/// fabricated pass and never a write.
+fn run_corpus_health_check(root: &PathBuf) -> Result<(), BackgroundReviewReasonV1> {
+    let database_path = std::env::var_os("CORTEX_DB")
+        .map(PathBuf::from)
+        .filter(|path| path.is_file())
+        .unwrap_or_else(|| root.join(CORTEX_DB_RELATIVE_PATH));
+    if !database_path.is_file() {
+        return Err(BackgroundReviewReasonV1::CursorInputUnavailable);
+    }
+    let db = MemDb::open_read_only(&database_path)
+        .map_err(|_| BackgroundReviewReasonV1::Failed)?;
+    let conn = db.lock();
+    let verdict = conn
+        .query_row("PRAGMA quick_check(1)", [], |row| row.get::<_, String>(0))
+        .map_err(|_| BackgroundReviewReasonV1::Failed)?;
+    if verdict == "ok" {
+        Ok(())
+    } else {
+        Err(BackgroundReviewReasonV1::Failed)
     }
 }
 
@@ -421,7 +546,7 @@ fn run() -> Result<(), &'static str> {
     control.grant_background("tray_daemon");
     background_review.set_hub_active(true, now_unix_ms());
     background_review.observe_idle(now_unix_ms());
-    background_executor.tick(&root, &background_review, now_unix_ms());
+    background_executor.tick(&root, &background_review, &control, now_unix_ms());
     emit_background_observations(&background_review, &background_observation_sink);
 
     let mut requested_drain = false;
@@ -466,7 +591,7 @@ fn run() -> Result<(), &'static str> {
                     >= BACKGROUND_REVIEW_TICK.as_millis() as u64
                 {
                     if control.background_authority_open() {
-                        background_executor.tick(&root, &background_review, now);
+                        background_executor.tick(&root, &background_review, &control, now);
                     } else {
                         background_review.set_hub_active(false, now);
                     }
@@ -849,5 +974,181 @@ mod tests {
         let path = BackgroundReviewScheduler::config_path_for_workspace("C:\\workspace");
         assert!(path.ends_with(DEFAULT_CONFIG_RELATIVE_PATH));
         assert_eq!(CONFIG_PATH_ENV, "MEMBRANE_BACKGROUND_REVIEW_CONFIG");
+    }
+
+    // ---- daemon-owned scheduling repairs --------------------------------
+
+    /// `MEMBRANE_BACKGROUND_REVIEW_INPUT` is process-global; serialize the
+    /// snapshot-path tests behind one lock, mirroring runc's `lock_env`.
+    static TICK_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    const TICK_INPUT_ENV: &str = "MEMBRANE_BACKGROUND_REVIEW_INPUT";
+
+    fn tick_scheduler() -> BackgroundReviewScheduler {
+        BackgroundReviewScheduler::new(membrane_protocol::BackgroundReviewConfigV1 {
+            schema_version: 1,
+            enabled: true,
+            min_elapsed_ms: 1,
+            activity_threshold: 1,
+            per_turn_input_budget: 1_000,
+            aggregate_input_budget: 1_000,
+            cancellation_timeout_ms: 1,
+        })
+        .unwrap()
+    }
+
+    fn snapshot(deadline_unix_ms: u64) -> BackgroundReviewInputSnapshot {
+        BackgroundReviewInputSnapshot {
+            schema_version: 1,
+            activity: membrane_protocol::background_review::BackgroundReviewActivitySignalV1 {
+                schema_version: 1,
+                session_id: "session".into(),
+                turn_id: "turn".into(),
+                activity_units: 10,
+                input_tokens: Some(5),
+                foreground_active: false,
+                observed_at_unix_ms: 1,
+            },
+            job_kind: membrane_protocol::background_review::BackgroundReviewJobKindV1::CortexMemoryCandidateExtraction,
+            foreground_memory_state: BackgroundReviewForegroundMemoryStateV1::AvailableNoEmission,
+            task_id: None,
+            deadline_unix_ms,
+        }
+    }
+
+    fn point_input_at(path: &std::path::Path) -> Option<std::ffi::OsString> {
+        let prior = std::env::var_os(TICK_INPUT_ENV);
+        unsafe {
+            std::env::set_var(TICK_INPUT_ENV, path);
+        }
+        prior
+    }
+
+    fn restore_input(prior: Option<std::ffi::OsString>) {
+        unsafe {
+            match prior {
+                Some(value) => std::env::set_var(TICK_INPUT_ENV, value),
+                None => std::env::remove_var(TICK_INPUT_ENV),
+            }
+        }
+    }
+
+    /// A snapshot whose deadline already lapsed must never reach admission:
+    /// no attempt is burned and no token budget is reserved for a request
+    /// that can only refuse as TimeGate.
+    #[test]
+    fn lapsed_request_defers_time_gate_without_reserving_budget_or_attempt() {
+        let _guard = TICK_ENV_LOCK.lock().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let snapshot_path = dir.path().join("input.json");
+        std::fs::write(
+            &snapshot_path,
+            serde_json::to_string(&snapshot(1)).unwrap(),
+        )
+        .unwrap();
+        let prior = point_input_at(&snapshot_path);
+        let scheduler = tick_scheduler();
+        scheduler.set_hub_active(true, 1);
+        let control = LifecycleControl::default();
+        control.grant_background("test");
+        let mut executor = DaemonBackgroundExecutor::new(&dir.path().to_path_buf(), "token");
+
+        executor.tick(&dir.path().to_path_buf(), &scheduler, &control, 10);
+        assert_eq!(scheduler.active_count(), 0);
+        assert_eq!(scheduler.aggregate_input_tokens(), 0);
+        let observations = scheduler.drain_observations();
+        assert_eq!(observations.len(), 1);
+        assert_eq!(
+            observations[0].status,
+            membrane_protocol::BackgroundReviewStatusV1::Deferred
+        );
+        assert_eq!(
+            observations[0].reason,
+            BackgroundReviewReasonV1::TimeGate
+        );
+
+        // A persistently stale snapshot must not flood the rail: the
+        // identical deferral is suppressed until the state changes.
+        executor.tick(&dir.path().to_path_buf(), &scheduler, &control, 20);
+        assert!(scheduler.drain_observations().is_empty());
+        restore_input(prior);
+    }
+
+    /// Drain or parent-close revoking authority mid-tick cancels the admitted
+    /// job before provider execution instead of letting it run under a
+    /// drained permit.
+    #[test]
+    fn revoked_authority_cancels_admitted_job_before_provider_execution() {
+        let _guard = TICK_ENV_LOCK.lock().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let snapshot_path = dir.path().join("input.json");
+        std::fs::write(
+            &snapshot_path,
+            serde_json::to_string(&snapshot(u64::MAX)).unwrap(),
+        )
+        .unwrap();
+        let prior = point_input_at(&snapshot_path);
+        let scheduler = tick_scheduler();
+        scheduler.set_hub_active(true, 1);
+        // `LifecycleControl::default()` leaves background authority closed,
+        // exactly the mid-tick revocation window this guard exists for.
+        let control = LifecycleControl::default();
+        let mut executor = DaemonBackgroundExecutor::new(&dir.path().to_path_buf(), "token");
+
+        executor.tick(&dir.path().to_path_buf(), &scheduler, &control, 10);
+        assert_eq!(scheduler.active_count(), 0);
+        let observations = scheduler.drain_observations();
+        assert!(observations.iter().any(|observation| {
+            observation.status == membrane_protocol::BackgroundReviewStatusV1::Started
+        }));
+        let cancelled = observations
+            .iter()
+            .find(|observation| {
+                observation.status
+                    == membrane_protocol::BackgroundReviewStatusV1::Cancelled
+            })
+            .expect("revoked authority must cancel the admitted job");
+        assert_eq!(cancelled.reason, BackgroundReviewReasonV1::HubInactive);
+        restore_input(prior);
+    }
+
+    /// A missing snapshot defers once; a stale one reports TimeGate once; an
+    /// unchanged state never repeats the same record every 250 ms tick.
+    #[test]
+    fn unchanged_input_failure_state_emits_one_deferral() {
+        let _guard = TICK_ENV_LOCK.lock().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let snapshot_path = dir.path().join("absent.json");
+        let prior = point_input_at(&snapshot_path);
+        let scheduler = tick_scheduler();
+        scheduler.set_hub_active(true, 1);
+        let control = LifecycleControl::default();
+        control.grant_background("test");
+        let mut executor = DaemonBackgroundExecutor::new(&dir.path().to_path_buf(), "token");
+
+        executor.tick(&dir.path().to_path_buf(), &scheduler, &control, 10);
+        executor.tick(&dir.path().to_path_buf(), &scheduler, &control, 20);
+        let observations = scheduler.drain_observations();
+        assert_eq!(observations.len(), 1);
+        assert_eq!(
+            observations[0].reason,
+            BackgroundReviewReasonV1::CursorInputUnavailable
+        );
+
+        // State change still records: the file appearing lapsed moves the
+        // deferral reason and emits exactly one new record.
+        std::fs::write(
+            &snapshot_path,
+            serde_json::to_string(&snapshot(1)).unwrap(),
+        )
+        .unwrap();
+        executor.tick(&dir.path().to_path_buf(), &scheduler, &control, 30);
+        executor.tick(&dir.path().to_path_buf(), &scheduler, &control, 40);
+        let observations = scheduler.drain_observations();
+        assert_eq!(observations.len(), 1);
+        assert_eq!(
+            observations[0].reason,
+            BackgroundReviewReasonV1::TimeGate
+        );
+        restore_input(prior);
     }
 }

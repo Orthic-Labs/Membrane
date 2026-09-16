@@ -1,19 +1,19 @@
 {
   "schemaVersion": 1,
-  "toolCount": 22,
+  "toolCount": 2,
   "toolsets": {
-    "default": ["membrane_context", "membrane_knowledge_propose", "membrane_memory", "membrane_memory_read", "membrane_checkpoint_save", "membrane_checkpoint_load", "membrane_source_read"],
-    "memory": ["membrane_context", "membrane_knowledge_propose", "membrane_checkpoint_save", "membrane_checkpoint_load", "membrane_working_context", "membrane_temporal_fact", "membrane_scratchpad", "membrane_feedback", "membrane_memory", "membrane_memory_read"],
-    "blueprint": ["membrane_source_read", "membrane_blueprint"],
-    "push": ["membrane_push_prepare", "membrane_push_resolve"],
-    "diagnostic": ["membrane_diagnostic_workspace", "membrane_diagnostic_mutation", "membrane_diagnostic_snapshot", "membrane_diagnostic_fence", "membrane_diagnostic_capabilities", "membrane_diagnostic_baseline", "membrane_diagnostic_provider"],
-    "operator": ["membrane_knowledge_review"]
+    "default": ["pull", "push"],
+    "memory": ["pull", "push"],
+    "blueprint": ["pull", "push"],
+    "push": ["pull", "push"],
+    "diagnostic": ["pull", "push"],
+    "operator": ["pull", "push"]
   },
   "invariants": [
     "advertised_tools_have_native_executor_entries",
     "unknown_tool_is_rejected",
     "native_unavailable_is_typed_and_never_falls_back_to_node",
-    "toolset_negotiation_defaults_to_safe_memory_workflow",
+    "negotiated_toolsets_cannot_expand_public_registry",
     "proposer_cannot_self_authorize_review",
     "native_memory_envelopes_are_strictly_validated"
   ]

@@ -786,6 +786,27 @@ const cases = {
       return { evidence: 'reconcile.rs present for structural delta reporting' };
     },
   },
+  LDG_032: {
+    id: 'LDG-032',
+    requirement:
+      'Ingest skill-document bodies as source-bound Ledger projections through an adapter over existing registration/index/resolution mechanisms; deliver bounded exact resolver results to Pull with current grant, revision/span identity, drift refusal, and erasure safety.',
+    run() {
+      const skills = ledgerSrc('skill_documents.rs');
+      assertContains(skills, 'document_hits', 'skill_documents.rs must expose source-bound document_hits');
+      assertContains(skills, 'document_hits_granted', 'skill_documents.rs must narrow hits through the current grant');
+      const provider = ledgerSrc('provider.rs');
+      assertContains(provider, 'LedgerSkillProvider', 'provider.rs must define the Ledger skill provider');
+      const federation = readFileSync(
+        path.join(REPO_ROOT, 'engine', 'crates', 'membrane-runtime', 'src', 'pull', 'native_federation.rs'),
+        'utf8',
+      );
+      assertContains(federation, 'LedgerSkillProvider::new', 'native.skills must be registered to the Ledger-owned skill provider');
+      return {
+        evidence:
+          'skill_documents.rs owns source-bound granted document_hits; native_federation.rs registers LedgerSkillProvider for ProviderId::Skills',
+      };
+    },
+  },
   BM12: {
     id: 'BM12',
     requirement:
@@ -882,7 +903,7 @@ export function runCase(caseId) {
   return result;
 }
 
-/** Run every case bound to this lane (LDG-001..031 plus BM12) and return the full report. */
+/** Run every case bound to this lane (LDG-001..032 plus BM12) and return the full report. */
 export function runGroup() {
   return Object.values(cases).map((testCase) => runCase(testCase.id));
 }
@@ -920,6 +941,7 @@ export function LDG_028(context = {}) { const id = 'LDG-028'; return registryOut
 export function LDG_029(context = {}) { const id = 'LDG-029'; return registryOutcome(id, cases[id.replace(/-/g, '_')]?.requirement || id, context); }
 export function LDG_030(context = {}) { const id = 'LDG-030'; return registryOutcome(id, cases[id.replace(/-/g, '_')]?.requirement || id, context); }
 export function LDG_031(context = {}) { const id = 'LDG-031'; return registryOutcome(id, cases[id.replace(/-/g, '_')]?.requirement || id, context); }
+export function LDG_032(context = {}) { const id = 'LDG-032'; return registryOutcome(id, cases[id.replace(/-/g, '_')]?.requirement || id, context); }
 
 export { cases };
 

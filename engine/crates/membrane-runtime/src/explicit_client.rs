@@ -24,7 +24,7 @@ fn owner_binding(store: &crate::MemoryStore) -> Result<ExplicitOwnerBindingV1, S
         stable_install_root: runtime.stable_current.ok_or("installed current missing")?.to_string_lossy().into_owned(),
         protocol_version: 1, native_only: true,
         subsystems: ["pull", "push", "cortex", "blueprint", "ledger", "adapt"].map(str::to_owned).to_vec(),
-        capabilities: ["memory", "diagnostics", "explicit-call"].map(str::to_owned).to_vec(),
+        capabilities: ["memory", "diagnostics", "explicit-call", "pull", "push"].map(str::to_owned).to_vec(),
         embedder_dim: store.embedder_dim(),
     })
 }

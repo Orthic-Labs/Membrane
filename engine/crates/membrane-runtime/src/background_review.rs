@@ -462,6 +462,24 @@ pub trait BackgroundReviewProposalAdmission: Send + Sync {
     ) -> Result<(), BackgroundReviewReasonV1> {
         self.admit_memory_candidates(job, candidates)
     }
+
+    /// ADP-035: Adapt learner proposals are a distinct kind — not
+    /// semantic-curation records and must not be relabeled as such.
+    fn admit_adapt_proposals(
+        &self,
+        _job: &BackgroundReviewJobV1,
+        _proposals: &[membrane_adapt::learner::AdaptLearnerProposalV1],
+    ) -> Result<(), BackgroundReviewReasonV1> {
+        Err(BackgroundReviewReasonV1::ProposalSinkUnavailable)
+    }
+
+    fn submit_adapt_proposals(
+        &self,
+        job: &BackgroundReviewJobV1,
+        proposals: &[membrane_adapt::learner::AdaptLearnerProposalV1],
+    ) -> Result<(), BackgroundReviewReasonV1> {
+        self.admit_adapt_proposals(job, proposals)
+    }
 }
 
 pub use BackgroundReviewProposalAdmission as BackgroundSemanticProposalSink;
@@ -565,6 +583,14 @@ impl BackgroundReviewProposalAdmission for JsonlBackgroundReviewProposalAdmissio
         candidates: &[MemoryCandidateV1],
     ) -> Result<(), BackgroundReviewReasonV1> {
         self.append(job, "memory_candidate", candidates)
+    }
+
+    fn admit_adapt_proposals(
+        &self,
+        job: &BackgroundReviewJobV1,
+        proposals: &[membrane_adapt::learner::AdaptLearnerProposalV1],
+    ) -> Result<(), BackgroundReviewReasonV1> {
+        self.append(job, "adapt_proposal", proposals)
     }
 }
 
@@ -901,6 +927,12 @@ impl BackgroundSemanticReviewProvider for DeterministicFirstPartySemanticReviewP
             // Not a behavioral learner. Refusing is truthful; inventing Adapt
             // categories from lexical rules would not be.
             BackgroundReviewJobKindV1::AdaptBehavioralReview => Ok(self.refuse(
+                request,
+                BackgroundReviewReasonV1::SemanticProviderNotWired,
+            )),
+            // Maintenance jobs never reach a semantic provider; the daemon
+            // executes them read-only without model input.
+            BackgroundReviewJobKindV1::CorpusHealthMaintenance => Ok(self.refuse(
                 request,
                 BackgroundReviewReasonV1::SemanticProviderNotWired,
             )),
@@ -1707,6 +1739,52 @@ pub fn execute_background_semantic_review(
                     .map(|candidate| proposal_ref(&candidate.candidate_id, candidate)),
             );
         }
+    } else if job.kind == BackgroundReviewJobKindV1::AdaptBehavioralReview {
+        // ADP-035: Adapt learner proposals are their own kind — they are not
+        // semantic-curation records and must not be relabeled as such.
+        if !result.memory_candidates.is_empty() {
+            return blocked(
+                BackgroundReviewExecutionStatusV1::Failed,
+                BackgroundReviewReasonV1::InvalidProposal,
+            );
+        }
+        let proposals = result
+            .curation_proposals
+            .iter()
+            .map(|value| {
+                serde_json::from_value::<membrane_adapt::learner::AdaptLearnerProposalV1>(
+                    value.clone(),
+                )
+            })
+            .collect::<Result<Vec<_>, _>>();
+        let Ok(proposals) = proposals else {
+            return blocked(
+                BackgroundReviewExecutionStatusV1::Failed,
+                BackgroundReviewReasonV1::InvalidProposal,
+            );
+        };
+        if proposals.iter().any(|proposal| proposal.validate().is_err()) {
+            return blocked(
+                BackgroundReviewExecutionStatusV1::Failed,
+                BackgroundReviewReasonV1::InvalidProposal,
+            );
+        }
+        if !proposals.is_empty() {
+            let Some(sink) = proposal_sink else {
+                return blocked(
+                    BackgroundReviewExecutionStatusV1::Failed,
+                    BackgroundReviewReasonV1::ProposalSinkUnavailable,
+                );
+            };
+            if let Err(reason) = sink.submit_adapt_proposals(job, &proposals) {
+                return blocked(BackgroundReviewExecutionStatusV1::Failed, reason);
+            }
+            refs.extend(
+                proposals
+                    .iter()
+                    .map(|proposal| proposal_ref(&proposal.proposal_id, proposal)),
+            );
+        }
     } else {
         if !result.memory_candidates.is_empty() {
             return blocked(
@@ -1886,6 +1964,16 @@ struct SchedulerState {
     turn_input_tokens: HashMap<String, u64>,
     aggregate_input_tokens: u64,
     observations: VecDeque<BackgroundReviewObservationV1>,
+    /// Identity `(reason, job_id, kind)` of the most recently emitted deferral.
+    /// The daemon re-evaluates persistent host states every 250 ms (hub
+    /// inactive, foreground preemption, missing or stale input snapshot,
+    /// exhausted budgets); recording every identical evaluation would rotate
+    /// the bounded sidecar into uselessness and drown real transitions.
+    /// Deferrals therefore emit on state change only; any non-deferred
+    /// observation clears the marker so a later identical deferral records
+    /// again.
+    last_deferral:
+        Option<(BackgroundReviewReasonV1, Option<String>, Option<BackgroundReviewJobKindV1>)>,
 }
 
 /// Thread-safe scheduler state owned by tray daemon.
@@ -2544,6 +2632,15 @@ impl BackgroundReviewScheduler {
         input_tokens: u64,
         turn_input_tokens: u64,
     ) {
+        if status == BackgroundReviewStatusV1::Deferred {
+            let key = (reason, job_id.clone(), kind);
+            if state.last_deferral.as_ref() == Some(&key) {
+                return;
+            }
+            state.last_deferral = Some(key);
+        } else {
+            state.last_deferral = None;
+        }
         state.observations.push_back(BackgroundReviewObservationV1 {
             schema_version: BackgroundReviewObservationV1::SCHEMA_VERSION,
             job_id,
@@ -3681,5 +3778,59 @@ mod tests {
         assert!(encoded.contains("background-review-"));
         assert!(!encoded.contains("prompt"));
         assert!(encoded.len() <= MAX_OBSERVATION_FILE_BYTES as usize);
+    }
+
+    /// Identical consecutive deferrals record once; a state change re-emits.
+    /// The daemon re-evaluates persistent host states every 250 ms, so without
+    /// this bound the sidecar would rotate itself into uselessness while one
+    /// gate condition persists.
+    #[test]
+    fn repeated_identical_deferrals_emit_once_until_state_changes() {
+        let scheduler = scheduler();
+        scheduler.observe_deferred(BackgroundReviewReasonV1::CursorInputUnavailable, 1);
+        scheduler.observe_deferred(BackgroundReviewReasonV1::CursorInputUnavailable, 2);
+        assert_eq!(scheduler.drain_observations().len(), 1);
+
+        scheduler.observe_deferred(BackgroundReviewReasonV1::TimeGate, 3);
+        scheduler.observe_deferred(BackgroundReviewReasonV1::TimeGate, 4);
+        scheduler.observe_deferred(BackgroundReviewReasonV1::CursorInputUnavailable, 5);
+        let reasons: Vec<_> = scheduler
+            .drain_observations()
+            .iter()
+            .map(|observation| observation.reason)
+            .collect();
+        assert_eq!(
+            reasons,
+            vec![
+                BackgroundReviewReasonV1::TimeGate,
+                BackgroundReviewReasonV1::CursorInputUnavailable
+            ]
+        );
+
+        // A non-deferred observation clears the marker: the same deferral
+        // after a job decision records again.
+        scheduler.set_hub_active(true, 10);
+        scheduler.record_activity(2);
+        assert!(matches!(
+            scheduler.start(
+                job(
+                    "job-1",
+                    BackgroundReviewJobKindV1::AdaptBehavioralReview,
+                    "turn-1",
+                    1
+                ),
+                10
+            ),
+            BackgroundReviewDecision::Started { .. }
+        ));
+        scheduler.observe_deferred(BackgroundReviewReasonV1::CursorInputUnavailable, 11);
+        let observations = scheduler.drain_observations();
+        assert!(observations
+            .iter()
+            .any(|observation| observation.status == BackgroundReviewStatusV1::Started));
+        assert_eq!(
+            observations.last().unwrap().reason,
+            BackgroundReviewReasonV1::CursorInputUnavailable
+        );
     }
 }

@@ -300,6 +300,60 @@ fn source_hit(source: &resolve::Source, node: &Node, lane: &str, score: f64) -> 
         lane: lane.to_owned(), score, literal_range: None })
 }
 
+/// Materialize the top-level spans of one registered source as lane hits.
+///
+/// Ledger's projection partitions a document into its parentless nodes —
+/// frontmatter/preamble pseudo-sections and level-1 heading sections, or the
+/// single `document` node for content-free sources — whose ordered union is
+/// exactly the file. Adapters that hand a chosen document to Pull (the
+/// skill-document lane, LDG-032) emit this set so the whole source is covered
+/// by verifiable, ticket-resolvable spans rather than a synthesized node.
+/// Every hit carries the same source load, lifecycle and span-hash
+/// verification as query lanes and resolves through `membrane_source_read`.
+pub(crate) fn document_hits(
+    db: &LedgerDb,
+    root: &str,
+    doc_id: &str,
+    lane: &str,
+    score: f64,
+) -> Result<Vec<LedgerHit>, String> {
+    let source = resolve::load_source(db, root, doc_id).map_err(|e| e.to_string())?;
+    let nodes = {
+        let conn = db.lock();
+        let mut statement = conn
+            .prepare(
+                "SELECT n.doc_id,n.node_id,n.node_kind,n.source_start_byte,n.source_end_byte,
+                        n.span_hash,0.0,0
+                 FROM ledger_nodes n
+                 WHERE n.doc_id=?1 AND n.ledger_generation=?2 AND n.source_revision=?3
+                   AND n.parent_id IS NULL AND n.projection_schema_version=?4
+                 ORDER BY n.ordinal",
+            )
+            .map_err(|e| e.to_string())?;
+        let collected = statement
+            .query_map(
+                params![
+                    doc_id,
+                    source.generation,
+                    source.revision,
+                    index::PROJECTION_SCHEMA_VERSION
+                ],
+                node_row,
+            )
+            .map_err(|e| e.to_string())?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| e.to_string());
+        collected?
+    };
+    if nodes.is_empty() {
+        return Err("ledger_document_spans_missing".into());
+    }
+    nodes
+        .iter()
+        .map(|node| source_hit(&source, node, lane, score))
+        .collect()
+}
+
 pub(crate) fn search(db: &LedgerDb, scope: &QueryScope, query: &str, k: usize, literal: bool, budget: &WorkBudget) -> Result<QueryResult, String> {
     if query.trim().is_empty() || query.len() > 4096 || k == 0 || k > MAX_HITS {
         return Err("ledger_query_invalid".into());

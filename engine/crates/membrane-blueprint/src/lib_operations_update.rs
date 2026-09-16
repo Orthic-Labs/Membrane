@@ -5,17 +5,17 @@
 //! one operation, mirroring `blueprint/scripts/cli/commands.mjs` case
 //! `"update"`.
 //!
-//! SCOPE: as documented on the primitive modules this composes, the legacy
-//! update engine performs a full atomic app/store swap with journal
-//! recovery — an OS-transaction choreography with no pure-function
-//! contract. This handler performs every deterministic, verifiable step
-//! (channel gating, signed-manifest verification, downgrade rejection,
-//! live-store backup, staged artifact copy, and receipt-bound rollback) and
-//! reports the atomic swap itself as a deferred, typed omission rather than
-//! fabricating a completed in-place update.
+//! OWNERSHIP (BPT-058/061/062/063): the canonical Membrane installer owns
+//! every update, rollback, and release transaction — including the atomic
+//! app/store swap and journal recovery. This handler performs only
+//! Blueprint's retained responsibilities: candidate verification (channel
+//! gating, signed-manifest verification, downgrade rejection, artifact
+//! identity/checksum confinement, receipt-bound rollback validation) plus a
+//! read-only graph/schema compatibility report. On success it returns a
+//! `delegated` verdict the installer can consume as admission evidence; it
+//! never moves, copies, or deletes live app/store state itself.
 
 use crate::api::{BlueprintError, BlueprintRequest};
-use crate::lib_update_apply::{backup_store, copy_recursive};
 use crate::lib_update_channel::{channel_enabled_from_env, detect_install_owner, InstallOwner};
 use crate::lib_update_manifest::{
     parse_trusted_update_keys, reject_downgrade, tree_digest, validate_update_manifest,
@@ -156,21 +156,22 @@ fn apply_local_artifact(input: &Value, root: &Path) -> Result<Value, BlueprintEr
         return Ok(json!({"ok": false, "reason": reason}));
     }
     let prior_digest = tree_digest(app_dir).map_err(|error| BlueprintError::new("blueprint_update_validation_failed", error))?;
-    let staging = root.join(".agent").join("update-staged");
-    if staging.exists() { fs::remove_dir_all(&staging).map_err(|error| BlueprintError::new("blueprint_update_stage_failed", error.to_string()))?; }
-    copy_recursive(artifact_dir, &staging).map_err(|error| BlueprintError::new("blueprint_update_stage_failed", error.to_string()))?;
-    if tree_digest(&staging)
-        .map_err(|error| BlueprintError::new("blueprint_update_stage_failed", error))?
-        != digest
-    {
-        let _ = fs::remove_dir_all(&staging);
-        return Ok(json!({"ok": false, "reason": "staging_checksum_mismatch"}));
-    }
-    if prior_dir.exists() { fs::remove_dir_all(prior_dir).map_err(|error| BlueprintError::new("blueprint_update_apply_failed", error.to_string()))?; }
-    copy_recursive(app_dir, prior_dir).map_err(|error| BlueprintError::new("blueprint_update_apply_failed", error.to_string()))?;
-    fs::remove_dir_all(app_dir).map_err(|error| BlueprintError::new("blueprint_update_apply_failed", error.to_string()))?;
-    copy_recursive(&staging, app_dir).map_err(|error| BlueprintError::new("blueprint_update_apply_failed", error.to_string()))?;
-    Ok(json!({"ok": true, "manifest": manifest, "artifact": artifact_name, "currentAppDigest": digest, "priorAppDigest": prior_digest, "priorPackageVersion": current_version, "version": manifest.get("version")}))
+    // The atomic app/store swap is the canonical Membrane installer's
+    // transaction. Blueprint's role ends at verification: the candidate is
+    // admitted only with a signed manifest, a digest-matched artifact, a
+    // non-downgrade version, and a graph/schema compatibility report.
+    Ok(json!({
+        "ok": true,
+        "delegated": true,
+        "delegate": "membrane_installer",
+        "manifest": manifest,
+        "artifact": artifact_name,
+        "artifactDigest": digest,
+        "priorAppDigest": prior_digest,
+        "priorPackageVersion": current_version,
+        "version": manifest.get("version"),
+        "graphCompatibility": graph_compatibility(repo_root),
+    }))
 }
 
 fn execute_cli_subcommand(input: &Value, root: &Path, subcommand: &str) -> Result<Value, BlueprintError> {
@@ -190,6 +191,7 @@ fn execute_cli_subcommand(input: &Value, root: &Path, subcommand: &str) -> Resul
                 "currentVersion": "0.2.0",
                 "reason": reason,
                 "updateCommand": Value::Null,
+                "graphCompatibility": graph_compatibility(root),
             }))
         }
         "apply" => {
@@ -211,7 +213,7 @@ fn execute_cli_subcommand(input: &Value, root: &Path, subcommand: &str) -> Resul
             }
             Ok(json!({"schemaVersion": 1, "owner": owner, "action": "require-signed-manifest", "reason": "GitHub Release updates require a signed manifest and matching checksum"}))
         }
-        "rollback" => Ok(json!({"schemaVersion": 1, "owner": owner, "action": "rollback", "note": "rollback restores the prior app version and compatible store backup"})),
+        "rollback" => Ok(json!({"schemaVersion": 1, "owner": owner, "action": "rollback", "delegated": true, "delegate": "membrane_installer", "note": "the canonical installer restores the prior app version and compatible store backup; Blueprint verifies the receipt-bound digests"})),
         other => Err(BlueprintError::new("usage", format!("blueprint update {other} is not a known subcommand"))),
     }
 }
@@ -240,44 +242,46 @@ fn handle_rollback(input: &Value, root: &Path) -> Result<Value, BlueprintError> 
     if let Err(reason) = validate_rollback_binding(root, current_app_dir, prior_path, &receipt) {
         return Ok(json!({"ok": false, "reason": reason}));
     }
-    if current_app_dir != root && current_app_dir.exists() {
-        fs::remove_dir_all(current_app_dir)
-            .map_err(|error| BlueprintError::new("blueprint_rollback_failed", error.to_string()))?;
-    }
-    copy_recursive(prior_path, current_app_dir)
-        .map_err(|error| BlueprintError::new("blueprint_rollback_failed", error.to_string()))?;
-    let restored_digest = tree_digest(current_app_dir)
-        .map_err(|error| BlueprintError::new("blueprint_rollback_failed", error))?;
-    if restored_digest != receipt.prior_app_digest {
-        return Ok(json!({"ok": false, "reason": "rollback_target_digest_mismatch"}));
-    }
+    // Receipt-bound verification is complete: the prior tree's digest and the
+    // current tree's digest both match the receipt. The file-level restore is
+    // the canonical Membrane installer's transaction; Blueprint reports the
+    // verified binding as delegation evidence instead of swapping trees.
     Ok(json!({
         "ok": true,
-        "rolledBack": true,
-        "priorAppDigest": receipt.prior_app_digest,
-        "priorPackageVersion": receipt.prior_package_version,
+        "rolledBack": false,
+        "delegated": true,
+        "delegate": "membrane_installer",
+        "verifiedBinding": {
+            "currentAppDigest": receipt.current_app_digest,
+            "priorAppDigest": receipt.prior_app_digest,
+            "currentPackageVersion": receipt.current_package_version,
+            "priorPackageVersion": receipt.prior_package_version,
+            "priorAppDir": prior_app_dir,
+        },
+        "graphCompatibility": graph_compatibility(root),
     }))
 }
 
 /// Mirrors `case "update"` in `commands.mjs`: channel-gate, verify the
 /// signed manifest and reject downgrades, then either return the plan
-/// (`--dry-run`) or back up the live store and stage the artifact copy,
-/// reporting the atomic swap as a deferred omission. `--rollback` (a
-/// self-consistent receipt naming `priorAppDir`) restores files directly
-/// instead of running the normal update path.
+/// (`--dry-run`) or return a `delegated` admission verdict for the
+/// canonical Membrane installer, which owns the backup/stage/swap
+/// transaction. `--rollback` (a self-consistent receipt naming
+/// `priorAppDir`) verifies the receipt-bound digests and delegates the
+/// restore instead of mutating files itself.
 pub fn execute_update(request: &BlueprintRequest, root: &Path) -> Result<Value, BlueprintError> {
     let input = &request.input;
 
     // `blueprint update`'s facade accepts check/apply/rollback positional
     // subcommands. The bounded operation also accepts those through the
-    // parser's `args` field; direct operation callers with no args retain
-    // the deterministic staging path below used by native tests.
+    // parser's `args` field; direct operation callers with update fields
+    // take the verify-and-delegate path below.
     if let Some(subcommand) = positional_subcommand(input) {
         return execute_cli_subcommand(input, root, subcommand);
     }
 
     // CLI's omitted subcommand defaults to `check`; direct operation callers
-    // that provide update fields retain normal staging semantics.
+    // that provide update fields retain normal verify-and-delegate semantics.
     let has_update_fields = input.as_object()
         .map(|object| object.keys().any(|key| key != "repoRoot"))
         .unwrap_or(false);
@@ -334,65 +338,125 @@ pub fn execute_update(request: &BlueprintRequest, root: &Path) -> Result<Value, 
         }
     }
 
+    // When a verified manifest names a local artifact, run the full
+    // read-only admission check (platform/arch, confinement, package
+    // identity, tree digest) so the delegated verdict carries verified
+    // artifact evidence. An artifact without a verified manifest is an
+    // unsafe transition and is refused, never staged.
+    let mut artifact_admission = Value::Null;
+    if let Some(artifact_dir) = input.get("artifactDir").and_then(Value::as_str) {
+        if !manifest_verified {
+            return Ok(json!({"ok": false, "reason": "artifact_manifest_unverified"}));
+        }
+        let Some(artifact_name) = input.get("artifactName").and_then(Value::as_str) else {
+            return Ok(json!({"ok": false, "reason": "artifact_name_missing"}));
+        };
+        match validate_local_artifact(
+            manifest.expect("manifest verified"), Path::new(artifact_dir), artifact_name, root, root,
+        ) {
+            Ok(digest) => {
+                artifact_admission = json!({
+                    "name": artifact_name,
+                    "digest": digest,
+                    "platform": current_platform(),
+                    "arch": current_arch(),
+                });
+            }
+            Err(reason) => return Ok(json!({"ok": false, "reason": reason})),
+        }
+    }
+
     if dry_run {
         return Ok(json!({
             "ok": true,
             "dryRun": true,
             "channel": channel,
             "manifestVerified": manifest_verified,
+            "graphCompatibility": graph_compatibility(root),
         }));
     }
 
-    let backup = backup_store(root, ".agent");
-    if let Some(error) = &backup.error {
-        return Ok(json!({"ok": false, "reason": "backup_failed", "detail": error}));
-    }
-
-    let mut staged = false;
-    if let Some(artifact_dir) = input.get("artifactDir").and_then(Value::as_str) {
-        let staging = root.join(".agent").join("update-staged");
-        if staging.exists() {
-            fs::remove_dir_all(&staging)
-                .map_err(|error| BlueprintError::new("blueprint_update_stage_failed", error.to_string()))?;
-        }
-        if manifest_verified {
-            let Some(artifact_name) = input.get("artifactName").and_then(Value::as_str) else {
-                return Ok(json!({"ok": false, "reason": "artifact_name_missing"}));
-            };
-            if let Err(reason) = validate_local_artifact(
-                manifest.expect("manifest verified"), Path::new(artifact_dir), artifact_name, root, root,
-            ) {
-                return Ok(json!({"ok": false, "reason": reason}));
-            }
-        }
-        copy_recursive(Path::new(artifact_dir), &staging)
-            .map_err(|error| BlueprintError::new("blueprint_update_stage_failed", error.to_string()))?;
-        if manifest_verified {
-            let expected = tree_digest(&staging).map_err(|error| BlueprintError::new("blueprint_update_stage_failed", error))?;
-            let artifact = selected_artifact(manifest.expect("manifest verified"), input.get("artifactName").and_then(Value::as_str).unwrap_or(""));
-            if artifact.and_then(|entry| entry.get("sha256")).and_then(Value::as_str) != Some(expected.as_str()) {
-                let _ = fs::remove_dir_all(&staging);
-                return Ok(json!({"ok": false, "reason": "staging_checksum_mismatch"}));
-            }
-        }
-        staged = true;
-    }
-
+    // Verification complete. The backup/stage/swap transaction belongs to
+    // the canonical Membrane installer; Blueprint reports the admission
+    // decision and graph/schema compatibility, and never mutates live state.
     Ok(json!({
         "ok": true,
         "dryRun": false,
         "channel": channel,
         "manifestVerified": manifest_verified,
-        "backup": {
-            "backedUp": backup.backed_up,
-            "path": backup.path.map(|p| p.to_string_lossy().to_string()),
-        },
-        "staged": staged,
-        "omissions": if staged { json!([{
-            "code": "orchestration_out_of_scope",
-            "detail": "The atomic app/store swap and journal recovery are not performed by the bounded native operation; the artifact was staged and the live store was backed up, but the swap into place is deferred.",
-        }]) } else { json!([]) },
+        "delegated": true,
+        "delegate": "membrane_installer",
+        "artifact": artifact_admission,
+        "graphCompatibility": graph_compatibility(root),
     }))
+}
+
+/// Read-only graph/schema compatibility report for installer admission
+/// (BPT-058/061/062/063). Mirrors the eligibility criteria in
+/// `engine::verified_construction_reason` — missing store, unreadable
+/// store, store schema newer than supported, and generation schema/provider
+/// mismatch — but never opens the store writable, never migrates, and never
+/// constructs a graph.
+fn graph_compatibility(root: &Path) -> Value {
+    let db_path = root.join(".agent").join("graph").join("graph.db");
+    if !db_path.is_file() {
+        return json!({"state": "missing", "compatible": false, "reason": "graph_missing"});
+    }
+    let connection = match crate::store::open_store_read_only(&db_path) {
+        Ok(connection) => connection,
+        Err(_) => return json!({"state": "unreadable", "compatible": false, "reason": "unrecoverable_corruption"}),
+    };
+    let schema_version = match crate::store::current_schema_version(&connection) {
+        Ok(version) => version,
+        Err(_) => return json!({"state": "unreadable", "compatible": false, "reason": "unrecoverable_corruption"}),
+    };
+    if schema_version > crate::migrations::SCHEMA_VERSION {
+        return json!({
+            "state": "unsupported_newer_schema",
+            "compatible": false,
+            "reason": "blueprint_schema_unsupported",
+            "schemaVersion": schema_version,
+        });
+    }
+    let envelope = match crate::store::read_generation_envelope(&connection) {
+        Ok(Some(envelope)) => envelope,
+        Ok(None) => return json!({"state": "missing", "compatible": false, "reason": "graph_missing", "schemaVersion": schema_version}),
+        Err(_) => return json!({"state": "unreadable", "compatible": false, "reason": "unrecoverable_corruption", "schemaVersion": schema_version}),
+    };
+    let graph_schema = envelope.schema_version.unwrap_or(crate::graph::GRAPH_SCHEMA_VERSION);
+    let provider = envelope.provider.as_ref()
+        .and_then(|value| value.get("id")).and_then(Value::as_str).unwrap_or("native-rust");
+    let provider_version = envelope.provider.as_ref()
+        .and_then(|value| value.get("version")).and_then(Value::as_str).unwrap_or(crate::graph::PROVIDER_VERSION);
+    if graph_schema != crate::graph::GRAPH_SCHEMA_VERSION
+        || provider != "native-rust"
+        || provider_version != crate::graph::PROVIDER_VERSION
+    {
+        return json!({
+            "state": "incompatible",
+            "compatible": false,
+            "reason": "blueprint_generation_incompatible",
+            "graphSchema": graph_schema,
+            "provider": provider,
+            "providerVersion": provider_version,
+        });
+    }
+    let generation_id = envelope.manifest.as_ref()
+        .and_then(|manifest| manifest.get("generationId")).and_then(Value::as_str);
+    if schema_version < crate::migrations::SCHEMA_VERSION {
+        return json!({
+            "state": "migration_required",
+            "compatible": true,
+            "schemaVersion": schema_version,
+            "generationId": generation_id,
+        });
+    }
+    json!({
+        "state": "compatible",
+        "compatible": true,
+        "schemaVersion": schema_version,
+        "generationId": generation_id,
+    })
 }
 
 #[allow(dead_code)]

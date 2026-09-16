@@ -153,6 +153,7 @@ fn dispatch_activation(invocation: &ActivationInvocation) -> DispatchOutcome {
             crate::activation::HarnessClient::Cursor,
             crate::activation::HarnessClient::Windsurf,
             crate::activation::HarnessClient::Antigravity,
+            crate::activation::HarnessClient::Devin,
         ]
     } else {
         let mut parsed = Vec::new();
@@ -209,6 +210,7 @@ fn dispatch_deactivation(invocation: &ActivationInvocation) -> DispatchOutcome {
             crate::activation::HarnessClient::Cursor,
             crate::activation::HarnessClient::Windsurf,
             crate::activation::HarnessClient::Antigravity,
+            crate::activation::HarnessClient::Devin,
         ]
     } else {
         let mut parsed = Vec::new();

@@ -252,18 +252,28 @@ fn inspection() -> Result<Value, String> {
     {
         return Err("unbounded inspection was accepted".into());
     }
+    // A store that has never run proposal admission has no queue schema; the
+    // projection must say unavailable, not empty.
+    let proposals = adapt_service::inspect_proposals(&store, "global", 16)?;
+    if proposals["inspection_only"] != true
+        || proposals["available"] != false
+        || proposals["reason"] != "proposal_queue_schema_absent"
+        || adapt_service::inspect_proposals(&store, "global", 33).is_ok()
+    {
+        return Err("proposal inspection did not stay typed-unavailable/bounded".into());
+    }
 
     Ok(common(
         "ADP-074",
         "scoped_read_only_inspection",
         json!({
             "negotiatedLimit": 16,
-            "operations": ["preferences", "insights", "status"],
+            "operations": ["preferences", "insights", "status", "proposals"],
             "inspectionOnly": true,
             "exposureRecorded": false,
             "approvalAuthority": false,
             "scopeBound": true,
-            "negativeControls": ["cross_scope_refused", "limit_refused"],
+            "negativeControls": ["cross_scope_refused", "limit_refused", "absent_queue_typed_unavailable"],
         }),
     ))
 }
@@ -273,8 +283,13 @@ fn live_status() -> Result<Value, String> {
     let unavailable = adapt_service::status(&store, "status-repo", None)?;
     if unavailable["lanes"]["insights"]["last_receipt"] != Value::Null
         || unavailable["lanes"]["insights"]["reason"] != "producer_progress_unavailable"
+        || unavailable["lanes"]["insights"]["workload"] != "empty"
+        || !unavailable["lanes"]["insights"]["evidence_stream"].is_string()
         || unavailable["lanes"]["review"]["pending_count"] != Value::Null
+        || unavailable["lanes"]["review"]["queue"]["available"] != false
         || unavailable["lanes"]["effectiveness"]["qualified"] != false
+        || unavailable["lanes"]["background_learner"]["supported"] != true
+        || !unavailable["lanes"]["background_learner"]["observable"].is_boolean()
     {
         return Err("missing Adapt producer was not reported honestly".into());
     }
@@ -289,6 +304,8 @@ fn live_status() -> Result<Value, String> {
     let other = adapt_service::status(&store, "other-status-repo", None)?;
     if available["lanes"]["insights"]["last_receipt"].is_null()
         || available["lanes"]["insights"]["reason"] != "host_submitted_window_only"
+        || available["lanes"]["insights"]["workload"] != "observed"
+        || available["lanes"]["insights"]["missing_outcome_joins"] != 1
         || other["lanes"]["insights"]["last_receipt"] != Value::Null
         || receipt["receipt_id"].as_str().is_none()
         || receipt["content_sha256"].as_str().is_none()

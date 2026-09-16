@@ -7,6 +7,22 @@ pub const HANDSHAKE_OPERATION: &str = "/health";
 pub const CLIENT_PROTOCOL_VERSION: u32 = 1;
 pub const CLIENT_SCHEMA_VERSION: u32 = 1;
 
+/// MEM-054 declared per-subsystem compatibility surface from
+/// `serviceCapabilities` in the /health payload. Every field is optional at
+/// the transport layer; `CompatibilityRequirement` decides which absences are
+/// typed incompatibilities.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ServiceCapabilities {
+    pub ledger_index_identity: Option<String>,
+    pub ledger_projection_schema: Option<String>,
+    pub ledger_fts_schema: Option<String>,
+    pub blueprint_provider: Option<String>,
+    pub blueprint_provider_version: Option<String>,
+    pub blueprint_graph_schema: Option<u64>,
+    pub blueprint_ready: Option<bool>,
+    pub adapt_contract_versions: Vec<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ServiceIdentity {
     pub service_id: String,
@@ -21,6 +37,7 @@ pub struct ServiceIdentity {
     pub native_only: bool,
     pub subsystems: Vec<String>,
     pub capabilities: Vec<String>,
+    pub service_capabilities: Option<ServiceCapabilities>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -34,6 +51,13 @@ pub struct CompatibilityRequirement {
     pub require_native_only: bool,
     pub required_subsystems: Vec<String>,
     pub required_capabilities: Vec<String>,
+    /// MEM-054: required `serviceCapabilities.ledgerIndex.projectionSchema`.
+    pub required_ledger_projection_schema: Option<String>,
+    /// MEM-054: required `serviceCapabilities.blueprint.provider`.
+    pub required_blueprint_provider: Option<String>,
+    /// MEM-054: required subset of
+    /// `serviceCapabilities.adaptContractVersions`.
+    pub required_adapt_contracts: Vec<String>,
 }
 
 impl Default for CompatibilityRequirement {
@@ -50,7 +74,26 @@ impl Default for CompatibilityRequirement {
                 .into_iter()
                 .map(str::to_owned)
                 .collect(),
-            required_capabilities: Vec::new(),
+            // MEM-054: the public `push` durable-memory write is a declared
+            // capability; an engine that cannot accept it fails the handshake
+            // with typed incompatibility, never an alternate-runtime probe.
+            required_capabilities: vec!["push".to_owned()],
+            required_ledger_projection_schema: Some("ledger.projection.v5".to_owned()),
+            required_blueprint_provider: Some("native-rust".to_owned()),
+            // The CodeRight-facing Adapt seam contracts (source consts:
+            // membrane-runtime adapt.rs ADAPT_PROPOSAL_SERVICE_CONTRACT,
+            // membrane-adapt learner.rs ADAPT_LEARNER_CONTRACT,
+            // detector_contract.rs INSIGHTS_* contracts). Duplicated as
+            // literals so this crate keeps no dependency on either crate.
+            required_adapt_contracts: [
+                "adapt.proposal-service.v1",
+                "adapt.learner-proposal.v1",
+                "adapt.insights-detector-catalog.v1",
+                "adapt.transcript-event.v1",
+            ]
+            .into_iter()
+            .map(str::to_owned)
+            .collect(),
         }
     }
 }
@@ -105,6 +148,54 @@ pub fn verify(
         .ok_or_else(|| incompatible("nativeOnly must be a boolean"))?;
     let subsystems = required_string_array(object, "subsystems")?;
     let capabilities = required_string_array(object, "capabilities")?;
+    let service_capabilities = match object.get("serviceCapabilities") {
+        None | Some(Value::Null) => None,
+        Some(caps) => {
+            let caps = caps.as_object().ok_or_else(|| {
+                incompatible("serviceCapabilities must be an object")
+            })?;
+            let optional_string = |parent: &Map<String, Value>, field: &str| {
+                parent
+                    .get(field)
+                    .and_then(Value::as_str)
+                    .filter(|value| !value.trim().is_empty())
+                    .map(str::to_owned)
+            };
+            let ledger_index = caps
+                .get("ledgerIndex")
+                .and_then(Value::as_object)
+                .cloned()
+                .unwrap_or_default();
+            let blueprint = caps
+                .get("blueprint")
+                .and_then(Value::as_object)
+                .cloned()
+                .unwrap_or_default();
+            let adapt_contract_versions = caps
+                .get("adaptContractVersions")
+                .and_then(Value::as_array)
+                .map(|versions| {
+                    versions
+                        .iter()
+                        .filter_map(Value::as_str)
+                        .map(str::to_owned)
+                        .collect()
+                })
+                .unwrap_or_default();
+            Some(ServiceCapabilities {
+                ledger_index_identity: optional_string(&ledger_index, "identity"),
+                ledger_projection_schema: optional_string(&ledger_index, "projectionSchema"),
+                ledger_fts_schema: optional_string(&ledger_index, "ftsSchema"),
+                blueprint_provider: optional_string(&blueprint, "provider"),
+                blueprint_provider_version: optional_string(&blueprint, "providerVersion"),
+                blueprint_graph_schema: blueprint
+                    .get("graphSchema")
+                    .and_then(Value::as_u64),
+                blueprint_ready: blueprint.get("ready").and_then(Value::as_bool),
+                adapt_contract_versions,
+            })
+        }
+    };
 
     if protocol_version != requirement.protocol_version
         || schema_version != requirement.schema_version
@@ -158,6 +249,37 @@ pub fn verify(
             "required capability {missing} is unavailable"
         )));
     }
+    // MEM-054: the declared index/Blueprint/Adapt seam fields bind with the
+    // same typed incompatibility as every other handshake element.
+    if let Some(expected) = requirement.required_ledger_projection_schema.as_deref() {
+        let actual = service_capabilities
+            .as_ref()
+            .and_then(|caps| caps.ledger_projection_schema.as_deref());
+        if actual != Some(expected) {
+            return Err(incompatible(
+                "Ledger index projection schema is missing or does not match",
+            ));
+        }
+    }
+    if let Some(expected) = requirement.required_blueprint_provider.as_deref() {
+        let actual = service_capabilities
+            .as_ref()
+            .and_then(|caps| caps.blueprint_provider.as_deref());
+        if actual != Some(expected) {
+            return Err(incompatible(
+                "Blueprint provider identity is missing or does not match",
+            ));
+        }
+    }
+    if let Some(missing) = requirement.required_adapt_contracts.iter().find(|contract| {
+        !service_capabilities
+            .as_ref()
+            .is_some_and(|caps| caps.adapt_contract_versions.iter().any(|found| found == *contract))
+    }) {
+        return Err(incompatible(format!(
+            "required Adapt contract {missing} is unavailable"
+        )));
+    }
     Ok(ServiceIdentity {
         service_id,
         installation_id,
@@ -171,6 +293,7 @@ pub fn verify(
         native_only,
         subsystems,
         capabilities,
+        service_capabilities,
     })
 }
 

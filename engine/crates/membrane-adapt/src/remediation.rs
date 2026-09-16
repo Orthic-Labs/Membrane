@@ -223,6 +223,13 @@ pub fn proposal_tuple_is_compatible(
 pub enum RemediationError {
     MissingUserEvidenceForTasteCandidate,
     PrecisionGateNotMet { measured: f64, required: f64 },
+    /// ADP-033: regression-case proposals require a reviewed issue whose
+    /// lifecycle is `confirmed` (or `reopened` — a confirmed failure that
+    /// recurred after mitigation). Other states refuse rather than guess.
+    IssueNotConfirmed,
+    /// The caller-supplied case summary is empty or exceeds the privacy-safe
+    /// bound.
+    InvalidCaseSummary,
     Seal(RemediationSealError),
 }
 
@@ -236,6 +243,14 @@ impl std::fmt::Display for RemediationError {
             RemediationError::PrecisionGateNotMet { measured, required } => write!(
                 f,
                 "precision gate not met: measured {measured:.3} < required {required:.3}"
+            ),
+            RemediationError::IssueNotConfirmed => write!(
+                f,
+                "regression-case proposal requires a confirmed or reopened reviewed issue"
+            ),
+            RemediationError::InvalidCaseSummary => write!(
+                f,
+                "regression-case summary is empty or exceeds the privacy-safe bound"
             ),
             RemediationError::Seal(error) => write!(f, "remediation seal rejected: {error:?}"),
         }
@@ -1069,6 +1084,75 @@ pub fn seal_review_proposals(
         .collect()
 }
 
+/// Maximum length of a caller-supplied regression-case summary. The summary
+/// is reviewer-authored case text; episode bodies and transcript excerpts are
+/// never embedded here.
+pub const MAX_REGRESSION_CASE_SUMMARY_CHARS: usize = 2_048;
+
+/// ADP-033: convert a reviewed confirmed failure into a minimal, privacy-safe
+/// regression-case proposal addressed to the evaluator surface.
+///
+/// Gates that cannot be bypassed:
+/// - the issue must be `confirmed` or `reopened` — an observed or merely
+///   recurring issue is not yet a reviewed confirmed failure;
+/// - the case text is caller-authored and bounded; episode bodies, transcript
+///   excerpts, and raw evidence text are never copied into the proposal —
+///   only the issue identity, payload digest, and evidence digests cross;
+/// - the result stays sealed under `requires_human_review`: the external
+///   evaluator owner adopts and runs the case, Adapt never executes it.
+pub fn regression_case_proposal(
+    issue: &crate::insights::sealed_issue::SealedInsightIssueV1,
+    case_summary: &str,
+    at: &str,
+) -> Result<SealedRemediationProposalV1, RemediationError> {
+    use crate::insights::IssueState;
+    if !matches!(
+        issue.state.lifecycle,
+        IssueState::Confirmed | IssueState::Reopened
+    ) {
+        return Err(RemediationError::IssueNotConfirmed);
+    }
+    let summary = case_summary.trim();
+    if summary.is_empty() || summary.chars().count() > MAX_REGRESSION_CASE_SUMMARY_CHARS {
+        return Err(RemediationError::InvalidCaseSummary);
+    }
+    let mut evidence_digest_note = String::new();
+    for digest in issue.payload.evidence_digests.iter().take(16) {
+        if !evidence_digest_note.is_empty() {
+            evidence_digest_note.push(',');
+        }
+        evidence_digest_note.push_str(digest);
+    }
+    let text = format!(
+        "Adopt regression case for {} [{}]: {} (issue-payload sha256:{}, evidence digests: {})",
+        issue.payload.family,
+        issue.issue_id,
+        summary,
+        issue.payload_sha256,
+        evidence_digest_note,
+    );
+    let proposal = RemediationProposalV1::build_with_target(
+        &issue.issue_id,
+        &issue.payload.family,
+        RemediationEffect::GuardrailAddition,
+        InterventionTarget::Evaluator,
+        &text,
+        Vec::new(),
+    );
+    SealedRemediationProposalV1::seal(
+        &proposal,
+        REVIEW_REMEDIATION_EFFECT_BOUNDARY,
+        REVIEW_REMEDIATION_HONESTY_LIMIT,
+        REVIEW_REMEDIATION_ADMISSION_POLICY,
+        REVIEW_REMEDIATION_REDACTION_CONTRACT,
+        None,
+        Vec::new(),
+        "adapt_mine",
+        at,
+    )
+    .map_err(RemediationError::Seal)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1259,6 +1343,120 @@ mod tests {
             "2026-08-25T00:00:00Z",
         )
         .is_ok());
+    }
+
+    /// ADP-033 fixture: a sealed issue in `observed` state.
+    fn sealed_issue() -> crate::insights::sealed_issue::SealedInsightIssueV1 {
+        use crate::insights::sealed_issue::EvidenceQuality;
+        use crate::insights::{
+            EventKind, FailureEpisodeV1, InsightIssueV1, IssueState, Severity,
+            TranscriptEventV1, HONESTY_LIMIT, INSIGHT_ISSUE_SCHEMA,
+        };
+        let event = TranscriptEventV1 {
+            event_id: "e".into(),
+            session_id: "s".into(),
+            host: "pi".into(),
+            provenance: "external_user".into(),
+            kind: EventKind::UserMessage,
+            text: "raw transcript body that must never leak".into(),
+            timestamp: Some("2026-08-25T00:00:00Z".into()),
+            byte_start: 0,
+            byte_end: 11,
+            call_id: None,
+            occurrence: 0,
+            evidence_eligible: true,
+        };
+        let episode =
+            FailureEpisodeV1::new("f", Severity::High, 0.9, "sig", "failure", "", &[&event]);
+        let issue = InsightIssueV1 {
+            schema_version: INSIGHT_ISSUE_SCHEMA.into(),
+            issue_id: crate::canonical::derive_issue_id("f", "sig"),
+            family: "f".into(),
+            recurrence_signature: "sig".into(),
+            canonical_description: "failure".into(),
+            applicability: std::collections::BTreeMap::new(),
+            episode_ids: vec![episode.episode_id.clone()],
+            recurrence_count: 1,
+            distinct_sessions: 1,
+            first_seen: Some("2026-08-25T00:00:00Z".into()),
+            last_seen: Some("2026-08-25T00:00:00Z".into()),
+            confidence: 0.9,
+            state: IssueState::Observed,
+            candidate_mechanisms: vec![],
+            mitigation_links: vec![],
+            recurrence_after_mitigation: 0,
+            honesty_limit: HONESTY_LIMIT.into(),
+        };
+        crate::insights::sealed_issue::SealedInsightIssueV1::seal(
+            &issue,
+            &[episode],
+            EvidenceQuality::Deterministic,
+            "policy-v1",
+            "redaction-v1",
+            None,
+            "adapt",
+            "receipt",
+            "2026-08-25T00:00:00Z",
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn regression_case_proposal_requires_confirmed_issue() {
+        use crate::insights::IssueState;
+        // `observed` is not yet a reviewed confirmed failure: refuse.
+        let observed = sealed_issue();
+        assert!(matches!(
+            regression_case_proposal(&observed, "case", "2026-08-25T00:00:00Z"),
+            Err(RemediationError::IssueNotConfirmed)
+        ));
+        let mut confirmed = sealed_issue();
+        confirmed
+            .transition(IssueState::Recurring, "reviewer", "r1", "t2", "recurs")
+            .unwrap();
+        confirmed
+            .transition(IssueState::Confirmed, "reviewer", "r2", "t3", "reviewed")
+            .unwrap();
+        assert!(regression_case_proposal(&confirmed, "case", "2026-08-25T00:00:00Z").is_ok());
+    }
+
+    #[test]
+    fn regression_case_proposal_is_privacy_safe_and_deterministic() {
+        use crate::insights::IssueState;
+        let mut issue = sealed_issue();
+        issue
+            .transition(IssueState::Recurring, "reviewer", "r1", "t2", "recurs")
+            .unwrap();
+        issue
+            .transition(IssueState::Confirmed, "reviewer", "r2", "t3", "reviewed")
+            .unwrap();
+        let first =
+            regression_case_proposal(&issue, "add the case", "2026-08-25T00:00:00Z").unwrap();
+        let second =
+            regression_case_proposal(&issue, "add the case", "2026-08-25T00:00:00Z").unwrap();
+        assert_eq!(first.proposal_id, second.proposal_id);
+        assert!(first.verify().is_ok());
+        // Case text carries digests + reviewer text only — no transcript body.
+        assert!(!first
+            .payload
+            .canonical_proposal_text
+            .contains("raw transcript body"));
+        assert!(first
+            .payload
+            .canonical_proposal_text
+            .contains(&issue.issue_id));
+        assert_eq!(first.payload.intervention_target, "evaluator");
+        assert_eq!(first.payload.effect_boundary, "requires_human_review");
+        // The summary is bounded; empty and oversized inputs refuse.
+        assert!(matches!(
+            regression_case_proposal(&issue, "   ", "2026-08-25T00:00:00Z"),
+            Err(RemediationError::InvalidCaseSummary)
+        ));
+        let oversized = "x".repeat(MAX_REGRESSION_CASE_SUMMARY_CHARS + 1);
+        assert!(matches!(
+            regression_case_proposal(&issue, &oversized, "2026-08-25T00:00:00Z"),
+            Err(RemediationError::InvalidCaseSummary)
+        ));
     }
 
     #[test]

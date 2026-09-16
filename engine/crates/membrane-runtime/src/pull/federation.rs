@@ -101,6 +101,182 @@ fn federation_session_id(session: Option<String>) -> String {
         .unwrap_or_else(|| crate::store::opaque_correlation_token("anonymous-session", "session"))
 }
 
+/// Pull's two explicit request-time budget modes (implementation-contract
+/// §"Pull budget contract", PUL-050). `BoundedResponse` fits the complete
+/// rendered response under a positive caller- or configured-declared budget
+/// and reports unobserved host capacity without failing; `HostFit` requires
+/// a trusted, fresh, exact, identity-matched request-time H8 and never
+/// silently downgrades.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PullBudgetMode {
+    BoundedResponse,
+    HostFit,
+}
+
+impl PullBudgetMode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::BoundedResponse => "bounded_response",
+            Self::HostFit => "host_fit",
+        }
+    }
+}
+
+/// Budget-mode inputs carried through every bounded/host-fit emission path.
+#[derive(Debug, Clone, Copy)]
+pub struct BudgetFit {
+    /// Caller-declared mode; `None` means the request did not declare one and
+    /// the mode was mapped by supplied-observation compatibility rules.
+    pub declared: Option<PullBudgetMode>,
+    /// Positive declared response budget in `o200k_base/1` tokens.
+    pub response_tokens: u64,
+    /// Where the declared budget came from: `"caller"` or `"configured"`.
+    pub provenance: &'static str,
+}
+
+fn budget_mode_refusal(kind: &str, reason: String) -> (u16, String) {
+    (
+        400,
+        serde_json::json!({
+            "error": "request_time_selection_refused",
+            "kind": kind,
+            "reason": reason,
+        })
+        .to_string(),
+    )
+}
+
+/// The caller's declared mode. `budgetMode` is the canonical field;
+/// `budgetPolicy` is the legacy spelling (`configured_cap` → bounded,
+/// `host_observed` → host-fit). An unrecognized or conflicting declaration
+/// is a typed refusal — never an implicit fallback to either mode.
+pub(crate) fn declared_budget_mode(body: &Value) -> Result<Option<PullBudgetMode>, (u16, String)> {
+    let bounded = |value: &str| {
+        matches!(
+            value,
+            "bounded_response" | "bounded-response" | "boundedResponse" | "configured_cap"
+        )
+    };
+    let host_fit = |value: &str| {
+        matches!(value, "host_fit" | "host-fit" | "hostFit" | "host_observed")
+    };
+    let parse = |raw: Option<&Value>| -> Option<Result<PullBudgetMode, (u16, String)>> {
+        let raw = raw?;
+        if raw.is_null() {
+            return None;
+        }
+        match raw.as_str() {
+            Some(mode) if bounded(mode) => Some(Ok(PullBudgetMode::BoundedResponse)),
+            Some(mode) if host_fit(mode) => Some(Ok(PullBudgetMode::HostFit)),
+            _ => Some(Err(budget_mode_refusal(
+                "invalid_budget_mode",
+                "declared budget mode must be bounded_response or host_fit".to_owned(),
+            ))),
+        }
+    };
+    let canonical = parse(body.get("budgetMode"));
+    let legacy = parse(body.get("budgetPolicy"));
+    match (canonical, legacy) {
+        (Some(Ok(left)), Some(Ok(right))) if left != right => Err(budget_mode_refusal(
+            "invalid_budget_mode",
+            "budgetMode and budgetPolicy declare conflicting modes".to_owned(),
+        )),
+        (Some(result), _) | (None, Some(result)) => result.map(Some),
+        (None, None) => Ok(None),
+    }
+}
+
+/// Positive declared response budget for bounded-response. `responseBudget`
+/// / `responseBudgetTokens` are the explicit spellings (tokens); `maxTokens`
+/// is the caller/configured fallback. A supplied non-positive or non-numeric
+/// budget is a typed refusal, never a zero-cap interpretation.
+pub(crate) fn declared_response_budget(
+    body: &Value,
+    max_tokens: usize,
+) -> Result<(u64, &'static str), (u16, String)> {
+    for field in ["responseBudget", "responseBudgetTokens"] {
+        if let Some(raw) = body.get(field) {
+            return match raw.as_u64().filter(|value| *value > 0) {
+                Some(tokens) => Ok((tokens.min(1_000_000), "caller")),
+                None => Err(budget_mode_refusal(
+                    "invalid_response_budget",
+                    format!("{field} must be a positive token count"),
+                )),
+            };
+        }
+    }
+    Ok((
+        max_tokens as u64,
+        if body.get("maxTokens").is_some() {
+            "caller"
+        } else {
+            "configured"
+        },
+    ))
+}
+
+/// Uniform content-free budget receipts on every Pull envelope: requested &
+/// effective mode, the declared response budget with estimator/unit and
+/// provenance, and observed-or-unknown host capacity. Host capacity is
+/// never invented.
+fn insert_budget_mode_fields(
+    fields: &mut serde_json::Map<String, Value>,
+    mode: PullBudgetMode,
+    declared: Option<PullBudgetMode>,
+    response_budget_tokens: u64,
+    response_budget_provenance: &str,
+    ceiling: Option<&membrane_protocol::RemainingContextCeilingV1>,
+) {
+    fields.insert(
+        "budgetMode".to_owned(),
+        Value::String(mode.as_str().to_owned()),
+    );
+    fields.insert(
+        "requestedBudgetMode".to_owned(),
+        Value::String(declared.unwrap_or(mode).as_str().to_owned()),
+    );
+    fields.insert(
+        "responseBudget".to_owned(),
+        serde_json::json!({
+            "schemaVersion": 1,
+            "value": response_budget_tokens,
+            "unit": "tokens",
+            "estimatorBasis": "o200k_base/1",
+            "provenance": response_budget_provenance,
+        }),
+    );
+    fields.insert(
+        "hostCapacity".to_owned(),
+        match ceiling {
+            Some(ceiling) => serde_json::json!({
+                "coverage": "complete",
+                "ceilingId": ceiling.ceiling_id,
+                "sessionId": ceiling.session_id,
+                "remainingTokens": ceiling.remaining_tokens.estimate.value,
+            }),
+            None => serde_json::json!({
+                "coverage": "unavailable",
+                "reason": "host_observation_not_supplied",
+            }),
+        },
+    );
+}
+
+/// The block text a host injects from one emitted packet — the rendered
+/// response on bounded-response surfaces. Transport JSON wrappers are not
+/// host-rendered content here; the serialized packet measure is reported
+/// separately on the receipt.
+fn rendered_block_text(packet: &Value) -> Option<String> {
+    let blocks = packet.get("blocks").and_then(Value::as_array)?;
+    Some(
+        blocks
+            .iter()
+            .filter_map(|block| block.get("text").and_then(Value::as_str))
+            .collect::<Vec<_>>()
+            .join("\n\n"),
+    )
+}
+
 #[derive(Debug)]
 enum NativeRouteError {
     Internal(String),
@@ -138,7 +314,8 @@ pub fn run_federate(
     // it a build-class budget. A resident Hub keeps freshness warm and
     // returns far faster; this ceiling only bounds the cold one-shot.
     let payload = run_federate_value(task, repo, max_tokens, packet_char_budget_override, packet_char_budget_model,
-        client, session, anchors, scope_grant_id, accepted_receipt_versions, 180_000, "explicit", None, None, None, None, None)?;
+        client, session, anchors, scope_grant_id, accepted_receipt_versions, 180_000, "explicit", None, None, None, None, None,
+        BudgetFit { declared: None, response_tokens: max_tokens as u64, provenance: "caller" })?;
     crate::cli::emit_stdout(format_args!(
         "{}",
         serde_json::to_string_pretty(&payload).map_err(|e| format!("serialize: {e}"))?
@@ -162,13 +339,43 @@ pub fn hook_mode_federate(
 
 /// Hook adapter carrying a host-produced H8 observation when available. The
 /// planner receives this exact observation; it never fabricates capacity.
+/// A supplied observation is bound to this request's session/task identity
+/// and structural validity before use — a stale, inexact, malformed or
+/// mismatched observation is a typed refusal, never a silent downgrade to
+/// configured-cap.
 pub fn hook_mode_federate_with_observation(
     task: &str, repo: &Path, max_tokens: usize, client: &str, session: &str,
     deadline_ms: u64, ceiling: Option<membrane_protocol::RemainingContextCeilingV1>,
 ) -> Result<Value, String> {
+    if let Some(observed) = ceiling.as_ref() {
+        if let Err(error) = observed.validate() {
+            return Err(format!("request_time_selection_refused:h8_invalid:{error}"));
+        }
+        if observed.session_id != session {
+            return Err(format!(
+                "request_time_selection_refused:h8_identity_mismatch:sessionId expected {session} observed {}",
+                observed.session_id
+            ));
+        }
+        match observed.task_id.value.as_deref() {
+            Some(observed_task) if observed_task == task => {}
+            Some(observed_task) => {
+                return Err(format!(
+                    "request_time_selection_refused:h8_identity_mismatch:taskId expected {task} observed {observed_task}"
+                ));
+            }
+            None => {
+                return Err(
+                    "request_time_selection_refused:h8_invalid:taskId is not an exact observation"
+                        .to_owned(),
+                );
+            }
+        }
+    }
     run_federate_value(task.to_owned(), repo.to_path_buf(), max_tokens, None, None, client.to_owned(),
         Some(session.to_owned()), Vec::new(), None, Vec::new(), deadline_ms,
-        if ceiling.is_some() { "host_observed" } else { "configured_cap" }, ceiling, None, None, None, None)
+        if ceiling.is_some() { "host_observed" } else { "configured_cap" }, ceiling, None, None, None, None,
+        BudgetFit { declared: None, response_tokens: max_tokens as u64, provenance: "configured" })
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -190,6 +397,7 @@ fn run_federate_value(
     shared_runtime: Option<tokio::runtime::Handle>,
     inherited_cancellation: Option<tokio_util::sync::CancellationToken>,
     inherited_deadline: Option<membrane_federation::deadline::Deadline>,
+    fit: BudgetFit,
 ) -> Result<Value, String> {
     let inherited = crate::mcp_executor::inherited_push_control();
     let inherited_deadline = inherited_deadline.or_else(|| inherited.as_ref().map(|control| control.deadline));
@@ -308,6 +516,111 @@ fn run_federate_value(
         let final_packet = fields.get("packet").cloned();
         merge_bm10_accounting(fields, provisional_requirement_map.as_ref(), final_map.as_ref(), final_packet.as_ref());
         fields.insert("budgetPolicy".to_owned(), Value::String(budget_policy.to_owned()));
+        // Pull budget contract (PUL-050/051): the emitted packet is always
+        // fitted to the effective mode. A validated request-time H8 keeps
+        // host-fit semantics — the largest complete representation under the
+        // observed ceiling is emitted, or the request refuses typed. Without
+        // one, the declared caller/configured response budget bounds the
+        // rendered block text the host injects, measured exactly under
+        // o200k_base/1 — an over-budget packet is a typed insufficiency,
+        // never a silent over-budget emission.
+        if let Some(packet_value) = fields.get("packet").cloned() {
+            if let Ok(packet) = serde_json::from_value::<cortex_core::planner::ContextPacketV1>(packet_value) {
+                if !packet.blocks.is_empty() {
+                    // The tighter applicable ceiling bounds selection: a
+                    // validated supplied H8 applies under either mode, then
+                    // the declared response budget applies on top.
+                    let selection = match ceiling.as_ref() {
+                        Some(ceiling) => {
+                            let selection = crate::pull::selection::select_packet_for_h8_with_recovery(
+                                &packet,
+                                ceiling,
+                                &crate::pull::prep::PushPolicy::Control,
+                                None,
+                            )
+                            .map_err(|error| {
+                                format!("request_time_selection_refused:{}:{error}", error.kind())
+                            })?;
+                            if selection.selected_representation.tokens > fit.response_tokens {
+                                return Err(format!(
+                                    "request_time_selection_refused:budget_insufficient:declared response budget {} tokens; smallest fitting representation under host ceiling requires {} tokens",
+                                    fit.response_tokens, selection.selected_representation.tokens
+                                ));
+                            }
+                            selection
+                        }
+                        None => crate::pull::selection::select_packet_for_token_budget(
+                            &packet,
+                            fit.response_tokens,
+                            &crate::pull::prep::PushPolicy::Control,
+                            None,
+                        )
+                        .map_err(|error| {
+                            format!("request_time_selection_refused:{}:{error}", error.kind())
+                        })?,
+                    };
+                    fields.insert(
+                        "packet".to_owned(),
+                        selection.selected_representation.content.clone(),
+                    );
+                    fields.insert(
+                        "packetReduction".to_owned(),
+                        serde_json::to_value(&selection).map_err(|error| {
+                            format!("serialize packet reduction selection: {error}")
+                        })?,
+                    );
+                    let rendered = rendered_block_text(&selection.selected_representation.content)
+                        .unwrap_or_default();
+                    let rendered_tokens =
+                        cortex_core::ContextTokenAccounting::count_exact(&rendered)
+                            .map_err(|error| format!("measure rendered response: {error}"))?
+                            as u64;
+                    let packet_tokens = fields
+                        .get("packet")
+                        .and_then(|packet| {
+                            crate::pull::selection::measure_packet(
+                                packet,
+                                &membrane_protocol::host_observation::EstimatorBasisV1::new(
+                                    "o200k_base", "1",
+                                ),
+                            )
+                            .ok()
+                        })
+                        .unwrap_or(rendered_tokens);
+                    fields.insert(
+                        "deliveredResponse".to_owned(),
+                        serde_json::json!({
+                            "schemaVersion": 1,
+                            "renderedTokens": rendered_tokens,
+                            "packetTokens": packet_tokens,
+                            "unit": "tokens",
+                            "estimatorBasis": "o200k_base/1",
+                            "scope": "rendered_blocks",
+                            "fitsBudget": rendered_tokens <= fit.response_tokens,
+                        }),
+                    );
+                    if rendered_tokens > fit.response_tokens {
+                        return Err(format!(
+                            "request_time_selection_refused:budget_insufficient:declared response budget {} tokens; rendered evidence requires {rendered_tokens} tokens",
+                            fit.response_tokens
+                        ));
+                    }
+                }
+            }
+        }
+        let resolved_mode = fit.declared.unwrap_or(if ceiling.is_some() {
+            PullBudgetMode::HostFit
+        } else {
+            PullBudgetMode::BoundedResponse
+        });
+        insert_budget_mode_fields(
+            fields,
+            resolved_mode,
+            fit.declared,
+            fit.response_tokens,
+            fit.provenance,
+            ceiling.as_ref(),
+        );
     }
     check_pull_live(federation_deadline, &inherited_cancellation)?;
     Ok(payload)
@@ -486,27 +799,87 @@ fn native_route_response_with_deadline_and_control(
         }
         None => None,
     };
-    if value.get("budgetPolicy").and_then(Value::as_str) == Some("configured_cap") {
-        if value.get("remainingContextCeiling").is_some_and(|value| !value.is_null()) {
-            return (400, "{\"error\":\"configured_cap cannot discard host observation\"}".into());
-        }
+    // Pull budget contract (PUL-050): two explicit modes. `budgetMode` is
+    // canonical; `budgetPolicy` is the legacy spelling. Compatible legacy
+    // requests map by supplied observation: a request-time H8 keeps host-fit
+    // semantics; its absence maps to bounded-response under the declared
+    // caller/configured response budget. A declaration always wins and is
+    // never silently downgraded.
+    let declared_mode = match declared_budget_mode(&value) {
+        Ok(mode) => mode,
+        Err(refusal) => return refusal_with_stage_timings(refusal, &stage_timings),
+    };
+    let h8_supplied = value
+        .get("remainingContextCeiling")
+        .is_some_and(|ceiling| !ceiling.is_null());
+    let mode = declared_mode.unwrap_or(if h8_supplied {
+        PullBudgetMode::HostFit
+    } else {
+        PullBudgetMode::BoundedResponse
+    });
+    // Supplied host evidence is strictly validated under both modes — a
+    // missing (host-fit), malformed, stale, inexact or identity-mismatched
+    // H8 is a typed refusal, never silently discarded to obtain success.
+    // Under bounded-response a validated H8 remains a real ceiling and
+    // tightens the emitted packet; under host-fit it is the required bound.
+    let ceiling = match (mode, h8_supplied) {
+        (PullBudgetMode::BoundedResponse, false) => None,
+        _ => match crate::pull::selection::parse_request_time_h8(&value, &session, &task_id) {
+            Ok(ceiling) => Some(ceiling),
+            Err(error) => {
+                return refusal_with_stage_timings(
+                    request_time_refusal(crate::pull::selection::PacketReductionRequestError::H8(error)),
+                    &stage_timings,
+                )
+            }
+        },
+    };
+    let (response_budget, response_budget_provenance) =
+        match declared_response_budget(&value, max_tokens) {
+            Ok(budget) => budget,
+            Err(refusal) => return refusal_with_stage_timings(refusal, &stage_timings),
+        };
+    if mode == PullBudgetMode::BoundedResponse {
+        // Bounded-response runs the shared ambient envelope path: the planner
+        // packet is fitted under the declared budget (and under a supplied,
+        // validated H8 when present) inside run_federate_value. Missing host
+        // capacity is reported as unknown — never a failure here.
         let result = run_federate_value(task.to_owned(), root, max_tokens,
             value.get("packetCharBudget").and_then(Value::as_u64).map(|n| n as usize),
             value.get("packetCharBudgetModel").and_then(Value::as_str).map(str::to_owned),
             client, Some(session), anchors, scope_grant_id, vec![2],
             deadline.instant().saturating_duration_since(Instant::now()).as_millis() as u64,
-            "configured_cap", None, resident, shared_runtime.cloned(), Some(inherited_cancellation.clone()), Some(deadline));
+            "configured_cap", ceiling, resident, shared_runtime.cloned(), Some(inherited_cancellation.clone()), Some(deadline),
+            BudgetFit { declared: declared_mode, response_tokens: response_budget, provenance: response_budget_provenance });
         return match result {
             Ok(payload) => (200, payload.to_string()),
-            Err(error) => refusal_with_stage_timings(
-                (503, serde_json::json!({"error":error,"reason":"membrane_retrieval_failed"}).to_string()),
-                &stage_timings,
-            ),
+            Err(error) => {
+                let refusal = if let Some(rest) = error.strip_prefix("request_time_selection_refused:") {
+                    let mut parts = rest.splitn(2, ':');
+                    (
+                        400,
+                        serde_json::json!({
+                            "error": "request_time_selection_refused",
+                            "kind": parts.next().unwrap_or("packet_reduction_refused"),
+                            "reason": parts.next().unwrap_or(""),
+                        })
+                        .to_string(),
+                    )
+                } else {
+                    (503, serde_json::json!({"error":error,"reason":"membrane_retrieval_failed"}).to_string())
+                };
+                refusal_with_stage_timings(refusal, &stage_timings)
+            }
         };
     }
-    let ceiling = match crate::pull::selection::parse_request_time_h8(&value, &session, &task_id) {
-        Ok(ceiling) => ceiling,
-        Err(error) => return request_time_refusal(crate::pull::selection::PacketReductionRequestError::H8(error)),
+    // Host-fit: the validated request-time H8 above is the required bound.
+    let Some(ceiling) = ceiling else {
+        return refusal_with_stage_timings(
+            request_time_refusal(crate::pull::selection::PacketReductionRequestError::H8(
+                crate::pull::selection::RequestTimeH8Error::Missing,
+            )),
+            &stage_timings,
+        );
     };
     let loaded_context = current_loaded_context(&value, &session);
     let result = (|| -> Result<Value, NativeRouteError> {
@@ -688,6 +1061,8 @@ fn native_route_response_with_deadline_and_control(
             let final_map = fields.get("requirementEvidenceMap").cloned();
             let final_packet = fields.get("packet").cloned();
             merge_bm10_accounting(fields, provisional_coverage.as_ref(), final_map.as_ref(), final_packet.as_ref());
+            insert_budget_mode_fields(fields, PullBudgetMode::HostFit, declared_mode,
+                response_budget, response_budget_provenance, Some(&ceiling));
             check_pull_live(deadline, &inherited_cancellation)?;
             return Ok(payload);
         }
@@ -746,6 +1121,8 @@ fn native_route_response_with_deadline_and_control(
             let final_map = fields.get("requirementEvidenceMap").cloned();
             let final_packet = fields.get("packet").cloned();
             merge_bm10_accounting(fields, provisional_coverage.as_ref(), final_map.as_ref(), final_packet.as_ref());
+            insert_budget_mode_fields(fields, PullBudgetMode::HostFit, declared_mode,
+                response_budget, response_budget_provenance, Some(&ceiling));
             check_pull_live(deadline, &inherited_cancellation)?;
             return Ok(payload);
         }
@@ -790,6 +1167,8 @@ fn native_route_response_with_deadline_and_control(
             serde_json::to_value(&selection)
                 .map_err(|error| format!("serialize packet reduction selection: {error}"))?,
         );
+        insert_budget_mode_fields(fields, PullBudgetMode::HostFit, declared_mode,
+            response_budget, response_budget_provenance, Some(&ceiling));
         attach_compaction_federation_decision(
             fields,
             &value,
@@ -1857,6 +2236,10 @@ pub fn envelope_from_ccs(stdout: &str, input: EnvelopeInput) -> Result<Value, St
         trace_id_override: None,
         scope_grant_present: input.scope_grant_present,
         consumer_resolvers: input.consumer_resolvers,
+        // PUL-026: reserved-lane retirement stays behind the `None` rollback
+        // control until evidence-class coverage & allocation qualification
+        // evidence exists; composition may then pass `Some(vec![])`.
+        reserved_lanes: None,
     };
     let planner_started = Instant::now();
     let out = match plan(&planner_input) {

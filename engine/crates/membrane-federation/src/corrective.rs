@@ -183,15 +183,38 @@ pub enum SufficiencyStateV1 {
 #[serde(rename_all = "snake_case")]
 pub enum RequirementCoverageStateV1 {
     Satisfied,
+    Partial,
     Missing,
+    Contradictory,
+    Stale,
+    Unsafe,
     Unavailable,
+    NotEvaluated,
+}
+
+impl RequirementCoverageStateV1 {
+    /// Evaluated states in which additional evidence could satisfy the
+    /// requirement, so the single bounded corrective stage may target them.
+    /// `Unavailable`/`NotEvaluated` are excluded: corrective retrieval cannot
+    /// conjure an absent provider or an unprobed lane.
+    pub fn is_insufficient(self) -> bool {
+        matches!(
+            self,
+            Self::Partial | Self::Missing | Self::Contradictory | Self::Stale | Self::Unsafe
+        )
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SufficiencyReasonV1 {
     Satisfied,
+    InsufficientCandidates,
     NoMatchingCandidate,
+    UnsafeGate,
+    IdentityConflict,
+    StaleGeneration,
+    NotEvaluated,
     ProviderUnavailable,
     ProviderIncomplete,
 }
@@ -219,7 +242,7 @@ impl SufficiencyAssessmentV1 {
     pub fn first_missing_requirement(&self) -> Option<&RequirementCoverageV1> {
         self.requirements
             .iter()
-            .find(|requirement| requirement.state == RequirementCoverageStateV1::Missing)
+            .find(|requirement| requirement.state.is_insufficient())
     }
 }
 
@@ -422,6 +445,12 @@ pub fn evaluate_sufficiency(
         let matching_candidates = u32::try_from(matching_candidates).unwrap_or(u32::MAX);
         let required_candidates = requirement.minimum_candidates;
 
+        let lane_omissions = || {
+            lanes
+                .iter()
+                .flat_map(|lane| lane.omissions.iter())
+                .map(|omission| omission.reason)
+        };
         let (state, reason) = if matching_candidates >= required_candidates {
             (
                 RequirementCoverageStateV1::Satisfied,
@@ -439,13 +468,44 @@ pub fn evaluate_sufficiency(
                 RequirementCoverageStateV1::Unavailable,
                 SufficiencyReasonV1::ProviderUnavailable,
             )
+        // Decisive omission signals describe evidence the lanes did observe,
+        // so they classify even on partially delivered lanes.
+        } else if lane_omissions().any(|reason| {
+            matches!(
+                reason,
+                ReasonCode::ScopeGrantInvalid | ReasonCode::ScopeGrantMissing
+            )
+        }) {
+            (
+                RequirementCoverageStateV1::Unsafe,
+                SufficiencyReasonV1::UnsafeGate,
+            )
+        } else if lane_omissions()
+            .any(|reason| reason == ReasonCode::CandidateIdentityConflict)
+        {
+            (
+                RequirementCoverageStateV1::Contradictory,
+                SufficiencyReasonV1::IdentityConflict,
+            )
+        } else if lane_omissions()
+            .any(|reason| reason == ReasonCode::GenerationIncoherent)
+        {
+            (
+                RequirementCoverageStateV1::Stale,
+                SufficiencyReasonV1::StaleGeneration,
+            )
         } else if lanes
             .iter()
             .any(|lane| lane.status != FederationProviderStatusV1::Complete)
         {
             (
-                RequirementCoverageStateV1::Unavailable,
-                SufficiencyReasonV1::ProviderIncomplete,
+                RequirementCoverageStateV1::NotEvaluated,
+                SufficiencyReasonV1::NotEvaluated,
+            )
+        } else if matching_candidates > 0 {
+            (
+                RequirementCoverageStateV1::Partial,
+                SufficiencyReasonV1::InsufficientCandidates,
             )
         } else {
             (
@@ -463,10 +523,12 @@ pub fn evaluate_sufficiency(
         });
     }
 
-    let state = if requirements
-        .iter()
-        .any(|requirement| requirement.state == RequirementCoverageStateV1::Unavailable)
-    {
+    let state = if requirements.iter().any(|requirement| {
+        matches!(
+            requirement.state,
+            RequirementCoverageStateV1::Unavailable | RequirementCoverageStateV1::NotEvaluated
+        )
+    }) {
         SufficiencyStateV1::Unknown
     } else if requirements
         .iter()
@@ -536,7 +598,7 @@ pub fn receipt_for_request(
     let target = assessment
         .requirements
         .iter()
-        .filter(|requirement| requirement.state == RequirementCoverageStateV1::Missing)
+        .filter(|requirement| requirement.state.is_insufficient())
         .find_map(|coverage| {
             let provider = contract
                 .requirements
@@ -739,7 +801,7 @@ pub fn unknown_warning(provider: ProviderId) -> ProviderWarningV1 {
 mod tests {
     use super::*;
     use crate::normalize::{normalize_candidate, NORMALIZED_PROVIDER_VERSION};
-    use membrane_protocol::{CandidateV1, FEDERATION_REQUEST_SCHEMA_VERSION};
+    use membrane_protocol::{CandidateV1, ProviderOmissionV1, FEDERATION_REQUEST_SCHEMA_VERSION};
     use std::collections::BTreeMap;
 
     fn candidate(source_kind: &str, source_ref: &str) -> CandidateV1 {
@@ -914,8 +976,12 @@ mod tests {
         .expect("valid contract");
         assert_eq!(assessment.state, SufficiencyStateV1::Unknown);
         assert_eq!(
+            assessment.requirements[0].state,
+            RequirementCoverageStateV1::NotEvaluated
+        );
+        assert_eq!(
             assessment.requirements[0].reason,
-            SufficiencyReasonV1::ProviderIncomplete
+            SufficiencyReasonV1::NotEvaluated
         );
     }
 
@@ -929,6 +995,116 @@ mod tests {
             assessment.requirements[0].reason,
             SufficiencyReasonV1::ProviderUnavailable
         );
+    }
+
+    fn lane_with_omissions(
+        provider: ProviderId,
+        status: FederationProviderStatusV1,
+        candidates: Vec<CandidateV1>,
+        reasons: Vec<ReasonCode>,
+    ) -> NormalizedProviderOutput {
+        let mut lane = lane(provider, status, candidates);
+        lane.omissions = reasons
+            .into_iter()
+            .map(|reason| ProviderOmissionV1 {
+                provider,
+                reason,
+                candidate_id: None,
+                detail_id: None,
+                stage: None,
+            })
+            .collect();
+        lane
+    }
+
+    #[test]
+    fn insufficient_coverage_classifies_decisive_omission_signals() {
+        let cases = [
+            (
+                ReasonCode::ScopeGrantInvalid,
+                RequirementCoverageStateV1::Unsafe,
+                SufficiencyReasonV1::UnsafeGate,
+            ),
+            (
+                ReasonCode::ScopeGrantMissing,
+                RequirementCoverageStateV1::Unsafe,
+                SufficiencyReasonV1::UnsafeGate,
+            ),
+            (
+                ReasonCode::CandidateIdentityConflict,
+                RequirementCoverageStateV1::Contradictory,
+                SufficiencyReasonV1::IdentityConflict,
+            ),
+            (
+                ReasonCode::GenerationIncoherent,
+                RequirementCoverageStateV1::Stale,
+                SufficiencyReasonV1::StaleGeneration,
+            ),
+        ];
+        for (omission_reason, state, reason) in cases {
+            let contract = contract(requirement("repository_file", vec![ProviderId::Blueprint]));
+            let assessment = evaluate_sufficiency(
+                &contract,
+                &[lane_with_omissions(
+                    ProviderId::Blueprint,
+                    FederationProviderStatusV1::Complete,
+                    Vec::new(),
+                    vec![omission_reason],
+                )],
+                &[ProviderId::Blueprint],
+            )
+            .expect("valid contract");
+            assert_eq!(assessment.state, SufficiencyStateV1::Insufficient);
+            assert_eq!(assessment.requirements[0].state, state);
+            assert_eq!(assessment.requirements[0].reason, reason);
+        }
+    }
+
+    #[test]
+    fn complete_lane_with_insufficient_matches_is_partial() {
+        let mut partial_requirement =
+            requirement("repository_file", vec![ProviderId::Blueprint]);
+        partial_requirement.minimum_candidates = 2;
+        let contract = contract(partial_requirement);
+        let assessment = evaluate_sufficiency(
+            &contract,
+            &[lane(
+                ProviderId::Blueprint,
+                FederationProviderStatusV1::Complete,
+                vec![candidate("repository_file", "README.md")],
+            )],
+            &[ProviderId::Blueprint],
+        )
+        .expect("valid contract");
+        assert_eq!(assessment.state, SufficiencyStateV1::Insufficient);
+        assert_eq!(
+            assessment.requirements[0].state,
+            RequirementCoverageStateV1::Partial
+        );
+        assert_eq!(
+            assessment.requirements[0].reason,
+            SufficiencyReasonV1::InsufficientCandidates
+        );
+    }
+
+    #[test]
+    fn evaluated_insufficient_states_stay_corrective_eligible() {
+        for state in [
+            RequirementCoverageStateV1::Missing,
+            RequirementCoverageStateV1::Partial,
+            RequirementCoverageStateV1::Contradictory,
+            RequirementCoverageStateV1::Stale,
+            RequirementCoverageStateV1::Unsafe,
+        ] {
+            assert!(state.is_insufficient(), "{state:?} must stay corrective-eligible");
+        }
+        for state in [
+            RequirementCoverageStateV1::Satisfied,
+            RequirementCoverageStateV1::Unavailable,
+            RequirementCoverageStateV1::NotEvaluated,
+        ] {
+            assert!(!state.is_insufficient(), "{state:?} cannot be corrective-retrieved");
+        }
     }
 
     #[test]

@@ -1,14 +1,16 @@
 {
-  "$schema": "https://json.schemastore.org/claude-code-plugin-marketplace.json",
-  "name": "orthic-labs",
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "membrane",
+  "description": "Membrane installed-payload marketplace served from the stable current root.",
   "owner": {
     "name": "Orthic Labs"
   },
   "plugins": [
     {
       "name": "membrane",
+      "description": "Local-first context service for repository evidence, durable knowledge, document navigation, learning, and reversible reduction.",
       "source": "./",
-      "description": "Local-first context service for repository evidence, durable knowledge, document navigation, learning, and reversible reduction."
+      "category": "Developer Tools"
     }
   ]
 }

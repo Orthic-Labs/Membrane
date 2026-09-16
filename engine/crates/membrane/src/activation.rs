@@ -17,6 +17,7 @@
 use serde::{Deserialize, Serialize};
 use sha2::Digest;
 use std::{
+    collections::BTreeMap,
     ffi::OsString,
     io::Write as IoWrite,
     net::{SocketAddr, TcpStream},
@@ -40,7 +41,7 @@ const LOCK_WAIT: Duration = Duration::from_secs(15);
 const POLL_INTERVAL: Duration = Duration::from_millis(250);
 const SERVICE_ID: &str = "membrane-hub";
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum HarnessClient {
     Codex,
@@ -48,6 +49,7 @@ pub enum HarnessClient {
     Cursor,
     Windsurf,
     Antigravity,
+    Devin,
 }
 
 impl HarnessClient {
@@ -58,8 +60,9 @@ impl HarnessClient {
             "cursor" => Ok(Self::Cursor),
             "windsurf" => Ok(Self::Windsurf),
             "antigravity" => Ok(Self::Antigravity),
+            "devin" => Ok(Self::Devin),
             _ => Err(format!(
-                "unsupported harness `{value}`; expected codex, claude, cursor, windsurf, or antigravity"
+                "unsupported harness `{value}`; expected codex, claude, cursor, windsurf, antigravity, or devin"
             )),
         }
     }
@@ -71,6 +74,7 @@ impl HarnessClient {
             Self::Cursor => "cursor",
             Self::Windsurf => "windsurf",
             Self::Antigravity => "antigravity",
+            Self::Devin => "devin",
         }
     }
 
@@ -81,7 +85,14 @@ impl HarnessClient {
             Self::Cursor => "MEMBRANE_CURSOR_BIN",
             Self::Windsurf => "MEMBRANE_WINDSURF_BIN",
             Self::Antigravity => "MEMBRANE_ANTIGRAVITY_BIN",
+            Self::Devin => "MEMBRANE_DEVIN_BIN",
         }
+    }
+
+    /// Hosts with a native plugin surface that can own hooks & plugin-scoped
+    /// MCP when the installed plugin is enabled.
+    fn has_plugin_surface(self) -> bool {
+        matches!(self, Self::Codex | Self::Claude)
     }
 }
 
@@ -99,6 +110,31 @@ pub enum RuntimeOrigin {
     Installed,
 }
 
+/// Per-client native plugin projection state. `enabled` is the only state in
+/// which the host's plugin surface (SessionStart hooks, plugin-scoped MCP
+/// binding) is known to be projected; every other state names the exact
+/// remaining step instead of implying readiness.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginActivationReceipt {
+    /// `enabled` | `installed_disabled` | `absent` | `action_required` |
+    /// `conflict` | `not_applicable`; deactivation receipts may also report
+    /// `detached`.
+    pub state: String,
+    /// `membrane@membrane` when a plugin surface exists.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plugin_id: Option<String>,
+    /// Observed plugin payload version inside the host cache, when known.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
+    /// Activation changed the host's plugin state this pass.
+    #[serde(default)]
+    pub changed: bool,
+    /// Exact manual command or remaining requirement (never a readiness claim).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub struct ClientActivationReceipt {
@@ -106,6 +142,8 @@ pub struct ClientActivationReceipt {
     pub before: String,
     pub after: String,
     pub changed: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plugin: Option<PluginActivationReceipt>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -136,9 +174,18 @@ pub struct ActivationReceiptV1 {
     pub dry_run: bool,
     pub service: ServiceActivationReceipt,
     pub clients: Vec<ClientActivationReceipt>,
+    /// `full` | `engine_only` | `bindings_only`. `service.state` is engine
+    /// readiness only; host/plugin readiness lives in `clients[].plugin` and
+    /// is never implied by an empty `clients` list (engine-only scope).
+    #[serde(default = "default_activation_scope")]
+    pub activation_scope: String,
     /// Optional so existing activation receipts remain readable.
     #[serde(default)]
     pub workspace_config_migration: Option<WorkspaceConfigMigrationReceipt>,
+}
+
+fn default_activation_scope() -> String {
+    "full".to_string()
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -324,6 +371,9 @@ enum ClientState {
     Absent,
     AlreadyCorrect,
     Conflict(ServerConfig),
+    /// The host's enabled native plugin owns the MCP binding; the global
+    /// registration is absent (or was removed, when `removed` is true).
+    PluginOwned { removed: bool },
 }
 
 impl ClientState {
@@ -333,6 +383,7 @@ impl ClientState {
             Self::Absent => "absent",
             Self::AlreadyCorrect => "already_correct",
             Self::Conflict(_) => "conflict",
+            Self::PluginOwned { .. } => "plugin_owned",
         }
     }
 }
@@ -481,9 +532,21 @@ fn activate_internal(options: ActivationOptions, start_resident: bool, reconcile
     // clients & the CLI path before attempting any automatic Hub process, so
     // an unverified/foreign listener on the Membrane port cannot suppress
     // explicit binding reconciliation (docs/architecture/execution-lifecycle-boundary.md).
-    let clients = if reconcile_bindings { reconcile_clients(
-        &membrane_client, &options.clients, options.dry_run, run_client,
+    //
+    // Native plugin projection runs first: when a Codex/Claude plugin is
+    // enabled it owns SessionStart hooks & plugin-scoped MCP, and the global
+    // fallback bindings for that host are removed rather than duplicated.
+    let plugin_states = if reconcile_bindings {
+        reconcile_host_plugins(&install_root, &options.clients, options.dry_run, run_client)?
+    } else {
+        BTreeMap::new()
+    };
+    let mut clients = if reconcile_bindings { reconcile_clients(
+        &membrane_client, &options.clients, options.dry_run, run_client, &plugin_states,
     )? } else { Vec::new() };
+    for receipt in &mut clients {
+        receipt.plugin = plugin_states.get(&receipt.client).cloned();
+    }
     if reconcile_bindings && !options.dry_run {
         ensure_user_path(&install_root)?;
     }
@@ -535,8 +598,20 @@ fn activate_internal(options: ActivationOptions, start_resident: bool, reconcile
 
     if reconcile_bindings && !options.dry_run {
         provision_mcp_credential(product_root)?;
-        reconcile_claude_hooks(&install_root)?;
-        reconcile_codex_hooks(&install_root)?;
+        // An enabled native plugin already projects SessionStart & lifecycle
+        // hooks from the installed payload. In that case the settings-level
+        // fallback hooks are removed so exactly one hook source exists; the
+        // fallback stays when the plugin is not enabled.
+        if plugin_state_is(&plugin_states, HarnessClient::Claude, "enabled") {
+            remove_claude_hooks(&install_root, false)?;
+        } else {
+            reconcile_claude_hooks(&install_root)?;
+        }
+        if plugin_state_is(&plugin_states, HarnessClient::Codex, "enabled") {
+            let _ = remove_codex_hooks(&install_root, false)?;
+        } else {
+            reconcile_codex_hooks(&install_root)?;
+        }
     }
     let receipt = ActivationReceiptV1 {
         schema_version: ACTIVATION_RECEIPT_SCHEMA_VERSION,
@@ -556,6 +631,13 @@ fn activate_internal(options: ActivationOptions, start_resident: bool, reconcile
             reason: service_reason,
         },
         clients,
+        activation_scope: match (start_resident, reconcile_bindings) {
+            (true, true) => "full",
+            (true, false) => "engine_only",
+            (false, true) => "bindings_only",
+            (false, false) => "engine_only",
+        }
+        .to_string(),
         workspace_config_migration,
     };
     if !options.dry_run {
@@ -644,7 +726,15 @@ fn deactivate_with_residency(
         wait_for_tree_release(&version_root, options.timeout)?;
     }
 
-    let clients = deactivate_clients(&membrane_client, &options.clients, options.dry_run, run_client)?;
+    let mut clients = deactivate_clients(&membrane_client, &options.clients, options.dry_run, run_client)?;
+    // Detach native plugin projections we own (bounded to `membrane@membrane`
+    // bound to this install root). Installed payloads & marketplace pointers
+    // remain so re-activation is cheap; uninstall owns full removal.
+    let plugin_states =
+        deactivate_host_plugins(&install_root, &options.clients, options.dry_run, run_client)?;
+    for receipt in &mut clients {
+        receipt.plugin = plugin_states.get(&receipt.client).cloned();
+    }
     let claude_hooks_matched = remove_claude_hooks(&install_root, options.dry_run)?;
     let _ = remove_codex_hooks(&install_root, options.dry_run)?;
     let user_path_present = remove_user_path(&install_root, options.dry_run)?;
@@ -1282,8 +1372,139 @@ fn provision_mcp_credential(product_root: &Path) -> Result<(), String> {
     Ok(())
 }
 
+/// Login-shell env file hosts inherit: `~/.zshenv` on macOS (every zsh,
+/// including non-interactive host spawns), `~/.profile` elsewhere. Writes a
+/// managed block so foreign content is preserved and rewrites are idempotent.
 #[cfg(not(windows))]
-fn provision_mcp_credential(_product_root: &Path) -> Result<(), String> { Ok(()) }
+fn posix_env_file() -> Result<PathBuf, String> {
+    if let Some(root) = std::env::var_os("MEMBRANE_TEST_USER_BINDINGS_ROOT")
+        .filter(|value| !value.is_empty())
+    {
+        return Ok(PathBuf::from(root).join("profile"));
+    }
+    let name = if cfg!(target_os = "macos") { ".zshenv" } else { ".profile" };
+    Ok(host_home()?.join(name))
+}
+
+#[cfg(not(windows))]
+fn managed_block_bounds(name: &str) -> (String, String) {
+    (
+        format!("# >>> membrane {name} >>>"),
+        format!("# <<< membrane {name} <<<"),
+    )
+}
+
+#[cfg(not(windows))]
+fn write_managed_block(path: &Path, name: &str, body: &str) -> Result<bool, String> {
+    let (begin, end) = managed_block_bounds(name);
+    let block = format!("{begin}\n{body}\n{end}\n");
+    let current = match std::fs::read_to_string(path) {
+        Ok(value) => value,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(error) => return Err(format!("read {}: {error}", path.display())),
+    };
+    let next = match (current.find(&begin), current.find(&end)) {
+        (Some(start), Some(stop)) if start <= stop => {
+            let after = stop + end.len();
+            let mut merged = String::with_capacity(current.len() + block.len());
+            merged.push_str(&current[..start]);
+            merged.push_str(&block);
+            merged.push_str(current[after..].strip_prefix('\n').unwrap_or(&current[after..]));
+            merged
+        }
+        _ => {
+            let mut merged = current.clone();
+            if !merged.is_empty() && !merged.ends_with('\n') {
+                merged.push('\n');
+            }
+            merged.push_str(&block);
+            merged
+        }
+    };
+    if next == current {
+        return Ok(false);
+    }
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|error| format!("create {}: {error}", parent.display()))?;
+    }
+    std::fs::write(path, &next).map_err(|error| format!("write {}: {error}", path.display()))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600));
+    }
+    Ok(true)
+}
+
+#[cfg(not(windows))]
+fn remove_managed_block(path: &Path, name: &str, dry_run: bool) -> Result<bool, String> {
+    let (begin, end) = managed_block_bounds(name);
+    let current = match std::fs::read_to_string(path) {
+        Ok(value) => value,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(error) => return Err(format!("read {}: {error}", path.display())),
+    };
+    let (Some(start), Some(stop)) = (current.find(&begin), current.find(&end)) else {
+        return Ok(false);
+    };
+    if start > stop {
+        return Ok(false);
+    }
+    if dry_run {
+        return Ok(true);
+    }
+    let after = stop + end.len();
+    let mut next = String::with_capacity(current.len());
+    next.push_str(&current[..start]);
+    next.push_str(current[after..].strip_prefix('\n').unwrap_or(&current[after..]));
+    std::fs::write(path, next).map_err(|error| format!("write {}: {error}", path.display()))?;
+    Ok(true)
+}
+
+#[cfg(not(windows))]
+fn provision_mcp_credential(product_root: &Path) -> Result<(), String> {
+    let token_path = product_root.join("state/tools/.cache/memory/api-token");
+    let token = std::fs::read_to_string(&token_path)
+        .map_err(|error| format!("read installed MCP credential: {error}"))?;
+    let token = token.trim();
+    if token.is_empty() {
+        return Err("installed MCP credential is empty".into());
+    }
+    #[cfg(target_os = "macos")]
+    {
+        // Durable store: user login keychain. `-w` would place the token in
+        // argv, so the value is supplied on stdin to the interactive prompt.
+        let account = std::env::var("USER").unwrap_or_else(|_| "membrane".to_string());
+        let mut child = Command::new("security")
+            .args(["add-generic-password", "-U", "-s", "membrane-mcp-token", "-a"])
+            .arg(&account)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .map_err(|error| format!("spawn security credential store: {error}"))?;
+        if let Some(mut stdin) = child.stdin.take() {
+            let _ = stdin.write_all(format!("{token}\n{token}\n").as_bytes());
+        }
+        let status = child
+            .wait()
+            .map_err(|error| format!("wait security credential store: {error}"))?;
+        if !status.success() {
+            return Err("write user keychain MCP credential".to_string());
+        }
+    }
+    // Shell-visible export so hosts launched from a login shell resolve the
+    // token on next sign-in. The value is written to the user-owned env file
+    // (mode 0600), never to argv, logs, or receipts.
+    let profile = posix_env_file()?;
+    write_managed_block(
+        &profile,
+        "mcp credential",
+        &format!("export {MCP_TOKEN_ENV}=\"{token}\""),
+    )?;
+    Ok(())
+}
 
 /// Legacy stop request used during explicit deactivation. Normal startup never
 /// launches tray; installed tray remains a bounded lifecycle control surface.
@@ -1861,7 +2082,17 @@ fn ensure_user_path(install_root: &Path) -> Result<(), String> {
 }
 
 #[cfg(not(windows))]
-fn ensure_user_path(_install_root: &Path) -> Result<(), String> {
+fn ensure_user_path(install_root: &Path) -> Result<(), String> {
+    let profile = posix_env_file()?;
+    let stable = install_root
+        .to_string_lossy()
+        .trim_end_matches(['\\', '/'])
+        .to_string();
+    write_managed_block(
+        &profile,
+        "path",
+        &format!("export PATH=\"{stable}\":\"$PATH\""),
+    )?;
     Ok(())
 }
 
@@ -1984,8 +2215,9 @@ fn remove_user_path(install_root: &Path, dry_run: bool) -> Result<bool, String> 
 }
 
 #[cfg(not(windows))]
-fn remove_user_path(_install_root: &Path, _dry_run: bool) -> Result<bool, String> {
-    Ok(false)
+fn remove_user_path(_install_root: &Path, dry_run: bool) -> Result<bool, String> {
+    let profile = posix_env_file()?;
+    remove_managed_block(&profile, "path", dry_run)
 }
 
 fn startup_command(tray: &Path) -> String {
@@ -2428,7 +2660,10 @@ fn replace_legacy_hook_commands(entries: &mut [serde_json::Value], expected: &st
 fn uses_config_file(client: HarnessClient) -> bool {
     matches!(
         client,
-        HarnessClient::Cursor | HarnessClient::Windsurf | HarnessClient::Antigravity
+        HarnessClient::Cursor
+            | HarnessClient::Windsurf
+            | HarnessClient::Antigravity
+            | HarnessClient::Devin
     )
 }
 
@@ -2481,6 +2716,22 @@ fn client_config_path(client: HarnessClient) -> Result<PathBuf, String> {
         HarnessClient::Cursor => Ok(home.join(".cursor").join("mcp.json")),
         HarnessClient::Windsurf => Ok(home.join(".codeium").join("windsurf").join("mcp_config.json")),
         HarnessClient::Antigravity => Ok(home.join(".gemini").join("config").join("mcp_config.json")),
+        HarnessClient::Devin => {
+            // Devin reads its user-scoped MCP registry from
+            // %APPDATA%\devin\mcp_config.json on Windows and
+            // ~/.config/devin/mcp_config.json elsewhere. The `devin mcp add`
+            // CLI need not exist, so the config file is the owned surface.
+            #[cfg(windows)]
+            {
+                std::env::var_os("APPDATA")
+                    .map(|base| PathBuf::from(base).join("devin").join("mcp_config.json"))
+                    .ok_or_else(|| "APPDATA is unavailable".to_string())
+            }
+            #[cfg(not(windows))]
+            {
+                Ok(home.join(".config").join("devin").join("mcp_config.json"))
+            }
+        }
         HarnessClient::Codex | HarnessClient::Claude => Err("command-managed client has no config path".to_string()),
     }
 }
@@ -2591,7 +2842,7 @@ fn reconcile_config_clients(executable: &str, clients: &[HarnessClient], dry_run
     }
     if dry_run {
         return Ok(inspected.into_iter().map(|(client, _, _, _, state)| ClientActivationReceipt {
-            client, before: state.label().to_string(), after: state.label().to_string(), changed: false,
+            client, before: state.label().to_string(), after: state.label().to_string(), changed: false, plugin: None,
         }).collect());
     }
     let mut completed: Vec<(PathBuf, Option<Vec<u8>>)> = Vec::new();
@@ -2619,7 +2870,7 @@ fn reconcile_config_clients(executable: &str, clients: &[HarnessClient], dry_run
             completed.push((path, original));
         }
         receipts.push(ClientActivationReceipt {
-            client, before: state.label().to_string(), after: if changed { "installed" } else { state.label() }.to_string(), changed,
+            client, before: state.label().to_string(), after: if changed { "installed" } else { state.label() }.to_string(), changed, plugin: None,
         });
     }
     Ok(receipts)
@@ -2637,9 +2888,679 @@ fn deactivate_config_clients(executable: &str, clients: &[HarnessClient], dry_ru
             before: if owned { "owned" } else { "preserved" }.to_string(),
             after: if owned && !dry_run { "removed" } else if owned { "owned" } else { "preserved" }.to_string(),
             changed: owned && !dry_run,
+            plugin: None,
         });
     }
     Ok(receipts)
+}
+
+// ---------------------------------------------------------------------------
+// Native plugin projection (Codex & Claude).
+//
+// When a host's native plugin surface is enabled it owns SessionStart and
+// lifecycle hooks (`hooks/hooks.json` inside the plugin payload) plus its
+// plugin-scoped MCP binding (`.mcp.json` for Codex). Activation reconciles
+// plugin state through the host CLI first and then re-reads host state files,
+// so receipts report what the host recorded rather than what commands ran.
+// `enabled` is the only state where the plugin projection is proven current;
+// every other state names the remaining step.
+// ---------------------------------------------------------------------------
+
+const PLUGIN_ID: &str = "membrane@membrane";
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum PluginProjection {
+    /// Installed, enabled, and the host cache holds the plugin payload at the
+    /// installed payload version.
+    Enabled { version: String },
+    /// Host records the plugin but it is not provably enabled at the current
+    /// payload version (disabled, stale cache, or unverifiable payload).
+    Disabled { detail: Option<String> },
+    Absent,
+    /// A `membrane` plugin or marketplace id exists but is bound to a source
+    /// other than this install root; never mutate it.
+    Conflict(String),
+}
+
+fn plugin_state_is(
+    states: &BTreeMap<HarnessClient, PluginActivationReceipt>,
+    client: HarnessClient,
+    state: &str,
+) -> bool {
+    states
+        .get(&client)
+        .is_some_and(|receipt| receipt.state == state)
+}
+
+fn plugin_receipt(
+    client: HarnessClient,
+    state: &str,
+    version: Option<String>,
+    changed: bool,
+    detail: Option<String>,
+) -> PluginActivationReceipt {
+    PluginActivationReceipt {
+        state: state.to_string(),
+        plugin_id: if client.has_plugin_surface() {
+            Some(PLUGIN_ID.to_string())
+        } else {
+            None
+        },
+        version,
+        changed,
+        detail,
+    }
+}
+
+fn host_home() -> Result<PathBuf, String> {
+    std::env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" })
+        .map(PathBuf::from)
+        .ok_or_else(|| "user home directory is unavailable".to_string())
+}
+
+fn codex_home_dir() -> Result<PathBuf, String> {
+    if let Some(home) = std::env::var_os("CODEX_HOME").filter(|home| !home.is_empty()) {
+        return Ok(PathBuf::from(home));
+    }
+    Ok(host_home()?.join(".codex"))
+}
+
+fn claude_config_dir() -> Result<PathBuf, String> {
+    if let Some(dir) = std::env::var_os("CLAUDE_CONFIG_DIR").filter(|dir| !dir.is_empty()) {
+        return Ok(PathBuf::from(dir));
+    }
+    Ok(host_home()?.join(".claude"))
+}
+
+/// Plugin payload version stamped into the installed plugin manifests.
+fn payload_plugin_version(install_root: &Path) -> Option<String> {
+    for rel in [
+        ".codex-plugin/plugin.json",
+        ".claude-plugin/plugin.json",
+    ] {
+        if let Ok(bytes) = std::fs::read(install_root.join(rel)) {
+            if let Ok(value) = serde_json::from_slice::<serde_json::Value>(&bytes) {
+                if let Some(version) = value.get("version").and_then(|v| v.as_str()) {
+                    if !version.is_empty() {
+                        return Some(version.to_string());
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Read the first `key = value` inside a `[table]` of a small TOML document.
+/// Bounded to the Codex plugin-state layout; nested tables under the header
+/// are treated as part of the table.
+fn toml_table_value(document: &str, table: &str, key: &str) -> Option<String> {
+    let header = format!("[{table}]");
+    let mut in_table = false;
+    for line in document.lines() {
+        let line = line.trim();
+        if line.starts_with('[') {
+            in_table = line == header || line.starts_with(&format!("{header}."));
+            continue;
+        }
+        if !in_table || line.starts_with('#') {
+            continue;
+        }
+        if let Some((k, v)) = line.split_once('=') {
+            if k.trim().trim_matches('"').trim_matches('\'') == key {
+                return Some(v.trim().trim_matches('"').trim_matches('\'').to_string());
+            }
+        }
+    }
+    None
+}
+
+/// A plugin marketplace source path matches this install root after
+/// normalization; a git/URL source or foreign path is a conflict.
+fn plugin_source_matches(source: &str, install_root: &Path) -> bool {
+    let root = install_root.to_string_lossy();
+    paths_equal(source, &root)
+        || paths_equal(
+            source.trim_end_matches(['/', '\\']),
+            root.trim_end_matches(['/', '\\']),
+        )
+}
+
+fn codex_plugin_state(install_root: &Path, payload_version: Option<&str>) -> PluginProjection {
+    let Ok(codex_home) = codex_home_dir() else {
+        return PluginProjection::Absent;
+    };
+    let Ok(document) = std::fs::read_to_string(codex_home.join("config.toml")) else {
+        return PluginProjection::Absent;
+    };
+    let marketplace = toml_table_value(&document, "marketplaces.membrane", "source").or_else(|| {
+        toml_table_value(&document, "marketplaces.\"membrane\"", "source")
+    });
+    if let Some(source) = &marketplace {
+        if !plugin_source_matches(source, install_root) {
+            return PluginProjection::Conflict(format!(
+                "codex marketplace `membrane` is bound to {source}"
+            ));
+        }
+    }
+    let enabled = toml_table_value(&document, "plugins.\"membrane@membrane\"", "enabled")
+        .is_some_and(|value| value.eq_ignore_ascii_case("true"));
+    if !enabled {
+        return if marketplace.is_some()
+            || codex_home
+                .join("plugins/cache/membrane/membrane")
+                .is_dir()
+        {
+            PluginProjection::Disabled {
+                detail: Some("plugin recorded but not enabled".to_string()),
+            }
+        } else {
+            PluginProjection::Absent
+        };
+    }
+    let Some(version) = payload_version else {
+        return PluginProjection::Disabled {
+            detail: Some("installed payload plugin version is unreadable".to_string()),
+        };
+    };
+    let cache = codex_home
+        .join("plugins")
+        .join("cache")
+        .join("membrane")
+        .join("membrane")
+        .join(version);
+    if !cache.join(".codex-plugin").join("plugin.json").is_file() {
+        return PluginProjection::Disabled {
+            detail: Some(format!(
+                "plugin enabled but host cache has no payload at version {version}"
+            )),
+        };
+    }
+    PluginProjection::Enabled {
+        version: version.to_string(),
+    }
+}
+
+fn claude_plugin_state(install_root: &Path, payload_version: Option<&str>) -> PluginProjection {
+    let Ok(claude_dir) = claude_config_dir() else {
+        return PluginProjection::Absent;
+    };
+    // A `membrane` marketplace bound elsewhere must never be touched.
+    for relative in [
+        "plugins/known_marketplaces.json",
+        "settings.json",
+    ] {
+        let Ok(bytes) = std::fs::read(claude_dir.join(relative)) else {
+            continue;
+        };
+        let Ok(value) = serde_json::from_slice::<serde_json::Value>(&bytes) else {
+            continue;
+        };
+        let candidates = [
+            value.pointer("/membrane/source"),
+            value.pointer("/extraKnownMarketplaces/membrane/source"),
+        ];
+        for source in candidates.into_iter().flatten() {
+            let path = source
+                .get("path")
+                .and_then(|p| p.as_str())
+                .or_else(|| source.as_str());
+            if let Some(path) = path {
+                if !plugin_source_matches(path, install_root) {
+                    return PluginProjection::Conflict(format!(
+                        "claude marketplace `membrane` is bound to {path}"
+                    ));
+                }
+            }
+        }
+    }
+    let installed_path = claude_dir.join("plugins").join("installed_plugins.json");
+    let Ok(bytes) = std::fs::read(&installed_path) else {
+        return PluginProjection::Absent;
+    };
+    let Ok(installed) = serde_json::from_slice::<serde_json::Value>(&bytes) else {
+        return PluginProjection::Conflict(
+            "installed_plugins.json is not parseable".to_string(),
+        );
+    };
+    let entries = installed
+        .get("plugins")
+        .and_then(|plugins| plugins.get(PLUGIN_ID))
+        .and_then(|entries| entries.as_array());
+    let Some(entries) = entries.filter(|entries| !entries.is_empty()) else {
+        return PluginProjection::Absent;
+    };
+    let entry = entries
+        .iter()
+        .find(|entry| {
+            payload_version
+                .is_none_or(|v| entry.get("version").and_then(|x| x.as_str()) == Some(v))
+        })
+        .or_else(|| entries.last());
+    let Some(entry) = entry else {
+        return PluginProjection::Absent;
+    };
+    let version = entry
+        .get("version")
+        .and_then(|v| v.as_str())
+        .map(str::to_string);
+    let payload_ok = entry
+        .get("installPath")
+        .and_then(|p| p.as_str())
+        .map(PathBuf::from)
+        .is_some_and(|p| p.join(".claude-plugin").join("plugin.json").is_file());
+    let settings = std::fs::read(claude_dir.join("settings.json"))
+        .ok()
+        .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok());
+    let enabled = settings
+        .as_ref()
+        .and_then(|s| s.get("enabledPlugins"))
+        .and_then(|e| e.get(PLUGIN_ID))
+        .is_some_and(|v| v.as_bool() == Some(true));
+    if !enabled {
+        return PluginProjection::Disabled {
+            detail: Some("plugin recorded but not enabled".to_string()),
+        };
+    }
+    match (payload_ok, version.as_deref(), payload_version) {
+        (true, Some(version), Some(expected)) if version == expected => {
+            PluginProjection::Enabled {
+                version: version.to_string(),
+            }
+        }
+        (true, Some(version), _) => PluginProjection::Disabled {
+            detail: Some(format!(
+                "plugin cache is at version {version}; reactivation required"
+            )),
+        },
+        _ => PluginProjection::Disabled {
+            detail: Some("plugin enabled but host payload is not verifiable".to_string()),
+        },
+    }
+}
+
+fn plugin_projection(
+    client: HarnessClient,
+    install_root: &Path,
+    payload_version: Option<&str>,
+) -> PluginProjection {
+    match client {
+        HarnessClient::Codex => codex_plugin_state(install_root, payload_version),
+        HarnessClient::Claude => claude_plugin_state(install_root, payload_version),
+        _ => PluginProjection::Absent,
+    }
+}
+
+fn plugin_install_steps(client: HarnessClient, install_root: &Path) -> Vec<Vec<String>> {
+    let root = install_root.to_string_lossy().into_owned();
+    match client {
+        HarnessClient::Codex => vec![
+            vec![
+                "plugin".to_string(),
+                "marketplace".to_string(),
+                "add".to_string(),
+                root,
+            ],
+            vec![
+                "plugin".to_string(),
+                "add".to_string(),
+                PLUGIN_ID.to_string(),
+                "--json".to_string(),
+            ],
+        ],
+        HarnessClient::Claude => vec![
+            vec![
+                "plugin".to_string(),
+                "marketplace".to_string(),
+                "add".to_string(),
+                root,
+            ],
+            vec![
+                "plugin".to_string(),
+                "install".to_string(),
+                PLUGIN_ID.to_string(),
+                "--scope".to_string(),
+                "user".to_string(),
+                "--yes".to_string(),
+            ],
+            vec![
+                "plugin".to_string(),
+                "enable".to_string(),
+                PLUGIN_ID.to_string(),
+            ],
+        ],
+        _ => Vec::new(),
+    }
+}
+
+fn plugin_disable_args(client: HarnessClient) -> Vec<String> {
+    match client {
+        HarnessClient::Codex => {
+            vec!["plugin", "remove", PLUGIN_ID]
+                .into_iter()
+                .map(str::to_string)
+                .collect()
+        }
+        HarnessClient::Claude => {
+            vec!["plugin", "disable", PLUGIN_ID]
+                .into_iter()
+                .map(str::to_string)
+                .collect()
+        }
+        _ => Vec::new(),
+    }
+}
+
+fn plugin_manual_steps(client: HarnessClient, install_root: &Path) -> String {
+    plugin_install_steps(client, install_root)
+        .iter()
+        .map(|args| format!("{} {}", client.as_str(), args.join(" ")))
+        .collect::<Vec<_>>()
+        .join(" && ")
+}
+
+fn plugin_marketplace_manifest(install_root: &Path, client: HarnessClient) -> PathBuf {
+    match client {
+        HarnessClient::Codex => install_root
+            .join(".agents")
+            .join("plugins")
+            .join("marketplace.json"),
+        _ => install_root
+            .join(".claude-plugin")
+            .join("marketplace.json"),
+    }
+}
+
+/// Run each plugin CLI step, tolerating idempotent "already" outcomes, and
+/// return the first substantive failure detail.
+fn run_plugin_steps<F>(client: HarnessClient, steps: &[Vec<String>], runner: &mut F) -> Option<String>
+where
+    F: FnMut(HarnessClient, &[String]) -> CommandResult,
+{
+    for args in steps {
+        let result = runner(client, args);
+        if result.success() {
+            continue;
+        }
+        let output = format!("{}\n{}", result.stdout, result.stderr).to_ascii_lowercase();
+        if output.contains("already") {
+            continue;
+        }
+        let detail = if result.stderr.trim().is_empty() {
+            result.stdout.trim()
+        } else {
+            result.stderr.trim()
+        };
+        return Some(format!(
+            "{} {} failed: {detail}",
+            client.as_str(),
+            args.join(" ")
+        ));
+    }
+    None
+}
+
+fn reconcile_host_plugins<F>(
+    install_root: &Path,
+    clients: &[HarnessClient],
+    dry_run: bool,
+    mut runner: F,
+) -> Result<BTreeMap<HarnessClient, PluginActivationReceipt>, String>
+where
+    F: FnMut(HarnessClient, &[String]) -> CommandResult,
+{
+    let mut states = BTreeMap::new();
+    let payload_version = payload_plugin_version(install_root);
+    for &client in clients {
+        if !client.has_plugin_surface() {
+            states.insert(
+                client,
+                plugin_receipt(client, "not_applicable", None, false, None),
+            );
+            continue;
+        }
+        let observed = |p: &PluginProjection| -> (String, Option<String>, Option<String>) {
+            match p {
+                PluginProjection::Enabled { version } => {
+                    ("enabled".to_string(), Some(version.clone()), None)
+                }
+                PluginProjection::Disabled { detail } => (
+                    "installed_disabled".to_string(),
+                    payload_version.clone(),
+                    detail.clone(),
+                ),
+                PluginProjection::Absent => ("absent".to_string(), None, None),
+                PluginProjection::Conflict(detail) => {
+                    ("conflict".to_string(), None, Some(detail.clone()))
+                }
+            }
+        };
+        let projection = plugin_projection(client, install_root, payload_version.as_deref());
+        if dry_run {
+            let (state, version, detail) = observed(&projection);
+            let detail = if state == "absent" {
+                Some(format!("would run {}", plugin_manual_steps(client, install_root)))
+            } else {
+                detail
+            };
+            states.insert(client, plugin_receipt(client, &state, version, false, detail));
+            continue;
+        }
+        match &projection {
+            PluginProjection::Enabled { .. } | PluginProjection::Conflict(_) => {
+                let (state, version, detail) = observed(&projection);
+                states.insert(client, plugin_receipt(client, &state, version, false, detail));
+                continue;
+            }
+            _ => {}
+        }
+        if !runner(client, &["--version".to_string()]).success() {
+            states.insert(
+                client,
+                plugin_receipt(
+                    client,
+                    "action_required",
+                    payload_version.clone(),
+                    false,
+                    Some(format!(
+                        "{} CLI unavailable; run {}",
+                        client.as_str(),
+                        plugin_manual_steps(client, install_root)
+                    )),
+                ),
+            );
+            continue;
+        }
+        if !plugin_marketplace_manifest(install_root, client).is_file() {
+            states.insert(
+                client,
+                plugin_receipt(
+                    client,
+                    "action_required",
+                    payload_version.clone(),
+                    false,
+                    Some(format!(
+                        "installed payload lacks {}",
+                        plugin_marketplace_manifest(install_root, client).display()
+                    )),
+                ),
+            );
+            continue;
+        }
+        let steps = plugin_install_steps(client, install_root);
+        let failure = run_plugin_steps(client, &steps, &mut runner);
+        let after = plugin_projection(client, install_root, payload_version.as_deref());
+        let (state, version, mut detail) = observed(&after);
+        let state = match state.as_str() {
+            "enabled" | "conflict" => state,
+            _ => "action_required".to_string(),
+        };
+        if state == "action_required" {
+            detail = failure.or(detail).or_else(|| {
+                Some(format!(
+                    "run {}",
+                    plugin_manual_steps(client, install_root)
+                ))
+            });
+        }
+        states.insert(
+            client,
+            plugin_receipt(client, &state, version, state == "enabled", detail),
+        );
+    }
+    Ok(states)
+}
+
+/// Detach owned native plugin projections during deactivation. CLI-first;
+/// when the CLI is unavailable the owned host-state files are updated
+/// directly (Codex config table, Claude enabledPlugins flag). Foreign
+/// `membrane` bindings are never touched.
+fn deactivate_host_plugins<F>(
+    install_root: &Path,
+    clients: &[HarnessClient],
+    dry_run: bool,
+    mut runner: F,
+) -> Result<BTreeMap<HarnessClient, PluginActivationReceipt>, String>
+where
+    F: FnMut(HarnessClient, &[String]) -> CommandResult,
+{
+    let mut states = BTreeMap::new();
+    let payload_version = payload_plugin_version(install_root);
+    for &client in clients {
+        if !client.has_plugin_surface() {
+            states.insert(
+                client,
+                plugin_receipt(client, "not_applicable", None, false, None),
+            );
+            continue;
+        }
+        let projection = plugin_projection(client, install_root, payload_version.as_deref());
+        match &projection {
+            PluginProjection::Absent => {
+                states.insert(client, plugin_receipt(client, "absent", None, false, None));
+                continue;
+            }
+            PluginProjection::Conflict(detail) => {
+                states.insert(
+                    client,
+                    plugin_receipt(client, "conflict", None, false, Some(detail.clone())),
+                );
+                continue;
+            }
+            _ => {}
+        }
+        if dry_run {
+            states.insert(
+                client,
+                plugin_receipt(
+                    client,
+                    "installed_disabled",
+                    payload_version.clone(),
+                    false,
+                    Some(format!(
+                        "would run {} {}",
+                        client.as_str(),
+                        plugin_disable_args(client).join(" ")
+                    )),
+                ),
+            );
+            continue;
+        }
+        let cli_ok = runner(client, &["--version".to_string()]).success()
+            && run_plugin_steps(client, &[plugin_disable_args(client)], &mut runner).is_none();
+        if !cli_ok {
+            // Bounded file-level detach when the CLI cannot do it.
+            match client {
+                HarnessClient::Codex => {
+                    let config = codex_home_dir()?.join("config.toml");
+                    if let Ok(document) = std::fs::read_to_string(&config) {
+                        let next = remove_toml_table(&document, "plugins.\"membrane@membrane\"");
+                        if next != document {
+                            std::fs::write(&config, next).map_err(|error| {
+                                format!("detach codex plugin state {}: {error}", config.display())
+                            })?;
+                        }
+                    }
+                }
+                HarnessClient::Claude => {
+                    let settings_path = claude_config_dir()?.join("settings.json");
+                    let (original, mut value) = read_client_config(&settings_path)?;
+                    if let Some(enabled) = value
+                        .get_mut("enabledPlugins")
+                        .and_then(|e| e.as_object_mut())
+                    {
+                        if enabled.contains_key(PLUGIN_ID) {
+                            enabled.insert(PLUGIN_ID.to_string(), serde_json::json!(false));
+                            write_client_config(&settings_path, original.as_deref(), &value)?;
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+        let after = plugin_projection(client, install_root, payload_version.as_deref());
+        let detached = matches!(after, PluginProjection::Absent | PluginProjection::Disabled { .. });
+        states.insert(
+            client,
+            plugin_receipt(
+                client,
+                if detached { "detached" } else { "action_required" },
+                payload_version.clone(),
+                detached,
+                if detached {
+                    None
+                } else {
+                    Some(format!(
+                        "run {} {}",
+                        client.as_str(),
+                        plugin_disable_args(client).join(" ")
+                    ))
+                },
+            ),
+        );
+    }
+    Ok(states)
+}
+
+/// Remove a `[table]` (and its keys) from a small TOML document; nested
+/// tables under the header are removed with it.
+fn remove_toml_table(document: &str, table: &str) -> String {
+    let header = format!("[{table}]");
+    let mut out = String::new();
+    let mut skipping = false;
+    for line in document.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with('[') {
+            skipping = trimmed == header || trimmed.starts_with(&format!("{header}."));
+        }
+        if !skipping {
+            out.push_str(line);
+            out.push('\n');
+        }
+    }
+    out
+}
+
+/// Returns true when a `membrane` entry reported by `mcp get` is one we own:
+/// either the exact expected registration or a legacy entry whose command
+/// resolves inside the installed payload directory.
+fn owned_command_entry(
+    config: &ServerConfig,
+    client: HarnessClient,
+    executable: &str,
+) -> bool {
+    if config_matches_expected(client, config, executable) {
+        return true;
+    }
+    Path::new(&config.command)
+        .parent()
+        .and_then(|dir| dir.to_str())
+        .is_some_and(|dir| {
+            Path::new(executable)
+                .parent()
+                .and_then(|expected_dir| expected_dir.to_str())
+                .is_some_and(|expected_dir| paths_equal(dir, expected_dir))
+        })
 }
 
 fn reconcile_clients<F>(
@@ -2647,6 +3568,7 @@ fn reconcile_clients<F>(
     clients: &[HarnessClient],
     dry_run: bool,
     mut runner: F,
+    plugin_states: &BTreeMap<HarnessClient, PluginActivationReceipt>,
 ) -> Result<Vec<ClientActivationReceipt>, String>
 where
     F: FnMut(HarnessClient, &[String]) -> CommandResult,
@@ -2656,23 +3578,27 @@ where
     let config_clients = clients.iter().copied().filter(|client| uses_config_file(*client)).collect::<Vec<_>>();
     let mut inspections = Vec::with_capacity(command_clients.len());
     for client in command_clients {
+        // An enabled native plugin owns this host's MCP binding; the global
+        // registration must not coexist with it.
+        let plugin_owned = plugin_state_is(plugin_states, client, "enabled");
         let detected = runner(client, &["--version".to_string()]);
         let state = if !detected.success() {
             ClientState::NotInstalled
         } else {
             inspect_client(client, &executable, &mut runner)?
         };
-        inspections.push((client, state));
+        inspections.push((client, state, plugin_owned));
     }
 
     if dry_run {
         let mut receipts = inspections
             .into_iter()
-            .map(|(client, state)| ClientActivationReceipt {
+            .map(|(client, state, plugin_owned)| ClientActivationReceipt {
                 client,
                 before: state.label().to_string(),
-                after: state.label().to_string(),
+                after: if plugin_owned { "plugin_owned".to_string() } else { state.label().to_string() },
                 changed: false,
+                plugin: None,
             })
             .collect::<Vec<_>>();
         receipts.extend(reconcile_config_clients(&executable, &config_clients, true)?);
@@ -2681,7 +3607,35 @@ where
     }
 
     let mut completed: Vec<(HarnessClient, ClientState)> = Vec::new();
-    for (client, state) in inspections {
+    for (client, state, plugin_owned) in inspections {
+        if plugin_owned {
+            // Plugin owns the binding. Remove an owned global entry so exactly
+            // one registration exists; leave foreign entries untouched.
+            let removed = match &state {
+                ClientState::Absent | ClientState::NotInstalled => false,
+                ClientState::AlreadyCorrect => true,
+                // Plugin-owned inspection state carries no global entry to
+                // remove; dedup already ran for it.
+                ClientState::PluginOwned { .. } => false,
+                ClientState::Conflict(config) => {
+                    if owned_command_entry(config, client, &executable) {
+                        true
+                    } else {
+                        completed.push((client, ClientState::Conflict(config.clone())));
+                        continue;
+                    }
+                }
+            };
+            if removed {
+                require_command_success(client, "remove", runner(client, &remove_args(client)))?;
+                let verify = runner(client, &get_args(client));
+                if verify.success() && parse_prior_config(&verify.stdout).is_some() {
+                    return Err(format!("{} global remove verification failed", client.as_str()));
+                }
+            }
+            completed.push((client, ClientState::PluginOwned { removed }));
+            continue;
+        }
         if matches!(
             state,
             ClientState::NotInstalled | ClientState::AlreadyCorrect
@@ -2732,11 +3686,16 @@ where
         .iter()
         .map(|(client, state)| {
             let changed = matches!(state, ClientState::Absent | ClientState::Conflict(_));
+            let (after, changed) = match state {
+                ClientState::PluginOwned { removed } => ("plugin_owned", *removed),
+                _ => (if changed { "installed" } else { state.label() }, changed),
+            };
             ClientActivationReceipt {
                 client: *client,
                 before: state.label().to_string(),
-                after: if changed { "installed" } else { state.label() }.to_string(),
+                after: after.to_string(),
                 changed,
+                plugin: None,
             }
         })
         .collect::<Vec<_>>();
@@ -2776,6 +3735,7 @@ where
                 before: "not_installed".to_string(),
                 after: "not_installed".to_string(),
                 changed: false,
+                plugin: None,
             });
             continue;
         }
@@ -2786,6 +3746,7 @@ where
                 before: "absent".to_string(),
                 after: "absent".to_string(),
                 changed: false,
+                plugin: None,
             });
             continue;
         }
@@ -2809,6 +3770,7 @@ where
             }
             .to_string(),
             changed: owned && !dry_run,
+            plugin: None,
         });
     }
     let config_clients = clients.iter().copied().filter(|client| uses_config_file(*client)).collect::<Vec<_>>();
@@ -2885,9 +3847,10 @@ fn get_args(client: HarnessClient) -> Vec<String> {
     match client {
         HarnessClient::Codex => vec!["mcp", "get", "membrane", "--json"],
         HarnessClient::Claude => vec!["mcp", "get", "membrane"],
-        HarnessClient::Cursor | HarnessClient::Windsurf | HarnessClient::Antigravity => {
-            unreachable!("config-managed client")
-        }
+        HarnessClient::Cursor
+        | HarnessClient::Windsurf
+        | HarnessClient::Antigravity
+        | HarnessClient::Devin => unreachable!("config-managed client"),
     }
     .into_iter()
     .map(str::to_string)
@@ -2898,9 +3861,10 @@ fn remove_args(client: HarnessClient) -> Vec<String> {
     match client {
         HarnessClient::Codex => vec!["mcp", "remove", "membrane"],
         HarnessClient::Claude => vec!["mcp", "remove", "membrane", "-s", "user"],
-        HarnessClient::Cursor | HarnessClient::Windsurf | HarnessClient::Antigravity => {
-            unreachable!("config-managed client")
-        }
+        HarnessClient::Cursor
+        | HarnessClient::Windsurf
+        | HarnessClient::Antigravity
+        | HarnessClient::Devin => unreachable!("config-managed client"),
     }
     .into_iter()
     .map(str::to_string)
@@ -2934,7 +3898,10 @@ fn add_args(client: HarnessClient, command: &str, args: &[String]) -> Vec<String
                 format!("Authorization: Bearer ${{{MCP_TOKEN_ENV}}}"),
             ]);
         }
-        HarnessClient::Cursor | HarnessClient::Windsurf | HarnessClient::Antigravity => {
+        HarnessClient::Cursor
+        | HarnessClient::Windsurf
+        | HarnessClient::Antigravity
+        | HarnessClient::Devin => {
             values.extend([
                 "membrane".to_string(),
                 "--".to_string(),
@@ -3573,7 +4540,7 @@ mod tests {
             reconcile_clients(membrane, &[HarnessClient::Codex], false, |client, args| {
                 calls.push((client, args.to_vec()));
                 responses.pop_front().unwrap()
-            })
+            }, &BTreeMap::new())
             .unwrap();
         assert_eq!(receipts[0].before, "absent");
         assert_eq!(receipts[0].after, "installed");
@@ -3615,6 +4582,7 @@ mod tests {
                 calls.push((client, args.to_vec()));
                 responses.pop_front().unwrap()
             },
+            &BTreeMap::new(),
         )
         .unwrap_err();
         assert!(error.contains("claude add failed"));
@@ -3840,6 +4808,7 @@ mod tests {
                 reason: None,
             },
             clients: Vec::new(),
+            activation_scope: "full".to_string(),
             workspace_config_migration: None,
         };
         assert!(activation_receipt_owned(
@@ -3984,6 +4953,7 @@ mod tests {
                 reason: None,
             },
             clients: Vec::new(),
+            activation_scope: "full".to_string(),
             workspace_config_migration: None,
         };
         let value = serde_json::to_value(receipt).unwrap();
@@ -4054,6 +5024,7 @@ mod tests {
                 reason: Some("installed Membrane is not running".to_string()),
             },
             clients: Vec::new(),
+            activation_scope: "full".to_string(),
             workspace_config_migration: None,
         };
         let value = serde_json::to_value(receipt).expect("inspection receipt JSON");

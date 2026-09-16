@@ -1,47 +1,13 @@
 {
   "version": "membrane.toolsets.v1",
+  "registry": "closed",
+  "note": "The public MCP registry is intentionally closed to pull and push. Toolset group names remain an accepted `_meta/membrane.toolsets.v1` request vocabulary for compatibility; no requested group expands the public registry. Retired membrane_* names are internal operations reachable only through the pull/push envelopes, never through tools/list discovery.",
   "groups": {
-    "default": [
-      "membrane_context",
-      "membrane_source_read",
-      "membrane_blueprint",
-      "membrane_knowledge_propose",
-      "membrane_memory",
-      "membrane_memory_read",
-      "membrane_checkpoint_save",
-      "membrane_checkpoint_load"
-    ],
-    "memory": [
-      "membrane_context",
-      "membrane_knowledge_propose",
-      "membrane_memory",
-      "membrane_memory_read",
-      "membrane_checkpoint_save",
-      "membrane_checkpoint_load",
-      "membrane_working_context",
-      "membrane_temporal_fact",
-      "membrane_scratchpad",
-      "membrane_feedback"
-    ],
-    "blueprint": [
-      "membrane_source_read",
-      "membrane_blueprint"
-    ],
-    "diagnostic": [
-      "membrane_diagnostic_workspace",
-      "membrane_diagnostic_mutation",
-      "membrane_diagnostic_snapshot",
-      "membrane_diagnostic_fence",
-      "membrane_diagnostic_capabilities",
-      "membrane_diagnostic_baseline",
-      "membrane_diagnostic_provider"
-    ],
-    "push": [
-      "membrane_push_prepare",
-      "membrane_push_resolve"
-    ],
-    "operator": [
-      "membrane_knowledge_review"
-    ]
+    "default": ["pull", "push"],
+    "memory": ["pull", "push"],
+    "blueprint": ["pull", "push"],
+    "diagnostic": ["pull", "push"],
+    "push": ["pull", "push"],
+    "operator": ["pull", "push"]
   }
 }

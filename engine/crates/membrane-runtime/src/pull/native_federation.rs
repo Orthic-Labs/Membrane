@@ -9,9 +9,11 @@ use crate::pull::metrics::{FederationMetricStatus, FederationMetrics};
 use membrane_federation::providers::{
     anchors::AnchorsProvider, architect::ArchitectProvider, audit::AuditProvider,
     blueprint::BlueprintProvider, cortex::CortexProvider, git::GitProvider,
-    live_files::LiveFilesProvider, rules::RulesProvider, skills::SkillsProvider,
+    live_files::LiveFilesProvider, rules::RulesProvider,
 };
-use membrane_federation::{FederationConfig, FederationEngine, ProviderConfig, ProviderRegistry};
+use membrane_federation::{
+    FederationConfig, FederationEngine, FusionStrategy, ProviderConfig, ProviderRegistry,
+};
 use membrane_protocol::{FederationRequestV1, FederationResponseV1, ProviderId};
 use membrane_provider_sdk::{
     FreshnessSource, Provider, ProviderContext, ProviderError, ProviderOutput,
@@ -171,11 +173,10 @@ impl NativeFederation {
             registration(
                 ProviderId::Skills,
                 "native.skills",
-                Arc::new(SkillsProvider::new(
-                    bindings
-                        .skills
-                        .clone()
-                        .ok_or_else(|| "native skills source unavailable".to_owned())?,
+                // LDG-032: Ledger owns the skill-document index lane — source/
+                // revision/span/ticket binding identical to the document lane.
+                Arc::new(crate::ledger::provider::LedgerSkillProvider::new(
+                    bindings.ledger.clone(),
                 )),
                 vec![],
             ),
@@ -199,7 +200,8 @@ impl NativeFederation {
             bindings.source_set(),
             release,
         )
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| e.to_string())?
+        .with_fusion_strategy(configured_fusion_strategy());
         Ok(Self {
             engine,
             metrics: Arc::new(FederationMetrics::new()),
@@ -338,6 +340,24 @@ impl NativeFederation {
                 .record(error_status(&error.to_string(), cancelled)),
         }
         response.map_err(|e| e.to_string())
+    }
+}
+
+/// PUL-022 qualification seam: explicit, opt-in fusion strategy selection.
+///
+/// The qualified default remains the preserved fixed-order control
+/// (`membrane-fusion-fixed-v1`). Setting `MEMBRANE_FUSION_STRATEGY=rrf`
+/// selects the named/versioned bounded RRF arm (`membrane-fusion-rrf-v1`)
+/// for equal-budget comparison runs only; every unset or unrecognized value
+/// keeps the control. No production default is switched here — the atom's
+/// RELEASED-boundary non-regression and rollback evidence must land before
+/// the engine default changes. The emitted `fusionReceipt.policy` names the
+/// arm that ran, so comparison evidence stays attributable to one named,
+/// versioned strategy.
+fn configured_fusion_strategy() -> FusionStrategy {
+    match std::env::var("MEMBRANE_FUSION_STRATEGY") {
+        Ok(value) if value.trim().eq_ignore_ascii_case("rrf") => FusionStrategy::Rrf,
+        _ => FusionStrategy::FixedOrder,
     }
 }
 

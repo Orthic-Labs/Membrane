@@ -67,6 +67,7 @@ const bootstrap = renderPowerShellBootstrap({
     { path: "trayExecutable", nonempty: true },
     { path: "service.serviceId", equals: "membrane-hub" },
     { path: "service.releaseGeneration", nonempty: true },
+    { path: "activationScope", equals: "full" },
     { path: "clients", minCount: 2 },
   ],
 });

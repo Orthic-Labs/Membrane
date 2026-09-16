@@ -56,13 +56,13 @@ The contract is five typed shapes — `ScopeGrant`, `ContextCandidateSet`, `Cont
 
 ## Inside
 
-- **Pull** — bounded acquisition, eligibility, fusion, admission, and packet publication.
-- **Push** — faithful reduction for command output, file reads, source/provider payloads, and delegated evidence.
+- **Pull** — bounded acquisition, eligibility, fusion, admission, faithful reduction, and packet publication.
+- **Push** — the public `push` operation: an agent-to-Cortex durable-memory write preserving exact bytes.
 - **Cortex / Persist** — the durable-memory engine: a durable library and CLI projection owned by Membrane, backed by SQLite with a quantized vector store and hybrid retriever. Membrane Hub owns the single resident service.
 - **Blueprint** — repository truth and evidence graph.
 - **Ledger** — hash-bound document navigation.
 - **Adapt** — governed experience-to-knowledge proposals.
-- **MCP server** ? twenty-two tools over stdio (`membrane_blueprint`, `membrane_checkpoint_load`, `membrane_checkpoint_save`, `membrane_context`, `membrane_diagnostic_baseline`, `membrane_diagnostic_capabilities`, `membrane_diagnostic_fence`, `membrane_diagnostic_mutation`, `membrane_diagnostic_provider`, `membrane_diagnostic_snapshot`, `membrane_diagnostic_workspace`, `membrane_feedback`, `membrane_knowledge_propose`, `membrane_knowledge_review`, `membrane_memory`, `membrane_memory_read`, `membrane_push_prepare`, `membrane_push_resolve`, `membrane_scratchpad`, `membrane_source_read`, `membrane_temporal_fact`, `membrane_working_context`), serving both the 2025-03-26 and 2026-07-28 MCP discovery eras. Ledger & Adapt remain internal operator pipelines. The generated source of truth for this surface is [docs/reference/product-truth.md](docs/reference/product-truth.md).
+- **MCP server** — two tools over stdio (`pull`, `push`), plus grant-bound resources and prompts, over stdio and authenticated Streamable HTTP. Retired `membrane_*` names remain internal operations behind those envelopes and are never discoverable through `tools/list`. The generated source of truth for this surface is [docs/reference/product-truth.md](docs/reference/product-truth.md).
 - **Federation gateway** — a supervised resident worker behind `POST /federate` that fans out to providers in parallel.
 - **Prompt hooks** — per-host recall planners (Claude and Codex) that route candidates through admission on every prompt.
 - **Membrane Hub** — visibility & lifecycle control for automatic resident processes. Explicit operations across all six subsystems remain available with Hub off; [execution boundary](docs/architecture/execution-lifecycle-boundary.md). Shared product packaging owns desktop build, release, installer, updater, icon & legal assets.

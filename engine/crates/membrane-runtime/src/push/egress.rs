@@ -30,6 +30,35 @@ pub fn fit_native_response(mut envelope: Value, ceiling: &RemainingContextCeilin
     Err(RecoveryError::Corrupt)
 }
 
+/// Bounded-response egress gate (implementation-contract §"Pull budget
+/// contract"). Same serialized-MCP-tool-result measurement as
+/// `fit_native_response`, but the capacity bound is the caller's declared
+/// response budget rather than an H8 observation. Host capacity is reported
+/// as unobserved — never invented — and an over-budget result is the typed
+/// `RecoveryError::Limit` refusal, never a truncation.
+pub fn fit_native_response_to_budget(mut envelope: Value, budget_tokens: u64) -> Result<Value, RecoveryError> {
+    if budget_tokens == 0 {
+        return Err(RecoveryError::Denied);
+    }
+    let data = envelope.pointer_mut("/result/data").and_then(Value::as_object_mut).ok_or(RecoveryError::Corrupt)?;
+    data.insert("deliveryMeasurement".into(), json!({"schemaVersion":1,"scope":"serialized_mcp_tool_result",
+        "basis":"o200k_base/1","responseBudget":budget_tokens,"hostCapacity":{"coverage":"unavailable"},
+        "tokens":0,"bytes":0,"providerBilledTokens":null}));
+    for _ in 0..16 {
+        let wire = membrane_mcp::tool_result(envelope.clone()).to_string();
+        let tokens = cortex_core::ContextTokenAccounting::count_exact(&wire).map_err(|_| RecoveryError::Unavailable)? as u64;
+        let bytes = wire.len();
+        if envelope.pointer("/result/data/deliveryMeasurement/tokens").and_then(Value::as_u64) == Some(tokens)
+            && envelope.pointer("/result/data/deliveryMeasurement/bytes").and_then(Value::as_u64) == Some(bytes as u64) {
+            // Same native-transport read cap as the H8 gate; never truncate.
+            return if tokens <= budget_tokens && bytes <= 120 * 1024 { Ok(envelope) } else { Err(RecoveryError::Limit) };
+        }
+        envelope["result"]["data"]["deliveryMeasurement"]["tokens"] = json!(tokens);
+        envelope["result"]["data"]["deliveryMeasurement"]["bytes"] = json!(bytes);
+    }
+    Err(RecoveryError::Corrupt)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -48,5 +77,19 @@ mod tests {
         assert_eq!(fitted["result"]["data"]["deliveryMeasurement"]["bytes"],wire.len());
         assert_eq!(fitted["result"]["data"]["deliveryMeasurement"]["tokens"],count);
         assert!(matches!(fit_native_response(envelope,&ceiling(100)),Err(RecoveryError::Limit)));
+    }
+
+    #[test]
+    fn budget_gate_measures_the_same_wire_shape_without_inventing_capacity() {
+        let envelope = json!({"schemaVersion":1,"operation":"membrane_context","errorVersion":1,"result":{"kind":"success","data":{"packet":{"text":"payload".repeat(100)}}}});
+        let fitted = fit_native_response_to_budget(envelope.clone(), 10_000).unwrap();
+        let wire = membrane_mcp::tool_result(fitted.clone()).to_string();
+        let count = cortex_core::ContextTokenAccounting::count_exact(&wire).unwrap();
+        assert_eq!(fitted["result"]["data"]["deliveryMeasurement"]["bytes"], wire.len());
+        assert_eq!(fitted["result"]["data"]["deliveryMeasurement"]["tokens"], count);
+        assert_eq!(fitted["result"]["data"]["deliveryMeasurement"]["responseBudget"], 10_000);
+        assert_eq!(fitted["result"]["data"]["deliveryMeasurement"]["hostCapacity"]["coverage"], "unavailable");
+        assert!(matches!(fit_native_response_to_budget(envelope.clone(), 100), Err(RecoveryError::Limit)));
+        assert!(matches!(fit_native_response_to_budget(envelope, 0), Err(RecoveryError::Denied)));
     }
 }

@@ -359,6 +359,9 @@ Section Install
   ;    running-app check above did not free the handles, so stop every product
   ;    executable explicitly and wait for the handles to drop, logging each
   ;    step so a failure here is diagnosable from the install log alone.
+  ; $R5 marks that the stable current junction was moved this run; on
+  ; install_failed it drives restore of the previous junction.
+  StrCpy $R5 0
   StrCpy $InstallStep "stop-running-product"
   ${If} ${FileExists} "$INSTDIR\current\membrane.exe"
     ; Install/activation control lives in the engine binary: the transport
@@ -471,6 +474,27 @@ Section Install
     StrCpy $R0 1
     Goto install_failed
   ${EndIf}
+  ; Post-overlay payload validation: the host projection surface (plugin
+  ; manifests, marketplace descriptors, hook manifests, MCP declarations &
+  ; release identity) must be complete in the exact staged tree before the
+  ; stable current junction moves. Missing surface = failed install, never a
+  ; partial projection.
+  ${IfNot} ${FileExists} "$INSTDIR\versions\${VERSION}\release.json"
+  ${OrIfNot} ${FileExists} "$INSTDIR\versions\${VERSION}\plugin.json"
+  ${OrIfNot} ${FileExists} "$INSTDIR\versions\${VERSION}\mcp.json"
+  ${OrIfNot} ${FileExists} "$INSTDIR\versions\${VERSION}\mcp_config.json"
+  ${OrIfNot} ${FileExists} "$INSTDIR\versions\${VERSION}\.mcp.json"
+  ${OrIfNot} ${FileExists} "$INSTDIR\versions\${VERSION}\hooks\hooks.json"
+  ${OrIfNot} ${FileExists} "$INSTDIR\versions\${VERSION}\hooks\codex-hooks.json"
+  ${OrIfNot} ${FileExists} "$INSTDIR\versions\${VERSION}\.claude-plugin\plugin.json"
+  ${OrIfNot} ${FileExists} "$INSTDIR\versions\${VERSION}\.claude-plugin\marketplace.json"
+  ${OrIfNot} ${FileExists} "$INSTDIR\versions\${VERSION}\.codex-plugin\plugin.json"
+  ${OrIfNot} ${FileExists} "$INSTDIR\versions\${VERSION}\.agents\plugins\marketplace.json"
+  ${OrIfNot} ${FileExists} "$INSTDIR\versions\${VERSION}\.antigravity-plugin\plugin.json"
+  ${OrIfNot} ${FileExists} "$INSTDIR\versions\${VERSION}\.antigravity-plugin\mcp_config.json"
+    StrCpy $R0 1
+    Goto install_failed
+  ${EndIf}
   ; Native package must not carry the retired Blueprint Node tree or launchers.
   ${If} ${FileExists} "$INSTDIR\versions\${VERSION}\runtime\blueprint"
     StrCpy $R0 1
@@ -531,14 +555,36 @@ Section Install
     StrCpy $R0 1
     Goto install_failed
   ${EndIf}
-  ${If} ${FileExists} "$INSTDIR\.current-previous\*.*"
-    RMDir "$INSTDIR\.current-previous"
-  ${EndIf}
+  ; The previous junction is kept until registration & binding reconciliation
+  ; complete: install_failed restores it so a failed post-cutover step never
+  ; strands the user on the new tree without its working bindings.
+  StrCpy $R5 1
   ${Log} "cutover-current ok"
 
   ; Release install lock before bindings-only reconciliation. A fully cut
   ; over tree is required before installed clients are reconciled.
   RMDir /r "$INSTDIR\.install-lock"
+
+  ; Bind registrations without lifecycle effects. Registration-only
+  ; activation must not start the engine: ownership belongs to Hub/tray or
+  ; harness holders, never to the installer. The lock was already released
+  ; after cutover, so no listener was ever blocked by this step. This runs
+  ; before OS registration so a failed reconcile restores the previous
+  ; current with no registry claims pointing at the new version.
+  StrCpy $InstallStep "bind-installed-clients"
+  nsExec::ExecToStack /TIMEOUT=90000 '"$INSTDIR\current\membrane.exe" activate --bindings-only --install-root "$INSTDIR\current"'
+  Pop $R0
+  Pop $R2
+  ClearErrors
+  FileOpen $9 "$INSTDIR\logs\bindings.log" w
+  ${IfNot} ${Errors}
+    FileWrite $9 "$R2"
+    FileClose $9
+  ${EndIf}
+  ${If} $R0 != 0
+    Goto install_failed
+  ${EndIf}
+  ${Log} "bind-installed-clients ok"
 
   ; 3. Registration: uninstall entry, Start Menu shortcut, login launch.
   StrCpy $InstallStep "register"
@@ -584,24 +630,11 @@ Section Install
   ${EndIf}
   ${Log} "register ok"
 
-  ; Bind registrations without lifecycle effects. Registration-only
-  ; activation must not start the engine: ownership belongs to Hub/tray or
-  ; harness holders, never to the installer. The lock was already released
-  ; after cutover, so no listener was ever blocked by this step.
-  StrCpy $InstallStep "bind-installed-clients"
-  nsExec::ExecToStack /TIMEOUT=90000 '"$INSTDIR\current\membrane.exe" activate --bindings-only --install-root "$INSTDIR\current"'
-  Pop $R0
-  Pop $R2
-  ClearErrors
-  FileOpen $9 "$INSTDIR\logs\bindings.log" w
-  ${IfNot} ${Errors}
-    FileWrite $9 "$R2"
-    FileClose $9
+  ; Cutover is fully committed: drop the previous junction.
+  ${If} ${FileExists} "$INSTDIR\.current-previous\*.*"
+    RMDir "$INSTDIR\.current-previous"
   ${EndIf}
-  ${If} $R0 != 0
-    Goto install_failed
-  ${EndIf}
-  ${Log} "bind-installed-clients ok"
+  StrCpy $R5 0
 
   ${Log} "install ${VERSION} complete"
   RMDir /r "$INSTDIR\.install-lock"
@@ -612,6 +645,21 @@ Section Install
 
   install_failed:
     ${Log} "$InstallStep exit=$R0"
+    ; Restore the prior stable junction when a post-cutover step failed: the
+    ; user keeps the last working current instead of a new tree whose
+    ; bindings or registration never completed. Non-recursive RMDir drops the
+    ; new reparse point only; it never enters the target tree.
+    ${If} $R5 == 1
+      ${If} ${FileExists} "$INSTDIR\.current-previous\*.*"
+        RMDir "$INSTDIR\current"
+        Rename "$INSTDIR\.current-previous" "$INSTDIR\current"
+        ${If} ${FileExists} "$INSTDIR\current\membrane.exe"
+          ${Log} "restored previous current junction"
+        ${Else}
+          ${Log} "previous current restore failed"
+        ${EndIf}
+      ${EndIf}
+    ${EndIf}
     RMDir /r "$INSTDIR\.install-lock"
     Abort "Membrane installation failed at $InstallStep (exit $R0). See ${INSTALLLOG}"
   install_done:

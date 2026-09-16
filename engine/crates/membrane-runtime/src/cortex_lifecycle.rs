@@ -153,6 +153,7 @@ fn verify_with_trust(store: &MemoryStore, review: &ReviewedEffectV1, repository:
 }
 
 pub(crate) fn ensure_memory_schema(db: &Connection) -> rusqlite::Result<()> {
+    migrate_agent_memory_source_key(db)?;
     db.execute_batch(
         "CREATE TABLE IF NOT EXISTS cortex_admission_receipts_v1(
            request_id TEXT PRIMARY KEY, payload_hash TEXT NOT NULL, disposition_json TEXT NOT NULL) STRICT;
@@ -180,28 +181,289 @@ pub(crate) fn ensure_memory_schema(db: &Connection) -> rusqlite::Result<()> {
            ON cortex_lifecycle_review_signals_v1(memory_id);
          CREATE INDEX IF NOT EXISTS cortex_lifecycle_review_signals_v1_scope
            ON cortex_lifecycle_review_signals_v1(scope_id);
-         -- Agent push keeps immutable source bytes beside the searchable
-         -- memory row. Derived/embedded forms can evolve without replacing
-         -- what the caller submitted.
+         -- CTX-043 (decision 19): the bytes an agent submitted through
+         -- `membrane_memory_push` are the immutable admission record. The
+         -- canonical `memories` row the admission pipeline derived from them
+         -- is only the lifecycle/retrieval projection of these bytes;
+         -- downstream storage must never need them to re-derive what was
+         -- pushed. Submission identity is (scope_id, request_id): a body
+         -- that dedup-merges into an existing record still keeps its own
+         -- immutable source row, and several submissions may bind one
+         -- `memory_id`. `caller_input_json` retains the caller-declared
+         -- optional fields (keywords/lifecycle) as submitted so the source
+         -- record — not the derived projection — carries what the agent
+         -- asked for.
          CREATE TABLE IF NOT EXISTS cortex_agent_memory_source_v1(
-           memory_id TEXT PRIMARY KEY,
+           memory_id TEXT NOT NULL,
            request_id TEXT NOT NULL,
            repository_id TEXT NOT NULL,
            scope_id TEXT NOT NULL,
            caller_id TEXT NOT NULL,
            raw_body BLOB NOT NULL,
            raw_sha256 TEXT NOT NULL,
+           caller_input_json TEXT NOT NULL DEFAULT '{}',
            recorded_at_ms INTEGER NOT NULL,
+           PRIMARY KEY(scope_id, request_id),
            FOREIGN KEY(memory_id) REFERENCES memories(id)) STRICT;
-         CREATE UNIQUE INDEX IF NOT EXISTS cortex_agent_memory_source_request_v1
-           ON cortex_agent_memory_source_v1(scope_id, request_id);
+         CREATE INDEX IF NOT EXISTS cortex_agent_memory_source_memory_v1
+           ON cortex_agent_memory_source_v1(memory_id);
+         -- CTX-025: erasure is the only governed delete from the source
+         -- table. `MemoryStore::hard_erase` inserts this row's permit inside
+         -- its own immediate transaction and removes it again before commit;
+         -- a permit exists only while that transaction is open, so no other
+         -- writer can ever satisfy the delete trigger's gate.
+         CREATE TABLE IF NOT EXISTS cortex_erasure_permit_v1(
+           memory_id TEXT PRIMARY KEY, granted_at_ms INTEGER NOT NULL) STRICT;
          CREATE TRIGGER IF NOT EXISTS cortex_agent_memory_source_immutable_update_v1
            BEFORE UPDATE ON cortex_agent_memory_source_v1
            BEGIN SELECT RAISE(ABORT, 'immutable Cortex agent memory source'); END;
-         CREATE TRIGGER IF NOT EXISTS cortex_agent_memory_source_immutable_delete_v1
+         DROP TRIGGER IF EXISTS cortex_agent_memory_source_immutable_delete_v1;
+         CREATE TRIGGER cortex_agent_memory_source_immutable_delete_v1
            BEFORE DELETE ON cortex_agent_memory_source_v1
+           WHEN NOT EXISTS (SELECT 1 FROM cortex_erasure_permit_v1 permit
+                            WHERE permit.memory_id = OLD.memory_id)
            BEGIN SELECT RAISE(ABORT, 'immutable Cortex agent memory source'); END;"
     )
+}
+
+/// CTX-043 follow-up: the first cut of the source table keyed rows by
+/// `memory_id`, which broke a second legitimate push whose body dedup-merged
+/// into an existing record — that submission's immutable source row could
+/// not be inserted at all, leaving the replay/conflict contract nothing to
+/// check. Submission identity is (scope_id, request_id); `memory_id` is the
+/// bound admission target. Rebuild a legacy single-key table in place (all
+/// rows and `recorded_at_ms` are preserved); a table already on the
+/// composite key is left untouched.
+fn migrate_agent_memory_source_key(db: &Connection) -> rusqlite::Result<()> {
+    let table_exists: bool = db.query_row(
+        "SELECT EXISTS(SELECT 1 FROM sqlite_master
+            WHERE type = 'table' AND name = 'cortex_agent_memory_source_v1')",
+        [],
+        |row| row.get(0),
+    )?;
+    if !table_exists {
+        return Ok(());
+    }
+    let keyed_by_memory: bool = db.query_row(
+        "SELECT EXISTS(SELECT 1 FROM pragma_table_info('cortex_agent_memory_source_v1')
+            WHERE name = 'memory_id' AND pk > 0)",
+        [],
+        |row| row.get(0),
+    )?;
+    if !keyed_by_memory {
+        return Ok(());
+    }
+    db.execute_batch(
+        "ALTER TABLE cortex_agent_memory_source_v1
+           RENAME TO cortex_agent_memory_source_v1_prekey;
+         CREATE TABLE cortex_agent_memory_source_v1(
+           memory_id TEXT NOT NULL,
+           request_id TEXT NOT NULL,
+           repository_id TEXT NOT NULL,
+           scope_id TEXT NOT NULL,
+           caller_id TEXT NOT NULL,
+           raw_body BLOB NOT NULL,
+           raw_sha256 TEXT NOT NULL,
+           caller_input_json TEXT NOT NULL DEFAULT '{}',
+           recorded_at_ms INTEGER NOT NULL,
+           PRIMARY KEY(scope_id, request_id),
+           FOREIGN KEY(memory_id) REFERENCES memories(id)) STRICT;
+         INSERT INTO cortex_agent_memory_source_v1
+           (memory_id, request_id, repository_id, scope_id, caller_id,
+            raw_body, raw_sha256, recorded_at_ms)
+           SELECT memory_id, request_id, repository_id, scope_id, caller_id,
+                  raw_body, raw_sha256, recorded_at_ms
+           FROM cortex_agent_memory_source_v1_prekey;
+         DROP TABLE cortex_agent_memory_source_v1_prekey;",
+    )
+}
+
+/// One immutable CTX-043 push-source row. Serialized inside the
+/// `membrane.cortex-backup.v3` envelope (snake_case, matching the other
+/// backup sections) so a sealed backup carries the admission record itself,
+/// not a pointer to it.
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct AgentMemorySourceRowV1 {
+    pub memory_id: String,
+    pub request_id: String,
+    pub repository_id: String,
+    pub scope_id: String,
+    pub caller_id: String,
+    pub raw_body: Vec<u8>,
+    pub raw_sha256: String,
+    #[serde(default = "empty_caller_input")]
+    pub caller_input_json: String,
+    pub recorded_at_ms: i64,
+}
+
+fn empty_caller_input() -> String {
+    "{}".to_owned()
+}
+
+fn agent_memory_source_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<AgentMemorySourceRowV1> {
+    Ok(AgentMemorySourceRowV1 {
+        memory_id: row.get(0)?,
+        request_id: row.get(1)?,
+        repository_id: row.get(2)?,
+        scope_id: row.get(3)?,
+        caller_id: row.get(4)?,
+        raw_body: row.get(5)?,
+        raw_sha256: row.get(6)?,
+        caller_input_json: row.get(7)?,
+        recorded_at_ms: row.get(8)?,
+    })
+}
+
+const AGENT_SOURCE_SELECT: &str =
+    "SELECT memory_id, request_id, repository_id, scope_id, caller_id,
+            raw_body, raw_sha256, caller_input_json, recorded_at_ms
+       FROM cortex_agent_memory_source_v1";
+
+/// Every immutable source row bound to one canonical memory, oldest request
+/// id ordering for deterministic digests. Used by resolve (CTX-043 exact
+/// recovery), hard erase and backup; absent table reads as no records.
+pub(crate) fn agent_memory_sources_for_on(
+    db: &Connection,
+    memory_id: &str,
+) -> rusqlite::Result<Vec<AgentMemorySourceRowV1>> {
+    let exists: bool = db.query_row(
+        "SELECT EXISTS(SELECT 1 FROM sqlite_master
+            WHERE type='table' AND name='cortex_agent_memory_source_v1')",
+        [],
+        |row| row.get(0),
+    )?;
+    if !exists {
+        return Ok(Vec::new());
+    }
+    db.prepare(&format!("{AGENT_SOURCE_SELECT} WHERE memory_id = ?1 ORDER BY request_id"))?
+        .query_map([memory_id], agent_memory_source_row)?
+        .collect()
+}
+
+/// Every immutable source row in the store, in a deterministic order, for
+/// the sealed backup envelope.
+pub(crate) fn agent_memory_sources_on(
+    db: &Connection,
+) -> rusqlite::Result<Vec<AgentMemorySourceRowV1>> {
+    let exists: bool = db.query_row(
+        "SELECT EXISTS(SELECT 1 FROM sqlite_master
+            WHERE type='table' AND name='cortex_agent_memory_source_v1')",
+        [],
+        |row| row.get(0),
+    )?;
+    if !exists {
+        return Ok(Vec::new());
+    }
+    db.prepare(&format!("{AGENT_SOURCE_SELECT} ORDER BY scope_id, request_id"))?
+        .query_map([], agent_memory_source_row)?
+        .collect()
+}
+
+/// Insert one source row inside an existing transaction (restore).
+pub(crate) fn insert_agent_memory_source_on(
+    tx: &rusqlite::Transaction<'_>,
+    row: &AgentMemorySourceRowV1,
+) -> rusqlite::Result<()> {
+    tx.execute(
+        "INSERT INTO cortex_agent_memory_source_v1
+         (memory_id,request_id,repository_id,scope_id,caller_id,raw_body,raw_sha256,caller_input_json,recorded_at_ms)
+         VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9)",
+        params![
+            row.memory_id, row.request_id, row.repository_id, row.scope_id,
+            row.caller_id, row.raw_body, row.raw_sha256, row.caller_input_json,
+            row.recorded_at_ms
+        ],
+    )?;
+    Ok(())
+}
+
+/// Insert a pending CTX-043 source row inside an open admission transaction,
+/// bound to the memory id that transaction resolved. This is the ONLY write
+/// path `agent_memory_push_with_input` uses for source rows — the
+/// submitted-bytes record commits or rolls back with the canonical record it
+/// binds, never one without the other.
+pub(crate) fn insert_agent_memory_source_pending_on(
+    tx: &rusqlite::Transaction<'_>,
+    memory_id: &str,
+    pending: crate::store::PendingAgentSourceRow<'_>,
+) -> rusqlite::Result<()> {
+    insert_agent_memory_source_on(
+        tx,
+        &AgentMemorySourceRowV1 {
+            memory_id: memory_id.to_owned(),
+            request_id: pending.request_id.to_owned(),
+            repository_id: pending.repository_id.to_owned(),
+            scope_id: pending.scope_id.to_owned(),
+            caller_id: pending.caller_id.to_owned(),
+            raw_body: pending.raw_body.to_vec(),
+            raw_sha256: pending.raw_sha256.to_owned(),
+            caller_input_json: pending.caller_input_json.to_owned(),
+            recorded_at_ms: crate::time::now_millis() as i64,
+        },
+    )
+}
+
+/// CTX-025/CTX-043: the ONLY governed delete from the immutable source
+/// table. The per-memory permit row is inserted, the rows are deleted, and
+/// the permit is removed — all inside the caller's immediate transaction —
+/// so the delete trigger's `WHEN` gate holds only while a governed erase is
+/// open. Ordinary deletes still hit `immutable Cortex agent memory source`.
+/// The `hard_erase` lifecycle event logged by the caller is the content-free
+/// evidence that remains; nothing payload-bearing survives this call.
+pub(crate) fn erase_agent_memory_sources_on(
+    tx: &rusqlite::Transaction<'_>,
+    memory_id: &str,
+) -> rusqlite::Result<usize> {
+    ensure_memory_schema(tx)?;
+    tx.execute(
+        "INSERT OR REPLACE INTO cortex_erasure_permit_v1(memory_id, granted_at_ms) VALUES(?1,?2)",
+        params![memory_id, crate::time::now_millis() as i64],
+    )?;
+    let removed = tx.execute(
+        "DELETE FROM cortex_agent_memory_source_v1 WHERE memory_id = ?1",
+        params![memory_id],
+    )?;
+    tx.execute(
+        "DELETE FROM cortex_erasure_permit_v1 WHERE memory_id = ?1",
+        params![memory_id],
+    )?;
+    Ok(removed)
+}
+
+/// Restore-wipe variant: erase every source row under permits granted to
+/// each bound memory, inside the caller's immediate transaction.
+pub(crate) fn erase_all_agent_memory_sources_on(
+    tx: &rusqlite::Transaction<'_>,
+) -> rusqlite::Result<usize> {
+    ensure_memory_schema(tx)?;
+    tx.execute(
+        "INSERT OR IGNORE INTO cortex_erasure_permit_v1(memory_id, granted_at_ms)
+           SELECT DISTINCT memory_id, ?1 FROM cortex_agent_memory_source_v1",
+        params![crate::time::now_millis() as i64],
+    )?;
+    let removed = tx.execute("DELETE FROM cortex_agent_memory_source_v1", [])?;
+    tx.execute("DELETE FROM cortex_erasure_permit_v1", [])?;
+    Ok(removed)
+}
+
+/// Caller-declared optional fields accepted by the push envelope. Both are
+/// untrusted input — authority and influence class are always assigned by
+/// Cortex — but they are retained in the immutable source record so the
+/// admission record, not the derived projection, carries what the agent
+/// actually submitted.
+#[derive(Clone, Debug, Default)]
+pub struct AgentPushInputV1 {
+    /// Keyword hints. Normalization to the recall vocabulary (trim, lowercase,
+    /// dedup) happens inside; the submitted forms are preserved verbatim in
+    /// `caller_input_json`.
+    pub keywords: Vec<String>,
+    /// Scheduling-only lifecycle hints. `authority` and `influence_class`
+    /// are stripped before validation and named in `callerFieldsStripped`.
+    pub lifecycle: Option<MemoryLifecycleInputV1>,
+    /// The caller's optional-fields JSON exactly as submitted, retained in
+    /// the source row. `None` records the canonical serialization of the
+    /// (possibly empty) `keywords`/`lifecycle` fields actually received.
+    pub caller_input_json: Option<String>,
 }
 
 /// Admit one agent-directed memory while retaining submitted UTF-8 bytes in
@@ -216,6 +478,28 @@ pub fn agent_memory_push(
     caller_id: &str,
     body: &str,
 ) -> Result<Value> {
+    agent_memory_push_with_input(
+        store, repository, scope, request_id, caller_id, body, &AgentPushInputV1::default(),
+    )
+}
+
+/// CTX-043 push with the caller's optional fields. The submitted body is
+/// still the only thing that enters the canonical `memories` content;
+/// `input.keywords` union into the derived keyword projection and the
+/// sanitized `input.lifecycle` schedules the record — both are recorded
+/// verbatim in the immutable source row's `caller_input_json` so nothing the
+/// caller asked for is silently dropped and nothing the caller claimed is
+/// silently granted.
+#[allow(clippy::too_many_arguments)]
+pub fn agent_memory_push_with_input(
+    store: &MemoryStore,
+    repository: &str,
+    scope: &str,
+    request_id: &str,
+    caller_id: &str,
+    body: &str,
+    input: &AgentPushInputV1,
+) -> Result<Value> {
     if repository.trim().is_empty() || scope.trim().is_empty() || request_id.trim().is_empty()
         || caller_id.trim().is_empty() || body.is_empty()
     {
@@ -223,6 +507,60 @@ pub fn agent_memory_push(
     }
     if body.len() > membrane_protocol::explicit::EXPLICIT_MAX_BYTES {
         return Err(fail("memory_payload_too_large", "body exceeds 8388608 UTF-8 bytes"));
+    }
+    // Bounded, non-empty keyword hints; the immutable record keeps the
+    // submitted forms, the projection gets the normalized vocabulary.
+    if input.keywords.len() > 64
+        || input
+            .keywords
+            .iter()
+            .any(|keyword| keyword.trim().is_empty() || keyword.len() > 256)
+    {
+        return Err(fail(
+            "memory_envelope_invalid",
+            "keywords must be at most 64 non-empty entries of at most 256 bytes",
+        ));
+    }
+    let mut keywords: Vec<String> = Vec::new();
+    for keyword in &input.keywords {
+        let normalized = keyword.trim().to_lowercase();
+        if !keywords.iter().any(|existing| existing == &normalized) {
+            keywords.push(normalized);
+        }
+    }
+    // The caller's lifecycle may request scheduling only. `authority` and
+    // `influence_class` are untrusted claims — Cortex assigns A2/reference —
+    // and `supersedes` is an authority-bearing lifecycle mutation of ANOTHER
+    // record (an A1 supersession event plus a canonical relation), never a
+    // property of the submitted body. All three are stripped before
+    // validation and named in the receipt.
+    let mut lifecycle = input.lifecycle.clone().unwrap_or_default();
+    let mut stripped: Vec<&str> = Vec::new();
+    if lifecycle.authority.take().is_some() {
+        stripped.push("authority");
+    }
+    if lifecycle.influence_class.take().is_some() {
+        stripped.push("influenceClass");
+    }
+    if lifecycle.supersedes.take().is_some() {
+        stripped.push("supersedes");
+    }
+    lifecycle
+        .validate()
+        .map_err(|message| fail("memory_envelope_invalid", message))?;
+    let caller_input_json = input
+        .caller_input_json
+        .clone()
+        .filter(|raw| !raw.is_empty())
+        .unwrap_or_else(|| {
+            serde_json::to_string(&json!({
+                "keywords": input.keywords,
+                "lifecycle": input.lifecycle,
+            }))
+            .unwrap_or_else(|_| "{}".into())
+        });
+    if caller_input_json.len() > MAX_PAYLOAD_BYTES {
+        return Err(fail("memory_payload_too_large", "caller input record exceeds limit"));
     }
     let body_bytes = body.as_bytes();
     let body_hash = digest_bytes(body_bytes);
@@ -237,36 +575,95 @@ pub fn agent_memory_push(
             rusqlite::params![scope, request_id],
             |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
         ).optional().map_err(storage)?;
-        if let Some((memory_id, hash, raw, stored_repository, stored_caller)) = existing {
+        if let Some((bound_id, hash, raw, stored_repository, stored_caller)) = existing {
             if hash != body_hash || raw != body_bytes || stored_repository != repository || stored_caller != caller_id {
                 return Err(fail("memory_push_idempotency_conflict", "requestId is already bound to different immutable source bytes or provenance"));
             }
-            return Ok(json!({"schemaVersion":1,"memoryId":memory_id,"contentHash":hash,
-                "rawBodyBytes":raw.len(),"authority":"A2","status":"replayed",
+            let stored_content: Option<String> = db
+                .query_row("SELECT content FROM memories WHERE id=?1", [&bound_id], |row| row.get(0))
+                .optional()
+                .map_err(storage)?;
+            let stored_hash = stored_content.as_deref().map(digest_str);
+            return Ok(json!({"schemaVersion":1,"memoryId":bound_id,"contentHash":hash,
+                "storedContentHash":stored_hash,"rawBodyBytes":raw.len(),"authority":"A2",
+                "status":"replayed","recordPresent":stored_content.is_some(),
+                "dedup":{"merged":stored_hash.as_deref() != Some(hash.as_str())},
                 "provenance":{"repositoryId":repository,"scopeId":scope,"callerId":caller_id,
-                    "requestId":request_id,"source":"cortex_agent_memory_source_v1"},
+                    "requestId":request_id,"source":"cortex_agent_memory_source_v1",
+                    "callerFieldsStripped":stripped},
                 "lifecycle":{"managedBy":"cortex","callerAuthority":"untrusted"}}));
         }
     }
     let context = MemoryEventContext::new("agent").with_session(scope).with_trace(request_id);
-    let memory_id = store.try_put_attributed_lifecycle_observed(
+    // The immutable source row and the canonical record it binds commit in
+    // ONE admission transaction (`pending_source` inside
+    // `try_admit_idempotent_observed`): an admitted push can never exist
+    // without its submitted bytes, and a rolled-back admission leaves no
+    // orphaned source row.
+    let pending = crate::store::PendingAgentSourceRow {
+        request_id,
+        repository_id: repository,
+        scope_id: scope,
+        caller_id,
+        raw_body: body_bytes,
+        raw_sha256: body_hash.as_str(),
+        caller_input_json: caller_input_json.as_str(),
+    };
+    let admitted = store.try_put_attributed_lifecycle_keywords_observed(
         &memory_name, body, scope, MemoryTier::Semantic, "memory", "agent",
-        "agent_memory_push", &context, &MemoryLifecycleInputV1::default(),
-    ).map_err(storage)?;
-    let db = store.db().lock();
-    ensure_memory_schema(&db).map_err(storage)?;
-    db.execute(
-        "INSERT INTO cortex_agent_memory_source_v1
-         (memory_id,request_id,repository_id,scope_id,caller_id,raw_body,raw_sha256,recorded_at_ms)
-         VALUES(?1,?2,?3,?4,?5,?6,?7,?8)",
-        rusqlite::params![memory_id, request_id, repository, scope, caller_id, body_bytes, body_hash, crate::time::now_millis() as i64],
-    ).map_err(|error| {
-        if error.to_string().contains("UNIQUE") { storage("agent memory push raced with an identical request") } else { storage(error) }
-    })?;
+        "agent_memory_push", &context, &lifecycle, &keywords, Some(pending),
+    );
+    let (memory_id, replayed) = match admitted {
+        Ok(id) => (id, false),
+        Err(error)
+            if error.contains("UNIQUE")
+                && error.contains("cortex_agent_memory_source_v1") =>
+        {
+            // A raced identical request converged inside its own admission
+            // transaction and this one rolled back. Re-read the winner's
+            // immutable row and apply the same replay comparison the fast
+            // path uses — never report success for unrecorded bytes.
+            let db = store.db().lock();
+            ensure_memory_schema(&db).map_err(storage)?;
+            let winner: Option<(String, String, Vec<u8>, String, String)> = db.query_row(
+                "SELECT memory_id,raw_sha256,raw_body,repository_id,caller_id
+                   FROM cortex_agent_memory_source_v1 WHERE scope_id=?1 AND request_id=?2",
+                rusqlite::params![scope, request_id],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
+            ).optional().map_err(storage)?;
+            let Some((bound_id, hash, raw, stored_repository, stored_caller)) = winner else {
+                return Err(storage("agent memory push raced with an identical request"));
+            };
+            if hash != body_hash || raw != body_bytes
+                || stored_repository != repository || stored_caller != caller_id
+            {
+                return Err(fail("memory_push_idempotency_conflict", "requestId is already bound to different immutable source bytes or provenance"));
+            }
+            (bound_id, true)
+        }
+        Err(error) => return Err(storage(error)),
+    };
+    let stored_content: Option<String> = store.db().lock()
+        .query_row("SELECT content FROM memories WHERE id=?1", [&memory_id], |row| row.get(0))
+        .optional()
+        .map_err(storage)?;
+    let Some(stored_content) = stored_content else {
+        return Err(storage("admitted memory row is missing after push"));
+    };
+    let stored_hash = digest_str(&stored_content);
+    // CTX-043 honest dedup reporting: when the admission pre-filter merged
+    // this submission into an existing record the canonical content differs
+    // from the submitted bytes — the immutable source row, committed in the
+    // same transaction, is where the submitted bytes live.
+    let merged = stored_hash != body_hash;
+    let status = if replayed { "replayed" } else if merged { "deduplicated" } else { "stored" };
     Ok(json!({"schemaVersion":1,"memoryId":memory_id,"contentHash":body_hash,
-        "rawBodyBytes":body_bytes.len(),"authority":"A2","status":"stored",
+        "storedContentHash":stored_hash,"rawBodyBytes":body_bytes.len(),"authority":"A2",
+        "status":status,"recordPresent":true,
+        "dedup":{"merged":merged},
         "provenance":{"repositoryId":repository,"scopeId":scope,"callerId":caller_id,
-            "requestId":request_id,"source":"cortex_agent_memory_source_v1"},
+            "requestId":request_id,"source":"cortex_agent_memory_source_v1",
+            "callerFieldsStripped":stripped},
         "lifecycle":{"managedBy":"cortex","callerAuthority":"untrusted"}}))
 }
 fn ensure_proposal_schema(db: &Connection) -> rusqlite::Result<()> {
@@ -892,20 +1289,50 @@ pub fn resolve_memory(store: &MemoryStore, scope: &str, id: &str, expected: &str
         return Err(fail("memory_ineligible", "record is not currently eligible for agent resolution"));
     }
     let hash = digest_str(&content);
-    if hash.strip_prefix("sha256:").unwrap_or(&hash) != expected.strip_prefix("sha256:").unwrap_or(expected) {
+    let expected_norm = expected.strip_prefix("sha256:").unwrap_or(expected);
+    // CTX-043: the caller's expected hash also binds the immutable push-source
+    // rows recorded against this memory. A pushed body that dedup-merged into
+    // an existing canonical record resolves by its own `raw_sha256` to the
+    // preserved submitted bytes — the admission record, not the derived
+    // canonical content.
+    let source_rows = agent_memory_sources_for_on(&tx, id).map_err(storage)?;
+    let matched_source = source_rows.iter().find(|row| {
+        row.raw_sha256
+            .strip_prefix("sha256:")
+            .unwrap_or(&row.raw_sha256)
+            == expected_norm
+    });
+    if hash.strip_prefix("sha256:").unwrap_or(&hash) != expected_norm && matched_source.is_none() {
         return Err(fail("memory_version_conflict", "expected full-content hash no longer matches"));
     }
-    let total = content.chars().count();
+    let (served, served_hash, served_from): (String, String, &str) =
+        if hash.strip_prefix("sha256:").unwrap_or(&hash) == expected_norm {
+            (content, hash, "canonical")
+        } else {
+            let source = matched_source.expect("matched source row");
+            let text = String::from_utf8(source.raw_body.clone()).map_err(|_| {
+                fail("memory_unavailable", "immutable source bytes are not valid UTF-8")
+            })?;
+            (text, source.raw_sha256.clone(), "immutableSource")
+        };
+    let matched_request_id = matched_source.map(|row| row.request_id.clone());
+    let total = served.chars().count();
     if offset > total { return Err(fail("memory_envelope_invalid", "offset is beyond the record")); }
-    let body = content.chars().skip(offset).take(max_chars).collect::<String>();
+    let body = served.chars().skip(offset).take(max_chars).collect::<String>();
     let end = offset + body.chars().count();
     // A persisted observed read is not verified helped and does not reinforce
     // usefulness. Scope and content are bound before this counter changes.
     tx.execute("UPDATE memories SET access_count=access_count+1 WHERE id=?1", [id]).map_err(storage)?;
     tx.commit().map_err(storage)?;
     Ok(json!({"schemaVersion":1,"id":id,"cortexStoreId":store.cortex_store_id(),
-        "contentHash":hash,"content":body,"offset":offset,"nextOffset":if end < total {Some(end)} else {None},
+        "contentHash":served_hash,"content":body,"offset":offset,"nextOffset":if end < total {Some(end)} else {None},
         "totalChars":total,"complete":offset==0 && end==total,"pageComplete":true,"authority":authority,"lifecycle":lifecycle,
+        // CTX-043: whether the served bytes are the canonical record or an
+        // immutable push-source row bound to it is explicit data, never an
+        // implicit guess from which hash matched.
+        "sourceRecord":{"present":!source_rows.is_empty(),
+            "requestIds":source_rows.iter().map(|row| row.request_id.clone()).collect::<Vec<_>>(),
+            "matchedRequestId":matched_request_id,"served":served_from},
         "scopeId":scope,"recordType":kind,"sourceRefs":serde_json::from_str::<Value>(&sources).map_err(storage)?,
         // CTX-004: provenance availability is explicit data, never guessed.
         // Legacy rows without recorded sources report unavailable_legacy while
@@ -1222,6 +1649,34 @@ pub fn drain_background_proposals(
                         }),
                     )
                 }
+                "adapt_proposal" => {
+                    // ADP-029/035: Adapt learner output enters the same
+                    // daemon-owned admission boundary — pre-gates, pending
+                    // review, and idempotency stay intact.
+                    let adapt: membrane_adapt::learner::AdaptLearnerProposalV1 =
+                        serde_json::from_value(proposal).map_err(|_| {
+                            fail("proposal_emission_text_required", "malformed adapt proposal record")
+                        })?;
+                    adapt.validate().map_err(|_| {
+                        fail("proposal_emission_text_required", "invalid adapt proposal record")
+                    })?;
+                    propose(
+                        store,
+                        repository,
+                        &adapt.scope_id,
+                        &json!({
+                            "text": adapt.summary,
+                            "kind": "adapt_review",
+                            "producer": "adapt_native",
+                            "epistemicClass": "inferred",
+                            "adaptProposalId": adapt.proposal_id,
+                            "findingClass": adapt.finding_class.as_str(),
+                            "sourceEventIds": adapt.evidence.source_event_ids,
+                            "sourceContentHashes": adapt.evidence.source_content_hashes,
+                            "jobId": record.get("jobId"),
+                        }),
+                    )
+                }
                 _ => Err(fail("proposal_emission_text_required", "unknown background proposal kind")),
             }
         })();
@@ -1323,6 +1778,178 @@ mod tests {
         assert_eq!(replay["memoryId"], first["memoryId"]);
         let conflict = agent_memory_push(&s.store, "repo", "scope", "request-1", "caller", "changed").unwrap_err();
         assert_eq!(conflict.code, "memory_push_idempotency_conflict");
+    }
+
+    /// CTX-043 × §16.3: two byte-distinct submissions that normalize to the
+    /// same text dedup into ONE canonical record, yet each keeps its own
+    /// immutable source row and its own bytes resolve exactly. This is the
+    /// case a `memory_id`-keyed source table could not represent at all.
+    #[test]
+    fn agent_push_dedup_keeps_distinct_source_rows_and_raw_resolution() {
+        let s = Sandbox::new();
+        let first_body = "distributed   traces  need tail sampling";
+        let second_body = "distributed traces need tail sampling";
+        let first = agent_memory_push(&s.store, "repo", "scope", "request-a", "caller", first_body).unwrap();
+        assert_eq!(first["status"], "stored");
+        assert_eq!(first["dedup"]["merged"], false);
+        let second = agent_memory_push(&s.store, "repo", "scope", "request-b", "caller", second_body).unwrap();
+        assert_eq!(second["memoryId"], first["memoryId"], "normalized-equal body must merge into the existing record");
+        assert_eq!(second["status"], "deduplicated");
+        assert_eq!(second["dedup"]["merged"], true);
+        assert_eq!(second["contentHash"], digest_bytes(second_body.as_bytes()));
+        assert_ne!(second["contentHash"], second["storedContentHash"]);
+
+        let db = s.store.db().lock();
+        let rows: Vec<(String, Vec<u8>)> = db
+            .prepare("SELECT request_id, raw_body FROM cortex_agent_memory_source_v1 ORDER BY request_id")
+            .unwrap()
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+            .unwrap()
+            .collect::<std::result::Result<_, _>>()
+            .unwrap();
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0].1, first_body.as_bytes());
+        assert_eq!(rows[1].1, second_body.as_bytes());
+        // Decision 18: a user-directed push is durable admission, never a
+        // pending proposal — the proposal queue must be untouched (or absent).
+        let proposal_table: bool = db.query_row(
+            "SELECT EXISTS(SELECT 1 FROM sqlite_master
+                WHERE type='table' AND name='membrane_knowledge_proposal')",
+            [], |row| row.get(0),
+        ).unwrap();
+        let pending: i64 = if proposal_table {
+            db.query_row("SELECT COUNT(*) FROM membrane_knowledge_proposal", [], |row| row.get(0))
+                .unwrap()
+        } else {
+            0
+        };
+        assert_eq!(pending, 0, "user-directed push must never enter the pending proposal queue");
+        drop(db);
+
+        // Replay of the deduplicated request stays idempotent and reports the merge.
+        let replay = agent_memory_push(&s.store, "repo", "scope", "request-b", "caller", second_body).unwrap();
+        assert_eq!(replay["status"], "replayed");
+        assert_eq!(replay["memoryId"], first["memoryId"]);
+
+        // The canonical hash resolves canonical content; the submitted raw
+        // hash resolves the immutable source bytes — the extra whitespace the
+        // merged canonical record does not carry is exactly what was pushed.
+        let id = first["memoryId"].as_str().unwrap();
+        let canonical = resolve_memory(
+            &s.store, "scope", id, first["storedContentHash"].as_str().unwrap(), 0, 12000,
+        ).unwrap();
+        assert_eq!(canonical["content"], first_body);
+        assert_eq!(canonical["sourceRecord"]["served"], "canonical");
+        let raw = resolve_memory(
+            &s.store, "scope", id, &digest_bytes(second_body.as_bytes()), 0, 12000,
+        ).unwrap();
+        assert_eq!(raw["content"], second_body);
+        assert_eq!(raw["sourceRecord"]["served"], "immutableSource");
+        assert_eq!(raw["sourceRecord"]["matchedRequestId"], "request-b");
+    }
+
+    /// CTX-043 × CTX-025/026/036: backup seals the source rows, a tampered
+    /// source byte breaks the seal, restore reinserts them verbatim, and hard
+    /// erase is the only governed delete — a raw delete without the erasure
+    /// permit still hits the immutable trigger.
+    #[test]
+    fn agent_push_source_rows_survive_restore_and_die_with_hard_erase() {
+        let s = Sandbox::new();
+        let body = "café ☕\nmultiline  spaced";
+        let pushed = agent_memory_push(&s.store, "repo", "scope", "req-erase", "caller", body).unwrap();
+        let id = pushed["memoryId"].as_str().unwrap().to_string();
+
+        let backup = s.store.backup_cortex().unwrap();
+        assert_eq!(backup.agent_sources.len(), 1);
+        assert_eq!(backup.agent_sources[0].raw_body, body.as_bytes());
+        let mut tampered = backup.clone();
+        tampered.agent_sources[0].raw_body.extend_from_slice(b"!");
+        assert!(
+            s.store.restore_cortex(&tampered).is_err(),
+            "a tampered source byte must break the envelope seal"
+        );
+
+        s.store.restore_cortex(&backup).unwrap();
+        let raw: Vec<u8> = s.store.db().lock()
+            .query_row(
+                "SELECT raw_body FROM cortex_agent_memory_source_v1 WHERE request_id='req-erase'",
+                [], |row| row.get(0),
+            ).unwrap();
+        assert_eq!(raw, body.as_bytes());
+        let resolved = resolve_memory(&s.store, "scope", &id, &digest_bytes(body.as_bytes()), 0, 12000).unwrap();
+        assert_eq!(resolved["content"], body);
+
+        assert!(s.store.db().lock()
+            .execute("DELETE FROM cortex_agent_memory_source_v1 WHERE request_id='req-erase'", [])
+            .is_err(), "a raw delete must still hit the immutable trigger");
+        assert!(s.store.hard_erase(&id).unwrap());
+        let remaining: i64 = s.store.db().lock().query_row(
+            "SELECT COUNT(*) FROM cortex_agent_memory_source_v1 WHERE memory_id=?1",
+            rusqlite::params![id], |row| row.get(0),
+        ).unwrap();
+        assert_eq!(remaining, 0, "hard erase must clear the payload-bearing source rows");
+        assert_eq!(
+            resolve_memory(&s.store, "scope", &id, &digest_bytes(body.as_bytes()), 0, 12000)
+                .unwrap_err().code,
+            "memory_unavailable"
+        );
+        // The erase left no permit residue: the governed gate is closed again.
+        let permits: i64 = s.store.db().lock().query_row(
+            "SELECT COUNT(*) FROM cortex_erasure_permit_v1", [], |row| row.get(0),
+        ).unwrap();
+        assert_eq!(permits, 0, "no erasure permit may survive the governed transaction");
+    }
+
+    /// CTX-043 caller fields: keyword hints union into the derived projection
+    /// (normalized, deduplicated), scheduling lifecycle applies, and the
+    /// untrusted claims (authority/influence/supersedes) are stripped and
+    /// named — while `caller_input_json` retains what was actually submitted.
+    #[test]
+    fn agent_push_records_caller_input_and_strips_authority_claims() {
+        let s = Sandbox::new();
+        let input = AgentPushInputV1 {
+            keywords: vec!["Deploy".into(), " deploy ".into(), "runbook".into()],
+            lifecycle: Some(MemoryLifecycleInputV1 {
+                priority_class: Some("protected".into()),
+                authority: Some("A5".into()),
+                influence_class: Some("directive".into()),
+                supersedes: Some("scope/whatever".into()),
+                ..Default::default()
+            }),
+            caller_input_json: None,
+        };
+        let pushed = agent_memory_push_with_input(
+            &s.store, "repo", "scope", "req-kw", "caller",
+            "the on-call deploy runbook lives in the infra wiki", &input,
+        ).unwrap();
+        assert_eq!(pushed["status"], "stored");
+        assert_eq!(pushed["authority"], "A2");
+        let stripped = pushed.pointer("/provenance/callerFieldsStripped").unwrap().clone();
+        assert_eq!(stripped, json!(["authority", "influenceClass", "supersedes"]));
+
+        let db = s.store.db().lock();
+        let (keywords, authority, influence, priority, superseded_by): (String, String, String, String, Option<String>) =
+            db.query_row(
+                "SELECT keywords, authority, influence_class, priority_class, superseded_by
+                   FROM memories WHERE id=?1",
+                [pushed["memoryId"].as_str().unwrap()],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
+            ).unwrap();
+        let keyword_list: Vec<String> = serde_json::from_str(&keywords).unwrap();
+        assert!(keyword_list.contains(&"deploy".to_string()) && keyword_list.contains(&"runbook".to_string()));
+        assert_eq!(keyword_list.iter().filter(|k| *k == "deploy").count(), 1, "hints dedup after normalization");
+        assert_eq!(authority, "A2", "caller authority claims are never admitted");
+        assert_eq!(influence, "reference");
+        assert_eq!(priority, "protected", "scheduling hints are honored");
+        assert!(superseded_by.is_none(), "push never supersedes other records");
+        let recorded: String = db.query_row(
+            "SELECT caller_input_json FROM cortex_agent_memory_source_v1 WHERE request_id='req-kw'",
+            [], |row| row.get(0),
+        ).unwrap();
+        let recorded: Value = serde_json::from_str(&recorded).unwrap();
+        assert_eq!(recorded["lifecycle"]["authority"], "A5",
+            "the immutable record keeps the submitted claim even though admission stripped it");
+        drop(db);
     }
 
     #[test]

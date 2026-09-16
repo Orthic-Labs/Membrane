@@ -557,7 +557,7 @@ export function ADP_025(options) {
 }
 export function ADP_030(options) {
   return installedCase("ADP-030", options,
-    "Consume typed CodeRight execution observations for route/model/tool/write/verification/approval/retry/scope/subagent/artifact/completion/retrieval/Push facts.",
+    "Consume typed CodeRight execution observations for route/model/tool/write/verification/approval/retry/scope/subagent/artifact/completion/retrieval facts, distinguishing Pull delivery/reduction from public `push` durable-memory writes through Cortex; Adapt remains an internal observation consumer, never a direct Pull/context provider.",
     "Caller transport incomplete (dependencies MEM-040-MEM-041).",
     ["engine/crates/membrane-runtime/src/host_observation_ingress.rs", "engine/crates/membrane-runtime/src/adapt_observations.rs"]);
 }
@@ -582,8 +582,8 @@ export function ADP_034(options) {
 export function ADP_035(options) {
   return installedCase("ADP-035", options,
     "Execute learner semantics inside an admitted background job & write only bounded proposals through proposal sink.",
-    "Real first-party semantic inputs/effect qualification incomplete (dependencies MEM-052-MEM-053).",
-    ["engine/crates/membrane-runtime/src/background_review_input.rs", "engine/crates/membrane-runtime/src/adapt_service.rs"]);
+    "Learner, provider, executor arm, drain arm & daemon registration now exist in-tree; real first-party semantic inputs/effect qualification incomplete (dependencies MEM-052-MEM-053).",
+    ["engine/crates/membrane-adapt/src/learner.rs", "engine/crates/membrane-runtime/src/background_review_input.rs", "engine/crates/membrane-runtime/src/adapt_service.rs", "engine/crates/membrane-runtime/src/background_review.rs", "engine/crates/membrane-runtime/src/cortex_lifecycle.rs", "engine/crates/membrane-runtime/src/bin/membrane-daemon.rs"]);
 }
 export function ADP_036(options) {
   return installedCase("ADP-036", options,

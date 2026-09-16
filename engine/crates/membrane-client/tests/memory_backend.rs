@@ -8,11 +8,22 @@ use serde_json::{json, Map, Value};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+/// Canonical MEM-054 `serviceCapabilities` surface for a current engine:
+/// Ledger index schema, Blueprint provider/schema readiness, and the Adapt
+/// seam contract versions the default handshake requirement binds.
+fn service_capabilities() -> Value {
+    json!({
+        "ledgerIndex": {"identity":"store-1","projectionSchema":"ledger.projection.v5","ftsSchema":"ledger.fts5.v1"},
+        "blueprint": {"provider":"native-rust","providerVersion":"native-rust-1","graphSchema":1,"ready":true},
+        "adaptContractVersions":["adapt.proposal-service.v1","adapt.learner-proposal.v1","adapt.insights-detector-catalog.v1","adapt.transcript-event.v1"]
+    })
+}
+
 fn client() -> MemoryBackendClient {
     MemoryBackendClient::new(Box::new(|operation: &str, _request: &Map<String, Value>| {
         Ok(match operation {
             "/health" => {
-                json!({"serviceId":"membrane-hub","installationId":"install-1","cortexStoreId":"store-1","releaseGeneration":"r1","startupGeneration":7,"runtimeOrigin":"installed","stableInstallRoot":r"C:\Users\test\AppData\Local\Orthic Labs\Membrane\current","protocolVersion":1,"schemaVersion":1,"nativeOnly":true,"subsystems":["pull","push","cortex","blueprint","ledger","adapt"],"capabilities":["memory","diagnostics"]} )
+                json!({"serviceId":"membrane-hub","installationId":"install-1","cortexStoreId":"store-1","releaseGeneration":"r1","startupGeneration":7,"runtimeOrigin":"installed","stableInstallRoot":r"C:\Users\test\AppData\Local\Orthic Labs\Membrane\current","protocolVersion":1,"schemaVersion":1,"nativeOnly":true,"subsystems":["pull","push","cortex","blueprint","ledger","adapt"],"capabilities":["memory","diagnostics","pull","push"],"serviceCapabilities":service_capabilities()} )
             }
             "/metrics" | "/activity" => json!({}),
             "/list" => json!([{"id":"id","tier":"Working","chars":4,"access":2,"inject":3}]),
@@ -64,7 +75,8 @@ fn bind_verified_reuses_authoritative_health_without_second_handshake() {
         "stableInstallRoot":r"C:\Users\test\AppData\Local\Orthic Labs\Membrane\current",
         "protocolVersion":1, "schemaVersion":1, "nativeOnly":true,
         "subsystems":["pull","push","cortex","blueprint","ledger","adapt"],
-        "capabilities":["memory","diagnostics"]
+        "capabilities":["memory","diagnostics","pull","push"],
+        "serviceCapabilities": service_capabilities()
     });
     let calls = Arc::new(Mutex::new(Vec::<String>::new()));
     let seen = Arc::clone(&calls);
@@ -92,7 +104,8 @@ fn request_scoped_federation_uses_public_bound_transport() {
         "stableInstallRoot":r"C:\Users\test\AppData\Local\Orthic Labs\Membrane\current",
         "protocolVersion":1, "schemaVersion":1, "nativeOnly":true,
         "subsystems":["pull","push","cortex","blueprint","ledger","adapt"],
-        "capabilities":["memory","diagnostics"]
+        "capabilities":["memory","diagnostics","pull","push"],
+        "serviceCapabilities": service_capabilities()
     });
     let client = MemoryBackendClient::new(transport)
         .bind_verified(&health, &CompatibilityRequirement::default())
@@ -294,7 +307,8 @@ fn hub_recall_and_injection_requests_use_route_native_shapes() {
                     "schemaVersion":1,
                     "nativeOnly":true,
                     "subsystems":["pull","push","cortex","blueprint","ledger","adapt"],
-                    "capabilities":["memory","diagnostics"]
+                    "capabilities":["memory","diagnostics","pull","push"],
+                    "serviceCapabilities": service_capabilities()
                 }),
                 "/recall" => json!([]),
                 "/use" => json!({"ok":true}),
@@ -347,7 +361,8 @@ fn federation_protocol_outcomes_preserve_typed_code() {
         "stableInstallRoot":r"C:\Users\test\AppData\Local\Orthic Labs\Membrane\current",
         "protocolVersion":1, "schemaVersion":1, "nativeOnly":true,
         "subsystems":["pull","push","cortex","blueprint","ledger","adapt"],
-        "capabilities":["memory","diagnostics"]
+        "capabilities":["memory","diagnostics","pull","push"],
+        "serviceCapabilities": service_capabilities()
     });
     let client = MemoryBackendClient::new(Box::new(move |operation: &str, _request: &Map<String, Value>| {
         Ok(if operation == "/federate" {
@@ -363,4 +378,64 @@ fn federation_protocol_outcomes_preserve_typed_code() {
         .federate_json(Map::new())
         .unwrap_err();
     assert!(matches!(error, ClientError::Protocol { ref code, .. } if code == "h8_unavailable"));
+}
+
+/// MEM-054: the CodeRight-facing handshake binds the declared Ledger index,
+/// Blueprint provider/readiness, Adapt contracts and the public `push`
+/// capability. Missing or mismatched fields are typed incompatibilities —
+/// never an alternate runtime, store, or port probe.
+#[test]
+fn mem054_service_capabilities_are_bound_with_typed_incompatibility() {
+    let mut health = json!({
+        "serviceId":"membrane-hub", "installationId":"install-1", "cortexStoreId":"store-1",
+        "releaseGeneration":"r1", "startupGeneration":7, "runtimeOrigin":"installed",
+        "stableInstallRoot":r"C:\Users\test\AppData\Local\Orthic Labs\Membrane\current",
+        "protocolVersion":1, "schemaVersion":1, "nativeOnly":true,
+        "subsystems":["pull","push","cortex","blueprint","ledger","adapt"],
+        "capabilities":["memory","diagnostics","pull","push"],
+        "serviceCapabilities": service_capabilities()
+    });
+    // Positive path: complete declared surface binds.
+    assert!(bind_health(health.clone()).is_ok());
+
+    // Absent serviceCapabilities object fails the declared-surface checks.
+    let mut missing = health.clone();
+    missing.as_object_mut().unwrap().remove("serviceCapabilities");
+    assert!(matches!(
+        bind_health(missing),
+        Err(ClientError::Incompatible { .. })
+    ));
+
+    // Ledger index schema drift is incompatible, not a silent downgrade.
+    let mut ledger_drift = health.clone();
+    ledger_drift["serviceCapabilities"]["ledgerIndex"]["projectionSchema"] =
+        json!("ledger.projection.v4");
+    assert!(matches!(
+        bind_health(ledger_drift),
+        Err(ClientError::Incompatible { .. })
+    ));
+
+    // A foreign Blueprint provider is incompatible.
+    let mut blueprint_drift = health.clone();
+    blueprint_drift["serviceCapabilities"]["blueprint"]["provider"] = json!("typescript");
+    assert!(matches!(
+        bind_health(blueprint_drift),
+        Err(ClientError::Incompatible { .. })
+    ));
+
+    // A missing Adapt seam contract is incompatible.
+    let mut adapt_missing = health.clone();
+    adapt_missing["serviceCapabilities"]["adaptContractVersions"] =
+        json!(["adapt.proposal-service.v1"]);
+    assert!(matches!(
+        bind_health(adapt_missing),
+        Err(ClientError::Incompatible { .. })
+    ));
+
+    // An engine without the public `push` capability is incompatible.
+    health["capabilities"] = json!(["memory", "diagnostics", "pull"]);
+    assert!(matches!(
+        bind_health(health),
+        Err(ClientError::Incompatible { .. })
+    ));
 }

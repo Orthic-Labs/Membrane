@@ -23,7 +23,8 @@
 //! probability. Providers emit incompatible scales (e.g. overlay flat recency
 //! priors ~0.6 vs memory cosine ~0.3–0.5). Admission therefore does **not** treat
 //! a global sort of raw scores as cross-provider truth: reserved source-kind
-//! lanes (`RESERVED_LANES`) admit within-lane by score first; only the residual
+//! lanes (`LEGACY_RESERVED_LANES`, overridable via `PlannerInput::reserved_lanes`)
+//! admit within-lane by score first; only the residual
 //! budget competes in global score order. Recalibrating every provider onto one
 //! scale is explicitly deferred — lanes are the standing policy.
 //!
@@ -190,6 +191,14 @@ pub struct PlannerInput {
     /// when content exists rather than emitting an unusable handle.
     #[serde(default)]
     pub consumer_resolvers: Vec<String>,
+    /// Migration-only reserved source-kind lanes, as `(source_kind,
+    /// token_cap)` pairs. `None` keeps the legacy memory/skill reservation —
+    /// the isolated rollback control required by PUL-026. `Some(vec![])`
+    /// retires all reserved lanes from normal selection. Composition may pass
+    /// the retired value only after evidence-class coverage & allocation
+    /// qualification evidence lands.
+    #[serde(default)]
+    pub reserved_lanes: Option<Vec<(String, usize)>>,
 }
 
 fn default_accepted_versions() -> Vec<u32> {
@@ -742,7 +751,10 @@ pub fn plan(input: &PlannerInput) -> Result<PlannerOutput, PlannerError> {
     const BLUEPRINT_REPO_CODE_LANE_BLOCKS: usize = 1;
     const IDENTITY_LANE_KIND: &str = "git_meta";
     const IDENTITY_LANE_BLOCKS: usize = 2;
-    const RESERVED_LANES: &[(&str, usize)] = &[("memory", 800), ("skill", 300)];
+    /// Isolated migration-rollback control (PUL-026): the legacy memory/skill
+    /// reservation survives only as the `None` default for callers that have
+    /// not yet qualified the evidence-class policy.
+    const LEGACY_RESERVED_LANES: &[(&str, usize)] = &[("memory", 800), ("skill", 300)];
     const MAX_PACKET_BLOCKS: usize = 32;
     let mut admitted_tokens = 0usize;
     let mut admitted: Vec<&CandidateV1> = Vec::new();
@@ -794,9 +806,16 @@ pub fn plan(input: &PlannerInput) -> Result<PlannerOutput, PlannerError> {
             "within_identity_lane".into(),
         ));
     }
-    for (lane_kind, lane_budget) in RESERVED_LANES {
+    let reserved_lanes: Vec<(String, usize)> = match &input.reserved_lanes {
+        Some(lanes) => lanes.clone(),
+        None => LEGACY_RESERVED_LANES
+            .iter()
+            .map(|(kind, budget)| ((*kind).to_owned(), *budget))
+            .collect(),
+    };
+    for (lane_kind, lane_budget) in &reserved_lanes {
         let mut lane_tokens = 0usize;
-        for cand in deduped.iter().filter(|c| c.source_kind == *lane_kind) {
+        for cand in deduped.iter().filter(|c| c.source_kind == lane_kind.as_str()) {
             if admitted.len() >= MAX_PACKET_BLOCKS {
                 continue; // pass 2 emits the packet_block_limit receipt
             }
@@ -1345,6 +1364,7 @@ mod tests {
             trace_id_override: None,
             scope_grant_present: false,
             consumer_resolvers: Vec::new(),
+            reserved_lanes: None,
         }
     }
 

@@ -4,6 +4,9 @@
   "author": "Orthic Labs",
   "description": "Membrane is a local-first context service for repository evidence, durable knowledge, document navigation, learning, and reversible reduction.",
   "license": "SEE LICENSE IN LICENSE",
+  "hooks": "./hooks/codex-hooks.json",
+  "mcpServers": "./.mcp.json",
+  "skills": "./skills/",
   "interface": {
     "displayName": "Membrane",
     "category": "Developer Tools",

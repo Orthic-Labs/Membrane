@@ -23,14 +23,21 @@ test("candidate handoff accepts exact archive & rejects changed bytes", { skip: 
     const payload = join(root, "payload");
     mkdirSync(payload);
     const bytes = Buffer.from("unsigned-native-candidate\n");
+    // Fixture binaries are inert stubs: they prove archive/evidence closure
+    // only. The authenticated MCP transport probe is explicitly skipped for
+    // this fixture and the checker reports `transportProbe: "skipped"` — the
+    // probe remains mandatory for real candidate gates.
     for (const name of ["membrane-hub.exe", "cortex.exe", "membrane.exe", "membrane-tray.exe", "membrane-daemon.exe", "membrane-client.exe"]) writeFileSync(join(payload, name), bytes);
-    // Node is only a deterministic test double for native `hook --help`;
-    // production candidates must contain the compiled membrane-client.exe authority.
-    copyFileSync(process.execPath, join(payload, "membrane-client.exe"));
-    writeFileSync(join(payload, "hook"), "process.exit(0);\n");
     mkdirSync(join(payload, "runtime"));
     writeFileSync(join(payload, "runtime", "runtime.json"), bytes);
-    for (const name of ["plugin.json", "mcp.json", ".claude-plugin/plugin.json", ".codex-plugin/plugin.json", ".antigravity-plugin/plugin.json"]) {
+    for (const name of [
+      "plugin.json", "mcp.json", ".mcp.json", "mcp_config.json",
+      "hooks/hooks.json", "hooks/codex-hooks.json",
+      ".claude-plugin/plugin.json", ".claude-plugin/marketplace.json",
+      ".codex-plugin/plugin.json",
+      ".antigravity-plugin/plugin.json", ".antigravity-plugin/mcp_config.json",
+      ".agents/plugins/marketplace.json",
+    ]) {
       mkdirSync(dirname(join(payload, name)), { recursive: true });
       writeFileSync(join(payload, name), bytes);
     }
@@ -79,12 +86,30 @@ test("candidate handoff accepts exact archive & rejects changed bytes", { skip: 
       evidence,
       files: Object.fromEntries(filesUnder(payload).map((path) => [relative(payload, path).replaceAll("\\", "/"), createHash("sha256").update(readFileSync(path)).digest("hex")])),
     })}\n`);
-    const exact = spawnSync(process.execPath, [checker], { cwd: repo, env: { ...process.env, RIGHT_GIT_ARTIFACT_ROOT: root }, encoding: "utf8", windowsHide: true });
+    const env = { ...process.env, RIGHT_GIT_ARTIFACT_ROOT: root, MEMBRANE_CANDIDATE_TRANSPORT_PROBE: "0" };
+    const exact = spawnSync(process.execPath, [checker], { cwd: repo, env, encoding: "utf8", windowsHide: true });
     assert.equal(exact.status, 0, exact.stderr);
+    // The skip is explicit in the result payload — a fixture never silently
+    // claims transport proof.
+    assert.match(exact.stdout, /"transportProbe":\s*"skipped"/);
+    const intact = readFileSync(namedArchive);
     appendFileSync(namedArchive, "tamper");
-    const tampered = spawnSync(process.execPath, [checker], { cwd: repo, env: { ...process.env, RIGHT_GIT_ARTIFACT_ROOT: root }, encoding: "utf8", windowsHide: true });
+    const tampered = spawnSync(process.execPath, [checker], { cwd: repo, env, encoding: "utf8", windowsHide: true });
     assert.notEqual(tampered.status, 0);
     assert.match(`${tampered.stderr}${tampered.stdout}`, /size mismatch|digest mismatch/);
+    // Without the explicit skip the probe must run — and fail — because the
+    // staged binaries are inert fixture bytes, not a working engine. The
+    // archive is restored first so the failure is the probe, not the digest.
+    writeFileSync(namedArchive, intact);
+    const probed = spawnSync(process.execPath, [checker], {
+      cwd: repo,
+      env: { ...process.env, RIGHT_GIT_ARTIFACT_ROOT: root, MEMBRANE_CANDIDATE_TRANSPORT_PROBE: "1" },
+      encoding: "utf8",
+      windowsHide: true,
+      timeout: 150_000,
+    });
+    assert.notEqual(probed.status, 0, "fixture binaries must fail the transport probe");
+    assert.match(`${probed.stderr}${probed.stdout}`, /candidate engine|transport|MCP|mcp/i);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

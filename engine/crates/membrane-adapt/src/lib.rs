@@ -33,6 +33,7 @@ pub mod duplicate_groups;
 pub mod evidence;
 pub mod gates;
 pub mod insights;
+pub mod learner;
 pub mod lineage;
 pub mod manifest;
 pub mod model_boundary;

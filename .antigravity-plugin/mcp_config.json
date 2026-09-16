@@ -1,7 +1,7 @@
 {
   "mcpServers": {
     "membrane": {
-      "command": "membrane-client",
+      "command": "${extensionPath}${/}membrane-client.exe",
       "args": [
         "stdio-mcp"
       ]

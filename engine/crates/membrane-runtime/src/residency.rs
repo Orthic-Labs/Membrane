@@ -141,8 +141,24 @@ impl ResidentController {
         &mut self,
         identity: ResidentControllerIdentityV1,
         now_unix_ms: u64,
+        request: ResidentHolderRequestV1,
+        services_ready: bool,
+    ) -> Result<ResidentHolderResponseV1, ResidencyError> {
+        self.dispatch_authoritative_reporting(identity, now_unix_ms, request, services_ready, None)
+    }
+
+    /// As [`Self::dispatch_authoritative`], but the caller supplies the typed
+    /// reason resident services are withheld so a store, catalog, or
+    /// lifecycle fault is not misreported as a watcher fault. `None` falls
+    /// back to a conservative mapping: `Draining` once the controller is
+    /// inactive, `BlueprintWatcherUnavailable` while it stays active.
+    pub fn dispatch_authoritative_reporting(
+        &mut self,
+        identity: ResidentControllerIdentityV1,
+        now_unix_ms: u64,
         mut request: ResidentHolderRequestV1,
         services_ready: bool,
+        services_unavailable: Option<ResidentServicesUnavailableV1>,
     ) -> Result<ResidentHolderResponseV1, ResidencyError> {
         if request.controller != identity {
             return Err(ResidencyError::ControllerMismatch);
@@ -156,8 +172,13 @@ impl ResidentController {
         request.observed_at_unix_ms = now_unix_ms;
         let mut response = self.dispatch_installed(&identity.stable_current, request)?;
         response.status.services_ready = response.status.controller_active && services_ready;
-        response.status.services_unavailable_reason = (!response.status.services_ready)
-            .then_some(ResidentServicesUnavailableV1::BlueprintWatcherUnavailable);
+        response.status.services_unavailable_reason = (!response.status.services_ready).then(|| {
+            services_unavailable.unwrap_or(if response.status.controller_active {
+                ResidentServicesUnavailableV1::BlueprintWatcherUnavailable
+            } else {
+                ResidentServicesUnavailableV1::Draining
+            })
+        });
         Ok(response)
     }
 
@@ -259,5 +280,125 @@ fn protocol_identity(value: &ControllerIdentity, stable_current: String) -> Resi
         release_generation: value.release_generation.clone(),
         startup_generation: value.startup_generation,
         stable_current,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn identity() -> ResidentControllerIdentityV1 {
+        ResidentControllerIdentityV1 {
+            installation_id: "install-1".into(),
+            cortex_store_id: "cortex-1".into(),
+            release_generation: "gen-1".into(),
+            startup_generation: 1,
+            stable_current: "D:/Membrane/current".into(),
+        }
+    }
+
+    fn status_request(controller: ResidentControllerIdentityV1) -> ResidentHolderRequestV1 {
+        ResidentHolderRequestV1 {
+            schema_version: RESIDENT_HOLDER_SCHEMA_VERSION,
+            operation: ResidentHolderOperationV1::Status,
+            controller,
+            holder: None,
+            expires_at_unix_ms: None,
+            observed_at_unix_ms: 0,
+            loss_cursor: None,
+        }
+    }
+
+    fn acquire_request(controller: ResidentControllerIdentityV1) -> ResidentHolderRequestV1 {
+        ResidentHolderRequestV1 {
+            schema_version: RESIDENT_HOLDER_SCHEMA_VERSION,
+            operation: ResidentHolderOperationV1::Acquire,
+            controller,
+            holder: Some(ResidentHolderCredentialV1 {
+                holder_kind: "hub".into(),
+                holder_id: "hub-1".into(),
+                credential_id: "cred-1".into(),
+            }),
+            expires_at_unix_ms: Some(1_000),
+            observed_at_unix_ms: 0,
+            loss_cursor: None,
+        }
+    }
+
+    #[test]
+    fn authoritative_status_reports_the_callers_typed_unavailable_reason() {
+        let mut controller = ResidentController::new();
+        let identity = identity();
+        controller
+            .dispatch_authoritative_reporting(
+                identity.clone(),
+                100,
+                acquire_request(identity.clone()),
+                true,
+                None,
+            )
+            .expect("acquire succeeds");
+        let response = controller
+            .dispatch_authoritative_reporting(
+                identity.clone(),
+                200,
+                status_request(identity),
+                false,
+                Some(ResidentServicesUnavailableV1::CatalogUnavailable),
+            )
+            .expect("status succeeds");
+        assert!(!response.status.services_ready);
+        assert_eq!(
+            response.status.services_unavailable_reason,
+            Some(ResidentServicesUnavailableV1::CatalogUnavailable),
+            "a catalog fault must not be misreported as a watcher fault"
+        );
+    }
+
+    #[test]
+    fn authoritative_status_on_inactive_controller_defaults_to_draining_not_watcher() {
+        let mut controller = ResidentController::new();
+        let identity = identity();
+        let response = controller
+            .dispatch_authoritative_reporting(
+                identity.clone(),
+                100,
+                status_request(identity.clone()),
+                false,
+                None,
+            )
+            .expect("status succeeds");
+        assert!(!response.status.controller_active);
+        assert_eq!(
+            response.status.services_unavailable_reason,
+            Some(ResidentServicesUnavailableV1::Draining),
+            "an inactive controller is draining, not watcher-failed"
+        );
+    }
+
+    #[test]
+    fn authoritative_status_reports_no_reason_when_services_ready() {
+        let mut controller = ResidentController::new();
+        let identity = identity();
+        controller
+            .dispatch_authoritative_reporting(
+                identity.clone(),
+                100,
+                acquire_request(identity.clone()),
+                true,
+                None,
+            )
+            .expect("acquire succeeds");
+        let response = controller
+            .dispatch_authoritative_reporting(
+                identity.clone(),
+                200,
+                status_request(identity),
+                true,
+                None,
+            )
+            .expect("status succeeds");
+        assert!(response.status.services_ready);
+        assert_eq!(response.status.services_unavailable_reason, None);
     }
 }
