@@ -258,6 +258,7 @@ struct ResidentBlueprint {
     state: Arc<Mutex<ResidentBlueprintState>>,
     lifecycle: LifecycleControl,
     supervisor: Option<std::thread::JoinHandle<()>>,
+    ledger_supervisor: Option<std::thread::JoinHandle<()>>,
 }
 
 static RESIDENT_BLUEPRINT: OnceLock<Mutex<Option<ResidentBlueprint>>> = OnceLock::new();
@@ -307,7 +308,6 @@ pub fn start_resident_blueprint() -> Result<(), String> {
         .name("membrane-blueprint-resident-watcher".into())
         .spawn(move || {
             eprintln!("{}", serde_json::json!({"event":"resident_blueprint_initialization", "stage":"started", "enrolledRepoCount": enrolled_repo_count}));
-            let mut ledger_maintenance_at = Instant::now();
             while !supervisor_lifecycle.shutdown_requested() {
                 if supervisor_lifecycle.background_authority_open() {
                     set_supervisor_stage(&supervisor_stage, "supervise");
@@ -316,11 +316,6 @@ pub fn start_resident_blueprint() -> Result<(), String> {
                     }
                     set_supervisor_stage(&supervisor_stage, "reconcile");
                     reconcile_resident_repositories(&supervised, &supervisor_stage);
-                    if Instant::now() >= ledger_maintenance_at {
-                        set_supervisor_stage(&supervisor_stage, "ledger_maintain");
-                        reconcile_resident_ledger(&supervised);
-                        ledger_maintenance_at = Instant::now() + LEDGER_MAINTENANCE_INTERVAL;
-                    }
                 } else {
                     // Holder loss drains automatic repository work while the
                     // engine/listener remains available for explicit calls.
@@ -337,10 +332,43 @@ pub fn start_resident_blueprint() -> Result<(), String> {
             drain_resident_repositories(&state);
             format!("resident Blueprint supervisor unavailable: {error}")
         })?;
+    // Ledger maintenance runs on its own thread under the same background
+    // authority gate. Sharing the watcher supervisor starved barrier
+    // observation for whole maintenance windows — freshness reads reported
+    // `stale` while a large root synced. Its WorkBudget rides the lifecycle
+    // cancellation token so drain aborts a mid-sync pass instead of waiting
+    // out the per-root bound.
+    let ledger_supervised = Arc::clone(&state);
+    let ledger_lifecycle = lifecycle.clone();
+    let ledger_supervisor = std::thread::Builder::new()
+        .name("membrane-ledger-maintenance".into())
+        .spawn(move || {
+            let mut next_at = Instant::now();
+            while !ledger_lifecycle.shutdown_requested() {
+                if ledger_lifecycle.background_authority_open() && Instant::now() >= next_at {
+                    reconcile_resident_ledger(&ledger_supervised, &ledger_lifecycle);
+                    next_at = Instant::now() + LEDGER_MAINTENANCE_INTERVAL;
+                }
+                std::thread::sleep(Duration::from_millis(250));
+            }
+        });
+    let ledger_supervisor = match ledger_supervisor {
+        Ok(thread) => thread,
+        Err(error) => {
+            // Roll back the already-spawned watcher rather than detach a
+            // writable worker the singleton does not own.
+            if let Ok(state) = state.lock() { state.cancellation.cancel(); }
+            lifecycle.request_drain(Some("ledger_supervisor_spawn_failed"));
+            let _ = supervisor.join();
+            drain_resident_repositories(&state);
+            return Err(format!("resident Ledger maintenance unavailable: {error}"));
+        }
+    };
     *current = Some(ResidentBlueprint {
         state,
         lifecycle,
         supervisor: Some(supervisor),
+        ledger_supervisor: Some(ledger_supervisor),
     });
     Ok(())
 }
@@ -556,7 +584,7 @@ const LEDGER_MAINTENANCE_INTERVAL: Duration = Duration::from_secs(300);
 /// same `sync_locked` index/update mechanism the explicit "sync" operation
 /// uses. Runs only when the supervisor holds background authority, bounded
 /// per root, and reports typed failure rather than stopping the loop.
-fn reconcile_resident_ledger(state: &Arc<Mutex<ResidentBlueprintState>>) {
+fn reconcile_resident_ledger(state: &Arc<Mutex<ResidentBlueprintState>>, lifecycle: &LifecycleControl) {
     let Ok(registry) = crate::authorization::load_installation_registry() else { return };
     let Ok(owner) = crate::ledger::service::active_owner() else { return };
     for binding in registry.bindings() {
@@ -574,8 +602,12 @@ fn reconcile_resident_ledger(state: &Arc<Mutex<ResidentBlueprintState>>) {
         let started = Instant::now();
         // Cold publication walks and indexes every enrolled Markdown source in
         // one transaction; large roots need minutes, not seconds. Bounded at
-        // ten minutes — background maintenance, never retrieval.
-        let budget = crate::ledger::limits::WorkBudget::bounded(Duration::from_secs(600));
+        // ten minutes — background maintenance, never retrieval. The lifecycle
+        // cancellation token lets engine drain abort a mid-sync pass.
+        let budget = crate::ledger::limits::WorkBudget::new(
+            Instant::now() + Duration::from_secs(600),
+            lifecycle.cancellation_token(),
+        );
         match owner.maintain(&caller, &budget) {
             Ok(report) => eprintln!("{}", serde_json::json!({"event":"resident_ledger_maintenance", "stage":"completed", "root":binding.root, "elapsedMs":started.elapsed().as_millis(), "generation":report.index_generation, "registered":report.registered, "manifestOversized":report.manifests_oversized})),
             Err(error) => eprintln!("{}", serde_json::json!({"event":"resident_ledger_maintenance", "stage":"failed", "root":binding.root, "elapsedMs":started.elapsed().as_millis(), "error":error})),
@@ -649,6 +681,23 @@ impl ResidentBlueprint {
         }
         if let Some(supervisor) = self.supervisor.take() {
             supervisor.join().map_err(|_| "resident Blueprint supervisor panicked while draining".to_string())?;
+        }
+        if let Some(ledger) = self.ledger_supervisor.as_ref() {
+            if !wait_for_thread_exit(ledger, timeout) {
+                eprintln!(
+                    "{}",
+                    serde_json::json!({
+                        "event": "resident_ledger_maintenance_stop_timeout",
+                        "timeoutMs": timeout.as_millis() as u64,
+                    })
+                );
+                return Err(
+                    "resident Ledger maintenance drain timeout; singleton retained".to_owned()
+                );
+            }
+        }
+        if let Some(ledger) = self.ledger_supervisor.take() {
+            ledger.join().map_err(|_| "resident Ledger maintenance panicked while draining".to_string())?;
         }
         drain_resident_repositories(&self.state);
         Ok(())
