@@ -3032,11 +3032,27 @@ fn toml_table_value(document: &str, table: &str, key: &str) -> Option<String> {
 /// normalization; a git/URL source or foreign path is a conflict.
 fn plugin_source_matches(source: &str, install_root: &Path) -> bool {
     let root = install_root.to_string_lossy();
-    paths_equal(source, &root)
+    if paths_equal(source, &root)
         || paths_equal(
             source.trim_end_matches(['/', '\\']),
             root.trim_end_matches(['/', '\\']),
         )
+    {
+        return true;
+    }
+    // Hosts may canonicalize the stable `current` pointer at registration;
+    // Codex records the resolved `versions/<v>` target rather than the
+    // junction. Accept the resolved form when it names this install's payload.
+    match (
+        Path::new(source).canonicalize(),
+        install_root.canonicalize(),
+    ) {
+        (Ok(resolved_source), Ok(resolved_root)) => paths_equal(
+            &resolved_source.to_string_lossy(),
+            &resolved_root.to_string_lossy(),
+        ),
+        _ => false,
+    }
 }
 
 fn codex_plugin_state(install_root: &Path, payload_version: Option<&str>) -> PluginProjection {
@@ -4421,6 +4437,38 @@ mod tests {
     }
 
     #[test]
+    #[test]
+    fn plugin_source_match_accepts_canonicalized_stable_pointer() {
+        let product_root = tempfile::tempdir().unwrap();
+        let version_root = product_root.path().join("versions").join("v1");
+        std::fs::create_dir_all(&version_root).unwrap();
+        let current = product_root.path().join("current");
+        #[cfg(windows)]
+        let linked = std::os::windows::fs::symlink_dir(&version_root, &current);
+        #[cfg(unix)]
+        let linked = std::os::unix::fs::symlink(&version_root, &current);
+        if linked.is_err() {
+            return;
+        }
+        let resolved = version_root.canonicalize().unwrap();
+        assert!(plugin_source_matches(
+            &resolved.to_string_lossy(),
+            &current
+        ));
+        assert!(plugin_source_matches(
+            &current.to_string_lossy(),
+            &current
+        ));
+        assert!(!plugin_source_matches(
+            &product_root
+                .path()
+                .join("versions")
+                .join("v2")
+                .to_string_lossy(),
+            &current
+        ));
+    }
+
     fn codex_json_config_is_parsed_and_matched() {
         let body = r#"{"transport":{"type":"streamable_http","url":"http://127.0.0.1:47851/mcp"}}"#;
         assert_eq!(
