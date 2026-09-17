@@ -488,8 +488,23 @@ function Assert-BlueprintResident([string]$Root, [string]$WorkspaceRoot) {
   $graphGeneration = [string]$statusPayload.generationId
   if (-not $graphGeneration -and $statusPayload.result) { $graphGeneration = [string]$statusPayload.result.generationId }
   Require ($graphGeneration -match '^xxh128:[0-9a-f]{32}$') "native Blueprint status returned invalid graph generation: $graphGeneration"
+  # Freshness is honest now: a persisted generation published before the
+  # current source revision reports `stale` until the resident build catches
+  # up to HEAD. Poll for the fresh verdict inside the qualification budget
+  # instead of demanding it on the first observation.
   $freshnessState = if ($statusPayload.state) { [string]$statusPayload.state } elseif ($statusPayload.result) { [string]$statusPayload.result.state } else { '' }
+  $freshnessDeadline = (Get-Date).AddSeconds($TimeoutSeconds)
+  while ($freshnessState -ne 'fresh' -and (Get-Date) -lt $freshnessDeadline) {
+    Start-Sleep -Seconds 2
+    try {
+      $statusPayload = (Invoke-BlueprintOneShot $Root $WorkspaceRoot).Payload
+      $graphGeneration = [string]$statusPayload.generationId
+      if (-not $graphGeneration -and $statusPayload.result) { $graphGeneration = [string]$statusPayload.result.generationId }
+      $freshnessState = if ($statusPayload.state) { [string]$statusPayload.state } elseif ($statusPayload.result) { [string]$statusPayload.result.state } else { '' }
+    } catch { }
+  }
   Require ($freshnessState -eq 'fresh') "native Blueprint watcher freshness is not current: $freshnessState"
+  Require ($graphGeneration -match '^xxh128:[0-9a-f]{32}$') "native Blueprint status returned invalid graph generation after republish: $graphGeneration"
   $watchMarker = "watcher_marker_$([guid]::NewGuid().ToString('N'))"
   $watchFile = Join-Path $WorkspaceRoot 'watcher-qualification.mjs'
   Write-NativeText $watchFile "export function $watchMarker() { return '$watchMarker'; }`n"
@@ -539,7 +554,9 @@ function Invoke-BlueprintOneShot([string]$Root, [string]$WorkspaceRoot) {
   # The qualification workspace is enrolled before this point, so a typed
   # missing status is a failed retrieval — never a pass. Untyped failures are
   # rejected the same way; both are surfaced with their code for evidence.
-  if ($state -notin @('fresh', 'degraded', 'running')) {
+  # `stale` is a typed honest-freshness verdict: the persisted generation
+  # predates the current source revision while the resident build republishes.
+  if ($state -notin @('fresh', 'degraded', 'running', 'stale')) {
     if ($typedMissing -contains $state -or $typedMissing -contains $errorCode) {
       throw "bounded Blueprint one-shot reported typed-missing for an enrolled workspace (failed retrieval): state=$state code=$errorCode"
     }
@@ -548,7 +565,7 @@ function Invoke-BlueprintOneShot([string]$Root, [string]$WorkspaceRoot) {
   $outputHash = [Security.Cryptography.SHA256]::Create()
   try { $outputSha256 = ([BitConverter]::ToString($outputHash.ComputeHash([Text.Encoding]::UTF8.GetBytes($stdout))) -replace '-', '').ToLowerInvariant() }
   finally { $outputHash.Dispose() }
-  return [ordered]@{ status = 'pass'; executable = $membrane; arguments = $arguments; exitCode = 0; Payload = $payload; state = if ($state) { $state } else { $errorCode }; availability = if ($state -in @('fresh', 'degraded', 'running')) { 'available' } else { 'not_configured' }; outputSha256 = $outputSha256 }
+  return [ordered]@{ status = 'pass'; executable = $membrane; arguments = $arguments; exitCode = 0; Payload = $payload; state = if ($state) { $state } else { $errorCode }; availability = if ($state -in @('fresh', 'degraded', 'running', 'stale')) { 'available' } else { 'not_configured' }; outputSha256 = $outputSha256 }
 }
 
 function Get-ProcessTree([int]$ProcessId) {
