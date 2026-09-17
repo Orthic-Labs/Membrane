@@ -2,7 +2,7 @@
 use membrane_protocol::explicit::{ExplicitOperation, ExplicitOwnerBindingV1, ExplicitOwnerMode,
     ExplicitRequestV1, ExplicitResponseV1, EXPLICIT_MAX_BYTES};
 use serde_json::{json, Value};
-use std::io::{Read, Write};
+use std::io::Write;
 
 fn owner_binding(store: &crate::MemoryStore) -> Result<ExplicitOwnerBindingV1, String> {
     let runtime = crate::service::runtime_from_installed_exe(
@@ -50,8 +50,10 @@ fn dispatch_bound(store: &crate::MemoryStore, binding: &ExplicitOwnerBindingV1,
 }
 
 pub(crate) fn run() -> Result<(), String> {
-    let mut bytes = Vec::new();
-    std::io::stdin().take(EXPLICIT_MAX_BYTES as u64 + 1).read_to_end(&mut bytes).map_err(|e| e.to_string())?;
+    // `/cli` dispatch supplies the forwarded body through the captured-stdin
+    // slot; a direct binary invocation reads the real stream. One reader for
+    // both transports keeps the byte cap identical.
+    let mut bytes = crate::cli::read_request_stdin().map_err(|e| e.to_string())?;
     if bytes.len() > EXPLICIT_MAX_BYTES { return Err("explicit request exceeds byte limit".into()); }
     let request: ExplicitRequestV1 = serde_json::from_slice(&bytes).map_err(|e| e.to_string())?;
     if request.schema_version != 1 { return Err("explicit request version unsupported".into()); }
