@@ -508,7 +508,10 @@ function Assert-BlueprintResident([string]$Root, [string]$WorkspaceRoot) {
   $watchMarker = "watcher_marker_$([guid]::NewGuid().ToString('N'))"
   $watchFile = Join-Path $WorkspaceRoot 'watcher-qualification.mjs'
   Write-NativeText $watchFile "export function $watchMarker() { return '$watchMarker'; }`n"
-  $watchDeadline = (Get-Date).AddSeconds($TimeoutSeconds)
+  # The event-driven rebuild is debounced, then regenerates the enrolled
+  # repo — on a large workspace that republish can run to the engine's own
+  # MAX_BUILD_DEADLINE_MS, so the wait shares that bound.
+  $watchDeadline = (Get-Date).AddSeconds([Math]::Max($TimeoutSeconds, 300))
   $watchPayload = $null
   do {
     Start-Sleep -Milliseconds 500
