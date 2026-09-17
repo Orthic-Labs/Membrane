@@ -226,7 +226,7 @@ impl LedgerService {
             // than leaking stale text.
             let mut result = query::search(db, &query::QueryScope { root: caller.root.clone(), ranges },
                 task, k, literal, budget)?;
-            if !index_published(db, &caller.root) {
+            if !Self::index_published(db, &caller.root) {
                 result.omissions.push("ledger_index_unpublished".into());
                 result.complete = false;
             }

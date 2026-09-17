@@ -530,7 +530,7 @@ pub fn changed_paths_for_freshness_bounded(
         return crate::freshness_receipt::ChangedPaths::unavailable("comparison_unavailable");
     }
     let started = Instant::now();
-    let mut remaining = || {
+    let remaining = || {
         let left = budget.saturating_sub(started.elapsed());
         if left.is_zero() { None } else { Some(left.min(GIT_TIMEOUT)) }
     };
