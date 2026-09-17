@@ -5,7 +5,18 @@ use membrane_protocol::{CandidateV1, FederationProviderStatusV1, FreshnessClass,
     WarningSeverity, PROVIDER_OUTPUT_SCHEMA_VERSION};
 use membrane_provider_sdk::{Provider, ProviderContext, ProviderError, ProviderOutput};
 use serde_json::json;
-use std::{collections::BTreeMap, future::Future, path::Path, pin::Pin, sync::Arc};
+use std::{collections::BTreeMap, future::Future, path::Path, pin::Pin, sync::Arc, time::Duration};
+
+/// Minimum remaining request budget worth spending on a ledger lane. Every
+/// lane call first reconciles its document index against the worktree
+/// (`sync_locked` → `walk_markdown`): a policy-filtered tree walk plus content
+/// hashing that takes seconds on a real repository. Under a latency-bound
+/// deadline — the SessionStart hook's resident probe carries 600ms — the
+/// reconcile cannot finish, so attempting it spends the entire request window
+/// inside a blocking task the deadline cannot preempt and still produces
+/// nothing. A typed gap preserves sibling lanes' evidence instead; mirrors
+/// the one-shot Blueprint status floor in `freshness.rs`.
+const LEDGER_LANE_MIN_REMAINING_MS: u64 = 5_000;
 
 pub(crate) struct LedgerProvider { owner: Option<Arc<LedgerService>> }
 impl LedgerProvider {
@@ -22,6 +33,9 @@ impl Provider for LedgerProvider {
         Box::pin(async move {
             if context.is_cancelled() { return Ok(gap(ReasonCode::ProviderCancelled,"ledger_cancelled")); }
             if context.is_deadline_exhausted() { return Ok(gap(ReasonCode::DeadlineExhausted,"ledger_deadline_exhausted")); }
+            if context.remaining() < Duration::from_millis(LEDGER_LANE_MIN_REMAINING_MS) {
+                return Ok(gap(ReasonCode::ProviderUnavailable,"ledger_sync_budget_insufficient"));
+            }
             let Some(owner) = self.owner.clone() else { return Ok(gap(ReasonCode::ProviderUnavailable,"ledger_owner_unavailable")); };
             let context = context.clone();
             let cancellation = context.cancellation.child_token();
@@ -140,6 +154,9 @@ impl Provider for LedgerSkillProvider {
         Box::pin(async move {
             if context.is_cancelled() { return Ok(gap(ReasonCode::ProviderCancelled,"ledger_cancelled")); }
             if context.is_deadline_exhausted() { return Ok(gap(ReasonCode::DeadlineExhausted,"ledger_deadline_exceeded")); }
+            if context.remaining() < Duration::from_millis(LEDGER_LANE_MIN_REMAINING_MS) {
+                return Ok(gap(ReasonCode::ProviderUnavailable,"ledger_sync_budget_insufficient"));
+            }
             let Some(owner) = self.owner.clone() else { return Ok(gap(ReasonCode::ProviderUnavailable,"ledger_owner_unavailable")); };
             let context = context.clone();
             let cancellation = context.cancellation.child_token();
@@ -305,6 +322,38 @@ mod tests {
         assert!(candidate.resolver.contains("membrane_source_read"));
         assert!(candidate.resolver.contains("ticket-s"));
         assert!(!candidate.resolver.contains("cortex"));
+    }
+
+    fn budget_context(deadline: std::time::Instant) -> ProviderContext {
+        ProviderContext::new(
+            "request", ".", "repo", "task", "session", "client", vec![], None, None,
+            membrane_protocol::FreshnessSnapshotV1 {
+                graph_state: "ready".into(), generation: None, snapshot_id: None,
+                base_commit: None, overlay_digest: None, stale: false,
+            },
+            deadline, tokio_util::sync::CancellationToken::new(), "trace",
+            membrane_provider_sdk::SourceSet::default(),
+        )
+    }
+
+    #[test]
+    fn ledger_lanes_gap_below_sync_budget_floor_without_owner() {
+        let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        runtime.block_on(async {
+            let tight = budget_context(
+                std::time::Instant::now() + Duration::from_millis(LEDGER_LANE_MIN_REMAINING_MS - 1),
+            );
+            let output = LedgerSkillProvider::new(None).provide(&tight).await.unwrap();
+            assert_eq!(output.omissions[0].detail_id.as_deref(), Some("ledger_sync_budget_insufficient"));
+            let output = LedgerProvider::new(None).provide(&tight).await.unwrap();
+            assert_eq!(output.omissions[0].detail_id.as_deref(), Some("ledger_sync_budget_insufficient"));
+            // A comfortable budget falls through to the owner check, not the floor.
+            let ample = budget_context(
+                std::time::Instant::now() + Duration::from_millis(LEDGER_LANE_MIN_REMAINING_MS + 5_000),
+            );
+            let output = LedgerSkillProvider::new(None).provide(&ample).await.unwrap();
+            assert_eq!(output.omissions[0].detail_id.as_deref(), Some("ledger_owner_unavailable"));
+        });
     }
 }
 fn safe_reason(reason:&str)->String {

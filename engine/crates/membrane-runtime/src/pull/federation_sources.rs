@@ -20,6 +20,7 @@ use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 use tokio_util::sync::CancellationToken;
 
 type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
@@ -459,6 +460,21 @@ impl FreshnessSource for RuntimeFreshnessSource {
                 let _permit = permit;
                 check_owner_deadline(deadline)?;
                 if persisted_freshness {
+                    // `persisted_blueprint_freshness` runs a Blueprint `status`
+                    // op whose freshness receipt observes the live worktree —
+                    // seconds on a real repository, inside a blocking task the
+                    // request deadline cannot preempt. Below the shared
+                    // one-shot floor the attempt cannot complete; degrade
+                    // instead of spending the caller's entire budget on a
+                    // doomed fingerprint.
+                    if deadline.is_some_and(|deadline| {
+                        deadline.remaining_at(Instant::now())
+                            < Duration::from_millis(crate::freshness::ONE_SHOT_STATUS_MIN_BUDGET_MS)
+                    }) {
+                        return Err(membrane_provider_sdk::ProviderError::Unavailable(
+                            "freshness_budget_insufficient".into(),
+                        ));
+                    }
                     return persisted_blueprint_freshness(&blueprint, &query)
                         .map_err(membrane_provider_sdk::ProviderError::Unavailable);
                 }

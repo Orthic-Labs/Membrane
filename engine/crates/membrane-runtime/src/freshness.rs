@@ -854,7 +854,7 @@ pub(crate) fn read_blueprint_status(repo_root: &Path) -> Result<serde_json::Valu
 
 /// Minimum remaining budget worth spending on a Hub-less Blueprint status.
 /// Below this, the status cannot complete and is not attempted.
-const ONE_SHOT_STATUS_MIN_BUDGET_MS: u64 = 5_000;
+pub(crate) const ONE_SHOT_STATUS_MIN_BUDGET_MS: u64 = 5_000;
 
 fn read_blueprint_status_until(repo_root: &Path, deadline: Option<membrane_federation::deadline::Deadline>) -> Result<serde_json::Value, String> {
     use membrane_blueprint::{BlueprintRequest, CancellationToken, Operation};
