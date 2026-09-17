@@ -150,10 +150,13 @@ pub(crate) struct IndexDocumentInput<'a> {
     pub parser_version: &'a str,
 }
 
+/// Returns whether the bounded manifest record was stored for this
+/// publication — `Ok(false)` means the document's nodes exceeded the manifest
+/// byte budget, so the index is published without manifest history.
 pub(crate) fn replace_document_index_tx(
     tx: &Transaction<'_>,
     input: &IndexDocumentInput<'_>,
-) -> rusqlite::Result<()> {
+) -> rusqlite::Result<bool> {
     tx.execute(
         "DELETE FROM ledger_index_publications WHERE doc_id=?1",
         [input.doc_id],
@@ -408,8 +411,7 @@ pub(crate) fn replace_document_index_tx(
         input.generation,
         root,
     )?;
-    super::diagnostics::record_manifest_tx(tx, input.doc_id)?;
-    Ok(())
+    super::diagnostics::record_manifest_tx(tx, input.doc_id)
 }
 
 pub(crate) fn advance_unchanged_generation_tx(

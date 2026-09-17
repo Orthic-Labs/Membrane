@@ -574,7 +574,7 @@ fn reconcile_resident_ledger(state: &Arc<Mutex<ResidentBlueprintState>>) {
         let started = Instant::now();
         let budget = crate::ledger::limits::WorkBudget::bounded(Duration::from_secs(120));
         match owner.maintain(&caller, &budget) {
-            Ok(report) => eprintln!("{}", serde_json::json!({"event":"resident_ledger_maintenance", "stage":"completed", "root":binding.root, "elapsedMs":started.elapsed().as_millis(), "generation":report.index_generation})),
+            Ok(report) => eprintln!("{}", serde_json::json!({"event":"resident_ledger_maintenance", "stage":"completed", "root":binding.root, "elapsedMs":started.elapsed().as_millis(), "generation":report.index_generation, "registered":report.registered, "manifestOversized":report.manifests_oversized})),
             Err(error) => eprintln!("{}", serde_json::json!({"event":"resident_ledger_maintenance", "stage":"failed", "root":binding.root, "elapsedMs":started.elapsed().as_millis(), "error":error})),
         }
     }

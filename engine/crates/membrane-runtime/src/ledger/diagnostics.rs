@@ -32,7 +32,12 @@ fn manifest_id(root:&str,doc:&str,hash:&str,projection:&str,nodes:&str)->String 
 }
 
 /// Called inside the exact transaction that publishes this document's nodes.
-pub(crate) fn record_manifest_tx(tx:&Transaction<'_>,doc_id:&str)->rusqlite::Result<()> {
+/// Returns `Ok(false)` when the document's projected nodes exceed the manifest
+/// byte budget: manifest retention is bounded rebuildable history, not the
+/// index itself, so the document keeps its publication and stays searchable
+/// while manifest readers degrade to typed `ledger_baseline_unavailable`.
+/// Only genuine storage/serialization failures propagate as errors.
+pub(crate) fn record_manifest_tx(tx:&Transaction<'_>,doc_id:&str)->rusqlite::Result<bool> {
     tx.execute_batch(SCHEMA)?;
     let (root,revision,hash,generation):(String,String,String,i64)=tx.query_row(
         "SELECT repository_root,revision,content_hash,index_generation FROM ledger_doc_artifacts WHERE doc_id=?1",
@@ -47,7 +52,8 @@ pub(crate) fn record_manifest_tx(tx:&Transaction<'_>,doc_id:&str)->rusqlite::Res
     };
     let nodes=serde_json::to_string(&nodes).map_err(|e|rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
     if nodes.len()>MAX_MANIFEST_BYTES {
-        return Err(rusqlite::Error::ToSqlConversionFailure(Box::new(std::io::Error::other("ledger_manifest_budget_exhausted"))));
+        eprintln!("{}", serde_json::json!({"event":"ledger_manifest_oversized","docId":doc_id,"manifestBytes":nodes.len(),"budgetBytes":MAX_MANIFEST_BYTES}));
+        return Ok(false);
     }
     let id=manifest_id(&root,doc_id,&hash,index::PROJECTION_SCHEMA_VERSION,&nodes);
     tx.execute("INSERT OR IGNORE INTO ledger_document_manifests VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)",
@@ -55,7 +61,7 @@ pub(crate) fn record_manifest_tx(tx:&Transaction<'_>,doc_id:&str)->rusqlite::Res
     tx.execute("DELETE FROM ledger_document_manifests WHERE manifest_id IN (
         SELECT manifest_id FROM ledger_document_manifests WHERE repository_root=?1 AND doc_id=?2
         ORDER BY created_at_ms DESC,manifest_id LIMIT -1 OFFSET ?3)",params![root,doc_id,RETAINED_MANIFESTS])?;
-    Ok(())
+    Ok(true)
 }
 
 fn authorize_document(db:&LedgerDb,root:&str,doc:&str,budget:&WorkBudget)->Result<resolve::Source,String> {

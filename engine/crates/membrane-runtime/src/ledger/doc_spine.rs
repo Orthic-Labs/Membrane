@@ -382,6 +382,10 @@ pub struct DocSyncReport {
     pub skipped: usize,
     pub deleted: usize,
     pub invalidated: usize,
+    /// Documents published without manifest history because their projected
+    /// nodes exceeded the manifest byte budget. Typed skip, not a sync
+    /// failure: readers degrade to `ledger_baseline_unavailable` per document.
+    pub manifests_oversized: usize,
     pub policy_digest: String,
     pub complete: bool,
 }
@@ -927,6 +931,7 @@ pub fn sync_bounded(db: &LedgerDb, root: &Path, budget: &super::limits::WorkBudg
     let mut parsed = 0;
     let mut skipped = 0;
     let mut invalidated = 0;
+    let mut manifests_oversized = 0;
     let mut projection_inputs = Vec::new();
     let mut supersessions = Vec::new();
     for file in files {
@@ -1002,7 +1007,9 @@ pub fn sync_bounded(db: &LedgerDb, root: &Path, budget: &super::limits::WorkBudg
                 .map_err(|e| e.to_string())?;
                 advance_unchanged_generation_tx(&tx, id, &revision, generation)
                     .map_err(|e| e.to_string())?;
-                super::diagnostics::record_manifest_tx(&tx, id).map_err(|e|e.to_string())?;
+                if !super::diagnostics::record_manifest_tx(&tx, id).map_err(|e|e.to_string())? {
+                    manifests_oversized += 1;
+                }
                 registered += 1;
                 skipped += 1;
                 continue;
@@ -1033,7 +1040,7 @@ pub fn sync_bounded(db: &LedgerDb, root: &Path, budget: &super::limits::WorkBudg
           VALUES (?1,?2,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,NULL,'catalogued',?12,?13,?14,?15,?16)
           ON CONFLICT(repository_root,path) DO UPDATE SET revision=excluded.revision, content_hash=excluded.content_hash, parser_version=excluded.parser_version, document_class=excluded.document_class, lifecycle_state=excluded.lifecycle_state, title=excluded.title, summary=excluded.summary, keywords_json=excluded.keywords_json, superseded_by=NULL, trust_label=excluded.trust_label, influence_class=excluded.influence_class, sensitivity=excluded.sensitivity, generated=excluded.generated, index_generation=excluded.index_generation, updated_at_ms=excluded.updated_at_ms",
           rusqlite::params![id, root_s, revision, relative, hash, DOC_PARSER_VERSION, class, lifecycle, title, frontmatter.summary.clone().unwrap_or_default(), keywords_json, influence, sensitivity, generated as i64, generation, now]).map_err(|e| e.to_string())?;
-        replace_document_index_tx(
+        if !replace_document_index_tx(
             &tx,
             &IndexDocumentInput {
                 doc_id: &id,
@@ -1046,7 +1053,9 @@ pub fn sync_bounded(db: &LedgerDb, root: &Path, budget: &super::limits::WorkBudg
                 parser_version: DOC_PARSER_VERSION,
             },
         )
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| e.to_string())? {
+            manifests_oversized += 1;
+        }
         if let Some(target) = &frontmatter.supersedes {
             supersessions.push((id.clone(), relative.clone(), target.clone()));
         }
@@ -1111,6 +1120,7 @@ pub fn sync_bounded(db: &LedgerDb, root: &Path, budget: &super::limits::WorkBudg
         skipped,
         deleted: tombstoned,
         invalidated,
+        manifests_oversized,
         policy_digest: policy.digest(),
         complete: true,
     })
