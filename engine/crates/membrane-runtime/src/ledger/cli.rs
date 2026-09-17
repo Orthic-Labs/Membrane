@@ -25,7 +25,7 @@ pub(crate) enum LedgerCmd {
         #[arg(long)] continuation_cursor: Option<String>,
         #[arg(long,default_value_t=12000)] max_bytes: usize,
     },
-    Sync { #[arg(long)] repo: PathBuf },
+    Sync { #[arg(long)] repo: PathBuf, #[arg(long)] deadline_ms: Option<u64> },
     Ingest {
         #[arg(long)] repo: PathBuf,
         #[arg(long)] path: String,
@@ -43,16 +43,19 @@ pub(crate) enum LedgerCmd {
         #[arg(long)] repo: PathBuf,
         query: String,
         #[arg(short,default_value_t=6)] k: usize,
+        #[arg(long)] deadline_ms: Option<u64>,
     },
     Literal {
         #[arg(long)] repo: PathBuf,
         query: String,
         #[arg(short,default_value_t=6)] k: usize,
+        #[arg(long)] deadline_ms: Option<u64>,
     },
     Status { #[arg(long)] repo: PathBuf },
     Activate {
         #[arg(long)] repo: PathBuf,
         #[arg(value_parser=["legacy_scan","shadow","ledger_fts"])] mode: String,
+        #[arg(long)] deadline_ms: Option<u64>,
     },
     Erase {
         #[arg(long)] repo: PathBuf,
@@ -92,6 +95,9 @@ fn arguments(repo:&Path, operation:&str)->Result<Value,String> {
 fn optional(value:&mut Value, key:&str, field:&Option<String>) {
     if let Some(field)=field {value[key]=json!(field);}
 }
+fn optional_u64(value:&mut Value, key:&str, field:&Option<u64>) {
+    if let Some(field)=field {value[key]=json!(field);}
+}
 
 pub(crate) fn run(command:&LedgerCmd)->Result<(),String> {
     // Discover the active installation before any index/source work. This
@@ -120,7 +126,11 @@ pub(crate) fn run(command:&LedgerCmd)->Result<(),String> {
             if let Some(generation)=ledger_generation {args["ledgerGeneration"]=json!(generation);}
             ("membrane_source_read",args)
         },
-        LedgerCmd::Sync{repo} => ("membrane_ledger",arguments(repo,"sync")?),
+        LedgerCmd::Sync{repo,deadline_ms} => {
+            let mut args=arguments(repo,"sync")?;
+            optional_u64(&mut args,"deadlineMs",deadline_ms);
+            ("membrane_ledger",args)
+        },
         LedgerCmd::Ingest{repo,path,source_ref,format,raw_input,title,source_revision,max_raw_bytes,scope_grant_id,task_id,session_id} => {
             let mut args=arguments(repo,"ingest")?;
             args["path"]=json!(path); args["sourceRef"]=json!(source_ref);
@@ -133,12 +143,16 @@ pub(crate) fn run(command:&LedgerCmd)->Result<(),String> {
             ("membrane_ledger",args)
         },
         LedgerCmd::Status{repo} => ("membrane_ledger",arguments(repo,"status")?),
-        LedgerCmd::Recall{repo,query,k}|LedgerCmd::Literal{repo,query,k} => {
+        LedgerCmd::Recall{repo,query,k,deadline_ms}|LedgerCmd::Literal{repo,query,k,deadline_ms} => {
             let mut args=arguments(repo,if matches!(command,LedgerCmd::Literal{..}){"literal"}else{"recall"})?;
-            args["query"]=json!(query);args["k"]=json!(k);("membrane_ledger",args)
+            args["query"]=json!(query);args["k"]=json!(k);
+            optional_u64(&mut args,"deadlineMs",deadline_ms);
+            ("membrane_ledger",args)
         },
-        LedgerCmd::Activate{repo,mode} => {
-            let mut args=arguments(repo,"activate")?;args["mode"]=json!(mode);("membrane_ledger",args)
+        LedgerCmd::Activate{repo,mode,deadline_ms} => {
+            let mut args=arguments(repo,"activate")?;args["mode"]=json!(mode);
+            optional_u64(&mut args,"deadlineMs",deadline_ms);
+            ("membrane_ledger",args)
         },
         LedgerCmd::Erase{repo,doc_id,expected_hash} => {
             let mut args=arguments(repo,"erase")?;args["docId"]=json!(doc_id);
