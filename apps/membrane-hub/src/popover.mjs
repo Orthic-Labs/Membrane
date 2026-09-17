@@ -1,6 +1,6 @@
 export const STATUS_ORDER = ['unavailable', 'degraded', 'available'];
 export const SECTION_ORDER = ['deliveries', 'providers', 'repositories', 'adapters', 'devices', 'memory', 'sentinel', 'alerts'];
-export const SUBSYSTEM_ORDER = ['pull', 'push', 'cortex', 'blueprint', 'ledger', 'adapt'];
+export const SUBSYSTEM_ORDER = ['pull', 'cortex', 'blueprint', 'ledger', 'adapt'];
 const TYPED_REASON_STATES = Object.freeze({
   not_instrumented: 'not_configured',
   not_configured: 'not_configured',

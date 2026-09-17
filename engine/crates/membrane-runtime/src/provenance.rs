@@ -19,7 +19,7 @@ use serde::{Deserialize, Serialize};
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Output};
+use std::process::Output;
 
 /// Schema version of the working-tree snapshot. Bump on any change to
 /// `WorkingTreeSnapshotV1` field set or shape.
@@ -108,7 +108,7 @@ pub enum ProvenanceError {
 /// never block the runtime, and routes stderr through so the caller can
 /// surface it.
 fn default_git_command(workspace: &Path, args: &[&str]) -> Result<String, String> {
-    let output: Output = Command::new("git")
+    let output: Output = crate::hidden_command("git")
         .args(args)
         .current_dir(workspace)
         .env("GIT_TERMINAL_PROMPT", "0")

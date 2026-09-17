@@ -214,7 +214,7 @@ fn subsystem_inputs_from_health(
     let cortex = cortex_hub_read(memory, sentinel);
     HubSubsystemInputsV1 {
         pull: not_instrumented.clone(),
-        push: not_instrumented.clone(),
+
         cortex,
         blueprint: blueprint_hub,
         ledger: not_instrumented.clone(),
@@ -1385,7 +1385,7 @@ mod tests {
         keys.sort_unstable();
         assert_eq!(
             keys,
-            ["adapt", "blueprint", "cortex", "ledger", "pull", "push"]
+            ["adapt", "blueprint", "cortex", "ledger", "pull"]
         );
         for name in membrane_protocol::SUBSYSTEM_NAMES {
             assert!(
@@ -1410,7 +1410,7 @@ mod tests {
             r#"{"ok": true, "catalog": {"status": "ok"}, "database": {"status": "ok"}, "dailyAnalysis": {"status": "ok"}}"#,
         ).unwrap();
         let parts = snapshot_parts_from_health(&health, None, Err("no socket".into()));
-        for name in ["pull", "push", "ledger", "adapt"] {
+        for name in ["pull", "ledger", "adapt"] {
             let section = subsystem_section(&parts.subsystems, name);
             assert_eq!(
                 section.state,
@@ -1464,7 +1464,6 @@ mod tests {
     ) -> &'a membrane_protocol::HubSubsystemV1 {
         match name {
             "pull" => &subsystems.pull,
-            "push" => &subsystems.push,
             "cortex" => &subsystems.cortex,
             "blueprint" => &subsystems.blueprint,
             "ledger" => &subsystems.ledger,

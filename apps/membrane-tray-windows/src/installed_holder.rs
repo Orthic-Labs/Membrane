@@ -65,6 +65,7 @@ fn run_worker(stop: Arc<AtomicBool>, wake: Receiver<()>, endpoint: String, token
         let released = snapshot::dispatch_resident_holder(&endpoint, &token, &request(ResidentHolderOperationV1::Release, controller.clone(), holder, 0)).is_ok();
         crate::supervisor::lifecycle_event(if released { "tray_hub_holder_released" } else { "tray_hub_holder_release_failed" }, serde_json::json!({"startupGeneration": controller.startup_generation}));
     }
+    crate::supervisor::lifecycle_event("tray_hub_holder_worker_exit", serde_json::json!({"stopped": stop.load(Ordering::Acquire)}));
 }
 
 impl Drop for InstalledHubLease {

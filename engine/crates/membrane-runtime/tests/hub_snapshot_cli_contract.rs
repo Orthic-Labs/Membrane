@@ -8,7 +8,7 @@
 //! sidecar consumes:
 //!
 //! - `membraneState` present and typed (Running/Degraded/Offline);
-//! - exactly Pull/Push/Cortex/Blueprint/Ledger/Adapt subsystems;
+//! - exactly Pull/Cortex/Blueprint/Ledger/Adapt subsystems;
 //! - Blueprint status obtained through the existing IPC seam (a live stub
 //!   daemon yields Available; an absent endpoint stays locally Unavailable
 //!   without touching the parent);
@@ -178,7 +178,7 @@ fn subsystems_of(
     snapshot
         .subsystems
         .as_ref()
-        .expect("canonical snapshots always carry the six subsystems")
+        .expect("canonical snapshots always carry the five subsystems")
 }
 
 fn subsystem<'a>(
@@ -187,7 +187,6 @@ fn subsystem<'a>(
 ) -> &'a membrane_protocol::HubSubsystemV1 {
     match name {
         "pull" => &subsystems.pull,
-        "push" => &subsystems.push,
         "cortex" => &subsystems.cortex,
         "blueprint" => &subsystems.blueprint,
         "ledger" => &subsystems.ledger,
@@ -206,7 +205,8 @@ fn assert_canonical_shape(snapshot: &membrane_protocol::HubSnapshotV1, expected_
         "serialized membraneState must match the frozen producer mapping"
     );
 
-    // Exactly the six semantic subsystems, by name.
+    // Exactly the five active subsystems, by name. Retired Push is not a
+    // peer; public `push` writes durable memory through Cortex.
     let subsystems = encoded["subsystems"]
         .as_object()
         .expect("typed subsystems object");
@@ -214,8 +214,8 @@ fn assert_canonical_shape(snapshot: &membrane_protocol::HubSnapshotV1, expected_
     names.sort_unstable();
     assert_eq!(
         names,
-        ["adapt", "blueprint", "cortex", "ledger", "pull", "push"],
-        "exactly Pull/Push/Cortex/Blueprint/Ledger/Adapt must be present"
+        ["adapt", "blueprint", "cortex", "ledger", "pull"],
+        "exactly Pull/Cortex/Blueprint/Ledger/Adapt must be present"
     );
 
     // The eight operational resources stay separate from subsystems.
@@ -251,7 +251,7 @@ fn cli_composition_healthy_resident_is_running_with_absent_blueprint_ipc() {
 
     // Not-configured is a first-class typed state, not degraded/unavailable.
     let subsystems = subsystems_of(&snapshot);
-    for name in ["pull", "push", "ledger", "adapt"] {
+    for name in ["pull", "ledger", "adapt"] {
         let section = subsystem(subsystems, name);
         assert_eq!(
             section.state,
@@ -374,7 +374,6 @@ fn js_chain_fixtures_match_producer_serialization() {
         let subsystems = snapshot.subsystems.as_mut().unwrap();
         for field in [
             &mut subsystems.pull,
-            &mut subsystems.push,
             &mut subsystems.cortex,
             &mut subsystems.blueprint,
             &mut subsystems.ledger,
@@ -412,8 +411,8 @@ fn js_chain_fixtures_match_producer_serialization() {
         assert_eq!(parsed["observedAtUnixMs"], 42);
         assert_eq!(
             parsed["subsystems"].as_object().unwrap().len(),
-            6,
-            "fixtures must carry all six subsystems"
+            5,
+            "fixtures must carry all five subsystems"
         );
     }
     if write_requested {

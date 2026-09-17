@@ -384,7 +384,7 @@ mod tests {
             protocol_version: 1,
             schema_version: 1,
             native_only: true,
-            subsystems: ["pull", "push", "cortex", "blueprint", "ledger", "adapt"]
+            subsystems: ["pull", "cortex", "blueprint", "ledger", "adapt"]
                 .into_iter()
                 .map(str::to_owned)
                 .collect(),

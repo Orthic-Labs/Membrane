@@ -17,7 +17,7 @@ use membrane_protocol::host_observation::{
 use serde_json::{json, Value};
 use std::io::{Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 use std::sync::Arc;
 use tokio_util::sync::CancellationToken;
 
@@ -93,11 +93,11 @@ fn tamper_retained_payload(
 fn psh001() -> Result<Value, String> {
     let fixture = tempfile::tempdir().map_err(|e| e.to_string())?;
     let mut command = if cfg!(windows) {
-        let mut c = Command::new("cmd");
+        let mut c = crate::hidden_command("cmd");
         c.args(["/C", "echo stdout & echo stderr 1>&2 & exit /B 7"]);
         c
     } else {
-        let mut c = Command::new("sh");
+        let mut c = crate::hidden_command("sh");
         c.args(["-c", "printf 'stdout\\n'; printf 'stderr\\n' >&2; exit 7"]);
         c
     };
@@ -120,11 +120,11 @@ fn psh001() -> Result<Value, String> {
     )?;
 
     let mut large = if cfg!(windows) {
-        let mut c = Command::new("cmd");
+        let mut c = crate::hidden_command("cmd");
         c.args(["/C", "for /L %i in (1,1,400) do @echo push-line-%i"]);
         c
     } else {
-        let mut c = Command::new("sh");
+        let mut c = crate::hidden_command("sh");
         c.args([
             "-c",
             "i=0; while [ $i -lt 400 ]; do echo push-line-$i; i=$((i+1)); done",

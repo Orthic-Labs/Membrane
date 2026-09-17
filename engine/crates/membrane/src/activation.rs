@@ -513,6 +513,19 @@ fn activate_internal(options: ActivationOptions, start_resident: bool, reconcile
                 workspace_root.display()
             )
         })?;
+        // Installation identity & API credential are the installed engine's
+        // canonical state. Activation may run before the engine's first start
+        // on a fresh install, so prepare both through the same owner paths the
+        // resident uses rather than assuming a prior run created them.
+        let identity_path = membrane_runtime::installation_identity::InstallationPaths::defaults_for_workspace(&workspace_root).identity;
+        if let Some(parent) = identity_path.parent() {
+            std::fs::create_dir_all(parent).map_err(|error| {
+                format!("create installed identity directory {}: {error}", parent.display())
+            })?;
+        }
+        membrane_runtime::installation_identity::load_or_create_installation(&identity_path, &[])
+            .map_err(|error| format!("prepare installed identity {}: {error}", identity_path.display()))?;
+        membrane_runtime::serve::prepare_installed_credential_for_exe(&membrane)?;
     }
     // Inspection must be entirely non-mutating, including lock acquisition.
     let _lock = (!options.dry_run)

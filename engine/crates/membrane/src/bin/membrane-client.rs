@@ -1025,6 +1025,36 @@ fn parse_endpoint(value: &str) -> Option<(String, u16)> {
 }
 
 fn bearer_token() -> Option<String> {
+    // Installed origin: the canonical state credential is the sole authority.
+    // The engine rejects environment token substitution outright; a client that
+    // honored a stale MEMBRANE_BEARER_TOKEN inherited across a reinstall would
+    // sign with a credential the engine no longer holds.
+    if let Ok(executable) = std::env::current_exe() {
+        let exe_dir = executable.parent();
+        let product = exe_dir.and_then(|dir| {
+            if dir.file_name().is_some_and(|name| name == "current") {
+                // <product>/current/<exe>
+                dir.parent()
+            } else if dir
+                .parent()
+                .and_then(std::path::Path::file_name)
+                .is_some_and(|name| name == "versions")
+            {
+                // <product>/versions/<version>/<exe>
+                dir.parent().and_then(std::path::Path::parent)
+            } else {
+                None
+            }
+        });
+        if let Some(product) = product {
+            return std::fs::read_to_string(
+                product.join("state/tools/.cache/memory/api-token"),
+            )
+            .ok()
+            .map(|value| value.trim().to_owned())
+            .filter(|value| !value.is_empty());
+        }
+    }
     for name in ["MEMBRANE_BEARER_TOKEN", "MEMBRANE_API_TOKEN"] {
         if let Ok(value) = std::env::var(name) {
             if !value.trim().is_empty() {

@@ -508,7 +508,7 @@ fn apply_file_delta_defers_journal_ack_when_requested() {
         journal_seq: Some(1),
         ..Default::default()
     };
-    let options = ApplyOptions { defer_journal_ack: true };
+    let options = ApplyOptions { defer_journal_ack: true, ..ApplyOptions::default() };
     apply_file_delta(&mut db, &delta, options).unwrap();
 
     let applied: i64 = db.query_row("SELECT applied FROM event_journal WHERE seq=1", [], |row| row.get(0)).unwrap();

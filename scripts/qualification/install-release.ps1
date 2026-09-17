@@ -65,6 +65,7 @@ $script:SafePath = ((@("$env:WINDIR\System32", "$env:WINDIR", $script:GitBin) | 
 if ($env:GITHUB_ACTIONS -eq 'true' -and [string]::IsNullOrWhiteSpace($env:MEMBRANE_TRAY_RENDERER)) { $env:MEMBRANE_TRAY_RENDERER = 'software' }
 $script:QualificationWorkspace = $null
 $script:AdaptEvidence = $null
+$script:DrainEvidence = @()
 $script:State = $null
 $script:InitialInstallRoot = $null
 $script:InitialEvidence = $null
@@ -81,6 +82,23 @@ $script:ActiveHubPort = $null
 
 function Require([bool]$Condition, [string]$Message) {
   if (-not $Condition) { throw $Message }
+}
+
+# Start-Process -WindowStyle Hidden still allocates a visible console host for
+# console-subsystem binaries (cmd.exe, taskkill.exe) when the caller owns no
+# console. CreateNoWindow suppresses the allocation entirely — qualification
+# launches nothing visible.
+function Start-HiddenProcess([string]$Executable, [string[]]$Arguments, [string]$WorkingDirectory = '') {
+  $start = [Diagnostics.ProcessStartInfo]::new()
+  $start.FileName = $Executable
+  $start.Arguments = ($Arguments | ForEach-Object { $_ }) -join ' '
+  if (-not [string]::IsNullOrWhiteSpace($WorkingDirectory)) { $start.WorkingDirectory = $WorkingDirectory }
+  $start.UseShellExecute = $false
+  $start.CreateNoWindow = $true
+  $process = [Diagnostics.Process]::new()
+  $process.StartInfo = $start
+  Require ($process.Start()) "could not start process: $Executable"
+  return $process
 }
 
 function Resolve-File([string]$Path, [string]$Label) {
@@ -251,11 +269,13 @@ function Invoke-Activation([string]$Root) {
     $commandLine = '""' + $membrane + '" activate --install-root "' + $Root +
       '" --bindings-only --timeout-ms ' + [string]$activationTimeoutMs + ' 1>"' + $stdoutPath +
       '" 2>"' + $stderrPath + '"'
-    $process = Start-Process -FilePath $commandProcessor -ArgumentList @('/d', '/s', '/c', $commandLine) `
-      -WorkingDirectory $Root -PassThru -WindowStyle Hidden
+    $process = Start-HiddenProcess $commandProcessor @('/d', '/s', '/c', $commandLine) $Root
     if (-not $process.WaitForExit($activationTimeoutMs)) {
       $timedOut = $true
-      try { & (Join-Path $env:WINDIR 'System32\taskkill.exe') /PID $process.Id /T /F 2>$null | Out-Null } catch { }
+      try {
+        $killer = Start-HiddenProcess (Join-Path $env:WINDIR 'System32\taskkill.exe') @('/PID', [string]$process.Id, '/T', '/F')
+        [void]$killer.WaitForExit()
+      } catch { }
       if (-not $process.WaitForExit($processExitBoundMs)) {
         $failure = "membrane activate timed out after $activationTimeoutMs ms and did not exit within $processExitBoundMs ms"
       } else {
@@ -326,8 +346,9 @@ function Invoke-ActivationDryRun([string]$Root) {
   # qualification with that output in the message.
   $membrane = Join-Path $Root 'membrane.exe'
   Require (Test-Path -LiteralPath $membrane -PathType Leaf) "installed membrane.exe is missing at $membrane"
-  $output = & $membrane activate --install-root $Root --dry-run 2>&1 | Out-String
-  $exit = $LASTEXITCODE
+  $dryRun = Invoke-NativeProcessAllowFailure $membrane ('activate --install-root "{0}" --dry-run' -f $Root) '' $Root
+  $output = if ([string]::IsNullOrEmpty($dryRun.Stderr)) { [string]$dryRun.Stdout } else { "$($dryRun.Stdout)`r`n$($dryRun.Stderr)" }
+  $exit = $dryRun.ExitCode
   $evidenceRoot = $env:RIGHT_GIT_QUALIFICATION_EVIDENCE_ROOT
   if (-not $evidenceRoot) { $evidenceRoot = $EvidencePath }
   try {
@@ -515,8 +536,14 @@ function Invoke-BlueprintOneShot([string]$Root, [string]$WorkspaceRoot) {
   if (-not $state -and $payload.result) { $state = [string]$payload.result.state }
   $errorCode = [string]$payload.error.code
   if (-not $errorCode -and $payload.result) { $errorCode = [string]$payload.result.error.code }
+  # The qualification workspace is enrolled before this point, so a typed
+  # missing status is a failed retrieval — never a pass. Untyped failures are
+  # rejected the same way; both are surfaced with their code for evidence.
   if ($state -notin @('fresh', 'degraded', 'running')) {
-    Require ($typedMissing -contains $state -or $typedMissing -contains $errorCode) "bounded Blueprint one-shot returned untyped status: state=$state code=$errorCode"
+    if ($typedMissing -contains $state -or $typedMissing -contains $errorCode) {
+      throw "bounded Blueprint one-shot reported typed-missing for an enrolled workspace (failed retrieval): state=$state code=$errorCode"
+    }
+    throw "bounded Blueprint one-shot returned untyped status: state=$state code=$errorCode"
   }
   $outputHash = [Security.Cryptography.SHA256]::Create()
   try { $outputSha256 = ([BitConverter]::ToString($outputHash.ComputeHash([Text.Encoding]::UTF8.GetBytes($stdout))) -replace '-', '').ToLowerInvariant() }
@@ -1018,10 +1045,15 @@ function Invoke-InstalledAdaptQualification([string]$MembraneExecutable, [string
   $acceptedPath = Join-Path $adaptRoot 'accepted.json'
   $decisionsPath = Join-Path $adaptRoot 'decisions.json'
   $contractPath = Join-Path $adaptRoot 'review-contract.json'
-  $transcriptText = @'
-{"type":"adapt_event_v1","host":"pi","event":{"sessionId":"native-qualification-session","kind":"user_message","role":"user","timestamp":"2026-08-26T00:00:00Z","text":"never use npm install in this repo"}}
-{"type":"adapt_event_v1","host":"pi","event":{"sessionId":"native-qualification-session","kind":"assistant_message","role":"assistant","timestamp":"2026-08-26T00:00:01Z","text":"Understood."}}
-'@
+  # The installed Cortex DB persists across qualification runs, and Adapt
+  # refuses a re-submitted candidate as rule-duplicate. Bind each run's
+  # candidate to a unique session/text nonce so repeat lanes stay honest.
+  $adaptNonce = [DateTime]::UtcNow.ToString('yyyyMMddHHmmss')
+  $adaptSession = "native-qualification-session-$adaptNonce"
+  $transcriptText = @"
+{"type":"adapt_event_v1","host":"pi","event":{"sessionId":"$adaptSession","kind":"user_message","role":"user","timestamp":"2026-08-26T00:00:00Z","text":"never use npm install in this repo (run $adaptNonce)"}}
+{"type":"adapt_event_v1","host":"pi","event":{"sessionId":"$adaptSession","kind":"assistant_message","role":"assistant","timestamp":"2026-08-26T00:00:01Z","text":"Understood."}}
+"@
   Write-NativeText $transcript $transcriptText.TrimStart("`n")
 
   $nativeEnv = @{ CORTEX_DB = $Database; MEMBRANE_WORKSPACE_ROOT = $script:QualificationWorkspace }
@@ -1040,11 +1072,21 @@ function Invoke-InstalledAdaptQualification([string]$MembraneExecutable, [string
   Require ($reviewValue.api_version -eq 'adapt.cli.v1') 'native Adapt review API contract is invalid'
   Write-NativeText $reviewPath ($reviewValue | ConvertTo-Json -Depth 40)
 
-  # Local review owns its batch identity. Live canonical-pool identity is
-  # computed by installed Membrane from its DB and emitted in pending output.
-  $reviewInstallationId = 'installed-local-qualification'
+  # The daemon requires review-taste to carry this installation's real
+  # identity; a fabricated id is refused as an Adapt identity mismatch. This
+  # stage runs after the graceful hub drain, so read the persisted identity
+  # file (<state>\tools\.cache\memory\installation.json) rather than probing
+  # health. Live canonical-pool identity is computed by installed Membrane
+  # from its DB and emitted in pending output.
+  $stateRoot = Join-Path (Split-Path -Parent $InstallRoot) 'state'
+  $installationIdentity = Read-JsonFile (Join-Path $stateRoot 'tools\.cache\memory\installation.json') 'installed installation identity'
+  $reviewInstallationId = [string]$installationIdentity.installation_id
+  Require (-not [string]::IsNullOrWhiteSpace($reviewInstallationId)) 'installed installation identity omitted installation_id for Adapt review binding'
 
-  $reviewTasteArgs = "adapt --db " + (Quote-NativeArgument $Database) + " review-taste --input " + (Quote-NativeArgument $minedPath) +
+  # Installed Adapt canonical operations resolve storage from the installed
+  # state root; --db is rejected on installed origin. CORTEX_DB binds the same
+  # path for the sidecar's ambient reads.
+  $reviewTasteArgs = "adapt review-taste --input " + (Quote-NativeArgument $minedPath) +
     " --installation-id " + (Quote-NativeArgument $reviewInstallationId) +
     ' --created-at "2026-08-26T00:00:02Z"'
   $pending = Invoke-NativeProcess $MembraneExecutable $reviewTasteArgs '' $adaptRoot $nativeEnv
@@ -1099,16 +1141,21 @@ function Invoke-InstalledAdaptQualification([string]$MembraneExecutable, [string
   Require (@($acceptedValue.records).Count -eq 1) 'native Adapt adjudicate-taste did not produce one accepted record'
   Write-NativeText $acceptedPath ($acceptedValue | ConvertTo-Json -Depth 40)
 
-  $applyArgs = "adapt --db " + (Quote-NativeArgument $Database) + ' apply --manifest ' + (Quote-NativeArgument $acceptedPath)
+  $applyArgs = 'adapt apply --manifest ' + (Quote-NativeArgument $acceptedPath)
   $applied = Invoke-NativeProcess $MembraneExecutable $applyArgs '' $adaptRoot $nativeEnv
   $appliedValue = Read-NativeOutput $applied.Stdout 'native Adapt apply'
   Require ($appliedValue.response.valid -eq $true -and @($appliedValue.response.accepted_record_ids).Count -eq 1) 'native Adapt apply did not admit one record'
   Require ($appliedValue.cortex_receipt.complete -eq $true) 'native Adapt apply omitted complete Cortex receipt'
 
-  $recallArgs = "adapt --db " + (Quote-NativeArgument $Database) + ' recall npm --scope workspace'
+  # The installed Cortex DB persists across qualification runs, so earlier
+  # lanes may have admitted records that also match this query. Acceptance is
+  # that THIS run's admitted record id is retrievable at workspace scope.
+  $appliedRecordId = [string]$appliedValue.response.accepted_record_ids[0]
+  $recallArgs = 'adapt recall npm --scope workspace'
   $recalled = Invoke-NativeProcess $MembraneExecutable $recallArgs '' $adaptRoot $nativeEnv
   $recalledValue = Read-NativeOutput $recalled.Stdout 'native Adapt recall'
-  Require (@($recalledValue.records).Count -eq 1) 'native Adapt recall did not return admitted record'
+  $recalledMatch = @($recalledValue.records | Where-Object { [string]$_.record_id -eq $appliedRecordId })
+  Require ($recalledMatch.Count -eq 1) 'native Adapt recall did not return this run admitted record'
   return [ordered]@{
     contract = [ordered]@{ path = $contractPath; sha256 = Hash-File $contractPath; schema = [string]$reviewContract.schema; installationId = $installationId; canonicalPoolSha256 = $canonicalPoolSha256; pendingManifestSha256 = $pendingManifestSha256 }
     selectedTranscript = [ordered]@{ path = $transcript; sha256 = Hash-File $transcript; root = $adaptRoot; source = 'caller-selected'; checkout = $false }
@@ -1117,7 +1164,7 @@ function Invoke-InstalledAdaptQualification([string]$MembraneExecutable, [string
     reviewTaste = [ordered]@{ contract = [string]$mineValue.taste_review.contract; records = @($pendingValue.records).Count; candidateSetSha256 = [string]$mineValue.taste_review.candidate_set_sha256 }
     adjudicate = [ordered]@{ records = @($acceptedValue.records).Count; validatedAt = '2026-08-26T00:00:03Z'; decisionsSha256 = Hash-File $decisionsPath; decisionsPath = $decisionsPath; contract = 'adapt.user-taste-review.v1' }
     apply = [ordered]@{ acceptedRecordIds = @($appliedValue.response.accepted_record_ids); cortexComplete = [bool]$appliedValue.cortex_receipt.complete }
-    recall = [ordered]@{ query = 'npm'; records = @($recalledValue.records).Count; lifecycle = [string]$recalledValue.records[0].record.lifecycle_state }
+    recall = [ordered]@{ query = 'npm'; records = @($recalledValue.records).Count; matched = $recalledMatch.Count; lifecycle = [string]$recalledMatch[0].record.lifecycle_state }
     processPolicy = [ordered]@{ executable = $MembraneExecutable; path = $script:SafePath; python = $false; pi = $false; openCode = $false; node = $false; checkout = $false; nativeOnly = $true }
   }
 }
@@ -1313,24 +1360,12 @@ function Initialize-QualificationRepository([string]$WorkspaceRoot) {
   $readme = Join-Path $WorkspaceRoot 'README.md'
   Write-NativeText $readme "# Windows qualification`n"
   $git = $script:GitPath
-  $previousErrorAction = $ErrorActionPreference
-  $ErrorActionPreference = 'Continue'
-  try {
-    $init = & $git -C $WorkspaceRoot init --quiet 2>&1
-  } finally { $ErrorActionPreference = $previousErrorAction }
-  Require ($LASTEXITCODE -eq 0) "could not initialize qualification repository: $init"
-  $previousErrorAction = $ErrorActionPreference
-  $ErrorActionPreference = 'Continue'
-  try {
-    $add = & $git -C $WorkspaceRoot add -- README.md 2>&1
-  } finally { $ErrorActionPreference = $previousErrorAction }
-  Require ($LASTEXITCODE -eq 0) "could not stage qualification repository: $add"
-  $previousErrorAction = $ErrorActionPreference
-  $ErrorActionPreference = 'Continue'
-  try {
-    $commit = & $git -C $WorkspaceRoot -c user.name='Membrane Qualification' -c user.email='qualification@membrane.invalid' commit --quiet -m 'qualification seed' 2>&1
-  } finally { $ErrorActionPreference = $previousErrorAction }
-  Require ($LASTEXITCODE -eq 0) "could not commit qualification repository: $commit"
+  $init = Invoke-NativeProcessAllowFailure $git ('-C "{0}" init --quiet' -f $WorkspaceRoot) '' $WorkspaceRoot
+  Require ($init.ExitCode -eq 0) "could not initialize qualification repository: $($init.Stdout) $($init.Stderr)"
+  $add = Invoke-NativeProcessAllowFailure $git ('-C "{0}" add -- README.md' -f $WorkspaceRoot) '' $WorkspaceRoot
+  Require ($add.ExitCode -eq 0) "could not stage qualification repository: $($add.Stdout) $($add.Stderr)"
+  $commit = Invoke-NativeProcessAllowFailure $git ('-C "{0}" -c user.name=Membrane-Qualification -c user.email=qualification@membrane.invalid commit --quiet -m "qualification seed"' -f $WorkspaceRoot) '' $WorkspaceRoot
+  Require ($commit.ExitCode -eq 0) "could not commit qualification repository: $($commit.Stdout) $($commit.Stderr)"
 }
 
 function Assert-WorkspaceConfigMigrated([string]$Path, [string]$Phase, [string]$ExpectedSha256 = '') {
@@ -1408,10 +1443,23 @@ function Start-AndVerifyHub([string]$Phase, [string]$ExpectedVersion, [string]$E
   } while ((Get-Date) -lt $deadline)
   Require ($null -ne $daemonIdentity) "tray-owned installed daemon did not become resident during $Phase"
   $script:DaemonProcess = $daemonIdentity.Process
-  try { $health = Invoke-InstalledHealth (Join-Path $InstallRoot 'membrane.exe') 5 $Phase } catch {
-    $logs = Save-RuntimeLogEvidence "hub-health-$($Phase -replace '[^a-z0-9]+','-')"
-    throw "Hub health unavailable during $Phase (port $port; runtime logs copied to $logs)"
-  }
+  # The wait loop above breaks on the first ok:true sample, but watcher
+  # coverage is a live signal: a new generation entering partial coverage
+  # (source churn on an enrolled root, re-enrollment) flips /health back to
+  # the authorized-initializing 503. A single re-probe must not fail the
+  # stage while that signature persists — re-poll inside the remaining
+  # deadline, keep fail-fast on transport errors and unrelated 503 causes.
+  $health = $null
+  do {
+    try { $health = Invoke-InstalledHealth (Join-Path $InstallRoot 'membrane.exe') 5 $Phase } catch {
+      $logs = Save-RuntimeLogEvidence "hub-health-$($Phase -replace '[^a-z0-9]+','-')"
+      throw "Hub health unavailable during $Phase (port $port; runtime logs copied to $logs)"
+    }
+    if ($health.ok -eq $true) { break }
+    $watcherInitializing = ($health.backgroundAuthority.active -eq $true) -and ($health.watcherRunning -ne $true)
+    Require ($watcherInitializing -and (Get-Date) -lt $deadline) "Hub /health was not ok during $Phase"
+    Start-Sleep -Milliseconds 500
+  } while ($true)
   Require ($health.ok -eq $true) "Hub /health was not ok during $Phase"
   Require ($health.serviceId -eq 'membrane-hub') "Hub native service identity is invalid during $Phase"
   foreach ($name in @('installationId', 'cortexStoreId', 'releaseGeneration')) {
@@ -1428,7 +1476,7 @@ function Start-AndVerifyHub([string]$Phase, [string]$ExpectedVersion, [string]$E
   $script:ActiveHubHealth = $health
   $script:ActiveHubPort = $port
   $subsystems = @($health.subsystems | Sort-Object)
-  Require (($subsystems -join ',') -eq 'adapt,blueprint,cortex,ledger,pull,push') "Hub six-subsystem health is invalid during $Phase"
+  Require (($subsystems -join ',') -eq 'adapt,blueprint,cortex,ledger,pull') "Hub five-subsystem health is invalid during $Phase"
   Require (@($health.capabilities) -contains 'memory') "Hub health omitted memory capability during $Phase"
   Assert-InstalledProcessIdentity $trayIdentity "installed tray during $Phase"
   Assert-InstalledProcessIdentity $daemonIdentity "tray-owned daemon during $Phase"
@@ -1489,7 +1537,19 @@ function Assert-QualificationProcessTreeGone([int[]]$ProcessIds) {
 }
 
 function Stop-QualificationHub {
+  param(
+    [string]$LogRoot = '',
+    [string]$DrainLabel = 'holder-release',
+    [switch]$ForceTrayKill
+  )
   if ($null -eq $script:TrayProcess -and $null -eq $script:DashboardProcess) { $script:ActiveHubHealth = $null; $script:ActiveHubPort = $null; return }
+  # The resident engine's lifecycle events (holder_*, drain_requested) go to
+  # its stderr, which supervision appends to the installed state root's
+  # engine-stderr.log — the same state root that holds cortex-engine.db.
+  $stateRoot = Join-Path (Split-Path -Parent $InstallRoot) 'state'
+  $hubLog = Join-Path $stateRoot 'tools\.cache\memory\engine-stderr.log'
+  $logAnchor = 0
+  if ($hubLog -and (Test-Path -LiteralPath $hubLog -PathType Leaf)) { $logAnchor = (Get-Item -LiteralPath $hubLog).Length }
   $trayPid = if ($script:TrayProcess) { $script:TrayProcess.Id } else { -1 }
   $daemonPid = if ($script:DaemonProcess) { $script:DaemonProcess.Id } else { -1 }
   $hubPid = if ($script:DashboardProcess) { $script:DashboardProcess.Id } else { -1 }
@@ -1499,8 +1559,11 @@ function Stop-QualificationHub {
   $ids = @($ids; foreach ($ownerId in $ids) {
     Get-ProcessTree $ownerId | ForEach-Object { [int]$_.ProcessId }
   }) | Sort-Object -Unique
-  # Closing presentation first releases authenticated Hub holder lease; daemon
-  # then performs final-holder drain under tray supervision.
+  # Closing presentation first releases the authenticated Hub holder lease.
+  # The installed tray also holds a renewable hub lease (installed_holder.rs)
+  # and the daemon drains only on final-holder release or expiry, so the tray
+  # must exit before the daemon can drain — a live tray would also reactivate
+  # an unreachable engine mid-drain, so it cannot supervise the drain.
   if ($script:DashboardProcess) {
     $liveHub = Get-Process -Id $hubPid -ErrorAction SilentlyContinue
     if ($liveHub -and -not $liveHub.HasExited) {
@@ -1508,11 +1571,38 @@ function Stop-QualificationHub {
       if (-not $liveHub.WaitForExit([Math]::Min(10000, $TimeoutSeconds * 1000))) {
         # Failure-only cleanup for an unresponsive presentation process.
         $taskkill = Join-Path $env:WINDIR 'System32\taskkill.exe'
-        [void](Start-Process -FilePath $taskkill -ArgumentList @('/PID', [string]$hubPid, '/T', '/F') -Wait -PassThru -WindowStyle Hidden)
+        $p = Start-HiddenProcess $taskkill @('/PID', [string]$hubPid, '/T', '/F'); [void]$p.WaitForExit()
       }
     }
   }
-  $drainDeadline = (Get-Date).AddSeconds($TimeoutSeconds)
+  $trayExitMode = 'not_running'
+  if ($script:TrayProcess) {
+    $liveTray = Get-Process -Id $trayPid -ErrorAction SilentlyContinue
+    if ($liveTray -and -not $liveTray.HasExited) {
+      if ($ForceTrayKill) {
+        # Forced-kill lane: the holder lease never releases, so the daemon must
+        # drain through the lease-expiry sweep (final_holder_expired), not the
+        # graceful release path.
+        $taskkill = Join-Path $env:WINDIR 'System32\taskkill.exe'
+        $p = Start-HiddenProcess $taskkill @('/PID', [string]$trayPid, '/T', '/F'); [void]$p.WaitForExit()
+        $trayExitMode = 'forced_kill'
+      } else {
+        # Graceful exit sends the holder release; a forced kill leaves the lease
+        # to expire inside its TTL while the drain wait below still runs.
+        [void]$liveTray.CloseMainWindow()
+        [void]$liveTray.WaitForExit([Math]::Min(5000, $TimeoutSeconds * 1000))
+        $trayExitMode = 'graceful_close'
+        $remainingTray = Get-Process -Id $trayPid -ErrorAction SilentlyContinue
+        if ($remainingTray -and -not $remainingTray.HasExited) {
+          $taskkill = Join-Path $env:WINDIR 'System32\taskkill.exe'
+          $p = Start-HiddenProcess $taskkill @('/PID', [string]$trayPid, '/T', '/F'); [void]$p.WaitForExit()
+          $trayExitMode = 'forced_kill_after_close'
+        }
+      }
+    } else { $trayExitMode = 'already_exited' }
+  }
+  $drainStart = Get-Date
+  $drainDeadline = $drainStart.AddSeconds($TimeoutSeconds)
   $daemonExited = $false
   do {
     $daemonLive = if ($daemonPid -gt 0) { Get-Process -Id $daemonPid -ErrorAction SilentlyContinue } else { $null }
@@ -1520,19 +1610,45 @@ function Stop-QualificationHub {
     Start-Sleep -Milliseconds 250
   } while ((Get-Date) -lt $drainDeadline)
   Require $daemonExited 'final-holder daemon drain did not complete within qualification timeout'
-  if ($script:TrayProcess) {
-    $liveTray = Get-Process -Id $trayPid -ErrorAction SilentlyContinue
-    if ($liveTray -and -not $liveTray.HasExited) {
-      [void]$liveTray.CloseMainWindow()
-      [void]$liveTray.WaitForExit([Math]::Min(5000, $TimeoutSeconds * 1000))
-    }
+  $drainElapsedMs = [int]((Get-Date) - $drainStart).TotalMilliseconds
+  $drainReason = 'unobserved'
+  if ($hubLog -and (Test-Path -LiteralPath $hubLog -PathType Leaf)) {
+    try {
+      $stream = [IO.File]::Open($hubLog, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::ReadWrite)
+      try {
+        [void]$stream.Seek($logAnchor, [IO.SeekOrigin]::Begin)
+        $reader = New-Object IO.StreamReader($stream)
+        $appended = $reader.ReadToEnd()
+        $reader.Close()
+      } finally { $stream.Dispose() }
+      $drainEvents = @($appended -split "`r?`n" | Where-Object { $_ -match '"drain_requested"' -and $_ -notmatch 'lifecycle_drain_requested' })
+      if ($drainEvents.Count -gt 0) {
+        # The first drain request after the anchor is the causal mechanism;
+        # later requests (e.g. parent_closed when the exiting tray drops the
+        # control channel) are redundant once drain is already in progress.
+        try { $drainReason = [string]($drainEvents[0] | ConvertFrom-Json).reason } catch { $drainReason = 'unparsed' }
+      }
+    } catch { $drainReason = 'log_unreadable' }
+  }
+  $script:DrainEvidence += [ordered]@{
+    label = $DrainLabel
+    trayPid = $trayPid
+    daemonPid = $daemonPid
+    trayExitMode = $trayExitMode
+    drainReason = $drainReason
+    drainElapsedMs = $drainElapsedMs
+  }
+  if ($ForceTrayKill) {
+    Require ($drainReason -eq 'final_holder_expired') "forced-kill drain must recover through lease expiry (final_holder_expired), observed '$drainReason'"
+  } elseif ($trayExitMode -eq 'graceful_close') {
+    Require ($drainReason -eq 'final_holder_release') "graceful tray exit must drain through holder release (final_holder_release), observed '$drainReason'"
   }
   $remainingTray = if ($trayPid -gt 0) { Get-Process -Id $trayPid -ErrorAction SilentlyContinue } else { $null }
   if ($remainingTray -and -not $remainingTray.HasExited) {
     # Failure-only exact cleanup after typed daemon drain; never kill runtime
     # before holder release has been observed.
     $taskkill = Join-Path $env:WINDIR 'System32\taskkill.exe'
-    [void](Start-Process -FilePath $taskkill -ArgumentList @('/PID', [string]$trayPid, '/T', '/F') -Wait -PassThru -WindowStyle Hidden)
+    $p = Start-HiddenProcess $taskkill @('/PID', [string]$trayPid, '/T', '/F'); [void]$p.WaitForExit()
   }
   Assert-QualificationProcessTreeGone $ids
   $script:TrayProcess = $null
@@ -1701,13 +1817,17 @@ try {
   [IO.File]::WriteAllBytes($dataMarker, $markerBytes)
   $dataHash = Hash-File $dataMarker
   Save-State $first.Native.Membrane
-  Stop-QualificationHub
-  # Hub owns runtime storage under configured workspace; installed runtime
-  # payload contains executables/contracts, never live Cortex state.
-  $nativeDatabase = Join-Path $script:QualificationWorkspace 'tools\.cache\memory\cortex-engine.db'
+  # The installed runtime roots its Cortex store under the installed state
+  # root (<product>\state\tools\.cache\memory), not the enrolled Blueprint
+  # qualification workspace. Adapt and the second one-shot run while the hub
+  # is still live: after the graceful drain the only engine is the OS
+  # supervisor's standalone daemon, whose un-renewed 30s holder lease makes
+  # multi-step canonical Adapt ops race its expiry.
+  $nativeDatabase = Join-Path (Split-Path -Parent $InstallRoot) 'state\tools\.cache\memory\cortex-engine.db'
   Require (Test-Path -LiteralPath $nativeDatabase -PathType Leaf) 'Hub-owned native Cortex database is missing for Adapt qualification'
   $script:AdaptEvidence = Invoke-InstalledAdaptQualification $first.Native.Membrane $InstallRoot $nativeDatabase
   $script:BlueprintOneShot = Invoke-BlueprintOneShot $InstallRoot $script:QualificationWorkspace
+  Stop-QualificationHub -LogRoot ([string]$doctor.roots.log) -DrainLabel 'graceful-holder-release'
 
   if ($previousPath) {
     $previousTarget = Invoke-Installer $previousPath
@@ -1715,7 +1835,7 @@ try {
     $rollback = Start-AndVerifyPreviousHub $previousVersion
     Require ((Hash-File $dataMarker) -eq $dataHash) 'durable data changed during downgrade'
     $rollback | Add-Member -NotePropertyName durableState -NotePropertyValue 'preserved'
-    Stop-QualificationHub
+    Stop-QualificationHub -LogRoot ([string]$doctor.roots.log) -DrainLabel 'rollback-holder-release'
     $upgradeTarget = Invoke-Installer $installerPath
     Require ($upgradeTarget -ne $previousTarget) 'upgrade did not switch current junction target'
     $upgrade = Start-AndVerifyHub 'upgrade' $currentVersion $first.ReleaseGeneration '' -Full
@@ -1736,7 +1856,10 @@ try {
   Assert-State $upgrade.Native.Membrane 'upgrade'
   Require ((Hash-File $dataMarker) -eq $dataHash) 'durable data changed during upgrade'
   $doctor = Get-DoctorPaths $upgrade.Native.Membrane
-  Stop-QualificationHub
+  # Forced-kill lane: the tray lease never releases, so the daemon must drain
+  # through the expiry sweep (final_holder_expired) — qualifying lease-expiry
+  # recovery separately from graceful holder release.
+  Stop-QualificationHub -LogRoot ([string]$doctor.roots.log) -DrainLabel 'lease-expiry-recovery' -ForceTrayKill
 
   $uninstaller = Resolve-File (Join-Path (Split-Path -Parent $InstallRoot) 'uninstall.exe') 'uninstaller'
   $uninstall = Start-Process -FilePath $uninstaller -ArgumentList '/S' -Wait -PassThru -WindowStyle Hidden
@@ -1763,12 +1886,19 @@ try {
     }
   }
   $certification = if ($Profile -eq 'signed-release') { 'signed-release' } else { 'unsigned-functional' }
-  $installedContentEvidence = Get-InstalledContentEvidence $InstallRoot
+  # The uninstalled tree is gone by design (Assert-UninstallResidue above
+  # requires it). Reuse the content evidence captured while the
+  # same-version-repair install was live — it is the exact tree just removed.
+  $installedContentEvidence = @($upgrade.InstalledContent)
   # Preserve concrete lifecycle actions performed by this runner. These records
   # are observations from the native qualification path, never copied status
   # claims; consumers must still require every scenario they need.
+  $gracefulDrain = @($script:DrainEvidence | Where-Object { $_.drainReason -eq 'final_holder_release' })
+  $expiryDrain = @($script:DrainEvidence | Where-Object { $_.drainReason -eq 'final_holder_expired' -and $_.trayExitMode -eq 'forced_kill' })
   $lifecycleObservations = @(
     [ordered]@{ id = 'holder-exit'; lane = 'LC-01'; action = 'Stop-QualificationHub'; observed = ($null -ne $script:UpgradeEvidence -and $null -ne $script:UpgradeEvidence.DaemonProcess); before = @($script:UpgradeEvidence.ProcessTree); after = @(); processIdentity = $script:UpgradeEvidence.DaemonProcess }
+    [ordered]@{ id = 'graceful-holder-release'; lane = 'LC-01'; action = 'Stop-QualificationHub'; observed = ($gracefulDrain.Count -gt 0); evidence = @($script:DrainEvidence) }
+    [ordered]@{ id = 'lease-expiry-recovery'; lane = 'LC-01'; action = 'Stop-QualificationHub -ForceTrayKill'; observed = ($expiryDrain.Count -gt 0); evidence = @($expiryDrain) }
     [ordered]@{ id = 'survivor-continuity'; lane = 'LC-01'; action = 'durable-state-hash-compare'; observed = ($dataHash -and (Hash-File $dataMarker) -eq $dataHash); beforeHash = $dataHash; afterHash = if (Test-Path -LiteralPath $dataMarker) { Hash-File $dataMarker } else { $null } }
     [ordered]@{ id = 'source-mutation-watcher'; lane = 'LC-01'; action = 'Assert-BlueprintResident'; observed = ($null -ne $script:UpgradeEvidence.Blueprint -and $script:UpgradeEvidence.Blueprint.watcherMutation -eq 'pass'); evidence = $script:UpgradeEvidence.Blueprint }
     [ordered]@{ id = 'native-only-process-tree'; lane = 'NCL-05'; action = 'Assert-NativeSteadyState'; observed = ($script:UpgradeEvidence.Native -and $script:UpgradeEvidence.ProcessTree); before = @($script:UpgradeEvidence.ProcessTree); artifact = $installedContentEvidence }
@@ -1820,6 +1950,7 @@ try {
       hubHosted = $script:UpgradeEvidence.Blueprint
       hubOffOneShot = $script:BlueprintOneShot
       lifecycleObservations = $lifecycleObservations
+      drains = @($script:DrainEvidence)
     }
     environment = [ordered]@{
       path = $script:SafePath

@@ -213,6 +213,11 @@ struct ResidentBlueprintState {
     enrolled_repo_count: u64,
     registry_error: Option<String>,
     cancellation: CancellationToken,
+    /// Per-root build backoff: consecutive failure count and last attempt.
+    /// Each attempt is deadline-bounded, but a repository that keeps failing
+    /// (e.g. a stale multi-GB enrollment) would otherwise re-burn its whole
+    /// budget every reconcile pass and starve the other enrolled roots.
+    build_failures: std::collections::HashMap<String, (u32, Instant)>,
     /// What the supervisor thread is currently doing. Stop timeouts name this
     /// stage so a drain timeout is attributable without a live debugger.
     supervisor_stage: Arc<Mutex<String>>,
@@ -226,6 +231,27 @@ fn set_supervisor_stage(stage: &Arc<Mutex<String>>, value: &str) {
 
 fn supervisor_stage(stage: &Arc<Mutex<String>>) -> String {
     stage.lock().map(|current| current.clone()).unwrap_or_else(|_| "unknown".to_owned())
+}
+
+/// Bounded exponential cooldown between rebuild attempts for a root that
+/// keeps failing: 120s, 240s, 480s, then capped at 600s so an unrecoverable
+/// enrollment never starves the healthy roots' reconcile passes.
+fn retry_cooldown(attempts: u32) -> Duration {
+    std::cmp::min(
+        Duration::from_secs(120) * 2u32.saturating_pow(attempts.saturating_sub(1)),
+        Duration::from_secs(600),
+    )
+}
+
+fn retry_due(
+    failures: &std::collections::HashMap<String, (u32, Instant)>,
+    key: &str,
+    now: Instant,
+) -> bool {
+    match failures.get(key) {
+        Some((attempts, last)) => now.saturating_duration_since(*last) >= retry_cooldown(*attempts),
+        None => true,
+    }
 }
 
 struct ResidentBlueprint {
@@ -271,6 +297,7 @@ pub fn start_resident_blueprint() -> Result<(), String> {
         repos: Vec::new(),
         registry_error: None,
         cancellation,
+        build_failures: Default::default(),
         supervisor_stage: Arc::clone(&supervisor_stage),
     }));
     let lifecycle = lifecycle_control();
@@ -383,29 +410,53 @@ fn supervise_resident_repositories(state: &Arc<Mutex<ResidentBlueprintState>>) -
         .lock()
         .map(|state| state.cancellation.clone())
         .unwrap_or_default();
-    let mut status = true;
+    // One degraded watcher retires only that repository — never the whole
+    // resident. A deleted or unwatched enrolled root (e.g. a cleaned-up
+    // qualification temp repo) otherwise took every healthy repo's watcher
+    // down with it and left the Hub reporting watcher_unavailable until the
+    // next engine start. Reconcile owns enrollment truth and drops or
+    // rebuilds the retired root on the next pass.
+    let mut failed = Vec::new();
     for (root, service) in &services {
         if service.supervise_with_cancellation(cancellation.clone()) != ServiceStatus::Running {
             let readiness = service.readiness();
             let detail = format!("resident Blueprint watcher {root}: {:?}: {}", readiness.status,
                 readiness.detail.as_deref().unwrap_or("watcher unavailable without detail"));
             eprintln!("{}", serde_json::json!({"event":"resident_blueprint_supervision", "stage":"failed", "root":root, "error":detail}));
-            if let Ok(mut state) = state.lock() { state.registry_error = Some(detail); }
-            status = false;
-            break;
+            failed.push((root.clone(), detail));
         }
     }
-    if status {
-        if let Ok(mut state) = state.lock() {
-            for repo in &mut state.repos {
-                if let Some((generation_id, complete)) = repo.service.generation_metadata() {
-                    repo.generation_id = generation_id;
-                    repo.generation_complete = complete;
-                }
+    if !failed.is_empty() {
+        let retired = {
+            let Ok(mut state) = state.lock() else { return false };
+            state.registry_error = failed.first().map(|(_, detail)| detail.clone());
+            // A retired-but-still-enrolled root is rebuilt by reconcile; feed
+            // the same backoff as a failed build so a flapping watcher cannot
+            // churn unbounded rebuild work.
+            for (root, _) in &failed {
+                let entry = state.build_failures.entry(root.clone()).or_insert((0, Instant::now()));
+                entry.0 = entry.0.saturating_add(1);
+                entry.1 = Instant::now();
+            }
+            let failed_roots = failed.iter().map(|(root, _)| root.clone()).collect::<std::collections::BTreeSet<_>>();
+            let mut retired = Vec::new();
+            state.repos.retain(|repo| {
+                if failed_roots.contains(&repo.root) { retired.push(Arc::clone(&repo.service)); false } else { true }
+            });
+            retired
+        };
+        for service in retired { let _ = service.drain(); }
+        return true;
+    }
+    if let Ok(mut state) = state.lock() {
+        for repo in &mut state.repos {
+            if let Some((generation_id, complete)) = repo.service.generation_metadata() {
+                repo.generation_id = generation_id;
+                repo.generation_complete = complete;
             }
         }
     }
-    status
+    true
 }
 
 fn reconcile_resident_repositories(state: &Arc<Mutex<ResidentBlueprintState>>, supervisor_stage: &Arc<Mutex<String>>) {
@@ -424,7 +475,7 @@ fn reconcile_resident_repositories(state: &Arc<Mutex<ResidentBlueprintState>>, s
         }
     };
     let desired = roots.iter().map(|root| root.to_string_lossy().into_owned()).collect::<std::collections::BTreeSet<_>>();
-    let (existing, cancellation) = {
+    let (existing, cancellation, failures) = {
         let Ok(mut state) = state.lock() else { return };
         state.enrolled_repo_count = desired.len() as u64;
         let mut removed = Vec::new();
@@ -434,13 +485,22 @@ fn reconcile_resident_repositories(state: &Arc<Mutex<ResidentBlueprintState>>, s
             keep
         });
         drop(removed);
-        (state.repos.iter().map(|repo| repo.root.clone()).collect::<std::collections::BTreeSet<_>>(), state.cancellation.clone())
+        (
+            state.repos.iter().map(|repo| repo.root.clone()).collect::<std::collections::BTreeSet<_>>(),
+            state.cancellation.clone(),
+            state.build_failures.clone(),
+        )
     };
+    // Roots that have never failed build first; a repository inside its
+    // backoff window is skipped rather than re-burning the sequential budget.
+    let mut ordered_roots = roots;
+    ordered_roots.sort_by_key(|root| failures.contains_key(&root.to_string_lossy().into_owned()));
     let mut build_errors = Vec::new();
-    for root in roots {
+    for root in ordered_roots {
         if cancellation.is_cancelled() { break; }
         let key = root.to_string_lossy().into_owned();
         if existing.contains(&key) { continue; }
+        if !retry_due(&failures, &key, Instant::now()) { continue; }
         set_supervisor_stage(supervisor_stage, &format!("build:{key}"));
         match build_resident_repo(&root, &cancellation) {
             Ok(repo) => {
@@ -450,6 +510,7 @@ fn reconcile_resident_repositories(state: &Arc<Mutex<ResidentBlueprintState>>, s
                 if cancellation.is_cancelled() {
                     let _ = repo.service.drain();
                 } else if let Ok(mut state) = state.lock() {
+                    state.build_failures.remove(&key);
                     if desired.contains(&repo.root)
                         && !state.repos.iter().any(|current| current.root == repo.root)
                     {
@@ -457,7 +518,14 @@ fn reconcile_resident_repositories(state: &Arc<Mutex<ResidentBlueprintState>>, s
                     }
                 }
             }
-            Err(error) => build_errors.push(error),
+            Err(error) => {
+                if let Ok(mut state) = state.lock() {
+                    let entry = state.build_failures.entry(key.clone()).or_insert((0, Instant::now()));
+                    entry.0 = entry.0.saturating_add(1);
+                    entry.1 = Instant::now();
+                }
+                build_errors.push(error);
+            }
         }
     }
     if let Ok(mut state) = state.lock() {
@@ -575,6 +643,10 @@ pub fn resident_blueprint_status() -> serde_json::Value {
     let Ok(state) = resident.state.lock() else {
         return serde_json::json!({"watcherRunning": false, "enrolledRepoCount": 0});
     };
+    resident_status_json(&state)
+}
+
+fn resident_status_json(state: &ResidentBlueprintState) -> serde_json::Value {
     let watcher_running = state.enrolled_repo_count > 0
         && state.repos.len() == state.enrolled_repo_count as usize
         && state.repos.iter().all(|repo| repo.service.status() == ServiceStatus::Running);
@@ -1713,5 +1785,127 @@ mod tests {
         let (identity, claim) = prepare_runtime_identity(&runtime).unwrap();
         assert_eq!(identity.startup_generation, 1);
         assert_eq!(claim.startup_generation, 1);
+    }
+
+    struct StubRefresh {
+        fail_refresh: bool,
+        refreshes: std::sync::atomic::AtomicU64,
+    }
+
+    impl membrane_blueprint::BlueprintOperation for StubRefresh {
+        fn execute(
+            &self,
+            request: &BlueprintRequest,
+            _context: &membrane_blueprint::RequestContext,
+        ) -> Result<serde_json::Value, membrane_blueprint::BlueprintError> {
+            if request.method == Operation::Refresh {
+                self.refreshes.fetch_add(1, Ordering::SeqCst);
+                if self.fail_refresh {
+                    return Err(membrane_blueprint::BlueprintError::new(
+                        "refresh_failed",
+                        "stub refresh failure",
+                    ));
+                }
+            }
+            Ok(serde_json::json!({"generationId": "stub-gen", "complete": true}))
+        }
+    }
+
+    fn resident_repo(root: &Path, fail_refresh: bool) -> ResidentRepo {
+        let service = Arc::new(NativeService::from_operation(
+            StubRefresh { fail_refresh, refreshes: std::sync::atomic::AtomicU64::new(0) },
+            membrane_blueprint::ServiceConfig::new(root),
+        ));
+        service.start().unwrap();
+        ResidentRepo {
+            root: root.to_string_lossy().into_owned(),
+            service,
+            generation_id: "stub-gen".into(),
+            generation_complete: true,
+        }
+    }
+
+    fn resident_state(repos: Vec<ResidentRepo>, enrolled: u64) -> Arc<Mutex<ResidentBlueprintState>> {
+        Arc::new(Mutex::new(ResidentBlueprintState {
+            repos,
+            enrolled_repo_count: enrolled,
+            registry_error: None,
+            cancellation: CancellationToken::new(),
+            build_failures: std::collections::HashMap::new(),
+            supervisor_stage: Arc::new(Mutex::new(String::new())),
+        }))
+    }
+
+    #[test]
+    fn build_retry_backoff_is_exponential_and_bounded() {
+        assert_eq!(retry_cooldown(0), Duration::from_secs(120));
+        assert_eq!(retry_cooldown(1), Duration::from_secs(120));
+        assert_eq!(retry_cooldown(2), Duration::from_secs(240));
+        assert_eq!(retry_cooldown(3), Duration::from_secs(480));
+        assert_eq!(retry_cooldown(4), Duration::from_secs(600));
+        assert_eq!(retry_cooldown(30), Duration::from_secs(600));
+    }
+
+    #[test]
+    fn failed_root_is_not_retried_inside_its_cooldown() {
+        let mut failures = std::collections::HashMap::new();
+        let now = Instant::now();
+        assert!(retry_due(&failures, "root-a", now));
+        failures.insert("root-a".to_owned(), (1, now));
+        assert!(!retry_due(&failures, "root-a", now + Duration::from_secs(119)));
+        assert!(retry_due(&failures, "root-a", now + Duration::from_secs(120)));
+        // A second failure doubles the window; another enrolled root is
+        // unaffected by root-a's backoff.
+        failures.insert("root-a".to_owned(), (2, now));
+        assert!(!retry_due(&failures, "root-a", now + Duration::from_secs(239)));
+        assert!(retry_due(&failures, "root-a", now + Duration::from_secs(240)));
+        assert!(retry_due(&failures, "root-b", now));
+    }
+
+    #[test]
+    fn supervise_retires_only_the_failed_root_and_records_it() {
+        let healthy_root = tempfile::tempdir().unwrap();
+        let failed_root = tempfile::tempdir().unwrap();
+        let state = resident_state(
+            vec![
+                resident_repo(healthy_root.path(), false),
+                resident_repo(failed_root.path(), true),
+            ],
+            2,
+        );
+        // A source edit under the failed root produces the refresh event its
+        // stub then rejects.
+        std::fs::write(failed_root.path().join("changed.txt"), b"changed").unwrap();
+
+        assert!(supervise_resident_repositories(&state));
+
+        let state = state.lock().unwrap();
+        assert_eq!(state.repos.len(), 1);
+        assert_eq!(state.repos[0].root, healthy_root.path().to_string_lossy());
+        let detail = state.registry_error.as_deref().unwrap_or("");
+        assert!(detail.contains(&*failed_root.path().to_string_lossy()), "registry_error: {detail}");
+        assert!(state.build_failures.contains_key(&*failed_root.path().to_string_lossy()));
+        assert!(!state.build_failures.contains_key(&*healthy_root.path().to_string_lossy()));
+    }
+
+    #[test]
+    fn status_surfaces_failed_root_as_typed_watcher_detail() {
+        let healthy_root = tempfile::tempdir().unwrap();
+        let state = resident_state(vec![resident_repo(healthy_root.path(), false)], 2);
+        state.lock().unwrap().registry_error =
+            Some("resident Blueprint watcher /stale-root: Degraded: watcher unavailable".into());
+
+        let status = resident_status_json(&state.lock().unwrap());
+        assert_eq!(status["watcherRunning"], serde_json::json!(false));
+        assert_eq!(status["watcherState"], serde_json::json!("watcher_unavailable"));
+        assert_eq!(status["watcherCoverage"], serde_json::json!("partial"));
+        assert_eq!(status["enrolledRepoCount"], serde_json::json!(2));
+        let detail = status["watcherDetail"].as_str().unwrap_or("");
+        assert!(detail.contains("/stale-root"), "watcherDetail: {detail}");
+        // The surviving root still reports its own identity; the failed root's
+        // absence is the visibility contract, not a silent omission.
+        let identities = status["watcherIdentity"].as_array().unwrap();
+        assert_eq!(identities.len(), 1);
+        assert_eq!(identities[0]["root"], serde_json::json!(healthy_root.path().to_string_lossy()));
     }
 }

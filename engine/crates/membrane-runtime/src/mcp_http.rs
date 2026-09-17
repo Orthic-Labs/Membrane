@@ -660,7 +660,8 @@ pub fn run_mcp_streamable_http_for_resident(port: u16) -> Result<(), String> {
         origin,
         bearer_token,
         claim.service_instance_id,
-    );
+    )
+    .with_max_deadline_ms(crate::serve::REQUEST_TIMEOUT.as_millis() as u64);
     serve_mcp_streamable_http(bind_port, policy)
 }
 

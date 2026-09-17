@@ -15,7 +15,7 @@
 // `mpsc` channel with `recv_timeout`.
 
 use std::io::Read;
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
@@ -30,7 +30,7 @@ const MAX_GIT_OUTPUT_BYTES: usize = 16 * 1024 * 1024;
 /// missing, non-zero exit, or timeout. Mirrors the legacy JS observer's
 /// blanket try/catch-to-null behavior.
 fn run_git_bounded(cwd: &str, args: &[&str]) -> Option<Vec<u8>> {
-    let mut command = Command::new("git");
+    let mut command = crate::hidden_command("git");
     command
         .args(args)
         .current_dir(cwd)

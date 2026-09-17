@@ -81,7 +81,7 @@ fn build(root: &Path) -> Result<graph::GraphGeneration, String> {
 }
 
 fn git(root: &Path, args: &[&str]) -> Result<String, String> {
-    let output = std::process::Command::new("git")
+    let output = crate::hidden_command("git")
         .args(args)
         .current_dir(root)
         .output()

@@ -13,7 +13,7 @@
 
 use serde_json::Value;
 use std::path::Path;
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, Stdio};
 use std::time::{Duration, Instant};
 
 pub const MCP_LIVENESS_MS: u64 = 4000;
@@ -55,7 +55,7 @@ enum Liveness {
 /// running (e.g. an MCP stdio server waiting on its transport) is alive
 /// through the window; a broken config exits early.
 fn probe_liveness(command: &str, args: &[String]) -> Result<Liveness, String> {
-    let mut child: Child = Command::new(command)
+    let mut child: Child = crate::hidden_command(command)
         .args(args)
         .stdin(Stdio::piped())
         .stdout(Stdio::null())

@@ -745,6 +745,10 @@ Section Uninstall
     DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "Membrane"
     DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "Membrane Engine"
     DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "Membrane Tray"
+    ; Runtime-owned per-user config (e.g. the tray's first-run marker) lives
+    ; under %APPDATA%\Membrane — the doctor config root — and is removed on a
+    ; full uninstall. The durable data root under %LOCALAPPDATA% is preserved.
+    RMDir /r "$APPDATA\Membrane"
   ${EndIf}
 
   DeleteRegKey HKCU "${UNINSTKEY}"

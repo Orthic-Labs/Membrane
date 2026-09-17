@@ -18,6 +18,7 @@ const CORE: &[&str] = &[
     "membrane_temporal_fact",
     "membrane_scratchpad",
     "membrane_feedback",
+    "membrane_ledger",
     "membrane_push_prepare",
     "membrane_push_resolve",
 ];

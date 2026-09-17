@@ -9,7 +9,7 @@
 use serde::Serialize;
 use std::collections::BTreeSet;
 use std::path::Path;
-use std::process::Command;
+
 
 /// Directory/segment names the primary scan excludes, ported verbatim from
 /// `POLICY_SEGMENTS` in the legacy module (identical set, identical order
@@ -36,7 +36,7 @@ fn path_segments(path: &str) -> Vec<String> {
 /// `None` exactly when the legacy code would (non-zero exit, or the root is
 /// not a git worktree) so callers fall back to admitted-only scope.
 fn tracked_paths(root: &Path) -> Option<Vec<String>> {
-    let output = Command::new("git").arg("-C").arg(root).args(["ls-files", "-z", "--cached", "--"]).output().ok()?;
+    let output = crate::hidden_command("git").arg("-C").arg(root).args(["ls-files", "-z", "--cached", "--"]).output().ok()?;
     if !output.status.success() {
         return None;
     }
@@ -211,7 +211,7 @@ mod tests {
 
     fn init_git_repo(dir: &Path) {
         let run = |args: &[&str]| {
-            let status = Command::new("git").arg("-C").arg(dir).args(args).status().expect("git available");
+            let status = crate::hidden_command("git").arg("-C").arg(dir).args(args).status().expect("git available");
             assert!(status.success(), "git {args:?} failed");
         };
         run(&["init", "-q"]);
@@ -242,7 +242,7 @@ mod tests {
         fs::write(dir.join("admitted.rs"), b"fn main() {}").unwrap();
         fs::write(dir.join("skipped.txt"), b"not admitted").unwrap();
         fs::write(dir.join("node_modules/dep.js"), b"module.exports = {}").unwrap();
-        Command::new("git").arg("-C").arg(&dir).args(["add", "-A"]).status().unwrap();
+        crate::hidden_command("git").arg("-C").arg(&dir).args(["add", "-A"]).status().unwrap();
 
         let report = audit_source_dispositions(&dir, &["admitted.rs".to_string()]);
         assert!(matches!(report.scope, Scope::GitTracked));
@@ -263,7 +263,7 @@ mod tests {
         fs::create_dir_all(&dir).unwrap();
         init_git_repo(&dir);
         fs::write(dir.join("odd.bin"), [b'a', 0u8, b'b']).unwrap();
-        Command::new("git").arg("-C").arg(&dir).args(["add", "-A"]).status().unwrap();
+        crate::hidden_command("git").arg("-C").arg(&dir).args(["add", "-A"]).status().unwrap();
 
         let report = audit_source_dispositions(&dir, &[]);
         assert_eq!(report.exceptions.len(), 1);

@@ -259,13 +259,12 @@ impl HubInputsV1 {
     }
 }
 
-/// Six semantic Membrane subsystems — distinct from the eight operational
+/// Five active Membrane subsystems — distinct from the eight operational
 /// Hub resources. Each reports Available/Degraded/Unavailable/Not configured
-/// independently.
+/// independently. Former Push is retired; public `push` writes through Cortex.
 #[derive(Debug, Clone, PartialEq)]
 pub struct HubSubsystemInputsV1 {
     pub pull: HubReadV1,
-    pub push: HubReadV1,
     pub cortex: HubReadV1,
     pub blueprint: HubReadV1,
     pub ledger: HubReadV1,
@@ -279,7 +278,6 @@ impl HubSubsystemInputsV1 {
         };
         Self {
             pull: unavailable(),
-            push: unavailable(),
             cortex: unavailable(),
             blueprint: unavailable(),
             ledger: unavailable(),
@@ -288,12 +286,11 @@ impl HubSubsystemInputsV1 {
     }
 
     /// Map to the typed wire representation consumed by
-    /// `HubSnapshotV1::subsystems`. Exactly the six named subsystems, each
+    /// `HubSnapshotV1::subsystems`. Exactly the five named subsystems, each
     /// carrying a first-class state including `NotConfigured`.
     pub fn subsystems(&self) -> HubSubsystemsV1 {
         HubSubsystemsV1 {
             pull: self.pull.clone().subsystem(),
-            push: self.push.clone().subsystem(),
             cortex: self.cortex.clone().subsystem(),
             blueprint: self.blueprint.clone().subsystem(),
             ledger: self.ledger.clone().subsystem(),

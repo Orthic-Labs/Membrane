@@ -70,7 +70,7 @@ impl Default for CompatibilityRequirement {
             cortex_store_id: None,
             required_runtime_origin: Some("installed".into()),
             require_native_only: true,
-            required_subsystems: ["pull", "push", "cortex", "blueprint", "ledger", "adapt"]
+            required_subsystems: ["pull", "cortex", "blueprint", "ledger", "adapt"]
                 .into_iter()
                 .map(str::to_owned)
                 .collect(),

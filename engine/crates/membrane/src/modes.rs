@@ -1394,17 +1394,21 @@ fn run_step_command(step: &crate::install_tx::InstallStep) -> Result<(), String>
     if trimmed.is_empty() {
         return Ok(());
     }
-    let output = if cfg!(windows) {
-        std::process::Command::new("cmd")
-            .arg("/C")
-            .arg(trimmed)
-            .output()
+    let mut step_command = if cfg!(windows) {
+        let mut command = std::process::Command::new("cmd");
+        command.arg("/C").arg(trimmed);
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            command.creation_flags(0x0800_0000);
+        }
+        command
     } else {
-        std::process::Command::new("sh")
-            .arg("-c")
-            .arg(trimmed)
-            .output()
+        let mut command = std::process::Command::new("sh");
+        command.arg("-c").arg(trimmed);
+        command
     };
+    let output = step_command.output();
     let output = output.map_err(|error| format!("spawn: {error}"))?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);

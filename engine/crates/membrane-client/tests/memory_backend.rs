@@ -23,7 +23,7 @@ fn client() -> MemoryBackendClient {
     MemoryBackendClient::new(Box::new(|operation: &str, _request: &Map<String, Value>| {
         Ok(match operation {
             "/health" => {
-                json!({"serviceId":"membrane-hub","installationId":"install-1","cortexStoreId":"store-1","releaseGeneration":"r1","startupGeneration":7,"runtimeOrigin":"installed","stableInstallRoot":r"C:\Users\test\AppData\Local\Orthic Labs\Membrane\current","protocolVersion":1,"schemaVersion":1,"nativeOnly":true,"subsystems":["pull","push","cortex","blueprint","ledger","adapt"],"capabilities":["memory","diagnostics","pull","push"],"serviceCapabilities":service_capabilities()} )
+                json!({"serviceId":"membrane-hub","installationId":"install-1","cortexStoreId":"store-1","releaseGeneration":"r1","startupGeneration":7,"runtimeOrigin":"installed","stableInstallRoot":r"C:\Users\test\AppData\Local\Orthic Labs\Membrane\current","protocolVersion":1,"schemaVersion":1,"nativeOnly":true,"subsystems":["pull","cortex","blueprint","ledger","adapt"],"capabilities":["memory","diagnostics","pull","push"],"serviceCapabilities":service_capabilities()} )
             }
             "/metrics" | "/activity" => json!({}),
             "/list" => json!([{"id":"id","tier":"Working","chars":4,"access":2,"inject":3}]),
@@ -74,7 +74,7 @@ fn bind_verified_reuses_authoritative_health_without_second_handshake() {
         "releaseGeneration":"r1", "startupGeneration":7, "runtimeOrigin":"installed",
         "stableInstallRoot":r"C:\Users\test\AppData\Local\Orthic Labs\Membrane\current",
         "protocolVersion":1, "schemaVersion":1, "nativeOnly":true,
-        "subsystems":["pull","push","cortex","blueprint","ledger","adapt"],
+        "subsystems":["pull","cortex","blueprint","ledger","adapt"],
         "capabilities":["memory","diagnostics","pull","push"],
         "serviceCapabilities": service_capabilities()
     });
@@ -103,7 +103,7 @@ fn request_scoped_federation_uses_public_bound_transport() {
         "releaseGeneration":"r1", "startupGeneration":7, "runtimeOrigin":"installed",
         "stableInstallRoot":r"C:\Users\test\AppData\Local\Orthic Labs\Membrane\current",
         "protocolVersion":1, "schemaVersion":1, "nativeOnly":true,
-        "subsystems":["pull","push","cortex","blueprint","ledger","adapt"],
+        "subsystems":["pull","cortex","blueprint","ledger","adapt"],
         "capabilities":["memory","diagnostics","pull","push"],
         "serviceCapabilities": service_capabilities()
     });
@@ -171,7 +171,7 @@ fn legacy_snake_case_handshake_is_rejected() {
         "protocol_version": 1,
         "schema_version": 1,
         "native_only": true,
-        "subsystems": ["pull", "push", "cortex", "blueprint", "ledger", "adapt"],
+        "subsystems": ["pull", "cortex", "blueprint", "ledger", "adapt"],
         "capabilities": []
     })) {
         Ok(_) => panic!("legacy payload must not bind"),
@@ -206,7 +206,7 @@ fn non_native_handshake_is_rejected() {
         "protocolVersion": 1,
         "schemaVersion": 1,
         "nativeOnly": false,
-        "subsystems": ["pull", "push", "cortex", "blueprint", "ledger", "adapt"],
+        "subsystems": ["pull", "cortex", "blueprint", "ledger", "adapt"],
         "capabilities": []
     })) {
         Ok(_) => panic!("non-native service must not bind"),
@@ -306,7 +306,7 @@ fn hub_recall_and_injection_requests_use_route_native_shapes() {
                     "protocolVersion":1,
                     "schemaVersion":1,
                     "nativeOnly":true,
-                    "subsystems":["pull","push","cortex","blueprint","ledger","adapt"],
+                    "subsystems":["pull","cortex","blueprint","ledger","adapt"],
                     "capabilities":["memory","diagnostics","pull","push"],
                     "serviceCapabilities": service_capabilities()
                 }),
@@ -360,7 +360,7 @@ fn federation_protocol_outcomes_preserve_typed_code() {
         "releaseGeneration":"r1", "startupGeneration":7, "runtimeOrigin":"installed",
         "stableInstallRoot":r"C:\Users\test\AppData\Local\Orthic Labs\Membrane\current",
         "protocolVersion":1, "schemaVersion":1, "nativeOnly":true,
-        "subsystems":["pull","push","cortex","blueprint","ledger","adapt"],
+        "subsystems":["pull","cortex","blueprint","ledger","adapt"],
         "capabilities":["memory","diagnostics","pull","push"],
         "serviceCapabilities": service_capabilities()
     });
@@ -391,7 +391,7 @@ fn mem054_service_capabilities_are_bound_with_typed_incompatibility() {
         "releaseGeneration":"r1", "startupGeneration":7, "runtimeOrigin":"installed",
         "stableInstallRoot":r"C:\Users\test\AppData\Local\Orthic Labs\Membrane\current",
         "protocolVersion":1, "schemaVersion":1, "nativeOnly":true,
-        "subsystems":["pull","push","cortex","blueprint","ledger","adapt"],
+        "subsystems":["pull","cortex","blueprint","ledger","adapt"],
         "capabilities":["memory","diagnostics","pull","push"],
         "serviceCapabilities": service_capabilities()
     });

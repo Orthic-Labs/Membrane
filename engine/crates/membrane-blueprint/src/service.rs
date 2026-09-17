@@ -459,11 +459,21 @@ impl NativeService {
         Self::new(Arc::new(operation), config)
     }
 
+    /// Snapshot reconciliation is the drift backstop for missed native events,
+    /// but it reads and digests every source file; on a 250 ms supervision
+    /// loop a quiet repo would be re-hashed 4x per second and spend nearly all
+    /// of its life in the in-progress window instead of reporting healthy.
+    /// Native events keep real-time delivery; this bounds the backstop.
+    const RESIDENT_SNAPSHOT_INTERVAL_MS: u64 = 5_000;
+
     pub fn resident<O>(operation: O, workspace_root: impl Into<PathBuf>) -> Self
     where
         O: BlueprintOperation + 'static,
     {
-        Self::from_operation(operation, ServiceConfig::new(workspace_root))
+        let workspace_root = workspace_root.into();
+        let watcher = SnapshotConfig::new(workspace_root.clone())
+            .snapshot_interval_ms(Self::RESIDENT_SNAPSHOT_INTERVAL_MS);
+        Self::from_operation(operation, ServiceConfig::new(workspace_root).with_watcher(watcher))
     }
 
     pub fn with_sink(mut self, sink: Arc<dyn LifecycleEventSink>) -> Self {
@@ -703,9 +713,11 @@ impl NativeService {
     }
 
     pub fn supervise_with_cancellation(&self, cancellation: CancellationToken) -> ServiceStatus {
+        let wait_started = Instant::now();
         let Ok(_operation) = self.watcher_operation.lock() else {
             return ServiceStatus::Unavailable;
         };
+        emit_lock_wait("supervise", wait_started.elapsed());
         let (mut watchers, operation, mut pending_refreshes) = {
             let Ok(mut inner) = self.inner.lock() else { return ServiceStatus::Unavailable; };
             if inner.status != ServiceStatus::Running { return inner.status; }
@@ -798,7 +810,9 @@ impl NativeService {
             if let Some(cancellation) = &inner.active_cancellation { cancellation.cancel(); }
             self.emit_locked(&mut inner, LifecycleEventKind::DrainRequested, None);
         }
+        let wait_started = Instant::now();
         let _operation = self.watcher_operation.lock().map_err(|_| ServiceError::Watcher("service_state_unavailable".into()))?;
+        emit_lock_wait("drain", wait_started.elapsed());
         let mut inner = self.inner.lock().map_err(|_| ServiceError::Watcher("service_state_unavailable".into()))?;
         let mut shutdown_error = None;
         for watcher in &mut inner.watchers {
@@ -851,6 +865,7 @@ impl NativeService {
             };
             loop {
                 if let Some(cached) = state.completed.get(key).cloned() {
+                    emit_lock_wait("dedup", started.elapsed());
                     return response_for_request(cached, &request.request_id);
                 }
                 if state.inflight.insert(key.to_owned()) {
@@ -957,6 +972,14 @@ const fn holder_index(kind: HolderKind) -> usize {
     match kind {
         HolderKind::Hub => 0,
         HolderKind::CodeRight => 1,
+    }
+}
+
+/// Bounded contention telemetry: only waits that exceed one reconcile tick
+/// are worth a line; quiet services stay silent.
+fn emit_lock_wait(stage: &str, waited: Duration) {
+    if waited >= Duration::from_millis(250) {
+        eprintln!("{}", serde_json::json!({"event":"blueprint_service_wait","stage":stage,"elapsedMs":waited.as_millis()}));
     }
 }
 

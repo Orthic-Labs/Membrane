@@ -26,10 +26,11 @@ impl MembraneParentState {
     }
 }
 
-/// The six semantic Membrane subsystems — distinct from the eight operational
+/// The five active Membrane subsystems — distinct from the eight operational
 /// Hub resources (`deliveries`, `providers`, `repositories`, `adapters`,
-/// `devices`, `memory`, `sentinel`, `alerts`).
-pub const SUBSYSTEM_NAMES: [&str; 6] = ["pull", "push", "cortex", "blueprint", "ledger", "adapt"];
+/// `devices`, `memory`, `sentinel`, `alerts`). Former Push is retired; public
+/// `push` writes durable memory through Cortex and is not a subsystem peer.
+pub const SUBSYSTEM_NAMES: [&str; 5] = ["pull", "cortex", "blueprint", "ledger", "adapt"];
 
 /// Frozen production mapping for parent state.
 ///

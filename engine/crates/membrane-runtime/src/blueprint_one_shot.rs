@@ -22,7 +22,7 @@ pub(crate) fn dispatch_native(
 /// Run a native Blueprint CLI verb from current repository root.
 pub(crate) fn run_cli(args: &[String]) -> Result<(), String> {
     if let Some(result) = run_legacy_alias(args)? {
-        println!("{}", serde_json::to_string(&result).map_err(|error| format!("encode Blueprint response: {error}"))?);
+        crate::cli::emit_stdout(format_args!("{}", serde_json::to_string(&result).map_err(|error| format!("encode Blueprint response: {error}"))?));
         return Ok(());
     }
     let (method, root, input, cancel_before_dispatch, deadline_ms) = cli_request_with_deadline(args)?;
@@ -40,11 +40,11 @@ pub(crate) fn run_cli(args: &[String]) -> Result<(), String> {
     }
     let response = dispatch_native(request, cancellation);
     if response.ok {
-        println!(
+        crate::cli::emit_stdout(format_args!(
             "{}",
             serde_json::to_string(&response.result)
                 .map_err(|error| format!("encode Blueprint response: {error}"))?
-        );
+        ));
         return Ok(());
     }
     let error = response

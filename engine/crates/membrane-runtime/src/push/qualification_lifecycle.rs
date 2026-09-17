@@ -12,7 +12,7 @@ use membrane_protocol::host_observation::{
 use serde_json::{json, Value};
 use std::ffi::{OsStr, OsString};
 use std::path::Path;
-use std::process::Command;
+
 use std::sync::Arc;
 use std::time::Duration;
 use tokio_util::sync::CancellationToken;
@@ -149,7 +149,7 @@ fn observations() -> Result<Value, String> {
 }
 
 fn initialize_git_fixture(root: &Path) -> Result<(), String> {
-    let mut command = Command::new("git");
+    let mut command = crate::hidden_command("git");
     for (key, _) in std::env::vars_os() {
         if key.to_string_lossy().starts_with("GIT_") {
             command.env_remove(key);

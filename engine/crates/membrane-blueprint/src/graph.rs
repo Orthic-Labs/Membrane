@@ -423,7 +423,7 @@ pub fn build_generation_from_files_with_cancellation(root: &Path, scan: ScanRepo
         }
     }
     let (mut nodes, mut edges) = merge_facts(lexical, lexical_edges, ast_nodes, ast_edges, options.compiler.clone());
-    edges = resolve_edges(edges, &nodes, &file_map);
+    edges = resolve_edges(edges, &nodes, &[]);
     // Provider registry is the single build-pass admission point. Framework,
     // IaC, SCIP, and bridge providers all contribute through this ordered
     // pass; framework intelligence remains its documented post-pass.
@@ -493,10 +493,12 @@ pub fn build_file_facts_from_scan(
         text: if language_for_path(&relative_path).is_some() || is_file_only(&relative_path) { Some(text.clone()) } else { None },
     };
     let surface = module_surface(&file);
-    let mut context_files = scan_files.to_vec();
-    if let Some(existing) = context_files.iter_mut().find(|value| value.path == file.path) { *existing = file.clone(); }
-    else { context_files.push(file.clone()); }
-    let file_map = context_files.iter().map(|value| (value.path.clone(), value)).collect::<BTreeMap<_, _>>();
+    // Path-identity context must not clone every scanned file (bytes included)
+    // for each affected path: build the map over references and overlay the
+    // freshly-read record for this file.
+    let mut file_map = scan_files.iter().map(|value| (value.path.clone(), value)).collect::<BTreeMap<String, &FileRecord>>();
+    file_map.insert(file.path.clone(), &file);
+    let file_map = file_map;
     let (lexical_nodes, lexical_edges, lexical_report) = lexical_facts(&file, &text, &file_map, &surface);
     let mut ast_nodes = Vec::new();
     let mut ast_edges = Vec::new();
@@ -511,10 +513,10 @@ pub fn build_file_facts_from_scan(
     }
     let (mut nodes, mut edges) = merge_facts(lexical_nodes, lexical_edges, ast_nodes, ast_edges, None);
     // Resolver context is identity-only for untouched files. Their source is
-    // never parsed by this path-scoped operation.
-    let mut resolver_nodes = resolution_nodes.to_vec();
-    resolver_nodes.extend(nodes.iter().cloned());
-    edges = resolve_edges(edges, &resolver_nodes, &file_map);
+    // never parsed by this path-scoped operation. The stored node set is
+    // indexed by reference — cloning ~60k nodes (JSON evidence included) for
+    // every affected file dominated resident incremental builds.
+    edges = resolve_edges(edges, resolution_nodes, &nodes);
     nodes.sort_by(|a, b| a.id.cmp(&b.id));
     edges.sort_by(|a, b| a.id.cmp(&b.id));
     Ok(Some(FileFacts {
@@ -528,10 +530,8 @@ pub fn build_file_facts_from_scan(
 /// newly created symbol satisfy callers that were unresolved in prior state.
 pub fn resolve_file_facts_edges(
     facts: &mut FileFacts,
-    resolution_nodes: &[GraphNode],
-    scan_files: &[FileRecord],
+    functions: &HashMap<String, Vec<&GraphNode>>,
 ) {
-    let file_map = scan_files.iter().map(|file| (file.path.clone(), file)).collect::<BTreeMap<_, _>>();
     for edge in &mut facts.edges {
         if edge.kind == "CALLS" {
             edge.target = None;
@@ -543,10 +543,10 @@ pub fn resolve_file_facts_edges(
             });
         }
     }
-    // `resolution_nodes` already contains this file's post-change nodes. Do
-    // not append them again: duplicate candidates make same-file calls look
+    // The index already contains this file's post-change nodes. Do not
+    // append them again: duplicate candidates make same-file calls look
     // ambiguous even when their lexical target is unique.
-    facts.edges = resolve_edges(std::mem::take(&mut facts.edges), resolution_nodes, &file_map);
+    facts.edges = resolve_edges_with_index(std::mem::take(&mut facts.edges), functions);
     facts.edges.sort_by(|a, b| a.id.cmp(&b.id));
 }
 
@@ -922,8 +922,18 @@ fn merge_facts(lex_nodes: Vec<GraphNode>, lex_edges: Vec<GraphEdge>, ast_nodes: 
     (nodes.into_values().map(|(_,n)| n).collect(), edges.into_values().map(|(_,e)| e).collect())
 }
 
-fn resolve_edges(mut edges: Vec<GraphEdge>, nodes: &[GraphNode], files: &BTreeMap<String, &FileRecord>) -> Vec<GraphEdge> {
-    let functions: HashMap<String, Vec<&GraphNode>> = nodes.iter().filter(|n| n.kind == "symbol").filter_map(|n| n.name.clone().map(|name| (name, n))).fold(HashMap::new(), |mut m, (k,v)| { m.entry(k).or_default().push(v); m });
+/// Name → candidate-symbol index for CALLS resolution. Build once over a
+/// node set and reuse across every edge batch resolved against it; the prior
+/// form rebuilt this map per affected file, which dominated incremental
+/// refreshes on large graphs.
+pub fn symbol_index<'a, I>(nodes: I) -> HashMap<String, Vec<&'a GraphNode>>
+where
+    I: Iterator<Item = &'a GraphNode>,
+{
+    nodes.filter(|n| n.kind == "symbol").filter_map(|n| n.name.clone().map(|name| (name, n))).fold(HashMap::new(), |mut m, (k,v)| { m.entry(k).or_default().push(v); m })
+}
+
+fn resolve_edges_with_index(mut edges: Vec<GraphEdge>, functions: &HashMap<String, Vec<&GraphNode>>) -> Vec<GraphEdge> {
     for edge in &mut edges {
         if edge.kind != "CALLS" || edge.target.is_some() { continue; }
         let name = edge.evidence.first().and_then(|e| e.get("callName")).and_then(Value::as_str).map(str::to_owned);
@@ -942,7 +952,11 @@ fn resolve_edges(mut edges: Vec<GraphEdge>, nodes: &[GraphNode], files: &BTreeMa
             }
         }
     }
-    let _ = files; edges
+    edges
+}
+
+fn resolve_edges(edges: Vec<GraphEdge>, nodes: &[GraphNode], extra: &[GraphNode]) -> Vec<GraphEdge> {
+    resolve_edges_with_index(edges, &symbol_index(nodes.iter().chain(extra.iter())))
 }
 
 fn symbol_node(file: &FileRecord, kind: &str, name: &str, qualified: &str, start: usize, end: usize, labels: &[String], provider: &str, tier: ConfidenceTier) -> GraphNode {

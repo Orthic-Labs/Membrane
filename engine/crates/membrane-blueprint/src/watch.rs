@@ -36,6 +36,11 @@ pub struct SnapshotConfig {
     pub max_file_bytes: u64,
     pub max_events: usize,
     pub debounce_ms: u64,
+    /// Minimum wall-clock interval between full snapshot reconciliations when
+    /// the native event queue is quiet. Zero runs a snapshot on every poll.
+    /// The snapshot reads and digests every source file, so a supervised
+    /// resident must not run it on every supervisor tick.
+    pub snapshot_interval_ms: u64,
 }
 
 impl SnapshotConfig {
@@ -48,6 +53,7 @@ impl SnapshotConfig {
             max_file_bytes: MAX_SOURCE_FILE_BYTES,
             max_events: 256,
             debounce_ms: DEFAULT_DEBOUNCE_MS,
+            snapshot_interval_ms: 0,
         }
     }
 
@@ -70,6 +76,11 @@ impl SnapshotConfig {
 
     pub fn debounce(self, debounce: Duration) -> Self {
         self.debounce_ms(debounce.as_millis().min(u64::MAX as u128) as u64)
+    }
+
+    pub fn snapshot_interval_ms(mut self, snapshot_interval_ms: u64) -> Self {
+        self.snapshot_interval_ms = snapshot_interval_ms;
+        self
     }
 }
 
@@ -383,6 +394,7 @@ pub struct NativeWatcher {
     sink: Option<Arc<dyn LifecycleSink>>,
     ignore: RepoIgnore,
     native_queue: Arc<Mutex<NativeEventQueue>>,
+    last_snapshot_at: Option<Instant>,
     _native_watcher: RecommendedWatcher,
 }
 
@@ -407,7 +419,7 @@ impl NativeWatcher {
         }).map_err(|error| WatchError::Native(error.to_string()))?;
         let mut native_watcher = native_watcher;
         native_watcher.watch(&root, RecursiveMode::Recursive).map_err(|error| WatchError::Native(error.to_string()))?;
-        let mut watcher = Self { config, previous: initial, source_clock: 0, applied_clock: 0, gap: None, closed: false, sequence: 0, clock: Arc::new(SteadyClock::new()), sink: None, ignore: RepoIgnore::for_root(&root), native_queue: queue, _native_watcher: native_watcher };
+        let mut watcher = Self { config, previous: initial, source_clock: 0, applied_clock: 0, gap: None, closed: false, sequence: 0, clock: Arc::new(SteadyClock::new()), sink: None, ignore: RepoIgnore::for_root(&root), native_queue: queue, last_snapshot_at: Some(Instant::now()), _native_watcher: native_watcher };
         watcher.emit("started", None);
         Ok(watcher)
     }
@@ -554,7 +566,12 @@ impl NativeWatcher {
         Ok(events)
     }
 
-    pub fn poll_with_cancellation<F>(&mut self, mut schedule_rebuild: F, cancellation: &CancellationToken) -> Result<Vec<WatchEvent>, WatchError>
+    pub fn poll_with_cancellation<F>(&mut self, schedule_rebuild: F, cancellation: &CancellationToken) -> Result<Vec<WatchEvent>, WatchError>
+    where F: FnMut(&WatchEvent) -> Result<(), String> {
+        self.poll_inner(schedule_rebuild, cancellation, false)
+    }
+
+    fn poll_inner<F>(&mut self, mut schedule_rebuild: F, cancellation: &CancellationToken, force_snapshot: bool) -> Result<Vec<WatchEvent>, WatchError>
     where F: FnMut(&WatchEvent) -> Result<(), String> {
         if self.closed { return Err(WatchError::Shutdown); }
         if cancellation.is_cancelled() {
@@ -565,8 +582,15 @@ impl NativeWatcher {
         if native_events_observed {
             return self.publish_native_events(native_events, schedule_rebuild);
         }
+        // A full snapshot reads and digests every source file; on a quiet
+        // native queue it is the drift backstop, not the per-tick path.
+        // Supervised residents configure a real interval so each supervisor
+        // pass stays cheap; an explicit reconcile still forces one.
+        if !force_snapshot && self.last_snapshot_at.is_some_and(|at| at.elapsed() < Duration::from_millis(self.config.snapshot_interval_ms)) {
+            return Ok(Vec::new());
+        }
         let current = match snapshot_with_cancellation(&self.config, cancellation) {
-            Ok(current) => current,
+            Ok(current) => { self.last_snapshot_at = Some(Instant::now()); current },
             Err(SnapshotError::Cancelled) => {
                 self.emit("poll_cancelled", None);
                 return Err(WatchError::Snapshot(SnapshotError::Cancelled));
@@ -619,9 +643,11 @@ impl NativeWatcher {
         Ok(())
     }
 
-    /// Reconcile immediately without requiring a resident holder.
+    /// Reconcile immediately without requiring a resident holder. Forces the
+    /// snapshot path so a caller-visible freshness barrier is never gated on
+    /// the supervised snapshot interval.
     pub fn reconcile_now<F>(&mut self, schedule_rebuild: F) -> Result<Vec<WatchEvent>, WatchError>
-    where F: FnMut(&WatchEvent) -> Result<(), String> { self.poll(schedule_rebuild) }
+    where F: FnMut(&WatchEvent) -> Result<(), String> { self.poll_inner(schedule_rebuild, &CancellationToken::new(), true) }
 
     pub fn barrier(&self, barrier: Barrier) -> BarrierPoll {
         if self.gap.is_some() { return BarrierPoll::Complete(BarrierResult::GapBlocked); }

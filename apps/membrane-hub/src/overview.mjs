@@ -7,7 +7,7 @@
  */
 
 export const RESOURCES = ["deliveries", "providers", "repositories", "adapters", "devices", "memory", "sentinel", "alerts"];
-export const SUBSYSTEMS = ["pull", "push", "cortex", "blueprint", "ledger", "adapt"];
+export const SUBSYSTEMS = ["pull", "cortex", "blueprint", "ledger", "adapt"];
 export const DIMENSIONS = ["installation", "adapter", "delivery"];
 export const VIEW_ORDER = ["overview", "ledger", "sources", "subsystems", "memories", "sessions"];
 

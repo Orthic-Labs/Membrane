@@ -449,9 +449,9 @@ pub(crate) fn run_cli(args: &[String]) -> Result<(), String> {
             "url": explorer.url.clone(),
         });
         if json_output {
-            println!("{payload}");
+            crate::cli::emit_stdout(format_args!("{payload}"));
         } else {
-            println!("Open Blueprint Explorer: {}", explorer.url);
+            crate::cli::emit_stdout(format_args!("Open Blueprint Explorer: {}", explorer.url));
         }
         if duration_ms > 0 {
             tokio::time::sleep(Duration::from_millis(duration_ms)).await;

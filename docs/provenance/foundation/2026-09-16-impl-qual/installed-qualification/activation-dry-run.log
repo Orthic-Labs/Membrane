@@ -1,0 +1,92 @@
+﻿{
+  "schemaVersion": 1,
+  "runtimeOrigin": "installed",
+  "installRoot": "C:\\Users\\adrds\\AppData\\Local\\Orthic Labs\\Membrane\\current",
+  "versionRoot": "\\\\?\\C:\\Users\\adrds\\AppData\\Local\\Orthic Labs\\Membrane\\versions\\0.1.24",
+  "membraneExecutable": "C:\\Users\\adrds\\AppData\\Local\\Orthic Labs\\Membrane\\current\\membrane.exe",
+  "trayExecutable": "C:\\Users\\adrds\\AppData\\Local\\Orthic Labs\\Membrane\\current\\membrane-tray.exe",
+  "activatedAtUnixMs": 1789549547754,
+  "dryRun": true,
+  "service": {
+    "serviceId": "membrane-hub",
+    "port": 47851,
+    "releaseGeneration": "sha256:4602795799aed44b426b6039521539fdf40f756191f8c5f3bf83647c339d025e",
+    "alreadyRunning": false,
+    "state": "unavailable",
+    "reason": "installed Membrane is not running"
+  },
+  "clients": [
+    {
+      "client": "codex",
+      "before": "already_correct",
+      "after": "already_correct",
+      "changed": false,
+      "plugin": {
+        "state": "conflict",
+        "pluginId": "membrane@membrane",
+        "changed": false,
+        "detail": "codex marketplace `membrane` is bound to \\\\?\\C:\\Users\\adrds\\AppData\\Local\\Orthic Labs\\Membrane\\versions\\0.1.24"
+      }
+    },
+    {
+      "client": "claude",
+      "before": "absent",
+      "after": "plugin_owned",
+      "changed": false,
+      "plugin": {
+        "state": "enabled",
+        "pluginId": "membrane@membrane",
+        "version": "0.1.24",
+        "changed": false
+      }
+    },
+    {
+      "client": "cursor",
+      "before": "already_correct",
+      "after": "already_correct",
+      "changed": false,
+      "plugin": {
+        "state": "not_applicable",
+        "changed": false
+      }
+    },
+    {
+      "client": "windsurf",
+      "before": "already_correct",
+      "after": "already_correct",
+      "changed": false,
+      "plugin": {
+        "state": "not_applicable",
+        "changed": false
+      }
+    },
+    {
+      "client": "antigravity",
+      "before": "already_correct",
+      "after": "already_correct",
+      "changed": false,
+      "plugin": {
+        "state": "not_applicable",
+        "changed": false
+      }
+    },
+    {
+      "client": "devin",
+      "before": "already_correct",
+      "after": "already_correct",
+      "changed": false,
+      "plugin": {
+        "state": "not_applicable",
+        "changed": false
+      }
+    }
+  ],
+  "activationScope": "full",
+  "workspaceConfigMigration": {
+    "schemaVersion": 1,
+    "migration": "workspace_config_v2_to_v3",
+    "workspaceRoot": "C:\\Users\\adrds\\AppData\\Local\\Temp\\membrane-windows-qualification-d609dc7ef3a4448eaf7435064c7cf33b",
+    "migrated": false
+  }
+}
+

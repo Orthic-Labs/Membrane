@@ -1605,7 +1605,7 @@ fn storage_process_open_handle_evidence(
     }
     #[cfg(unix)]
     {
-        let mut child = match Command::new("lsof")
+        let mut child = match crate::hidden_command("lsof")
             .args(["-Fpcn", "--"])
             .args(paths)
             .stdout(Stdio::piped())
@@ -8355,7 +8355,7 @@ mod tests {
         use std::process::Stdio;
 
         let directory = tempfile::tempdir().unwrap();
-        let mut command = std::process::Command::new(std::env::current_exe().unwrap());
+        let mut command = crate::hidden_command(std::env::current_exe().unwrap());
         command
             .arg("--exact")
             .arg("cli::tests::cross_process_lock_child_helper")

@@ -74,11 +74,6 @@
       "reason": "not_instrumented",
       "observedAtUnixMs": 42
     },
-    "push": {
-      "state": "not_configured",
-      "reason": "not_instrumented",
-      "observedAtUnixMs": 42
-    },
     "cortex": {
       "state": "unavailable",
       "reason": "missing_input",

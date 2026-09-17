@@ -71,7 +71,7 @@ const MAX_MODEL_QUEUE_REQUESTS: usize = 8;
 const MAX_MODEL_EXECUTION: usize = 1;
 // Keep this below the CLI's 120-second read deadline and above the observed
 // CPU embedding latency so the server, CLI, and outer pipeline fail in order.
-const REQUEST_TIMEOUT: Duration = Duration::from_secs(90);
+pub(crate) const REQUEST_TIMEOUT: Duration = Duration::from_secs(90);
 // Detailed diagnostics may touch SQLite and filesystem state. Bound the caller
 // independently so a wedged dependency cannot make the health request hang.
 #[cfg(not(test))]
@@ -2833,7 +2833,7 @@ fn degraded_health_payload(store: &MemoryStore, reason: &str) -> (u16, String) {
         "schemaVersion": 1,
         "nativeOnly": true,
         "runtimeOrigin": runtime_origin(),
-        "subsystems": ["pull", "push", "cortex", "blueprint", "ledger", "adapt"],
+        "subsystems": ["pull", "cortex", "blueprint", "ledger", "adapt"],
         "capabilities": ["memory", "diagnostics", "pull", "push"],
         "serviceCapabilities": service_capabilities_payload(
             &store.cortex_store_id(),
@@ -3100,7 +3100,7 @@ fn build_router_inner(
         "schemaVersion": 1,
         // All landed resident subsystems are served by the native runtime.
         "nativeOnly": true,
-        "subsystems": ["pull", "push", "cortex", "blueprint", "ledger", "adapt"],
+        "subsystems": ["pull", "cortex", "blueprint", "ledger", "adapt"],
         "capabilities": ["memory", "diagnostics", "pull", "push"],
     });
     let diagnostics_store = state.store.as_ref().clone();
@@ -3826,7 +3826,7 @@ fn route_with_context_ingest_lease(
     }
     if method == "GET" && path == "/hub/snapshot" {
         // Canonical composition shared with `membrane cli hub-snapshot` — one
-        // producer, one parent truth, typed membraneState + six subsystems.
+        // producer, one parent truth, typed membraneState + five subsystems.
         return match serde_json::to_value(crate::hub_inputs::compose_live_hub_snapshot()) {
             Ok(value) => (200, value.to_string()),
             Err(error) => (
@@ -5710,7 +5710,7 @@ fn health_response_with_workers(
     // All landed resident subsystems are served by the native runtime.
     payload["nativeOnly"] = json!(true);
     payload["runtimeOrigin"] = json!(runtime_origin());
-    payload["subsystems"] = json!(["pull", "push", "cortex", "blueprint", "ledger", "adapt"]);
+    payload["subsystems"] = json!(["pull", "cortex", "blueprint", "ledger", "adapt"]);
     payload["capabilities"] = json!(["memory", "diagnostics", "pull", "push"]);
     let blueprint_watcher = crate::service::resident_blueprint_status();
     payload["serviceCapabilities"] = service_capabilities_payload(
@@ -5806,6 +5806,23 @@ fn health_response_with_workers(
     } else {
         StatusCode::SERVICE_UNAVAILABLE.as_u16()
     };
+    // `ok` is the response verdict, not only store health: every 503 must
+    // carry ok:false so probe consumers can tell typed degradation from a
+    // healthy body (the replay-saturation path above already does this). The
+    // first failing gate names the readiness reason.
+    if status == StatusCode::SERVICE_UNAVAILABLE.as_u16() && payload.get("readiness").is_none() {
+        payload["ok"] = Value::Bool(false);
+        payload["readiness"] = Value::String(
+            if !watcher_healthy {
+                "BlueprintWatcherUnavailable"
+            } else if !catalog_healthy {
+                "CatalogUnavailable"
+            } else {
+                "StoreUnavailable"
+            }
+            .into(),
+        );
+    }
     (status, payload.to_string())
 }
 
@@ -6712,7 +6729,8 @@ pub(crate) fn run(
         format!("http://{mcp_host}"),
         api_token.clone().unwrap_or_default(),
         claim.service_instance_id.clone(),
-    );
+    )
+    .with_max_deadline_ms(REQUEST_TIMEOUT.as_millis() as u64);
     emit_startup_stage("mcp_prepare", stage_started);
 
     let stage_started = Instant::now();
@@ -7554,7 +7572,7 @@ mod tests {
             .as_str()
             .is_some_and(|value| value.starts_with("sha256:")));
         assert_eq!(payload["nativeOnly"], true);
-        assert_eq!(payload["subsystems"].as_array().map(Vec::len), Some(6));
+        assert_eq!(payload["subsystems"].as_array().map(Vec::len), Some(5));
         assert_eq!(payload["capabilities"], json!(["memory", "diagnostics"]));
     }
 
@@ -7796,14 +7814,14 @@ mod tests {
             payload_down["sections"]["providers"]["state"], "unavailable",
             "body: {body_down}"
         );
-        // Canonical snapshot carries typed parent state and six subsystems on
+        // Canonical snapshot carries typed parent state and five subsystems on
         // every path, including the offline fallback.
         assert_eq!(
             payload_down["membraneState"], "offline",
             "body: {body_down}"
         );
         let down_subsystems = payload_down["subsystems"].as_object().unwrap();
-        assert_eq!(down_subsystems.len(), 6, "body: {body_down}");
+        assert_eq!(down_subsystems.len(), 5, "body: {body_down}");
         for name in membrane_protocol::SUBSYSTEM_NAMES {
             assert!(down_subsystems.contains_key(name), "body: {body_down}");
         }

@@ -289,3 +289,33 @@ fn same_byte_refresh_is_zero_parse_zero_publication_and_generation_stable() {
         Some(before_source_hash.as_str())
     );
 }
+
+/// Manual probe against a real repository:
+/// `MEMBRANE_PROBE_ROOT=<repo> cargo test -p membrane-blueprint --test incremental_hot_path probe_real_incremental -- --ignored --nocapture`.
+/// Dispatches the same Build operation the resident supervisor issues
+/// (`resident-build-*` identity, MAX_BUILD_DEADLINE_MS, empty input) so
+/// `blueprint_incremental_phase`/`blueprint_apply_phase` stderr marks measure
+/// the exact resident workload. A failed build fails this test — a PASS with
+/// a logged error is not evidence of success.
+#[test]
+#[ignore]
+fn probe_real_incremental() {
+    // This probe only means something against a real enrolled repository;
+    // running it without MEMBRANE_PROBE_ROOT must fail loudly, never pass a
+    // no-op.
+    let root = std::env::var("MEMBRANE_PROBE_ROOT")
+        .expect("MEMBRANE_PROBE_ROOT required: probe runs the resident-equivalent build against a real repository");
+    let deadline_ms = std::env::var("MEMBRANE_PROBE_DEADLINE_MS")
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(membrane_blueprint::model::MAX_BUILD_DEADLINE_MS);
+    let mut request = BlueprintRequest::new("resident-build-probe", Operation::Build, &root);
+    request.deadline_ms = deadline_ms;
+    let started = std::time::Instant::now();
+    let result = execute(&NativeBlueprintOperation, &request);
+    let elapsed = started.elapsed();
+    eprintln!("PROBE elapsedMs={} result={:?}", elapsed.as_millis(), result.as_ref().map(|_| "ok"));
+    let value = result.unwrap_or_else(|error| panic!("resident-equivalent build failed: {error}"));
+    assert_eq!(value["state"].as_str(), Some("fresh"), "build must publish a fresh generation");
+    assert!(elapsed.as_millis() <= deadline_ms as u128, "build exceeded its deadline bound");
+}

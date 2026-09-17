@@ -1,0 +1,25 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/marketplace.schema.json",
+  "name": "membrane",
+  "interface": {
+    "displayName": "Membrane",
+    "shortDescription": "Local-first context service installed from the stable Membrane payload.",
+    "developerName": "Orthic Labs",
+    "category": "Developer Tools"
+  },
+  "plugins": [
+    {
+      "name": "membrane",
+      "description": "Local-first context service for repository evidence, durable knowledge, document navigation, learning, and reversible reduction.",
+      "source": {
+        "source": "local",
+        "path": "./"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Developer Tools"
+    }
+  ]
+}

@@ -307,10 +307,16 @@ pub fn delete_facts_by_owner(
             )?;
         }
     }
-    if provider_id.is_none() {
+    if provider_id.is_none() && owners.is_empty() {
         // Complete generations written by the native builder predate
         // `fact_owner`; recover their ownership from path/provider indexes so
         // the first incremental repair can replace rows without collisions.
+        // The unindexed `edges.evidence` LIKE and `node_provider.source_path`
+        // scans below cost a full table pass each; a path that already has
+        // fact_owner coverage had every row retracted by the fact-keyed loop
+        // above, so running them per delta turned a bounded refresh into an
+        // O(deltas x rows) scan. Gate the recovery on having no owners: it
+        // runs once for a pre-fact_owner path, then ownership exists.
         let mut node_ids = Vec::new();
         {
             let mut statement = tx.prepare("SELECT node_id FROM node_provider WHERE source_path = ?1")?;

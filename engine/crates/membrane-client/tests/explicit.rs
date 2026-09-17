@@ -9,7 +9,7 @@ fn binding() -> ExplicitOwnerBindingV1 {
     ExplicitOwnerBindingV1 { schema_version: 1, mode: ExplicitOwnerMode::BoundedExplicit,
         installation_id: "installation".into(), cortex_store_id: "store".into(), release_generation: "release".into(),
         startup_generation: 7, stable_install_root: "C:/installed/current".into(), protocol_version: 1,
-        native_only: true, subsystems: ["pull", "push", "cortex", "blueprint", "ledger", "adapt"].map(str::to_owned).to_vec(),
+        native_only: true, subsystems: ["pull", "cortex", "blueprint", "ledger", "adapt"].map(str::to_owned).to_vec(),
         capabilities: vec!["memory".into(), "diagnostics".into(), "explicit-call".into()], embedder_dim: 384 }
 }
 fn candidate() -> KnownCandidate {

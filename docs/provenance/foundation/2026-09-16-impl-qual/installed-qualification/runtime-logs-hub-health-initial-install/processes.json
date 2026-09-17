@@ -1,0 +1,590 @@
+﻿[
+    {
+        "ProcessId":  44164,
+        "ParentProcessId":  53724,
+        "Name":  "node.exe",
+        "ExecutablePath":  "C:\\nvm4w\\nodejs\\node.exe",
+        "CommandLine":  "\"C:\\nvm4w\\nodejs\\node.exe\"  \"D:\\.rightkit-managed\\runtime-current\\build-control-broker\\src\\broker.mjs\" \"D:\\.rightkit-managed\\config.json\""
+    },
+    {
+        "ProcessId":  48572,
+        "ParentProcessId":  44164,
+        "Name":  "node.exe",
+        "ExecutablePath":  "C:\\nvm4w\\nodejs\\node.exe",
+        "CommandLine":  "C:\\nvm4w\\nodejs\\node.exe D:\\.rightkit-managed\\runtime-205765989fa8d7640e4959d1cf84e2b139250e4c1510c1857adde4a3d56e1e69\\build-control-broker\\src\\managed-launcher.mjs eyJjb21tYW5kIjoiRDpcXC5yaWdodGtpdC1tYW5hZ2VkXFxyaWdodGtpdC1idWlsZC1jb250cm9sXFxnbG9iYWxcXHRvb2xzXFxzY2NhY2hlXFw3YTJiNDIyMDM4OWM5NTliZDc4YTEyMTg3ZjBkMjMzOWY0YjNkNzk0ZDNlOWZmNzVjZjFlNTQyNmY3YzE2YTI5XFxzY2NhY2hlLmV4ZSIsImFyZ3YiOltdLCJraWxsT25EaXNjb25uZWN0Ijp0cnVlfQ"
+    },
+    {
+        "ProcessId":  55024,
+        "ParentProcessId":  23516,
+        "Name":  "node.exe",
+        "ExecutablePath":  "C:\\Program Files\\Adobe\\Adobe Creative Cloud Experience\\libs\\node.exe",
+        "CommandLine":  "\"C:\\Program Files\\Adobe\\Adobe Creative Cloud Experience\\libs\\node.exe\" \"C:\\Program Files\\Adobe\\Adobe Creative Cloud Experience\\js\\main.js\""
+    },
+    {
+        "ProcessId":  58860,
+        "ParentProcessId":  71040,
+        "Name":  "node.exe",
+        "ExecutablePath":  "C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node.exe",
+        "CommandLine":  "\"C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node.exe\"  ./server.mjs"
+    },
+    {
+        "ProcessId":  35560,
+        "ParentProcessId":  80068,
+        "Name":  "node.exe",
+        "ExecutablePath":  "C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node.exe",
+        "CommandLine":  "\"C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node.exe\" C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node_modules\\@oai\\cua-repl\\bin\\cua-repl.mjs"
+    },
+    {
+        "ProcessId":  51104,
+        "ParentProcessId":  80068,
+        "Name":  "node_repl.exe",
+        "ExecutablePath":  "C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node_repl.exe",
+        "CommandLine":  "\"C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node_repl.exe\""
+    },
+    {
+        "ProcessId":  62204,
+        "ParentProcessId":  35560,
+        "Name":  "node_repl.exe",
+        "ExecutablePath":  "C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node_repl.exe",
+        "CommandLine":  "C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node_repl.exe"
+    },
+    {
+        "ProcessId":  22920,
+        "ParentProcessId":  66760,
+        "Name":  "node.exe",
+        "ExecutablePath":  "C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node.exe",
+        "CommandLine":  "\"C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node.exe\"  ./server.mjs"
+    },
+    {
+        "ProcessId":  74000,
+        "ParentProcessId":  50376,
+        "Name":  "node.exe",
+        "ExecutablePath":  "C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node.exe",
+        "CommandLine":  "\"C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node.exe\"  ./server.mjs"
+    },
+    {
+        "ProcessId":  83056,
+        "ParentProcessId":  80068,
+        "Name":  "node.exe",
+        "ExecutablePath":  "C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node.exe",
+        "CommandLine":  "\"C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node.exe\" \"C:\\Program Files\\WindowsApps\\OpenAI.Codex_26.908.9136.0_x64__2p2nqsd0c76g0\\app\\resources\\artifact-template-picker\\server.mjs\""
+    },
+    {
+        "ProcessId":  85552,
+        "ParentProcessId":  80068,
+        "Name":  "node.exe",
+        "ExecutablePath":  "C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node.exe",
+        "CommandLine":  "\"C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node.exe\" C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node_modules\\@oai\\cua-repl\\bin\\cua-repl.mjs"
+    },
+    {
+        "ProcessId":  74764,
+        "ParentProcessId":  80068,
+        "Name":  "node_repl.exe",
+        "ExecutablePath":  "C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node_repl.exe",
+        "CommandLine":  "\"C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node_repl.exe\""
+    },
+    {
+        "ProcessId":  79528,
+        "ParentProcessId":  65420,
+        "Name":  "node.exe",
+        "ExecutablePath":  "C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node.exe",
+        "CommandLine":  "\"C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node.exe\"  ./server.mjs"
+    },
+    {
+        "ProcessId":  79952,
+        "ParentProcessId":  85552,
+        "Name":  "node_repl.exe",
+        "ExecutablePath":  "C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node_repl.exe",
+        "CommandLine":  "C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node_repl.exe"
+    },
+    {
+        "ProcessId":  20688,
+        "ParentProcessId":  80068,
+        "Name":  "node_repl.exe",
+        "ExecutablePath":  "C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node_repl.exe",
+        "CommandLine":  "\"C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node_repl.exe\""
+    },
+    {
+        "ProcessId":  24484,
+        "ParentProcessId":  80068,
+        "Name":  "node.exe",
+        "ExecutablePath":  "C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node.exe",
+        "CommandLine":  "\"C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node.exe\" \"C:\\Program Files\\WindowsApps\\OpenAI.Codex_26.908.9136.0_x64__2p2nqsd0c76g0\\app\\resources\\artifact-template-picker\\server.mjs\""
+    },
+    {
+        "ProcessId":  75088,
+        "ParentProcessId":  80068,
+        "Name":  "node.exe",
+        "ExecutablePath":  "C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node.exe",
+        "CommandLine":  "\"C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node.exe\" C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node_modules\\@oai\\cua-repl\\bin\\cua-repl.mjs"
+    },
+    {
+        "ProcessId":  77708,
+        "ParentProcessId":  75088,
+        "Name":  "node_repl.exe",
+        "ExecutablePath":  "C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node_repl.exe",
+        "CommandLine":  "C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node_repl.exe"
+    },
+    {
+        "ProcessId":  57404,
+        "ParentProcessId":  85944,
+        "Name":  "node.exe",
+        "ExecutablePath":  "C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node.exe",
+        "CommandLine":  "\"C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node.exe\"  ./server.mjs"
+    },
+    {
+        "ProcessId":  45020,
+        "ParentProcessId":  80068,
+        "Name":  "node.exe",
+        "ExecutablePath":  "C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node.exe",
+        "CommandLine":  "\"C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node.exe\" \"C:\\Program Files\\WindowsApps\\OpenAI.Codex_26.908.9136.0_x64__2p2nqsd0c76g0\\app\\resources\\artifact-template-picker\\server.mjs\""
+    },
+    {
+        "ProcessId":  78096,
+        "ParentProcessId":  80068,
+        "Name":  "node_repl.exe",
+        "ExecutablePath":  "C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node_repl.exe",
+        "CommandLine":  "\"C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node_repl.exe\""
+    },
+    {
+        "ProcessId":  21476,
+        "ParentProcessId":  80068,
+        "Name":  "node.exe",
+        "ExecutablePath":  "C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node.exe",
+        "CommandLine":  "\"C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node.exe\" C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node_modules\\@oai\\cua-repl\\bin\\cua-repl.mjs"
+    },
+    {
+        "ProcessId":  81224,
+        "ParentProcessId":  80068,
+        "Name":  "node.exe",
+        "ExecutablePath":  "C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node.exe",
+        "CommandLine":  "\"C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node.exe\" \"C:\\Program Files\\WindowsApps\\OpenAI.Codex_26.908.9136.0_x64__2p2nqsd0c76g0\\app\\resources\\artifact-template-picker\\server.mjs\""
+    },
+    {
+        "ProcessId":  52312,
+        "ParentProcessId":  80068,
+        "Name":  "node.exe",
+        "ExecutablePath":  "C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node.exe",
+        "CommandLine":  "\"C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node.exe\" C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node_modules\\@oai\\cua-repl\\bin\\cua-repl.mjs"
+    },
+    {
+        "ProcessId":  66020,
+        "ParentProcessId":  80068,
+        "Name":  "node_repl.exe",
+        "ExecutablePath":  "C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node_repl.exe",
+        "CommandLine":  "\"C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node_repl.exe\""
+    },
+    {
+        "ProcessId":  59032,
+        "ParentProcessId":  80068,
+        "Name":  "node.exe",
+        "ExecutablePath":  "C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node.exe",
+        "CommandLine":  "\"C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node.exe\" C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node_modules\\@oai\\cua-repl\\bin\\cua-repl.mjs"
+    },
+    {
+        "ProcessId":  86604,
+        "ParentProcessId":  80068,
+        "Name":  "node.exe",
+        "ExecutablePath":  "C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node.exe",
+        "CommandLine":  "\"C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node.exe\" \"C:\\Program Files\\WindowsApps\\OpenAI.Codex_26.908.9136.0_x64__2p2nqsd0c76g0\\app\\resources\\artifact-template-picker\\server.mjs\""
+    },
+    {
+        "ProcessId":  84696,
+        "ParentProcessId":  80068,
+        "Name":  "node.exe",
+        "ExecutablePath":  "C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node.exe",
+        "CommandLine":  "\"C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node.exe\" C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node_modules\\@oai\\cua-repl\\bin\\cua-repl.mjs"
+    },
+    {
+        "ProcessId":  74572,
+        "ParentProcessId":  21476,
+        "Name":  "node_repl.exe",
+        "ExecutablePath":  "C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node_repl.exe",
+        "CommandLine":  "C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node_repl.exe"
+    },
+    {
+        "ProcessId":  83716,
+        "ParentProcessId":  52312,
+        "Name":  "node_repl.exe",
+        "ExecutablePath":  "C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node_repl.exe",
+        "CommandLine":  "C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node_repl.exe"
+    },
+    {
+        "ProcessId":  61336,
+        "ParentProcessId":  84696,
+        "Name":  "node_repl.exe",
+        "ExecutablePath":  "C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node_repl.exe",
+        "CommandLine":  "C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node_repl.exe"
+    },
+    {
+        "ProcessId":  59196,
+        "ParentProcessId":  59032,
+        "Name":  "node_repl.exe",
+        "ExecutablePath":  "C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node_repl.exe",
+        "CommandLine":  "C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node_repl.exe"
+    },
+    {
+        "ProcessId":  85908,
+        "ParentProcessId":  80068,
+        "Name":  "node.exe",
+        "ExecutablePath":  "C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node.exe",
+        "CommandLine":  "\"C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node.exe\" C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node_modules\\@oai\\cua-repl\\bin\\cua-repl.mjs"
+    },
+    {
+        "ProcessId":  63136,
+        "ParentProcessId":  80068,
+        "Name":  "node_repl.exe",
+        "ExecutablePath":  "C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node_repl.exe",
+        "CommandLine":  "\"C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node_repl.exe\""
+    },
+    {
+        "ProcessId":  63452,
+        "ParentProcessId":  80068,
+        "Name":  "node.exe",
+        "ExecutablePath":  "C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node.exe",
+        "CommandLine":  "\"C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node.exe\" \"C:\\Program Files\\WindowsApps\\OpenAI.Codex_26.908.9136.0_x64__2p2nqsd0c76g0\\app\\resources\\artifact-template-picker\\server.mjs\""
+    },
+    {
+        "ProcessId":  59592,
+        "ParentProcessId":  80636,
+        "Name":  "node.exe",
+        "ExecutablePath":  "C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node.exe",
+        "CommandLine":  "\"C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node.exe\"  ./server.mjs"
+    },
+    {
+        "ProcessId":  28804,
+        "ParentProcessId":  80068,
+        "Name":  "node.exe",
+        "ExecutablePath":  "C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node.exe",
+        "CommandLine":  "\"C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node.exe\" \"C:\\Program Files\\WindowsApps\\OpenAI.Codex_26.908.9136.0_x64__2p2nqsd0c76g0\\app\\resources\\artifact-template-picker\\server.mjs\""
+    },
+    {
+        "ProcessId":  81444,
+        "ParentProcessId":  40976,
+        "Name":  "node.exe",
+        "ExecutablePath":  "C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node.exe",
+        "CommandLine":  "\"C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node.exe\"  ./server.mjs"
+    },
+    {
+        "ProcessId":  81860,
+        "ParentProcessId":  80068,
+        "Name":  "node.exe",
+        "ExecutablePath":  "C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node.exe",
+        "CommandLine":  "\"C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node.exe\" C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node_modules\\@oai\\cua-repl\\bin\\cua-repl.mjs"
+    },
+    {
+        "ProcessId":  87844,
+        "ParentProcessId":  80068,
+        "Name":  "node_repl.exe",
+        "ExecutablePath":  "C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node_repl.exe",
+        "CommandLine":  "\"C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node_repl.exe\""
+    },
+    {
+        "ProcessId":  60524,
+        "ParentProcessId":  80068,
+        "Name":  "node.exe",
+        "ExecutablePath":  "C:\\nvm4w\\nodejs\\node.exe",
+        "CommandLine":  "\"C:\\nvm4w\\nodejs\\node.exe\" D:\\claude\\mcps\\groundwork\\server.js"
+    },
+    {
+        "ProcessId":  40324,
+        "ParentProcessId":  85908,
+        "Name":  "node_repl.exe",
+        "ExecutablePath":  "C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node_repl.exe",
+        "CommandLine":  "C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node_repl.exe"
+    },
+    {
+        "ProcessId":  84108,
+        "ParentProcessId":  80068,
+        "Name":  "node_repl.exe",
+        "ExecutablePath":  "C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node_repl.exe",
+        "CommandLine":  "\"C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node_repl.exe\""
+    },
+    {
+        "ProcessId":  81084,
+        "ParentProcessId":  59292,
+        "Name":  "node.exe",
+        "ExecutablePath":  "C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node.exe",
+        "CommandLine":  "\"C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node.exe\"  ./server.mjs"
+    },
+    {
+        "ProcessId":  44912,
+        "ParentProcessId":  80068,
+        "Name":  "node.exe",
+        "ExecutablePath":  "C:\\nvm4w\\nodejs\\node.exe",
+        "CommandLine":  "\"C:\\nvm4w\\nodejs\\node.exe\" D:\\claude\\mcps\\groundwork\\server.js"
+    },
+    {
+        "ProcessId":  71484,
+        "ParentProcessId":  81332,
+        "Name":  "node.exe",
+        "ExecutablePath":  "C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node.exe",
+        "CommandLine":  "\"C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node.exe\"  ./server.mjs"
+    },
+    {
+        "ProcessId":  81320,
+        "ParentProcessId":  80068,
+        "Name":  "node.exe",
+        "ExecutablePath":  "C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node.exe",
+        "CommandLine":  "\"C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node.exe\" \"C:\\Program Files\\WindowsApps\\OpenAI.Codex_26.908.9136.0_x64__2p2nqsd0c76g0\\app\\resources\\artifact-template-picker\\server.mjs\""
+    },
+    {
+        "ProcessId":  72004,
+        "ParentProcessId":  80068,
+        "Name":  "node_repl.exe",
+        "ExecutablePath":  "C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node_repl.exe",
+        "CommandLine":  "\"C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node_repl.exe\""
+    },
+    {
+        "ProcessId":  83940,
+        "ParentProcessId":  81860,
+        "Name":  "node_repl.exe",
+        "ExecutablePath":  "C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node_repl.exe",
+        "CommandLine":  "C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node_repl.exe"
+    },
+    {
+        "ProcessId":  63740,
+        "ParentProcessId":  80068,
+        "Name":  "node.exe",
+        "ExecutablePath":  "C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node.exe",
+        "CommandLine":  "\"C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node.exe\" \"C:\\Program Files\\WindowsApps\\OpenAI.Codex_26.908.9136.0_x64__2p2nqsd0c76g0\\app\\resources\\artifact-template-picker\\server.mjs\""
+    },
+    {
+        "ProcessId":  73376,
+        "ParentProcessId":  80068,
+        "Name":  "node_repl.exe",
+        "ExecutablePath":  "C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node_repl.exe",
+        "CommandLine":  "\"C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node_repl.exe\""
+    },
+    {
+        "ProcessId":  69664,
+        "ParentProcessId":  80068,
+        "Name":  "node.exe",
+        "ExecutablePath":  "C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node.exe",
+        "CommandLine":  "\"C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node.exe\" C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node_modules\\@oai\\cua-repl\\bin\\cua-repl.mjs"
+    },
+    {
+        "ProcessId":  51248,
+        "ParentProcessId":  83712,
+        "Name":  "node.exe",
+        "ExecutablePath":  "C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node.exe",
+        "CommandLine":  "\"C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node.exe\"  ./server.mjs"
+    },
+    {
+        "ProcessId":  81344,
+        "ParentProcessId":  80068,
+        "Name":  "node.exe",
+        "ExecutablePath":  "C:\\nvm4w\\nodejs\\node.exe",
+        "CommandLine":  "\"C:\\nvm4w\\nodejs\\node.exe\" D:\\claude\\mcps\\groundwork\\server.js"
+    },
+    {
+        "ProcessId":  71292,
+        "ParentProcessId":  80068,
+        "Name":  "node.exe",
+        "ExecutablePath":  "C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node.exe",
+        "CommandLine":  "\"C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node.exe\" C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node_modules\\@oai\\cua-repl\\bin\\cua-repl.mjs"
+    },
+    {
+        "ProcessId":  87068,
+        "ParentProcessId":  85592,
+        "Name":  "node.exe",
+        "ExecutablePath":  "C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node.exe",
+        "CommandLine":  "\"C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node.exe\"  ./server.mjs"
+    },
+    {
+        "ProcessId":  78768,
+        "ParentProcessId":  80068,
+        "Name":  "node.exe",
+        "ExecutablePath":  "C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node.exe",
+        "CommandLine":  "\"C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node.exe\" \"C:\\Program Files\\WindowsApps\\OpenAI.Codex_26.908.9136.0_x64__2p2nqsd0c76g0\\app\\resources\\artifact-template-picker\\server.mjs\""
+    },
+    {
+        "ProcessId":  76384,
+        "ParentProcessId":  80068,
+        "Name":  "node.exe",
+        "ExecutablePath":  "C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node.exe",
+        "CommandLine":  "\"C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node.exe\" C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node_modules\\@oai\\cua-repl\\bin\\cua-repl.mjs"
+    },
+    {
+        "ProcessId":  87648,
+        "ParentProcessId":  80068,
+        "Name":  "node.exe",
+        "ExecutablePath":  "C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node.exe",
+        "CommandLine":  "\"C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node.exe\" \"C:\\Program Files\\WindowsApps\\OpenAI.Codex_26.908.9136.0_x64__2p2nqsd0c76g0\\app\\resources\\artifact-template-picker\\server.mjs\""
+    },
+    {
+        "ProcessId":  77596,
+        "ParentProcessId":  69664,
+        "Name":  "node_repl.exe",
+        "ExecutablePath":  "C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node_repl.exe",
+        "CommandLine":  "C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node_repl.exe"
+    },
+    {
+        "ProcessId":  68788,
+        "ParentProcessId":  20968,
+        "Name":  "node.exe",
+        "ExecutablePath":  "C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node.exe",
+        "CommandLine":  "\"C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node.exe\"  ./server.mjs"
+    },
+    {
+        "ProcessId":  69928,
+        "ParentProcessId":  71292,
+        "Name":  "node_repl.exe",
+        "ExecutablePath":  "C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node_repl.exe",
+        "CommandLine":  "C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node_repl.exe"
+    },
+    {
+        "ProcessId":  81220,
+        "ParentProcessId":  76384,
+        "Name":  "node_repl.exe",
+        "ExecutablePath":  "C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node_repl.exe",
+        "CommandLine":  "C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node_repl.exe"
+    },
+    {
+        "ProcessId":  84644,
+        "ParentProcessId":  80068,
+        "Name":  "node.exe",
+        "ExecutablePath":  "C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node.exe",
+        "CommandLine":  "\"C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node.exe\" \"C:\\Program Files\\WindowsApps\\OpenAI.Codex_26.908.9136.0_x64__2p2nqsd0c76g0\\app\\resources\\artifact-template-picker\\server.mjs\""
+    },
+    {
+        "ProcessId":  57144,
+        "ParentProcessId":  80068,
+        "Name":  "node_repl.exe",
+        "ExecutablePath":  "C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node_repl.exe",
+        "CommandLine":  "\"C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node_repl.exe\""
+    },
+    {
+        "ProcessId":  76932,
+        "ParentProcessId":  80068,
+        "Name":  "node.exe",
+        "ExecutablePath":  "C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node.exe",
+        "CommandLine":  "\"C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node.exe\" C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node_modules\\@oai\\cua-repl\\bin\\cua-repl.mjs"
+    },
+    {
+        "ProcessId":  78388,
+        "ParentProcessId":  80068,
+        "Name":  "node.exe",
+        "ExecutablePath":  "C:\\nvm4w\\nodejs\\node.exe",
+        "CommandLine":  "\"C:\\nvm4w\\nodejs\\node.exe\" D:\\claude\\mcps\\groundwork\\server.js"
+    },
+    {
+        "ProcessId":  84140,
+        "ParentProcessId":  98240,
+        "Name":  "node.exe",
+        "ExecutablePath":  "C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node.exe",
+        "CommandLine":  "\"C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node.exe\"  ./server.mjs"
+    },
+    {
+        "ProcessId":  88768,
+        "ParentProcessId":  76932,
+        "Name":  "node_repl.exe",
+        "ExecutablePath":  "C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node_repl.exe",
+        "CommandLine":  "C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node_repl.exe"
+    },
+    {
+        "ProcessId":  42568,
+        "ParentProcessId":  80068,
+        "Name":  "node_repl.exe",
+        "ExecutablePath":  "C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node_repl.exe",
+        "CommandLine":  "\"C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node_repl.exe\""
+    },
+    {
+        "ProcessId":  37468,
+        "ParentProcessId":  80068,
+        "Name":  "node.exe",
+        "ExecutablePath":  "C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node.exe",
+        "CommandLine":  "\"C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node.exe\" C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node_modules\\@oai\\cua-repl\\bin\\cua-repl.mjs"
+    },
+    {
+        "ProcessId":  58852,
+        "ParentProcessId":  80068,
+        "Name":  "node.exe",
+        "ExecutablePath":  "C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node.exe",
+        "CommandLine":  "\"C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node.exe\" \"C:\\Program Files\\WindowsApps\\OpenAI.Codex_26.908.9136.0_x64__2p2nqsd0c76g0\\app\\resources\\artifact-template-picker\\server.mjs\""
+    },
+    {
+        "ProcessId":  44004,
+        "ParentProcessId":  37468,
+        "Name":  "node_repl.exe",
+        "ExecutablePath":  "C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node_repl.exe",
+        "CommandLine":  "C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node_repl.exe"
+    },
+    {
+        "ProcessId":  86340,
+        "ParentProcessId":  78620,
+        "Name":  "node.exe",
+        "ExecutablePath":  "C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node.exe",
+        "CommandLine":  "\"C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node.exe\"  ./server.mjs"
+    },
+    {
+        "ProcessId":  80152,
+        "ParentProcessId":  98112,
+        "Name":  "node.exe",
+        "ExecutablePath":  "C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node.exe",
+        "CommandLine":  "\"C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node.exe\"  ./server.mjs"
+    },
+    {
+        "ProcessId":  98620,
+        "ParentProcessId":  66892,
+        "Name":  "node.exe",
+        "ExecutablePath":  "C:\\nvm4w\\nodejs\\node.exe",
+        "CommandLine":  "\"C:\\nvm4w\\nodejs\\node.exe\" C:\\Users\\adrds\\AppData\\Local\\pnpm\\bin/../global/v11/a99064e9c9ee7840e70edeec85d4ac367421b200da5d028f6b1b304d6f92c496/node_modules/freebuff/index.js"
+    },
+    {
+        "ProcessId":  100848,
+        "ParentProcessId":  80068,
+        "Name":  "node.exe",
+        "ExecutablePath":  "C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node.exe",
+        "CommandLine":  "\"C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node.exe\" \"C:\\Program Files\\WindowsApps\\OpenAI.Codex_26.908.9136.0_x64__2p2nqsd0c76g0\\app\\resources\\artifact-template-picker\\server.mjs\""
+    },
+    {
+        "ProcessId":  80404,
+        "ParentProcessId":  80068,
+        "Name":  "node.exe",
+        "ExecutablePath":  "C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node.exe",
+        "CommandLine":  "\"C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node.exe\" C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node_modules\\@oai\\cua-repl\\bin\\cua-repl.mjs"
+    },
+    {
+        "ProcessId":  79532,
+        "ParentProcessId":  80068,
+        "Name":  "node_repl.exe",
+        "ExecutablePath":  "C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node_repl.exe",
+        "CommandLine":  "\"C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node_repl.exe\""
+    },
+    {
+        "ProcessId":  97796,
+        "ParentProcessId":  89332,
+        "Name":  "node.exe",
+        "ExecutablePath":  "C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node.exe",
+        "CommandLine":  "\"C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node.exe\"  ./server.mjs"
+    },
+    {
+        "ProcessId":  60668,
+        "ParentProcessId":  80404,
+        "Name":  "node_repl.exe",
+        "ExecutablePath":  "C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node_repl.exe",
+        "CommandLine":  "C:\\Users\\adrds\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\6f12e0ef1c6e5061\\bin\\node_repl.exe"
+    },
+    {
+        "ProcessId":  79424,
+        "ParentProcessId":  101252,
+        "Name":  "membrane-tray.exe",
+        "ExecutablePath":  "C:\\Users\\adrds\\AppData\\Local\\Orthic Labs\\Membrane\\current\\membrane-tray.exe",
+        "CommandLine":  "\"C:\\Users\\adrds\\AppData\\Local\\Orthic Labs\\Membrane\\current\\membrane-tray.exe\" --login-launch "
+    },
+    {
+        "ProcessId":  92988,
+        "ParentProcessId":  102560,
+        "Name":  "membrane.exe",
+        "ExecutablePath":  "C:\\Users\\adrds\\AppData\\Local\\Orthic Labs\\Membrane\\current\\membrane.exe",
+        "CommandLine":  "\"C:\\Users\\adrds\\AppData\\Local\\Orthic Labs\\Membrane\\current\\membrane.exe\" --os-supervised"
+    },
+    {
+        "ProcessId":  54144,
+        "ParentProcessId":  79424,
+        "Name":  "membrane-hub.exe",
+        "ExecutablePath":  "C:\\Users\\adrds\\AppData\\Local\\Orthic Labs\\Membrane\\current\\membrane-hub.exe",
+        "CommandLine":  "\"C:\\Users\\adrds\\AppData\\Local\\Orthic Labs\\Membrane\\current\\membrane-hub.exe\""
+    }
+]

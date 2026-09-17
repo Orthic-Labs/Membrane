@@ -37,6 +37,15 @@ impl HttpAdmissionPolicy {
             max_deadline_ms: DEFAULT_DEADLINE_MS,
         }
     }
+
+    /// Bound a resident's admitted deadline ceiling. The `/cli` route runs a
+    /// full in-process command (including verified Cortex apply/commit work)
+    /// whose budget must match the resident request timeout, not the generic
+    /// MCP default. Callers still only ever shorten their own budget.
+    pub fn with_max_deadline_ms(mut self, max_deadline_ms: u64) -> Self {
+        self.max_deadline_ms = max_deadline_ms;
+        self
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

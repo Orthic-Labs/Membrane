@@ -901,7 +901,7 @@ pub fn run_adapter_capped(
     }
     validate_adapter(adapter, &root, program, args)
         .map_err(|kind| CommandAdapterError::Rejected { adapter, kind })?;
-    let mut command = Command::new(program);
+    let mut command = crate::hidden_command(program);
     command.args(args).current_dir(root);
     if adapter == CommandAdapter::Git {
         for (key, _) in std::env::vars_os() {
@@ -927,7 +927,7 @@ pub fn run_capped(
         .first()
         .ok_or_else(|| "resolved shell argv unexpectedly empty".to_string())?;
 
-    let mut c = Command::new(program);
+    let mut c = crate::hidden_command(program);
     if argv.len() > 1 {
         c.args(&argv[1..]);
     }
@@ -1285,7 +1285,7 @@ mod tests {
     fn capture_deadline_and_pre_cancel_do_not_publish_partial_originals() {
         let _guard = lock_env();
         let dir = tempfile::tempdir().unwrap();
-        let mut command = Command::new("node");
+        let mut command = crate::hidden_command("node");
         command.args(["-e", "process.stdout.write('partial'); setInterval(()=>{},1000)"]);
         let started = std::time::Instant::now();
         let result = run_command_capped_with_limits(command, 1, 1, dir.path(), std::time::Duration::from_millis(100), &tokio_util::sync::CancellationToken::new());
@@ -1293,7 +1293,7 @@ mod tests {
         assert!(started.elapsed() < std::time::Duration::from_secs(5));
         assert!(std::fs::read_dir(dir.path()).unwrap().next().is_none());
         let token = tokio_util::sync::CancellationToken::new(); token.cancel();
-        assert!(run_command_capped_with_limits(Command::new("nonexistent-program"), 1, 1, dir.path(), std::time::Duration::from_secs(1), &token).unwrap_err().contains("cancelled"));
+        assert!(run_command_capped_with_limits(crate::hidden_command("nonexistent-program"), 1, 1, dir.path(), std::time::Duration::from_secs(1), &token).unwrap_err().contains("cancelled"));
     }
 
     #[test]
@@ -1301,7 +1301,7 @@ mod tests {
         let _guard = lock_env();
         let repo = tempfile::tempdir().unwrap();
         let spills = tempfile::tempdir().unwrap();
-        let initialized = Command::new("git")
+        let initialized = crate::hidden_command("git")
             .args(["init", "-q"])
             .current_dir(repo.path())
             .status()

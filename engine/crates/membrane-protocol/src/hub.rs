@@ -136,13 +136,14 @@ impl HubSubsystemV1 {
     }
 }
 
-/// The six semantic Membrane subsystems — closed, named fields so no producer
-/// can emit an unnamed or missing subsystem on the wire.
+/// The five active Membrane subsystems — closed, named fields so no producer
+/// can emit an unnamed or missing subsystem on the wire. Former Push is
+/// retired: public `push` writes durable memory through Cortex and is not a
+/// subsystem peer.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HubSubsystemsV1 {
     pub pull: HubSubsystemV1,
-    pub push: HubSubsystemV1,
     pub cortex: HubSubsystemV1,
     pub blueprint: HubSubsystemV1,
     pub ledger: HubSubsystemV1,

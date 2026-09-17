@@ -11,7 +11,7 @@ use std::{
     io::{Read, Write},
     net::{Shutdown, TcpStream},
     path::{Path, PathBuf},
-    process::{Command, Stdio},
+    process::Stdio,
     thread,
     time::{Duration, Instant},
 };
@@ -607,7 +607,7 @@ fn bounded_git(root: &Path, args: &[&str]) -> Option<Vec<u8>> {
     // including detached descendants holding the piped stdout open. No
     // `membrane.exe` re-entry is involved: this helper owns no runtime and no
     // storage, only the child handle plus the deadline below.
-    let mut command = Command::new("git");
+    let mut command = crate::hidden_command("git");
     command.args(args).current_dir(root).stdin(Stdio::null()).stderr(Stdio::null()).stdout(Stdio::piped());
     let shared = crate::providers::child_process::spawn_tracked_contained_command(command).ok()?;
     let stdout = { shared.lock().ok()?.child.stdout.take()? };

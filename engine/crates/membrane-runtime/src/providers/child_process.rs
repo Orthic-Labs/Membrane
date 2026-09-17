@@ -285,7 +285,7 @@ pub fn spawn_sanitized(
     working_dir: &Path,
     env: &[(String, String)],
 ) -> std::io::Result<SanitizedProcess> {
-    let mut command = Command::new(binary);
+    let mut command = crate::hidden_command(binary);
     command
         .args(args)
         .current_dir(working_dir)
@@ -819,7 +819,7 @@ mod tests {
         use std::io::BufRead;
         use std::os::windows::process::CommandExt;
         fn sleeper() -> SanitizedProcess {
-            let mut command = Command::new("powershell.exe");
+            let mut command = crate::hidden_command("powershell.exe");
             command.args(["-NoProfile", "-NonInteractive", "-Command",
                 "[Console]::WriteLine('ready'); Start-Sleep -Seconds 30"])
                 .creation_flags(0x08000000).stdin(Stdio::null())

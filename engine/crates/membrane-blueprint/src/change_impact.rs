@@ -11,7 +11,7 @@ use crate::recall_circuit::resolve_seeds_native;
 use regex::Regex;
 use serde_json::{json, Value};
 use std::collections::{BTreeSet, HashSet};
-use std::process::Command;
+
 use std::sync::OnceLock;
 
 fn normalize_path(value: &str) -> String {
@@ -29,7 +29,7 @@ fn git_changed_paths(root: &str, base: &str, head: &str) -> (Vec<String>, Option
     if from.is_empty() {
         return (Vec::new(), Some(json!({"reason": "treeish_base_required"})));
     }
-    let output = Command::new("git")
+    let output = crate::hidden_command("git")
         .args(["diff", "--name-only", "--diff-filter=ACDMRTUXB", from, to, "--"])
         .current_dir(root)
         .output();

@@ -17,7 +17,7 @@
 use std::collections::BTreeMap;
 use std::io::Read;
 use std::path::{Component, Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
@@ -37,7 +37,7 @@ fn digest_bytes(value: &[u8]) -> String {
 }
 
 fn run_git_bounded(root: &Path, args: &[&str], max_buffer: usize) -> Option<Vec<u8>> {
-    let mut command = Command::new("git");
+    let mut command = crate::hidden_command("git");
     command
         .arg("-C")
         .arg(root)

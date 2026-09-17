@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "membrane": {
+      "url": "http://127.0.0.1:47851/mcp",
+      "bearerTokenEnvVar": "MEMBRANE_BEARER_TOKEN"
+    }
+  }
+}

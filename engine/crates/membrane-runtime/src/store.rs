@@ -4780,7 +4780,7 @@ impl MemoryStore {
     /// checked out without `tools/skills/` cannot wipe the portability store it was meant to carry.
     pub fn ingest_skills(&self, workspace: &Path) -> (usize, usize, usize) {
         let skills_dir = workspace.join("tools").join("skills");
-        let tracked = std::process::Command::new("git")
+        let tracked = crate::hidden_command("git")
             .args([
                 "-C",
                 &workspace.to_string_lossy(),
@@ -12380,7 +12380,7 @@ mod tests {
             std::fs::write(directory.join("SKILL.md"), text).unwrap();
         }
         let run_git = |args: &[&str]| {
-            let mut command = std::process::Command::new("git");
+            let mut command = crate::hidden_command("git");
             command.arg("-C").arg(workspace.path()).args(args);
             #[cfg(windows)]
             {

@@ -1,0 +1,8 @@
+﻿{
+    "schema":  "membrane.activation-process.v1",
+    "executable":  "C:\\Users\\adrds\\AppData\\Local\\Orthic Labs\\Membrane\\current\\membrane.exe",
+    "exitCode":  0,
+    "timedOut":  false,
+    "stdout":  "D:\\Claude\\membrane\\docs\\provenance\\foundation\\2026-09-16-impl-qual\\installed-qualification\\activation-stdout.log",
+    "stderr":  "D:\\Claude\\membrane\\docs\\provenance\\foundation\\2026-09-16-impl-qual\\installed-qualification\\activation-stderr.log"
+}

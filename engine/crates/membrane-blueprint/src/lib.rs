@@ -157,3 +157,16 @@ pub mod lib_cli_mcp;
 pub mod lib_cli_uninstall;
 pub mod architecture_views;
 pub mod freshness_observation;
+
+/// Spawn a console-subsystem child without allocating a visible console.
+/// The resident daemon is a windows-subsystem process: without
+/// CREATE_NO_WINDOW every `git`/provider child flashes a console window.
+pub(crate) fn hidden_command<S: AsRef<std::ffi::OsStr>>(program: S) -> std::process::Command {
+    let mut command = std::process::Command::new(program);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(0x0800_0000);
+    }
+    command
+}

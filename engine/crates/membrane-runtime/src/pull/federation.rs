@@ -24,7 +24,7 @@ use membrane_protocol::{
 };
 use serde_json::Value;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 use std::sync::OnceLock;
 use std::time::Instant;
 
@@ -3146,7 +3146,7 @@ mod tests {
     /// flags so this works in any sandbox regardless of global git config.
     fn init_git_repo(dir: &Path) {
         let run = |args: &[&str]| {
-            let status = Command::new("git")
+            let status = crate::hidden_command("git")
                 .arg("-C")
                 .arg(dir)
                 .args(args)

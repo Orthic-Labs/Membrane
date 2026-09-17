@@ -155,7 +155,7 @@ for (const manifestName of ["plugin.json", ".claude-plugin/plugin.json", ".codex
   for (const relative of required) {
     const path = join(payload, relative);
     if (!existsSync(path)) throw new Error(`payload plugin surface missing: ${relative}`);
-    JSON.parse(readFileSync(path, "utf8"));
+    if (relative.endsWith(".json")) JSON.parse(readFileSync(path, "utf8"));
   }
   for (const manifestName of ["plugin.json", ".claude-plugin/plugin.json", ".codex-plugin/plugin.json", ".antigravity-plugin/plugin.json"]) {
     const stamped = JSON.parse(readFileSync(join(payload, manifestName), "utf8"));

@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use xxhash_rust::xxh3::xxh3_128;
-use std::{fs, path::Path, process::{Command, Stdio}};
+use std::{fs, path::Path, process::Stdio};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -85,7 +85,7 @@ pub fn repository_identity_with_options(root: impl AsRef<Path>, options: &Identi
 /// JS authority.  Unavailable git state is `None`, never a falsely clean tree.
 pub fn git_source_observation(root: impl AsRef<Path>) -> Option<GitSourceObservation> {
     let root = root.as_ref();
-    let head_output = Command::new("git")
+    let head_output = crate::hidden_command("git")
         .args(["rev-parse", "HEAD"])
         .current_dir(root)
         .stdin(Stdio::null())
@@ -93,7 +93,7 @@ pub fn git_source_observation(root: impl AsRef<Path>) -> Option<GitSourceObserva
         .output().ok().filter(|o| o.status.success())?;
     let head = String::from_utf8_lossy(&head_output.stdout).trim().to_ascii_lowercase();
     if head.len() < 40 || head.len() > 64 || !head.bytes().all(|b| b.is_ascii_hexdigit()) { return None; }
-    let output = Command::new("git")
+    let output = crate::hidden_command("git")
         .args(["status", "--porcelain=v1", "-z", "--untracked-files=all", "--", ".", ":(exclude).agent", ":(exclude).agent/**", ":(exclude)docs/product.md", ":(exclude)docs/architecture.md"])
         .current_dir(root)
         .stdin(Stdio::null())
@@ -129,7 +129,7 @@ pub fn compute_manifest_digest_value(manifest: &Value, source_observation: Optio
 }
 
 fn read_origin(root: &Path) -> Option<String> {
-    let command_origin = Command::new("git")
+    let command_origin = crate::hidden_command("git")
         .args(["-C", &root.to_string_lossy(), "config", "--get", "remote.origin.url"])
         .stdin(Stdio::null())
         .stderr(Stdio::null())

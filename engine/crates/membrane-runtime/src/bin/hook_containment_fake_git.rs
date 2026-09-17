@@ -1,6 +1,6 @@
 // Test-support binary for engine/crates/membrane-runtime/tests/hook_leaf_containment.rs
 // ONLY. It stands in for `git.exe` on PATH inside a temp, non-repo
-// directory so the diagnostics fence's bounded leaf `Command::new("git")`
+// directory so the diagnostics fence's bounded leaf `crate::hidden_command("git")`
 // (Windows resolves a bare program name to `<name>.exe` via CreateProcess,
 // never `.cmd`/`.bat`) actually spawns this binary instead of the real
 // system git.
@@ -23,7 +23,13 @@ fn spawn_delayed_marker(marker_env: &str) {
     let cmd_line = format!(
         "{system_root}\\System32\\ping.exe -n 5 127.0.0.1 >nul & echo late>{marker}"
     );
-    let _ = Command::new("cmd")
+    let mut command = Command::new("cmd");
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(0x0800_0000);
+    }
+    let _ = command
         .args(["/c", &cmd_line])
         .stdin(Stdio::null())
         .stdout(Stdio::null())

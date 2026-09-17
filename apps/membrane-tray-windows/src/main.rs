@@ -60,6 +60,24 @@ unsafe extern "system" {
 
 fn main() -> Result<(), slint::PlatformError> {
     let log_ready = supervisor::init_lifecycle_log();
+    let default_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let location = info
+            .location()
+            .map(|loc| format!("{}:{}", loc.file(), loc.line()))
+            .unwrap_or_else(|| "unknown".to_owned());
+        let payload = info
+            .payload()
+            .downcast_ref::<&str>()
+            .map(|value| (*value).to_owned())
+            .or_else(|| info.payload().downcast_ref::<String>().cloned())
+            .unwrap_or_else(|| "non-string payload".to_owned());
+        supervisor::lifecycle_event(
+            "tray_panic",
+            serde_json::json!({"location": location, "payload": payload}),
+        );
+        default_hook(info);
+    }));
     supervisor::lifecycle_event(
         "tray_startup",
         serde_json::json!({"stage":"entry", "logReady": log_ready}),
@@ -316,6 +334,7 @@ fn main() -> Result<(), slint::PlatformError> {
     let quit_supervisor = supervisor.clone();
     let quit_popover = popover.as_weak();
     popover.on_quit(move || {
+        supervisor::lifecycle_event("tray_quit_requested", serde_json::json!({"source":"popover_menu"}));
         quit_supervisor
             .borrow_mut()
             .begin_drain(supervisor::now_unix_ms());
@@ -420,6 +439,7 @@ fn main() -> Result<(), slint::PlatformError> {
                     }
                 },
                 tray::MENU_ID_QUIT => {
+                    supervisor::lifecycle_event("tray_quit_requested", serde_json::json!({"source":"tray_menu"}));
                     timer_supervisor.borrow_mut().begin_drain(now);
                 }
                 _ => {}
@@ -449,6 +469,7 @@ fn main() -> Result<(), slint::PlatformError> {
             }
         }
         if instance_event.take_signal(instance::InstanceSignal::Replace) {
+            supervisor::lifecycle_event("tray_quit_requested", serde_json::json!({"source":"replace_signal"}));
             timer_supervisor.borrow_mut().begin_drain(now);
             if let Some(window) = timer_popover.upgrade() {
                 let _ = window.hide();
@@ -519,7 +540,12 @@ fn main() -> Result<(), slint::PlatformError> {
         popover.show()?;
         request_popover_size(&popover, first_run);
     }
-    slint::run_event_loop_until_quit()
+    let result = slint::run_event_loop_until_quit();
+    supervisor::lifecycle_event(
+        "tray_exit",
+        serde_json::json!({"stage":"event_loop_returned", "ok": result.is_ok()}),
+    );
+    result
 }
 
 fn anchor_from_tray_rect(rect: tray_icon::Rect) -> placement::Rect {
@@ -974,12 +1000,17 @@ fn launch_dashboard(supervisor: &supervisor::Supervisor) -> bool {
     // uptime the only file on disk was the installer's log, while log_root()
     // stayed empty. Append both streams to that root instead; if the log
     // cannot be opened the Hub still starts, just as before.
-    let mut child = match Command::new(path)
+    let mut command = Command::new(path);
+    command
         .stdin(Stdio::piped())
         .stdout(hub_log_target())
-        .stderr(hub_log_target())
-        .spawn()
+        .stderr(hub_log_target());
+    #[cfg(windows)]
     {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(0x0800_0000);
+    }
+    let mut child = match command.spawn() {
         Ok(child) => child,
         Err(_) => return false,
     };

@@ -177,7 +177,7 @@ pub fn replace_by_source<T: Clone>(
 use std::fmt::Display;
 use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
@@ -242,7 +242,7 @@ pub fn run_treeish_git(
     args: &[&str],
     timeout: Duration,
 ) -> Result<Vec<u8>, TreeishError> {
-    let mut child = Command::new("git")
+    let mut child = crate::hidden_command("git")
         .args(args)
         .current_dir(repo_root)
         .stdin(Stdio::null())
@@ -300,7 +300,7 @@ fn run_treeish_git_status(
     args: &[&str],
     timeout: Duration,
 ) -> Result<(), TreeishError> {
-    let mut child = Command::new("git")
+    let mut child = crate::hidden_command("git")
         .args(args)
         .current_dir(repo_root)
         .stdin(Stdio::null())
@@ -556,10 +556,14 @@ impl Default for FileDelta {
 }
 
 /// Mirrors `options` (`{ inTransaction, deferJournalAck }`); see module docs
-/// on why `inTransaction` composition is not supported.
-#[derive(Debug, Clone, Copy, Default)]
+/// on why `inTransaction` composition is not supported. `cancellation` is a
+/// native addition: a large event set can take minutes inside one
+/// transaction, and the resident's deadline/cancel contract requires the
+/// loop to observe the bound rather than run to completion.
+#[derive(Debug, Clone, Default)]
 pub struct ApplyOptions {
     pub defer_journal_ack: bool,
+    pub cancellation: Option<crate::api::CancellationToken>,
 }
 
 /// Mirrors `applyFileDelta`'s return shape.
@@ -581,6 +585,8 @@ pub enum ApplyFileDeltaError {
     Sqlite(#[from] rusqlite::Error),
     #[error("{0}")]
     Store(String),
+    #[error("apply cancelled")]
+    Cancelled,
 }
 
 /// Native port of `applyFileDelta` for structural (non-document) deltas.
@@ -591,7 +597,7 @@ pub fn apply_file_delta(
     options: ApplyOptions,
 ) -> Result<ApplyResult, ApplyFileDeltaError> {
     let tx = conn.transaction()?;
-    let result = apply_file_delta_tx(&tx, delta, options)?;
+    let result = apply_file_delta_tx(&tx, delta, &options)?;
     tx.commit()?;
     Ok(result)
 }
@@ -603,19 +609,29 @@ pub fn apply_file_deltas(
     deltas: &[FileDelta],
     options: ApplyOptions,
 ) -> Result<Vec<ApplyResult>, ApplyFileDeltaError> {
+    let started = std::time::Instant::now();
+    eprintln!("{}", serde_json::json!({"event":"blueprint_apply_phase","phase":"begin","deltas":deltas.len()}));
     let tx = conn.transaction()?;
+    eprintln!("{}", serde_json::json!({"event":"blueprint_apply_phase","phase":"transaction","elapsedMs":started.elapsed().as_millis()}));
     let mut results = Vec::with_capacity(deltas.len());
-    for delta in deltas {
-        results.push(apply_file_delta_tx(&tx, delta, options)?);
+    for (index, delta) in deltas.iter().enumerate() {
+        if index % 32 == 0 {
+            if let Some(cancellation) = options.cancellation.as_ref() {
+                if cancellation.is_cancelled() { return Err(ApplyFileDeltaError::Cancelled); }
+            }
+        }
+        results.push(apply_file_delta_tx(&tx, delta, &options)?);
     }
+    eprintln!("{}", serde_json::json!({"event":"blueprint_apply_phase","phase":"rows","elapsedMs":started.elapsed().as_millis()}));
     tx.commit()?;
+    eprintln!("{}", serde_json::json!({"event":"blueprint_apply_phase","phase":"commit","elapsedMs":started.elapsed().as_millis()}));
     Ok(results)
 }
 
 fn apply_file_delta_tx(
     tx: &Transaction<'_>,
     delta: &FileDelta,
-    options: ApplyOptions,
+    options: &ApplyOptions,
 ) -> Result<ApplyResult, ApplyFileDeltaError> {
     let path = delta.path.replace('\\', "/");
     if delta.is_document_delta {

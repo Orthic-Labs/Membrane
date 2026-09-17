@@ -717,6 +717,7 @@ struct HubTransportExecutor {
     session_id: String,
     token: String,
     token_path: std::path::PathBuf,
+    health_error: Option<String>,
 }
 
 #[derive(Default)]
@@ -776,25 +777,58 @@ impl HubTransportExecutor {
         if token.is_empty() {
             return Err("membrane_unavailable { hub_inactive }".into());
         }
+        // The Adapt operator fence requires the exact live identity tuple:
+        // installation + bound store + release generation + the resident's
+        // current service instance. The session comes from the daemon's
+        // persisted startup claim; the other three must match the daemon's
+        // own derivation byte-for-byte, so hydrate them from its /health
+        // response rather than reproducing the derivation client-side.
         let mut executor = Self {
             port: runtime.port,
             installation_id: identity.installation_id,
             cortex_store_id: String::new(),
             release_generation: String::new(),
-            session_id: String::new(),
+            session_id: identity.current_service_instance_id.unwrap_or_default(),
             token,
             token_path: runtime.token,
+            health_error: None,
         };
+        // Hydrate from the signed probe's verified identity tuple, not the
+        // unsigned /livez body fields. Retry briefly: the resident may be
+        // busy serving watcher health while a holder is active.
+        let mut probe_error = None;
+        for attempt in 0..3u8 {
+            match executor.probe() {
+                Ok(reply) => {
+                    executor.installation_id = reply.identity.installation_id;
+                    executor.cortex_store_id = reply.identity.cortex_store_id;
+                    executor.release_generation = reply.identity.release_generation;
+                    probe_error = None;
+                    break;
+                }
+                Err(error) => {
+                    probe_error = Some(error);
+                    if attempt < 2 {
+                        std::thread::sleep(Duration::from_millis(500));
+                    }
+                }
+            }
+        }
+        executor.health_error = probe_error;
         Ok(executor)
     }
 
     fn health(&self) -> Result<Value, String> {
-        let reply = crate::installed_health::probe_installed(self.port, &self.token, Duration::from_secs(2), &self.token_path)
-            .map_err(|error| format!("Hub health unavailable: {error}"))?;
+        let reply = self.probe()?;
         if reply.status != 200 {
             return Err(format!("Hub health unavailable: HTTP {}: {}", reply.status, preview(&reply.body)));
         }
         serde_json::from_slice(&reply.body).map_err(|error| error.to_string())
+    }
+
+    fn probe(&self) -> Result<crate::installed_health::HealthResponse, String> {
+        crate::installed_health::probe_installed(self.port, &self.token, Duration::from_secs(2), &self.token_path)
+            .map_err(|error| format!("Hub health unavailable: {error}"))
     }
 
     fn post_json(&self, path: &str, payload: &str) -> Result<Value, String> {
@@ -802,20 +836,61 @@ impl HubTransportExecutor {
             return Err("daemon request exceeds limit".into());
         }
         let address = SocketAddrV4::new(Ipv4Addr::LOCALHOST, self.port);
-        let mut stream = TcpStream::connect_timeout(&address.into(), Duration::from_secs(2))
-            .map_err(|_| "membrane_unavailable { hub_inactive }".to_owned())?;
+        // A resident mid-request can momentarily fill its accept backlog;
+        // a dropped loopback SYN surfaces as a timeout, not a refusal. Retry
+        // briefly before declaring the hub inactive.
+        let mut stream = None;
+        let mut connect_error = String::new();
+        for attempt in 0..3u8 {
+            match TcpStream::connect_timeout(&address.into(), Duration::from_secs(2)) {
+                Ok(opened) => {
+                    stream = Some(opened);
+                    break;
+                }
+                Err(error) => {
+                    connect_error = error.to_string();
+                    if attempt < 2 {
+                        std::thread::sleep(Duration::from_millis(500));
+                    }
+                }
+            }
+        }
+        let mut stream = stream.ok_or_else(|| {
+            format!("membrane_unavailable {{ hub_inactive }}: connect failed after retries: {connect_error}")
+        })?;
+        // Apply/admission can spend tens of seconds in verified Cortex
+        // commit work while the watcher holds store locks; match the other
+        // resident POST budget instead of failing at 5s.
         stream
-            .set_read_timeout(Some(Duration::from_secs(5)))
+            .set_read_timeout(Some(Duration::from_secs(120)))
             .map_err(|e| e.to_string())?;
         stream
             .set_write_timeout(Some(Duration::from_secs(2)))
             .map_err(|e| e.to_string())?;
         let host = format!("127.0.0.1:{}", self.port);
-        // This is a transport-only bridge: send the standard Streamable HTTP
-        // credential and JSON headers, never per-boot/session fencing claims.
+        // Fenced daemon routes (Adapt operator/observation) require the exact
+        // installation identity tuple plus the live service session header.
+        // Send them only when all four are known so ordinary /mcp transport
+        // stays fence-compatible either way.
+        let mut headers = format!(
+            "POST {path} HTTP/1.1\r\nHost: {host}\r\nAccept: application/json, text/event-stream\r\nContent-Type: application/json\r\nAuthorization: Bearer {}\r\n",
+            self.token,
+        );
+        if !self.cortex_store_id.is_empty()
+            && !self.release_generation.is_empty()
+            && !self.session_id.is_empty()
+        {
+            headers.push_str(&format!(
+                "x-membrane-installation-id: {}\r\nx-membrane-cortex-store-id: {}\r\nx-membrane-release-generation: {}\r\nx-membrane-session: {}\r\n",
+                self.installation_id,
+                self.cortex_store_id,
+                self.release_generation,
+                self.session_id,
+            ));
+        }
         let request = format!(
-            "POST {path} HTTP/1.1\r\nHost: {host}\r\nAccept: application/json, text/event-stream\r\nContent-Type: application/json\r\nAuthorization: Bearer {}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
-            self.token, payload.len(), payload,
+            "{headers}Content-Length: {}\r\nConnection: close\r\n\r\n{}",
+            payload.len(), payload,
         );
         stream
             .write_all(request.as_bytes())
@@ -2947,6 +3022,7 @@ mod hub_transport_tests {
             session_id: "session-test".into(),
             token: "token-test".into(),
             token_path: std::path::PathBuf::new(),
+            health_error: None,
         };
         let response = executor.execute("membrane_blueprint", &json!({}));
         assert_eq!(
@@ -3221,7 +3297,24 @@ mod hub_transport_tests {
 /// They never open stores or instantiate an explicit planner.
 pub(crate) fn adapt_daemon_request(request: &Value) -> Result<Value, String> {
     match HubTransportExecutor::active() {
-        Ok(bound) => bound.post_json(crate::adapt_service::OPERATOR_PATH, &request.to_string()),
+        Ok(bound) => {
+            let mut missing = Vec::new();
+            if bound.installation_id.is_empty() { missing.push("installation_id"); }
+            if bound.cortex_store_id.is_empty() { missing.push("cortex_store_id"); }
+            if bound.release_generation.is_empty() { missing.push("release_generation"); }
+            if bound.session_id.is_empty() { missing.push("session_id"); }
+            if !missing.is_empty() {
+                let detail = bound
+                    .health_error
+                    .map(|error| format!(" (health probe: {error})"))
+                    .unwrap_or_default();
+                return Err(format!(
+                    "membrane_unavailable {{ hub_inactive }}: Adapt identity fence fields unresolved: {}{detail}",
+                    missing.join(", ")
+                ));
+            }
+            bound.post_json(crate::adapt_service::OPERATOR_PATH, &request.to_string())
+        }
         Err(failure) => Err(hub_inactive_message(failure)),
     }
 }
