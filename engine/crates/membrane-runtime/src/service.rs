@@ -307,6 +307,7 @@ pub fn start_resident_blueprint() -> Result<(), String> {
         .name("membrane-blueprint-resident-watcher".into())
         .spawn(move || {
             eprintln!("{}", serde_json::json!({"event":"resident_blueprint_initialization", "stage":"started", "enrolledRepoCount": enrolled_repo_count}));
+            let mut ledger_maintenance_at = Instant::now();
             while !supervisor_lifecycle.shutdown_requested() {
                 if supervisor_lifecycle.background_authority_open() {
                     set_supervisor_stage(&supervisor_stage, "supervise");
@@ -315,6 +316,11 @@ pub fn start_resident_blueprint() -> Result<(), String> {
                     }
                     set_supervisor_stage(&supervisor_stage, "reconcile");
                     reconcile_resident_repositories(&supervised, &supervisor_stage);
+                    if Instant::now() >= ledger_maintenance_at {
+                        set_supervisor_stage(&supervisor_stage, "ledger_maintain");
+                        reconcile_resident_ledger(&supervised);
+                        ledger_maintenance_at = Instant::now() + LEDGER_MAINTENANCE_INTERVAL;
+                    }
                 } else {
                     // Holder loss drains automatic repository work while the
                     // engine/listener remains available for explicit calls.
@@ -538,6 +544,41 @@ fn reconcile_resident_repositories(state: &Arc<Mutex<ResidentBlueprintState>>, s
     }
 }
 
+/// Resident Ledger maintenance cadence: the persisted document projection is
+/// reconciled in the background under the same `background_authority_open`
+/// gate as watcher work — never inside a retrieval request. Five minutes is
+/// the maintenance interval; a faster discovery path stays available through
+/// the explicit `ledger sync` operation.
+const LEDGER_MAINTENANCE_INTERVAL: Duration = Duration::from_secs(300);
+
+/// Authorized Ledger maintenance for every enrolled root: reconciles the
+/// persisted document projection through `LedgerService::maintain` — the
+/// same `sync_locked` index/update mechanism the explicit "sync" operation
+/// uses. Runs only when the supervisor holds background authority, bounded
+/// per root, and reports typed failure rather than stopping the loop.
+fn reconcile_resident_ledger(state: &Arc<Mutex<ResidentBlueprintState>>) {
+    let Ok(registry) = crate::authorization::load_installation_registry() else { return };
+    let Ok(owner) = crate::ledger::service::active_owner() else { return };
+    for binding in registry.bindings() {
+        let cancelled = state.lock().map(|state| state.cancellation.is_cancelled()).unwrap_or(true);
+        if cancelled { break; }
+        let root = Path::new(&binding.root);
+        let caller = match crate::ledger::service::Caller::enrolled(root, &binding.repository_id) {
+            Ok(caller) => caller,
+            Err(error) => {
+                eprintln!("{}", serde_json::json!({"event":"resident_ledger_maintenance", "stage":"skipped", "root":binding.root, "error":error}));
+                continue;
+            }
+        };
+        let started = Instant::now();
+        let budget = crate::ledger::limits::WorkBudget::bounded(Duration::from_secs(120));
+        match owner.maintain(&caller, &budget) {
+            Ok(report) => eprintln!("{}", serde_json::json!({"event":"resident_ledger_maintenance", "stage":"completed", "root":binding.root, "elapsedMs":started.elapsed().as_millis(), "generation":report.index_generation})),
+            Err(error) => eprintln!("{}", serde_json::json!({"event":"resident_ledger_maintenance", "stage":"failed", "root":binding.root, "elapsedMs":started.elapsed().as_millis(), "error":error})),
+        }
+    }
+}
+
 fn mark_registry_error(state: &Arc<Mutex<ResidentBlueprintState>>, error: String) {
     if let Ok(mut state) = state.lock() {
         state.repos.clear();
@@ -619,6 +660,29 @@ fn wait_for_thread_exit(thread: &std::thread::JoinHandle<()>, timeout: Duration)
         std::thread::sleep(Duration::from_millis(5));
     }
     true
+}
+
+/// The resident Blueprint service enrolled for `repo_root`, if this engine
+/// holds one. Freshness reads use this to consult the resident watcher's
+/// own observation state (`barrier_all`) plus the sealed generation basis
+/// instead of spawning a per-request live worktree fingerprint. `None`
+/// means no resident coverage — caller must fall back or degrade honestly.
+pub(crate) fn resident_blueprint_service(repo_root: &Path) -> Option<Arc<NativeService>> {
+    let slot = RESIDENT_BLUEPRINT.get()?;
+    let current = slot.lock().ok()?;
+    let resident = current.as_ref()?;
+    let state = resident.state.lock().ok()?;
+    let wanted = std::fs::canonicalize(repo_root)
+        .map(|path| path.to_string_lossy().to_lowercase())
+        .unwrap_or_else(|_| repo_root.to_string_lossy().to_lowercase());
+    state.repos.iter().find(|repo| {
+        if repo.root.eq_ignore_ascii_case(repo_root.to_string_lossy().as_ref()) {
+            return true;
+        }
+        std::fs::canonicalize(&repo.root)
+            .map(|path| path.to_string_lossy().to_lowercase() == wanted)
+            .unwrap_or(false)
+    }).map(|repo| Arc::clone(&repo.service))
 }
 
 /// Actual resident watcher state for health and Hub composition.

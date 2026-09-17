@@ -18,6 +18,7 @@ use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 /// Native graph/store operation used by one-shot callers and resident hosts.
 #[derive(Debug, Default)]
@@ -146,6 +147,7 @@ impl BlueprintOperation for NativeBlueprintOperation {
                     &generation.generation_id,
                     source_observation.as_ref(),
                     Some(&indexed_paths),
+                    FreshnessObservation::LiveBounded(context.deadline.remaining()),
                 );
                 let mut effective_request = request.clone();
                 apply_freshness_suppression(&mut effective_request, &receipt);
@@ -1153,33 +1155,43 @@ fn bounded_generation_response(request: &BlueprintRequest, mut value: Value) -> 
 fn status(request: &BlueprintRequest, context: &RequestContext, root: &Path, db_path: &Path) -> Result<Value, BlueprintError> {
     context.check()?;
     if !db_path.exists() {
-        return Ok(status_value(request, root, db_path, "missing", None, None, None));
+        return Ok(status_value(request, root, db_path, "missing", None, None, None, None));
     }
     // Status is admission metadata, not a graph query. Reading every node,
     // edge, and file row made Pull freshness proportional to repository size.
     let connection = match store::open_store_read_only(db_path).map_err(store_error) {
         Ok(connection) => connection,
         Err(error) if error.code == "blueprint_store_corrupt" => {
-            return Ok(status_value(request, root, db_path, "corrupt", None, Some(error.message), None));
+            return Ok(status_value(request, root, db_path, "corrupt", None, None, Some(error.message), None));
         }
         Err(error) => return Err(error),
     };
     let envelope = match store::read_generation_envelope(&connection).map_err(store_error) {
         Ok(Some(envelope)) => envelope,
-        Ok(None) => return Ok(status_value(request, root, db_path, "missing", None, None, None)),
+        Ok(None) => return Ok(status_value(request, root, db_path, "missing", None, None, None, None)),
         Err(error) if error.code == "blueprint_store_corrupt" => {
-            return Ok(status_value(request, root, db_path, "corrupt", None, Some(error.message), None));
+            return Ok(status_value(request, root, db_path, "corrupt", None, None, Some(error.message), None));
         }
         Err(error) => return Err(error),
     };
     let (generation, source_observation) = match graph_metadata_from_envelope(envelope) {
         Ok(value) => value,
         Err(error) if error.code == "blueprint_store_corrupt" => {
-            return Ok(status_value(request, root, db_path, "corrupt", None, Some(error.message), None));
+            return Ok(status_value(request, root, db_path, "corrupt", None, None, Some(error.message), None));
         }
         Err(error) => return Err(error),
     };
-    let freshness = generation_freshness_receipt(root, &generation.generation_id, source_observation.as_ref(), None);
+    // `liveObservation:false` keeps the read strictly on the sealed
+    // generation basis — used by resident callers that hold their own
+    // watcher/maintenance observation and must not pay a live fingerprint.
+    // Default stays a staged live observation bounded by this request's
+    // remaining deadline rather than a mandatory whole-worktree scan.
+    let observation = if request.input.get("liveObservation").and_then(Value::as_bool) == Some(false) {
+        FreshnessObservation::Sealed
+    } else {
+        FreshnessObservation::LiveBounded(context.deadline.remaining())
+    };
+    let freshness = generation_freshness_receipt(root, &generation.generation_id, source_observation.as_ref(), None, observation);
     context.check()?;
     let state = match freshness.get("freshness").and_then(Value::as_str) {
         Some("fresh") => "fresh",
@@ -1187,7 +1199,7 @@ fn status(request: &BlueprintRequest, context: &RequestContext, root: &Path, db_
         Some("unknown") => "unknown",
         _ => "unavailable",
     };
-    Ok(status_value(request, root, db_path, state, Some(&generation), None, Some(freshness)))
+    Ok(status_value(request, root, db_path, state, Some(&generation), source_observation.as_ref(), None, Some(freshness)))
 }
 
 fn graph_metadata_from_envelope(envelope: store::GenerationEnvelope) -> Result<(GraphGeneration, Option<Value>), BlueprintError> {
@@ -1219,7 +1231,7 @@ fn graph_metadata_from_envelope(envelope: store::GenerationEnvelope) -> Result<(
     }, source_observation))
 }
 
-fn status_value(request: &BlueprintRequest, root: &Path, db_path: &Path, state: &str, generation: Option<&GraphGeneration>, detail: Option<String>, freshness: Option<Value>) -> Value {
+fn status_value(request: &BlueprintRequest, root: &Path, db_path: &Path, state: &str, generation: Option<&GraphGeneration>, source_observation: Option<&Value>, detail: Option<String>, freshness: Option<Value>) -> Value {
     json!({
         "schemaVersion": 1,
         "operation": request.method.as_str(),
@@ -1232,6 +1244,7 @@ fn status_value(request: &BlueprintRequest, root: &Path, db_path: &Path, state: 
         "detail": detail,
         "complete": generation.map(|g| g.complete),
         "truncationReasons": generation.map(|g| g.truncation_reasons.clone()).unwrap_or_default(),
+        "sourceObservation": source_observation.cloned(),
         "freshnessReceipt": freshness,
     })
 }
@@ -1294,10 +1307,24 @@ fn architecture_changes(request: &BlueprintRequest, context: &RequestContext, ro
         object.insert("generationId".into(), json!(generation.generation_id.clone()));
         let indexed_paths: HashSet<String> =
             generation.files.iter().map(|file| file.path.clone()).collect();
-        object.insert("freshnessReceipt".into(), generation_freshness_receipt(root, &generation.generation_id, source_observation.as_ref(), Some(&indexed_paths)));
+        object.insert("freshnessReceipt".into(), generation_freshness_receipt(root, &generation.generation_id, source_observation.as_ref(), Some(&indexed_paths), FreshnessObservation::LiveBounded(context.deadline.remaining())));
     }
     context.check()?;
     Ok(value)
+}
+
+/// How a freshness read observes current VCS state. `Sealed` reads the
+/// persisted generation basis only — no git spawn at all; the verdict
+/// resolves `unavailable` and an authoritative caller (e.g. a resident
+/// watcher) must overlay its own observation state. `LiveBounded` runs the
+/// staged observation under the caller's remaining request budget: a cheap
+/// HEAD read first, the worktree fingerprint only under what remains, and
+/// changed-path enumeration only inside the same deadline. Incomplete
+/// observation produces honest `unavailable`/whole-generation suppression,
+/// never a guessed `fresh`.
+enum FreshnessObservation {
+    Sealed,
+    LiveBounded(Duration),
 }
 
 /// Build the freshness receipt for a sealed generation. The receipt compares
@@ -1313,6 +1340,7 @@ fn generation_freshness_receipt(
     generation_id: &str,
     source_observation: Option<&Value>,
     indexed_paths: Option<&HashSet<String>>,
+    observation: FreshnessObservation,
 ) -> Value {
     let indexed_revision = source_observation
         .and_then(|value| value.get("head").or_else(|| value.get("baseCommit")))
@@ -1326,8 +1354,23 @@ fn generation_freshness_receipt(
         indexed_revision,
         indexed_worktree_fingerprint: indexed_fingerprint,
     };
-    let current = crate::freshness_observation::observe_current_vcs_state(root);
+    let observation_started = Instant::now();
+    let (current, observation_incomplete) = match observation {
+        FreshnessObservation::Sealed => (crate::freshness::CurrentSourceState::default(), false),
+        FreshnessObservation::LiveBounded(budget) => {
+            let state = crate::freshness_observation::observe_current_vcs_state_bounded(
+                root, basis.indexed_revision.as_deref(), budget);
+            // HEAD was observed but the worktree fingerprint never completed:
+            // incomplete evidence, distinguishable from "git absent".
+            let incomplete = !state.available && state.vcs_revision.is_some();
+            (state, incomplete)
+        }
+    };
     let live_observed = current.available;
+    let enumeration_budget = match observation {
+        FreshnessObservation::LiveBounded(budget) => budget.saturating_sub(observation_started.elapsed()),
+        FreshnessObservation::Sealed => Duration::ZERO,
+    };
     let changed_basis = basis.clone();
     let changed_current = current.clone();
     let receipt = crate::freshness_receipt::build_freshness_receipt(
@@ -1335,7 +1378,7 @@ fn generation_freshness_receipt(
         None,
         basis,
         current,
-        move || crate::freshness_observation::changed_paths_for_freshness(root, &changed_basis, &changed_current),
+        move || crate::freshness_observation::changed_paths_for_freshness_bounded(root, &changed_basis, &changed_current, enumeration_budget),
         |path| indexed_paths.map_or(true, |paths| paths.contains(path)),
     );
     let mut value = serde_json::to_value(receipt).unwrap_or_else(|_| json!({"schema":"BlueprintFreshnessReceiptV1","generationId":generation_id,"freshness":"unavailable"}));
@@ -1343,6 +1386,9 @@ fn generation_freshness_receipt(
         let sealed_at = source_observation.and_then(|observation| observation.get("sealedAtUnixMs")).and_then(Value::as_u64);
         object.insert("observationMode".into(), json!(if live_observed { "live_observation" } else { "sealed_generation" }));
         object.insert("liveSourceObserved".into(), json!(live_observed));
+        if observation_incomplete {
+            object.insert("observationIncomplete".into(), json!(true));
+        }
         object.insert("sealedAtUnixMs".into(), sealed_at.map_or(Value::Null, Value::from));
         object.insert("ageMs".into(), sealed_at.map(|sealed| now_unix_ms().saturating_sub(sealed)).map_or(Value::Null, Value::from));
     }

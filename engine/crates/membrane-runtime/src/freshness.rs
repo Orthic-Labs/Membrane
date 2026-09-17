@@ -664,7 +664,7 @@ impl FreshnessProbe for FilesystemFreshnessProbe<'_> {
             .blueprint_endpoint
             .as_deref()
             .map(|endpoint| read_blueprint_status_at(endpoint, &self.repo_root))
-            .unwrap_or_else(|| read_blueprint_status_until(&self.repo_root, self.deadline))?;
+            .unwrap_or_else(|| read_blueprint_status_resident(&self.repo_root, self.deadline))?;
         self.pending_overlay = status
             .get("result")
             .and_then(|value| value.get("overlay"))
@@ -852,39 +852,142 @@ pub(crate) fn read_blueprint_status(repo_root: &Path) -> Result<serde_json::Valu
     read_blueprint_status_at(&endpoint, repo_root)
 }
 
-/// Minimum remaining budget worth spending on a Hub-less Blueprint status.
-/// Below this, the status cannot complete and is not attempted.
-pub(crate) const ONE_SHOT_STATUS_MIN_BUDGET_MS: u64 = 5_000;
+/// Resident freshness read: the engine's resident Blueprint service already
+/// owns watcher observation for enrolled roots, so the barrier receipt is the
+/// trustworthy maintenance state — `source_clock` vs `applied_clock`,
+/// `event_gap`, `generation_complete`. A caught-up watcher means the sealed
+/// generation covers everything the watcher observed; HEAD itself is then
+/// re-read cheaply (the watcher cannot see `.git` internals) and commit
+/// distance is measured only when it moved. No whole-worktree fingerprint is
+/// ever spawned on this path. `None` means no resident coverage — the caller
+/// falls back to the bounded non-resident read.
+pub(crate) fn read_blueprint_status_resident(repo_root: &Path, deadline: Option<membrane_federation::deadline::Deadline>) -> Result<serde_json::Value, String> {
+    let Some(service) = crate::service::resident_blueprint_service(repo_root) else {
+        return read_blueprint_status_until(repo_root, deadline);
+    };
+    let remaining = || deadline.map(|value| value.remaining_at(Instant::now())).unwrap_or(Duration::from_secs(5));
+    // Bounded barrier wait: a healthy watcher answers instantly; a reconcile
+    // in flight either lands quickly or reports Timeout (stale), never a
+    // guessed verdict.
+    let receipts = service.barrier_all(Some(remaining().min(Duration::from_millis(300))));
+    let wanted = std::fs::canonicalize(repo_root)
+        .map(|path| path.to_string_lossy().to_lowercase())
+        .unwrap_or_else(|_| repo_root.to_string_lossy().to_lowercase());
+    let receipt = receipts.iter().find(|receipt| {
+        receipt.repo_root.eq_ignore_ascii_case(repo_root.to_string_lossy().as_ref())
+            || std::fs::canonicalize(&receipt.repo_root)
+                .map(|path| path.to_string_lossy().to_lowercase() == wanted)
+                .unwrap_or(false)
+    }).ok_or_else(|| "resident Blueprint watcher does not cover repository".to_owned())?;
+    if receipt.event_gap || receipt.barrier_result == membrane_blueprint::contracts::BarrierResult::GapBlocked {
+        return Err("resident Blueprint watcher observation gap".to_owned());
+    }
+    if !receipt.generation_complete {
+        return Err("resident Blueprint generation incomplete".to_owned());
+    }
+    let caught_up = receipt.barrier_result == membrane_blueprint::contracts::BarrierResult::CaughtUp;
+
+    // Sealed-generation basis only — `liveObservation:false` keeps the status
+    // read strictly on persisted envelope fields (no git spawns at all).
+    let mut request = membrane_blueprint::BlueprintRequest::new(
+        format!("membrane-freshness-resident-{}-{}", std::process::id(), crate::time::now_millis()),
+        membrane_blueprint::Operation::Status,
+        repo_root.to_string_lossy(),
+    );
+    request.deadline_ms = remaining().as_millis().clamp(10, 2_000) as u64;
+    request.input["liveObservation"] = serde_json::Value::Bool(false);
+    let response = service.dispatch_request(request, membrane_blueprint::CancellationToken::new());
+    let result = response.result.ok_or_else(|| response.error
+        .map(|error| format!("{}: {}", error.code, error.message))
+        .unwrap_or_else(|| "resident Blueprint status returned no result".to_owned()))?;
+    let generation = result.get("generationId").and_then(serde_json::Value::as_str).map(str::to_owned);
+    let source_hash = result.get("sourceHash").and_then(serde_json::Value::as_str).map(str::to_owned);
+    let sealed_observation = result.get("sourceObservation");
+    let sealed_head = sealed_observation
+        .and_then(|value| value.get("head").or_else(|| value.get("baseCommit")))
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_owned)
+        .or_else(|| source_hash.clone());
+    if generation.is_none() || sealed_head.is_none() {
+        return Err("resident Blueprint sealed generation basis missing".to_owned());
+    }
+
+    let (state, head_revision, commit_distance) = if !caught_up {
+        // The watcher observed changes not yet applied to this generation —
+        // the snapshot is behind observed state. `stale` is the honest
+        // direction; a transient reconcile resolves on the next read.
+        ("stale", generation.as_deref().map(|value| format!("pending:{value}")), Some(2))
+    } else {
+        // Bounded HEAD validation: `git commit` moves HEAD without touching
+        // watched files, so a caught-up watcher cannot prove head identity.
+        // `rev-parse` is a cheap index read — still bounded, never unbounded.
+        let head_budget = remaining().min(Duration::from_millis(400));
+        match membrane_blueprint::git_source_observation::git_base_commit_bounded(
+            &repo_root.to_string_lossy(), head_budget) {
+            None => return Err("resident Blueprint head observation unavailable".to_owned()),
+            Some(head) if Some(head.as_str()) == sealed_head.as_deref() => {
+                ("fresh", Some(head), Some(0))
+            }
+            Some(head) => {
+                // Committed drift the file watcher cannot observe. Measure the
+                // lag honestly; an unmeasurable distance stays stale.
+                let distance_budget = remaining().min(Duration::from_millis(400));
+                let distance = sealed_head.as_deref().and_then(|base| {
+                    membrane_blueprint::git_source_observation::git_commit_distance_bounded(
+                        &repo_root.to_string_lossy(), base, distance_budget)
+                }).and_then(|value| u32::try_from(value).ok());
+                ("stale", Some(head), distance.or(Some(u32::MAX)))
+            }
+        }
+    };
+    Ok(serde_json::json!({
+        "protocolVersion": 1,
+        "ok": true,
+        "generation": generation,
+        "result": {
+            "repository": {"revision": head_revision},
+            "manifest": {
+                "generationId": generation,
+                "baseCommit": sealed_head,
+                "manifestDigest": source_hash,
+            },
+            "overlay": {
+                // The watcher IS the overlay observation on this path: gap
+                // and missing coverage already returned typed errors above.
+                // `stable:false` when a barrier Timeout leaves observed
+                // changes unapplied — the epoch sandwich then reports
+                // concurrent_update rather than classifying a mid-reconcile
+                // generation as fresh.
+                "available": true,
+                "stable": caught_up,
+                "entries": [],
+                "commitDistance": commit_distance,
+            },
+            "state": state,
+            "observationMode": "resident_watcher",
+            "watcherBarrier": receipt.barrier_result,
+            "watcherSourceClock": receipt.source_clock,
+            "watcherAppliedClock": receipt.applied_clock,
+        },
+    }))
+}
 
 fn read_blueprint_status_until(repo_root: &Path, deadline: Option<membrane_federation::deadline::Deadline>) -> Result<serde_json::Value, String> {
     use membrane_blueprint::{BlueprintRequest, CancellationToken, Operation};
     let request_id = format!("membrane-freshness-{}-{}", std::process::id(), crate::time::now_millis());
-    // Freshness for a Hub-less one-shot computes Blueprint status locally, and
-    // on a repo with no warm generation that means a cold build. Capping the
-    // status budget at 30s made freshness time out on any repo whose cold build
-    // exceeds 30s (measured ~28-40s here), so the whole one-shot federate failed
-    // with "deadline exhausted during owner binding" even though federate needs
-    // no Hub. Use the caller's remaining budget up to the Blueprint build
-    // ceiling; a resident Hub keeps this instant via its warm watcher.
+    // Non-resident fallback: a bounded Status dispatch through the installed
+    // operation. The operation itself now stages observation under the
+    // request deadline (HEAD first, worktree fingerprint under what remains),
+    // so the caller's remaining budget is the honest bound — no blanket
+    // availability floor. Too little budget yields an `unavailable` state,
+    // which maps to a typed epoch error, not a false stale/current claim.
     let remaining = deadline.map(|deadline| deadline.remaining_at(Instant::now()))
         .unwrap_or(Duration::from_secs(30))
         .min(Duration::from_millis(membrane_blueprint::model::MAX_BUILD_DEADLINE_MS));
-    if remaining.is_zero() {
-        return Err("federation deadline exhausted during owner binding".to_owned());
-    }
-    // A latency-bound caller (the per-prompt hook has ~2s in total) cannot
-    // afford a Hub-less status read: a cold status is a reconcile/build that
-    // takes tens of seconds here and overshoots short deadlines by ~2s, so
-    // dispatching it would spend the caller's entire budget before any
-    // provider ran. Freshness is advisory: report it as not consulted (the
-    // verdict becomes indeterminate and the engine records the degradation)
-    // and leave the budget to the providers. A resident Hub answers instantly
-    // through `read_blueprint_status_at` and never reaches this branch.
-    if remaining < Duration::from_millis(ONE_SHOT_STATUS_MIN_BUDGET_MS) {
+    if remaining < Duration::from_millis(200) {
         return Err(format!(
-            "freshness_budget_insufficient: {}ms remaining, one-shot Blueprint status needs {}ms",
-            remaining.as_millis(),
-            ONE_SHOT_STATUS_MIN_BUDGET_MS
+            "freshness_budget_insufficient: {}ms remaining, cannot bound a Blueprint status read",
+            remaining.as_millis()
         ));
     }
     let mut request = BlueprintRequest::new(request_id, Operation::Status, repo_root.to_string_lossy());
@@ -896,6 +999,14 @@ fn read_blueprint_status_until(repo_root: &Path, deadline: Option<membrane_feder
     let state = result.get("state").and_then(serde_json::Value::as_str).unwrap_or("corrupt");
     let generation = result.get("generationId").and_then(serde_json::Value::as_str);
     let source_hash = result.get("sourceHash").and_then(serde_json::Value::as_str);
+    match state {
+        // Only an observed current state may claim head identity. `stale`
+        // carries a marker that cannot equal the base commit, so the epoch
+        // classifies `stale_snapshot`. `unknown`/`unavailable`/`corrupt`
+        // surface as typed epoch errors — never as a guessed verdict.
+        "fresh" | "stale" => {}
+        other => return Err(format!("Blueprint freshness observation {other}")),
+    }
     let current = state == "fresh";
     let snapshot_available = generation.is_some() && source_hash.is_some();
     let head_revision = if current {
@@ -976,14 +1087,29 @@ mod tests {
     use super::*;
 
     #[test]
-    fn one_shot_status_is_not_attempted_below_minimum_budget() {
+    fn one_shot_status_is_not_attempted_below_spawn_floor() {
+        // Below ~200ms even a bounded status read cannot spawn git and drain
+        // output; the typed budget error is the honest answer, not a guess.
         let dir = std::env::temp_dir().join(format!("membrane-fresh-floor-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
-        let deadline = membrane_federation::deadline::Deadline::at(Instant::now() + Duration::from_millis(ONE_SHOT_STATUS_MIN_BUDGET_MS / 2));
+        let deadline = membrane_federation::deadline::Deadline::at(Instant::now() + Duration::from_millis(100));
         let started = Instant::now();
         let error = read_blueprint_status_until(&dir, Some(deadline)).expect_err("status must not be attempted");
         assert!(error.starts_with("freshness_budget_insufficient"), "{error}");
         assert!(started.elapsed() < Duration::from_millis(500), "floor must return immediately");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn non_resident_status_marks_unobserved_states_as_epoch_errors() {
+        // `unknown`/`unavailable` states must degrade to typed epoch errors
+        // instead of being mapped onto the stale head marker — claiming
+        // stale when observation was incomplete would be a false verdict.
+        let dir = std::env::temp_dir().join(format!("membrane-fresh-state-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        // Whatever the typed reason, an unobserved repository must never be
+        // reported as fresh or stale evidence — it is an epoch error.
+        let _error = read_blueprint_status_until(&dir, None).expect_err("missing store must not claim a verdict");
         let _ = std::fs::remove_dir_all(dir);
     }
 

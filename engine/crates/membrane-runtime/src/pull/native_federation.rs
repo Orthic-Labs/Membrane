@@ -94,10 +94,16 @@ impl NativeFederation {
     }
 
     pub fn hook(bindings: NativeSourceBindings) -> Result<Self, String> {
+        // SessionStart orientation must surface Ledger, Blueprint and Cortex
+        // evidence when fixtures make each relevant — not a Cortex-only
+        // packet. All four lanes are bounded indexed reads under the request
+        // deadline now that per-request full-root sync and mandatory
+        // whole-worktree fingerprints are gone; a lane that cannot answer in
+        // budget emits its typed omission rather than consuming the window.
         let providers = ProviderId::ALL
             .into_iter()
             .map(|id| {
-                if matches!(id, ProviderId::Cortex | ProviderId::Skills) {
+                if matches!(id, ProviderId::Cortex | ProviderId::Skills | ProviderId::Ledger | ProviderId::Blueprint) {
                     ProviderConfig::enabled(id)
                 } else {
                     ProviderConfig::disabled(id)

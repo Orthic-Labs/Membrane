@@ -30,6 +30,15 @@ const MAX_GIT_OUTPUT_BYTES: usize = 16 * 1024 * 1024;
 /// missing, non-zero exit, or timeout. Mirrors the legacy JS observer's
 /// blanket try/catch-to-null behavior.
 fn run_git_bounded(cwd: &str, args: &[&str]) -> Option<Vec<u8>> {
+    run_git_bounded_timeout(cwd, args, GIT_TIMEOUT)
+}
+
+/// `run_git_bounded` with a caller-chosen wall-clock bound. Short retrieval
+/// paths (freshness reads under a request deadline) pass a fraction of their
+/// remaining budget instead of the full observation timeout, so an expensive
+/// or hung status read degrades to an honest incomplete observation instead
+/// of consuming the caller's entire window.
+fn run_git_bounded_timeout(cwd: &str, args: &[&str], timeout: Duration) -> Option<Vec<u8>> {
     let mut command = crate::hidden_command("git");
     command
         .args(args)
@@ -61,7 +70,7 @@ fn run_git_bounded(cwd: &str, args: &[&str]) -> Option<Vec<u8>> {
         let _ = tx.send(read_result.map(|_| buf));
     });
 
-    let bytes = match rx.recv_timeout(GIT_TIMEOUT) {
+    let bytes = match rx.recv_timeout(timeout) {
         Ok(Ok(bytes)) => {
             let _ = reader.join();
             match child.wait() {
@@ -96,7 +105,13 @@ fn looks_like_sha(value: &str) -> bool {
 /// HEAD commit, or `None` when unavailable (not a git repo, no commits, git
 /// missing).
 pub fn git_base_commit(root: &str) -> Option<String> {
-    let bytes = run_git_bounded(root, &["rev-parse", "HEAD"])?;
+    git_base_commit_bounded(root, GIT_TIMEOUT)
+}
+
+/// HEAD commit under a caller-chosen wall-clock bound. `rev-parse` is a
+/// fast index read; the bound covers process spawn on loaded systems.
+pub fn git_base_commit_bounded(root: &str, timeout: Duration) -> Option<String> {
+    let bytes = run_git_bounded_timeout(root, &["rev-parse", "HEAD"], timeout)?;
     let text = String::from_utf8(bytes).ok()?;
     let trimmed = text.trim();
     if looks_like_sha(trimmed) {
@@ -104,6 +119,16 @@ pub fn git_base_commit(root: &str) -> Option<String> {
     } else {
         None
     }
+}
+
+/// `git rev-list --count base..HEAD` under a caller-chosen bound — how many
+/// commits the sealed base lags current HEAD. `None` when unmeasurable
+/// (shallow clone, unrelated history, git failure, timeout); callers must
+/// treat that as unknown lag, never as zero.
+pub fn git_commit_distance_bounded(root: &str, base: &str, timeout: Duration) -> Option<u64> {
+    let range = format!("{base}..HEAD");
+    let bytes = run_git_bounded_timeout(root, &["rev-list", "--count", &range], timeout)?;
+    String::from_utf8(bytes).ok()?.trim().parse().ok()
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -141,6 +166,32 @@ pub fn git_source_observation(root: &str) -> Option<GitSourceObservation> {
         dirty: !status.is_empty(),
         status_digest: format!("{digest:032x}"),
     })
+}
+
+/// Worktree fingerprint under a caller-chosen wall-clock bound. `None` means
+/// the observation did not complete — timed out, failed, or git absent —
+/// which callers must surface as an *incomplete* observation, never as a
+/// clean tree. Splitting this from `git_base_commit_bounded` lets freshness
+/// reads short-circuit on a HEAD drift before paying for `status`.
+pub fn git_worktree_fingerprint_bounded(root: &str, timeout: Duration) -> Option<(bool, String)> {
+    let status = run_git_bounded_timeout(
+        root,
+        &[
+            "status",
+            "--porcelain=v1",
+            "-z",
+            "--untracked-files=all",
+            "--",
+            ".",
+            ":(exclude).agent",
+            ":(exclude).agent/**",
+            ":(exclude)docs/product.md",
+            ":(exclude)docs/architecture.md",
+        ],
+        timeout,
+    )?;
+    let digest = xxh3_128(&status);
+    Some((!status.is_empty(), format!("{digest:032x}")))
 }
 
 /// Path-oriented convenience wrapper for Blueprint callers that already hold

@@ -3,7 +3,7 @@
 //! Providers receive typed owner handles. They do not open Cortex, catalog
 //! storage, or Blueprint transport themselves.
 
-use membrane_federation::blueprint_client::{BlueprintBounds, BlueprintClient, BlueprintQuery, ContextualBlueprintSource};
+use membrane_federation::blueprint_client::{BlueprintClient, ContextualBlueprintSource};
 use membrane_federation::providers::rules::{
     DeliveryKey, DeliveryLedger, DeliveryMode, DeliveryReceipt, LedgerError, RuleDocument,
     RuleFuture, RuleSource, RuleSourceError, RuleSourceResponse,
@@ -20,7 +20,7 @@ use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+
 use tokio_util::sync::CancellationToken;
 
 type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
@@ -391,51 +391,75 @@ struct RuntimeFreshnessSource {
     persisted_freshness: bool,
 }
 
+/// Latency-bound freshness read for foreground callers (hook path). This is
+/// the same observation machinery as the resident path: the resident
+/// watcher's barrier state plus sealed generation basis when a resident
+/// service covers the repo, else a staged bounded status dispatch. The
+/// verdict is read honestly — `stale` reports `stale:true`, and any
+/// incomplete observation returns a typed `freshness_unavailable` error the
+/// engine degrades, never a fabricated `clean`.
 fn persisted_blueprint_freshness(
-    blueprint: &BlueprintClient,
     query: &SourceQuery,
+    deadline: Option<membrane_federation::deadline::Deadline>,
 ) -> Result<SourceResponse<FreshnessSnapshotV1>, String> {
-    let request = BlueprintQuery {
-        request_id: format!("{}:freshness", query.request_id),
-        repository_id: query.repository_id.clone(),
-        repository_root: query.repository_root.clone(),
-        worktree: query.repository_root.clone(),
-        task: query.task.clone(),
-        anchors: query.anchors.clone(),
-        policy_digest: String::new(),
-        expected_generation: None,
-        symbol: None,
-        bounds: BlueprintBounds { max_candidates: 1, max_paths: 8, max_response_bytes: 4096 },
-        deadline: std::time::Duration::from_millis(1_200),
-    };
-    let result = blueprint
-        .status(&request)
-        .map_err(|error| error.to_string())?;
-    let receipt = result
-        .payload
-        .as_ref()
-        .and_then(|payload| payload.get("freshnessReceipt"))
-        .ok_or_else(|| "blueprint_freshness_receipt_missing".to_owned())?;
-    let generation = receipt.get("generation")
-        .ok_or_else(|| "blueprint_freshness_generation_missing".to_owned())?;
-    let indexed_head = generation.get("indexed_revision").and_then(serde_json::Value::as_str)
-        .ok_or_else(|| "blueprint_source_head_missing".to_owned())?;
-    generation.get("indexed_worktree_fingerprint").and_then(serde_json::Value::as_str)
-        .ok_or_else(|| "blueprint_status_digest_missing".to_owned())?;
-    let snapshot_id = format!("blueprint:{}:{}", result.generation, indexed_head);
-    Ok(SourceResponse {
-        value: FreshnessSnapshotV1 {
-            graph_state: "clean".to_owned(),
-            generation: Some(result.generation.clone()),
-            snapshot_id: Some(snapshot_id),
-            base_commit: Some(indexed_head.to_owned()),
-            overlay_digest: None,
-            stale: false,
-        },
-        generation: Some(result.generation),
-        complete: true,
-        warnings: Vec::new(),
-    })
+    let root = PathBuf::from(&query.repository_root);
+    let status = crate::freshness::read_blueprint_status_resident(&root, deadline)?;
+    let result = status
+        .get("result")
+        .ok_or_else(|| "blueprint_freshness_result_missing".to_owned())?;
+    let state = result
+        .get("state")
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| "blueprint_freshness_state_missing".to_owned())?;
+    let generation = result
+        .pointer("/manifest/generationId")
+        .or_else(|| status.get("generation"))
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_owned);
+    let base_commit = result
+        .pointer("/manifest/baseCommit")
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_owned);
+    if generation.is_none() {
+        return Err("blueprint_freshness_generation_missing".to_owned());
+    }
+    let snapshot_id = format!(
+        "blueprint:{}:{}",
+        generation.as_deref().unwrap_or("none"),
+        base_commit.as_deref().unwrap_or("unknown"),
+    );
+    match state {
+        "fresh" => Ok(SourceResponse {
+            value: FreshnessSnapshotV1 {
+                graph_state: "clean".to_owned(),
+                generation: generation.clone(),
+                snapshot_id: Some(snapshot_id),
+                base_commit,
+                overlay_digest: None,
+                stale: false,
+            },
+            generation,
+            complete: true,
+            warnings: Vec::new(),
+        }),
+        "stale" => Ok(SourceResponse {
+            value: FreshnessSnapshotV1 {
+                graph_state: "stale_snapshot".to_owned(),
+                generation: generation.clone(),
+                snapshot_id: Some(snapshot_id),
+                base_commit,
+                overlay_digest: None,
+                stale: true,
+            },
+            generation,
+            complete: true,
+            warnings: vec![SourceWarning {
+                code: "freshness_stale".to_owned(),
+                detail_id: Some("snapshot_base_differs_from_head".to_owned()),
+            }],
+        }),
+        other => Err(format!("freshness_unavailable:observation_{other}")),
+    }
 }
 
 impl FreshnessSource for RuntimeFreshnessSource {
@@ -451,7 +475,6 @@ impl FreshnessSource for RuntimeFreshnessSource {
         let store = self.store.clone();
         let root = PathBuf::from(&query.repository_root);
         let deadline = self.deadline;
-        let blueprint = self.blueprint.clone();
         let persisted_freshness = self.persisted_freshness;
         let query = query.clone();
         Box::pin(async move {
@@ -460,22 +483,12 @@ impl FreshnessSource for RuntimeFreshnessSource {
                 let _permit = permit;
                 check_owner_deadline(deadline)?;
                 if persisted_freshness {
-                    // `persisted_blueprint_freshness` runs a Blueprint `status`
-                    // op whose freshness receipt observes the live worktree —
-                    // seconds on a real repository, inside a blocking task the
-                    // request deadline cannot preempt. Below the shared
-                    // one-shot floor the attempt cannot complete; degrade
-                    // instead of spending the caller's entire budget on a
-                    // doomed fingerprint.
-                    if deadline.is_some_and(|deadline| {
-                        deadline.remaining_at(Instant::now())
-                            < Duration::from_millis(crate::freshness::ONE_SHOT_STATUS_MIN_BUDGET_MS)
-                    }) {
-                        return Err(membrane_provider_sdk::ProviderError::Unavailable(
-                            "freshness_budget_insufficient".into(),
-                        ));
-                    }
-                    return persisted_blueprint_freshness(&blueprint, &query)
+                    // The latency-bound profile reads resident watcher state
+                    // plus the sealed generation basis; the status dispatch
+                    // underneath is deadline-bounded end to end, so a short
+                    // budget degrades to a typed `freshness_unavailable`
+                    // instead of spending the window on a live fingerprint.
+                    return persisted_blueprint_freshness(&query, deadline)
                         .map_err(membrane_provider_sdk::ProviderError::Unavailable);
                 }
                 let verdict = crate::freshness::evaluate_repository_freshness_until(&store, root, deadline);

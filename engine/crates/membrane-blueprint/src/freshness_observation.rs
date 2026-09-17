@@ -37,6 +37,10 @@ fn digest_bytes(value: &[u8]) -> String {
 }
 
 fn run_git_bounded(root: &Path, args: &[&str], max_buffer: usize) -> Option<Vec<u8>> {
+    run_git_bounded_timeout(root, args, max_buffer, GIT_TIMEOUT)
+}
+
+fn run_git_bounded_timeout(root: &Path, args: &[&str], max_buffer: usize, timeout: Duration) -> Option<Vec<u8>> {
     let mut command = crate::hidden_command("git");
     command
         .arg("-C")
@@ -69,7 +73,7 @@ fn run_git_bounded(root: &Path, args: &[&str], max_buffer: usize) -> Option<Vec<
         let _ = tx.send(read_result.map(|_| buf));
     });
 
-    let bytes = match rx.recv_timeout(GIT_TIMEOUT) {
+    let bytes = match rx.recv_timeout(timeout) {
         Ok(Ok(bytes)) => {
             let _ = reader.join();
             match child.wait() {
@@ -373,6 +377,55 @@ pub fn observe_current_vcs_state(repo_root: &Path) -> crate::freshness::CurrentS
     }
 }
 
+/// Staged, deadline-bounded observation for short retrieval paths. HEAD is
+/// read first (a cheap index op): a mismatch proves committed drift without
+/// paying for `git status`. When HEAD matches the indexed basis the
+/// worktree fingerprint runs under whatever budget remains; a fingerprint
+/// that cannot complete inside the budget is an incomplete observation —
+/// `available:false` while still recording the observed HEAD — so the
+/// freshness verdict degrades honestly instead of guessing clean.
+pub fn observe_current_vcs_state_bounded(
+    repo_root: &Path,
+    indexed_revision: Option<&str>,
+    budget: Duration,
+) -> crate::freshness::CurrentSourceState {
+    if budget.is_zero() {
+        return crate::freshness::CurrentSourceState::default();
+    }
+    let started = Instant::now();
+    let root = repo_root.to_string_lossy().into_owned();
+    // `rev-parse` is a fast index read, but process spawn on a loaded host
+    // is not free; cap it so a wedged spawn cannot consume the entire
+    // observation budget before the worktree read is attempted.
+    let head_budget = budget.min(Duration::from_millis(1_500));
+    let Some(head) = crate::git_source_observation::git_base_commit_bounded(&root, head_budget) else {
+        return crate::freshness::CurrentSourceState::default();
+    };
+    if Some(head.as_str()) != indexed_revision {
+        return crate::freshness::CurrentSourceState {
+            available: true,
+            vcs_revision: Some(head),
+            dirty: None,
+            worktree_fingerprint: None,
+        };
+    }
+    let remaining = budget.saturating_sub(started.elapsed());
+    match crate::git_source_observation::git_worktree_fingerprint_bounded(&root, remaining) {
+        Some((dirty, fingerprint)) => crate::freshness::CurrentSourceState {
+            available: true,
+            vcs_revision: Some(head),
+            dirty: Some(dirty),
+            worktree_fingerprint: Some(fingerprint),
+        },
+        None => crate::freshness::CurrentSourceState {
+            available: false,
+            vcs_revision: Some(head),
+            dirty: None,
+            worktree_fingerprint: None,
+        },
+    }
+}
+
 /// Changed source paths used by query-time freshness suppression. This is
 /// evidence about paths only, never a second freshness verdict. Empty git
 /// output is a successful empty list (not an unavailable observation).
@@ -398,7 +451,16 @@ impl From<ChangedPathsObservation> for crate::freshness_receipt::ChangedPaths {
 
 fn git_lines(root: &Path, args: &[&str]) -> Option<Vec<String>> {
     let bytes = run_git_bounded(root, args, 4 * 1024 * 1024)?;
-    let text = String::from_utf8(bytes).ok()?;
+    git_lines_text(&bytes)
+}
+
+fn git_lines_bounded(root: &Path, args: &[&str], timeout: Duration) -> Option<Vec<String>> {
+    let bytes = run_git_bounded_timeout(root, args, 4 * 1024 * 1024, timeout)?;
+    git_lines_text(&bytes)
+}
+
+fn git_lines_text(bytes: &[u8]) -> Option<Vec<String>> {
+    let text = String::from_utf8(bytes.to_vec()).ok()?;
     Some(text
         .lines()
         .map(|line| line.trim().replace('\\', "/"))
@@ -447,6 +509,51 @@ pub fn changed_paths_for_freshness(
         current.available,
     )
     .into()
+}
+
+/// `changed_paths_for_freshness` under a single caller-chosen deadline shared
+/// by all three git invocations. A call that fails because the deadline ran
+/// out reports `comparison_budget_exhausted` — a typed accounting of the
+/// timed-out work — while a genuine git failure still reports
+/// `comparison_failed`. `complete:false` forces whole-generation suppression
+/// either way, so the path never guesses which sources remain fresh.
+pub fn changed_paths_for_freshness_bounded(
+    repo_root: &Path,
+    generation: &crate::freshness::GenerationFreshnessBasis,
+    current: &crate::freshness::CurrentSourceState,
+    budget: Duration,
+) -> crate::freshness_receipt::ChangedPaths {
+    let Some(indexed_revision) = generation.indexed_revision.as_deref().filter(|value| !value.is_empty()) else {
+        return crate::freshness_receipt::ChangedPaths::unavailable("comparison_unavailable");
+    };
+    if !current.available {
+        return crate::freshness_receipt::ChangedPaths::unavailable("comparison_unavailable");
+    }
+    let started = Instant::now();
+    let mut remaining = || {
+        let left = budget.saturating_sub(started.elapsed());
+        if left.is_zero() { None } else { Some(left.min(GIT_TIMEOUT)) }
+    };
+    let mut exhausted = false;
+    let mut attempt = |args: &[&str]| match remaining() {
+        Some(timeout) => git_lines_bounded(repo_root, args, timeout).ok_or_else(|| {
+            if started.elapsed() >= budget { exhausted = true; }
+        }),
+        None => { exhausted = true; Err(()) },
+    };
+    let committed = attempt(&["diff", "--no-renames", "--name-only", "--diff-filter=ACDMRTUXB", indexed_revision, "--"]);
+    let worktree = attempt(&["diff", "--no-renames", "--name-only", "--diff-filter=ACDMRTUXB", "HEAD", "--"]);
+    let untracked = attempt(&["ls-files", "--others", "--exclude-standard"]);
+    let (Ok(committed), Ok(worktree), Ok(untracked)) = (committed, worktree, untracked) else {
+        return crate::freshness_receipt::ChangedPaths::unavailable(
+            if exhausted { "comparison_budget_exhausted" } else { "comparison_failed" },
+        );
+    };
+    let mut paths = BTreeMap::new();
+    for path in committed.into_iter().chain(worktree).chain(untracked) {
+        paths.insert(path, ());
+    }
+    crate::freshness_receipt::ChangedPaths::complete(paths.into_keys().collect())
 }
 
 /// Native port of `observeRepositoryFreshness(repoRoot, { baseCommit })`.

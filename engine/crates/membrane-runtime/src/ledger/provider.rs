@@ -7,17 +7,12 @@ use membrane_provider_sdk::{Provider, ProviderContext, ProviderError, ProviderOu
 use serde_json::json;
 use std::{collections::BTreeMap, future::Future, path::Path, pin::Pin, sync::Arc, time::Duration};
 
-/// Minimum remaining request budget worth spending on a ledger lane. Every
-/// lane call first reconciles its document index against the worktree
-/// (`sync_locked` → `walk_markdown`): a policy-filtered tree walk plus content
-/// hashing that takes seconds on a real repository. Under a latency-bound
-/// deadline — the SessionStart hook's resident probe carries 600ms — the
-/// reconcile cannot finish, so attempting it spends the entire request window
-/// inside a blocking task the deadline cannot preempt and still produces
-/// nothing. A typed gap preserves sibling lanes' evidence instead; mirrors
-/// the one-shot Blueprint status floor in `freshness.rs`.
-const LEDGER_LANE_MIN_REMAINING_MS: u64 = 5_000;
-
+/// Retrieval is a bounded indexed read: no full-root reconcile runs on this
+/// path (maintenance owns `sync_locked`), and `WorkBudget` — wired to the
+/// request deadline and a cancellation child token — interrupts the SQLite
+/// progress handler and per-candidate validation loops. A lane that still
+/// cannot finish inside its window reports the typed deadline/cancelled gap
+/// from the worker instead of a blanket availability floor.
 pub(crate) struct LedgerProvider { owner: Option<Arc<LedgerService>> }
 impl LedgerProvider {
     pub(crate) fn new(owner: Option<Arc<LedgerService>>) -> Self { Self { owner } }
@@ -33,9 +28,6 @@ impl Provider for LedgerProvider {
         Box::pin(async move {
             if context.is_cancelled() { return Ok(gap(ReasonCode::ProviderCancelled,"ledger_cancelled")); }
             if context.is_deadline_exhausted() { return Ok(gap(ReasonCode::DeadlineExhausted,"ledger_deadline_exhausted")); }
-            if context.remaining() < Duration::from_millis(LEDGER_LANE_MIN_REMAINING_MS) {
-                return Ok(gap(ReasonCode::ProviderUnavailable,"ledger_sync_budget_insufficient"));
-            }
             let Some(owner) = self.owner.clone() else { return Ok(gap(ReasonCode::ProviderUnavailable,"ledger_owner_unavailable")); };
             let context = context.clone();
             let cancellation = context.cancellation.child_token();
@@ -154,9 +146,6 @@ impl Provider for LedgerSkillProvider {
         Box::pin(async move {
             if context.is_cancelled() { return Ok(gap(ReasonCode::ProviderCancelled,"ledger_cancelled")); }
             if context.is_deadline_exhausted() { return Ok(gap(ReasonCode::DeadlineExhausted,"ledger_deadline_exceeded")); }
-            if context.remaining() < Duration::from_millis(LEDGER_LANE_MIN_REMAINING_MS) {
-                return Ok(gap(ReasonCode::ProviderUnavailable,"ledger_sync_budget_insufficient"));
-            }
             let Some(owner) = self.owner.clone() else { return Ok(gap(ReasonCode::ProviderUnavailable,"ledger_owner_unavailable")); };
             let context = context.clone();
             let cancellation = context.cancellation.child_token();
@@ -337,22 +326,31 @@ mod tests {
     }
 
     #[test]
-    fn ledger_lanes_gap_below_sync_budget_floor_without_owner() {
+    fn ledger_lanes_attempt_bounded_read_and_gap_only_on_real_failure() {
+        // No budget floor: a short deadline still attempts the indexed read —
+        // the deadline/cancellation wiring inside `WorkBudget` is the bound.
+        // Only an actual failure (here: no owner) produces the typed gap.
         let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
         runtime.block_on(async {
             let tight = budget_context(
-                std::time::Instant::now() + Duration::from_millis(LEDGER_LANE_MIN_REMAINING_MS - 1),
+                std::time::Instant::now() + Duration::from_millis(50),
             );
             let output = LedgerSkillProvider::new(None).provide(&tight).await.unwrap();
-            assert_eq!(output.omissions[0].detail_id.as_deref(), Some("ledger_sync_budget_insufficient"));
-            let output = LedgerProvider::new(None).provide(&tight).await.unwrap();
-            assert_eq!(output.omissions[0].detail_id.as_deref(), Some("ledger_sync_budget_insufficient"));
-            // A comfortable budget falls through to the owner check, not the floor.
-            let ample = budget_context(
-                std::time::Instant::now() + Duration::from_millis(LEDGER_LANE_MIN_REMAINING_MS + 5_000),
-            );
-            let output = LedgerSkillProvider::new(None).provide(&ample).await.unwrap();
             assert_eq!(output.omissions[0].detail_id.as_deref(), Some("ledger_owner_unavailable"));
+            let output = LedgerProvider::new(None).provide(&tight).await.unwrap();
+            assert_eq!(output.omissions[0].detail_id.as_deref(), Some("ledger_owner_unavailable"));
+        });
+    }
+
+    #[test]
+    fn ledger_lanes_report_exhausted_deadline_as_typed_gap() {
+        let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        runtime.block_on(async {
+            let exhausted = budget_context(std::time::Instant::now() - Duration::from_millis(1));
+            let output = LedgerSkillProvider::new(None).provide(&exhausted).await.unwrap();
+            assert_eq!(output.omissions[0].detail_id.as_deref(), Some("ledger_deadline_exceeded"));
+            let output = LedgerProvider::new(None).provide(&exhausted).await.unwrap();
+            assert_eq!(output.omissions[0].detail_id.as_deref(), Some("ledger_deadline_exhausted"));
         });
     }
 }

@@ -175,6 +175,23 @@ impl LedgerService {
         result
     }
 
+    /// Persisted projection coverage for `root`: true once a maintenance sync
+    /// has published a `ledger_owner_roots` row. Retrieval reads this cheaply
+    /// instead of re-walking the worktree — absence means the projection was
+    /// never built, which callers see as the `ledger_index_unpublished`
+    /// omission rather than silently empty results.
+    fn index_published(db: &LedgerDb, root: &str) -> bool {
+        db.lock()
+            .query_row(
+                "SELECT 1 FROM ledger_owner_roots WHERE repository_root=?1",
+                [root],
+                |_| Ok(()),
+            )
+            .optional()
+            .unwrap_or(None)
+            .is_some()
+    }
+
     fn sync_locked(db: &LedgerDb, caller: &Caller, budget: &WorkBudget) -> Result<doc_spine::DocSyncReport, String> {
         let report = doc_spine::sync_bounded(db, Path::new(&caller.root), budget)?;
         db.lock().execute("INSERT INTO ledger_owner_roots VALUES (?1,?2,?3,?4)
@@ -185,17 +202,34 @@ impl LedgerService {
         Ok(report)
     }
 
+    /// Authorized maintenance: reconcile the caller's enrolled root into the
+    /// persisted projection. This is the same `sync_locked` index/update
+    /// mechanism the explicit "sync" operation uses — invoked by the resident
+    /// engine's reconcile pass under background authority and by direct
+    /// maintenance calls, never by retrieval.
+    pub(crate) fn maintain(&self, caller: &Caller, budget: &WorkBudget) -> Result<doc_spine::DocSyncReport, String> {
+        self.run(caller, "context", budget, |db| Self::sync_locked(db, caller, budget))
+    }
+
     pub(crate) fn search(&self, caller: &Caller, task: &str, k: usize, literal: bool,
         ranges: Option<Vec<ReadPathV1>>, grant_id: Option<&str>, budget: &WorkBudget)
         -> Result<(query::QueryResult, Vec<String>), String>
     {
         self.run(caller, "context", budget, |db| {
             validate_task_grant(grant_id, caller, None, None)?;
-            // Repository enrollment is the authority for discovering sources.
-            // An explicit range grant remains a narrowing restriction.
-            Self::sync_locked(db, caller, budget)?;
-            let result = query::search(db, &query::QueryScope { root: caller.root.clone(), ranges },
+            // Retrieval queries persisted projections only — full-root
+            // reconciliation is maintenance work owned by the explicit "sync"
+            // operation and the resident reconcile pass, never a read path.
+            // Selected sources are still validated against live bytes,
+            // revision and span hash inside `query::search`/`issue_ticket`,
+            // so edited or deleted content degrades to typed omissions rather
+            // than leaking stale text.
+            let mut result = query::search(db, &query::QueryScope { root: caller.root.clone(), ranges },
                 task, k, literal, budget)?;
+            if !index_published(db, &caller.root) {
+                result.omissions.push("ledger_index_unpublished".into());
+                result.complete = false;
+            }
             let mut tickets = Vec::new();
             for hit in &result.hits {
                 budget.check()?;
@@ -211,9 +245,11 @@ impl LedgerService {
     ///
     /// The catalog mirrors `search` semantics: repository enrollment is the
     /// authority, an explicit task grant narrows enumeration to granted paths
-    /// when present, and the worktree is reconciled first so rows reflect
-    /// current source. Entries carry source identity, revision, content hash
-    /// and generation only — never bodies.
+    /// when present, and rows are read from the persisted projection —
+    /// reconciliation is maintenance, not a per-request scan. Entries carry
+    /// source identity, revision, content hash and generation only — never
+    /// bodies — and `document_hits`/`issue_ticket` re-validate live source
+    /// bytes, revision and spans before any materialization.
     pub(crate) fn skill_catalog(
         &self,
         caller: &Caller,
@@ -223,7 +259,6 @@ impl LedgerService {
     ) -> Result<Vec<skill_documents::SkillDocumentEntryV1>, String> {
         self.run(caller, "context", budget, |db| {
             validate_task_grant(grant_id, caller, None, None)?;
-            Self::sync_locked(db, caller, budget)?;
             skill_documents::catalog(db, &caller.root, ranges.as_deref(), budget)
         })
     }
@@ -247,7 +282,6 @@ impl LedgerService {
     ) -> Result<(query::QueryResult, Vec<skill_documents::TicketedSkillDocumentV1>), String> {
         self.run(caller, "context", budget, |db| {
             validate_task_grant(grant_id, caller, None, None)?;
-            Self::sync_locked(db, caller, budget)?;
             let outcome = skill_documents::search(db, &caller.root, task, k, ranges, budget)?;
             let mut skills = Vec::new();
             for skill in outcome.skills {
@@ -279,7 +313,6 @@ impl LedgerService {
     ) -> Result<Vec<skill_documents::TicketedSkillDocumentV1>, String> {
         self.run(caller, "context", budget, |db| {
             validate_task_grant(grant_id, caller, None, None)?;
-            Self::sync_locked(db, caller, budget)?;
             let entry = skill_documents::catalog(db, &caller.root, None, budget)?
                 .into_iter()
                 .find(|entry| entry.skill_id == skill_id)
