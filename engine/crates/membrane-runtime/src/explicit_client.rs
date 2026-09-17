@@ -2,7 +2,6 @@
 use membrane_protocol::explicit::{ExplicitOperation, ExplicitOwnerBindingV1, ExplicitOwnerMode,
     ExplicitRequestV1, ExplicitResponseV1, EXPLICIT_MAX_BYTES};
 use serde_json::{json, Value};
-use std::io::Write;
 
 fn owner_binding(store: &crate::MemoryStore) -> Result<ExplicitOwnerBindingV1, String> {
     let runtime = crate::service::runtime_from_installed_exe(
@@ -74,7 +73,10 @@ fn run_request(request: &ExplicitRequestV1) -> Result<u16, String> {
     let response = ExplicitResponseV1 { schema_version: 1, binding, status, data };
     let bytes = serde_json::to_vec(&response).map_err(|e| e.to_string())?;
     if bytes.len() > EXPLICIT_MAX_BYTES { return Err("explicit response exceeds byte limit".into()); }
-    std::io::stdout().write_all(&bytes).and_then(|_| std::io::stdout().write_all(b"\n")).map_err(|e| e.to_string())?;
+    // Emit through the CLI capture seam: under `/cli` forwarding the engine's
+    // real stdout is not the reply channel — the captured buffer is.
+    let text = std::str::from_utf8(&bytes).map_err(|e| e.to_string())?;
+    crate::cli::emit_stdout(format_args!("{text}"));
     Ok(status)
 }
 

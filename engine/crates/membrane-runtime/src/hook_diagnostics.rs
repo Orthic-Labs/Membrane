@@ -70,11 +70,13 @@ pub(crate) fn fence_enforcement_enabled(input: &HookInputEnvelopeV1) -> bool {
 }
 
 /// Budget split for the UserPromptSubmit recall module (bounded by
-/// `HOOK_MODULE_DEADLINE_MS`): a short resident probe, then bounded explicit
-/// one-shot federation with whatever remains.  Explicit requests must never
-/// fail solely because no resident holder exists (execution-lifecycle
-/// boundary), so the ambient injection loop works with Hub off.
-const RECALL_RESIDENT_BUDGET_MS: u64 = 600;
+/// `HOOK_MODULE_DEADLINE_MS`): a resident probe sized to cover a real warm
+/// federate (measured >600ms when the loopback transport is healthy), then
+/// bounded explicit one-shot federation with whatever remains.  Explicit
+/// requests must never fail solely because no resident holder exists
+/// (execution-lifecycle boundary), so the ambient injection loop works with
+/// Hub off.
+const RECALL_RESIDENT_BUDGET_MS: u64 = 1_500;
 const RECALL_BUDGET_MARGIN_MS: u64 = 200;
 
 fn recall_one_shot_budget_ms(elapsed: Duration) -> u64 {
