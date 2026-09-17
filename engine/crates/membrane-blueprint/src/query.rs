@@ -25,7 +25,7 @@ impl Limits {
             depth: number("maxDepth", 3), fanout: number("maxFanout", 64),
             nodes: number("maxNodes", 512), edges: number("maxEdges", 1024),
             paths: number("maxPaths", context.bounds.max_paths).min(context.bounds.max_paths),
-            path_len: number("maxPathLength", 32), candidates: number("maxCandidates", context.bounds.max_candidates).min(context.bounds.max_candidates),
+            path_len: number("maxPathLength", 32), candidates: number("maxCandidates", number("limit", context.bounds.max_candidates)).min(context.bounds.max_candidates),
             bytes: number("maxBytes", context.bounds.max_response_bytes),
         }
     }
@@ -496,8 +496,18 @@ fn recall_op(generation: &GraphGeneration, request: &BlueprintRequest, context: 
     } else {
         candidate_nodes.into_iter().filter(|n| !n.path.as_deref().is_some_and(|p| stale_paths.contains(&p.replace('\\', "/")))).collect()
     };
+    // The request's candidate bound gates the emitted set itself: a wide
+    // traversal legitimately reaches more nodes than maxCandidates, and an
+    // oversized candidateSet makes the federation client reject the whole
+    // response. `totalKnownCount`/`truncated` keep the cut honest.
+    let emitted_candidates: Vec<&GraphNode> = filtered_candidate_nodes
+        .iter()
+        .copied()
+        .take(limits.candidates.max(1))
+        .collect();
+    let candidates_truncated = emitted_candidates.len() < filtered_candidate_nodes.len();
     let mut candidate_omissions = circuit.omissions.clone();
-    let set = candidate_set("complete", filtered_candidate_nodes.iter().copied(), Some(candidate_ids.len()), !candidate_omissions.is_empty(), std::mem::take(&mut candidate_omissions));
+    let set = candidate_set("complete", emitted_candidates.into_iter(), Some(candidate_ids.len()), candidates_truncated || !candidate_omissions.is_empty(), std::mem::take(&mut candidate_omissions));
 
     let values: Vec<Value> = candidate_ids.iter().filter_map(|id| nodes_by_id.get(id.as_str()).map(|n| node_value(n))).take(limits.nodes).collect();
     let edges_json: Vec<Value> = edge_rows.iter().map(edge_value).collect();
