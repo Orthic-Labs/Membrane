@@ -19,11 +19,28 @@ use std::collections::{BTreeSet, HashMap};
 use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 
 use tokio_util::sync::CancellationToken;
 
 type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
+
+/// The native Blueprint operation is stateless and its client cache is keyed
+/// by (repository, worktree, task, anchors, bounds, expected generation), so
+/// one process-wide client lets repeat queries at the same generation answer
+/// from cache instead of cold-loading the graph on every request.  A
+/// republished generation misses the cache by construction, so freshness can
+/// never be served stale.
+fn shared_blueprint_client() -> Arc<BlueprintClient> {
+    static CLIENT: OnceLock<Arc<BlueprintClient>> = OnceLock::new();
+    CLIENT
+        .get_or_init(|| {
+            Arc::new(BlueprintClient::from_operation(
+                membrane_blueprint::native_blueprint_operation(),
+            ))
+        })
+        .clone()
+}
 
 /// Runtime-owned source handles captured by one native federation
 /// composition. Unbound owners remain absent so providers report an omission.
@@ -127,9 +144,7 @@ impl NativeSourceBindings {
             Some(crate::catalog::ContextCatalog::open(&catalog_path)
                 .map_err(|error| format!("open context catalog: {error}"))?)
         };
-        let blueprint = Arc::new(BlueprintClient::from_operation(
-            membrane_blueprint::native_blueprint_operation(),
-        ));
+        let blueprint = shared_blueprint_client();
         let cancellations = Arc::new(Mutex::new(HashMap::new()));
         let temporal_queries = Arc::new(Mutex::new(HashMap::new()));
 
