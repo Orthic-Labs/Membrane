@@ -598,10 +598,12 @@ fn recall_op(generation: &GraphGeneration, request: &BlueprintRequest, context: 
 
 /// Shrink a response envelope until the wrapped `BlueprintResponse` fits the
 /// request's byte bound. A wide traversal can fill the bound with
-/// presentational nodes/edges/depths before candidates are reached, so the
-/// largest projection is halved each pass and every cut is recorded as a
-/// `byte_ceiling` omission; candidate payloads shrink last so delivered
-/// evidence survives as long as possible.
+/// presentational nodes/edges/depths/paths before candidates are reached, so
+/// the largest array anywhere in the envelope is halved each pass and every
+/// cut is recorded as a `byte_ceiling` omission keyed by JSON path. Candidate
+/// payloads (`candidateSet.candidates`) shrink last so delivered evidence
+/// survives as long as possible; the `omissions` receipt array itself is
+/// never cut.
 fn fit_envelope_bytes(result: &mut Value, budget: usize, request: &BlueprintRequest) {
     // `Response::validate` bounds the whole wire envelope, not just `result`.
     // Reserve the wrapper's serialized size so a fitted body cannot push the
@@ -617,54 +619,115 @@ fn fit_envelope_bytes(result: &mut Value, budget: usize, request: &BlueprintRequ
     fn envelope_size(value: &Value) -> usize {
         serde_json::to_vec(value).map(|bytes| bytes.len()).unwrap_or(usize::MAX)
     }
-    fn cut_largest(result: &mut Value) -> Option<(&'static str, usize)> {
-        let mut largest: Option<(&'static str, usize)> = None;
-        for (field, len) in [
-            ("edges", result["edges"].as_array().map_or(0, Vec::len)),
-            ("nodes", result["nodes"].as_array().map_or(0, Vec::len)),
-            ("depths", result["depths"].as_object().map_or(0, Map::len)),
-            ("recallCircuit.paths", result["recallCircuit"]["paths"].as_array().map_or(0, Vec::len)),
-            ("resolution.candidates", result["resolution"]["candidates"].as_array().map_or(0, Vec::len)),
-            ("candidateSet.candidates", result["candidateSet"]["candidates"].as_array().map_or(0, Vec::len)),
-            ("candidates", result["candidates"].as_array().map_or(0, Vec::len)),
-        ] {
-            if len > largest.map_or(0, |(_, current)| current) {
-                largest = Some((field, len));
+    /// Locate the largest collection (array or object) in the envelope by
+    /// serialized size. The candidate list is excluded while any other
+    /// collection remains shrinkable so presentational projections drain
+    /// before delivered evidence.
+    fn largest_collection(value: &Value, include_candidates: bool) -> Option<(String, usize)> {
+        let mut best: Option<(String, usize)> = None;
+        let mut stack = vec![(String::new(), value)];
+        while let Some((path, node)) = stack.pop() {
+            match node {
+                Value::Array(list) => {
+                    if path == "omissions" || path.ends_with(".omissions") {
+                        continue;
+                    }
+                    let is_candidates = path == "candidateSet.candidates" || path == "candidates";
+                    // Delivered evidence shrinks last and only by dropping
+                    // whole candidates — inner evidence arrays are never
+                    // gutted, so the candidate list is measured but not
+                    // descended into.
+                    if !is_candidates {
+                        for (index, child) in list.iter().enumerate() {
+                            stack.push((format!("{path}.{index}"), child));
+                        }
+                    }
+                    if is_candidates && !include_candidates {
+                        continue;
+                    }
+                    if list.len() > 1 {
+                        let size = serde_json::to_vec(node).map(|b| b.len()).unwrap_or(0);
+                        if size > best.as_ref().map_or(0, |(_, current)| *current) {
+                            best = Some((path, size));
+                        }
+                    }
+                }
+                Value::Object(map) => {
+                    // Only flat presentational maps are shrink candidates;
+                    // semantic objects (candidateSet, receipts, orientation)
+                    // must never lose arbitrary keys.
+                    if path == "depths" && map.len() > 1 {
+                        let size = serde_json::to_vec(node).map(|b| b.len()).unwrap_or(0);
+                        if size > best.as_ref().map_or(0, |(_, current)| *current) {
+                            best = Some((path, size));
+                        }
+                    }
+                    for (key, child) in map {
+                        stack.push((if path.is_empty() { key.clone() } else { format!("{path}.{key}") }, child));
+                    }
+                }
+                _ => {}
             }
         }
-        largest.filter(|(_, len)| *len > 1).map(|(field, len)| {
-            let keep = len / 2;
-            match field {
-                "edges" => result["edges"].as_array_mut().unwrap().truncate(keep),
-                "nodes" => result["nodes"].as_array_mut().unwrap().truncate(keep),
-                "depths" => {
-                    let keys: Vec<String> = result["depths"].as_object().unwrap().keys().skip(keep).cloned().collect();
-                    for key in keys { result["depths"].as_object_mut().unwrap().remove(&key); }
-                }
-                "recallCircuit.paths" => result["recallCircuit"]["paths"].as_array_mut().unwrap().truncate(keep),
-                "resolution.candidates" => result["resolution"]["candidates"].as_array_mut().unwrap().truncate(keep),
-                "candidates" => result["candidates"].as_array_mut().unwrap().truncate(keep),
-                _ => {
-                    result["candidateSet"]["candidates"].as_array_mut().unwrap().truncate(keep);
-                    result["candidateSet"]["candidateCount"] = json!(keep);
-                    result["candidateSet"]["truncated"] = json!(true);
-                    if result["candidateSet"]["state"] == "complete" {
-                        result["candidateSet"]["state"] = json!("partial");
-                    }
-                    if result["candidateSet"]["coverage"] == "complete" {
-                        result["candidateSet"]["coverage"] = json!("partial");
-                    }
-                }
-            }
-            (field, len - keep)
-        })
+        best
     }
-    while envelope_size(result) > budget {
-        let Some((field, omitted)) = cut_largest(result) else { break };
-        if let Some(list) = result["omissions"].as_array_mut() {
-            list.push(json!({"reason": "byte_ceiling", "field": field, "count": omitted}));
+    fn collection_at<'a>(value: &'a mut Value, path: &str) -> Option<&'a mut Value> {
+        let mut node = value;
+        for segment in path.split('.') {
+            node = if let Ok(index) = segment.parse::<usize>() {
+                node.get_mut(index)?
+            } else {
+                node.get_mut(segment)?
+            };
         }
-        if field == "candidateSet.candidates" && result["state"] == "complete" {
+        Some(node)
+    }
+    loop {
+        if envelope_size(result) <= budget {
+            return;
+        }
+        let Some((path, _)) = largest_collection(result, false)
+            .or_else(|| largest_collection(result, true))
+        else {
+            return;
+        };
+        let Some(node) = collection_at(result, &path) else { return };
+        let omitted = match node {
+            Value::Array(list) => {
+                let keep = list.len() / 2;
+                let omitted = list.len() - keep;
+                list.truncate(keep);
+                omitted
+            }
+            Value::Object(map) => {
+                let keep = map.len() / 2;
+                let keys: Vec<String> = map.keys().skip(keep).cloned().collect();
+                let omitted = keys.len();
+                for key in keys {
+                    map.remove(&key);
+                }
+                omitted
+            }
+            _ => return,
+        };
+        if omitted == 0 {
+            return;
+        }
+        if let Some(omissions) = result["omissions"].as_array_mut() {
+            omissions.push(json!({"reason": "byte_ceiling", "field": path, "count": omitted}));
+        }
+        if path == "candidateSet.candidates" {
+            let kept = result["candidateSet"]["candidates"].as_array().map_or(0, Vec::len);
+            result["candidateSet"]["candidateCount"] = json!(kept);
+            result["candidateSet"]["truncated"] = json!(true);
+            if result["candidateSet"]["state"] == "complete" {
+                result["candidateSet"]["state"] = json!("partial");
+            }
+            if result["candidateSet"]["coverage"] == "complete" {
+                result["candidateSet"]["coverage"] = json!("partial");
+            }
+        }
+        if (path == "candidateSet.candidates" || path == "candidates") && result["state"] == "complete" {
             result["state"] = json!("partial");
         }
     }

@@ -185,6 +185,61 @@ fn ranking_negative_control_confidence_and_hop_factors_must_move_order_independe
 }
 
 #[test]
+fn recall_response_fits_request_byte_bound_with_honest_cuts() {
+    // A wide recall must fit inside the *response* bound the dispatcher
+    // validates — including the `BlueprintResponse` wrapper — while reporting
+    // every cut as a typed `byte_ceiling` omission and never dropping the
+    // omissions receipt itself.
+    let id = "generation-fit".to_owned();
+    let nodes: Vec<GraphNode> = (0..48)
+        .map(|i| GraphNode {
+            id: format!("symbol:src/m{i}.rs::f{i}"),
+            kind: "function".into(),
+            path: Some(format!("src/m{i}.rs")),
+            name: Some(format!("f{i}")),
+            generation_id: id.clone(),
+            evidence: vec![json!({"qualifiedName": format!("f{i}"), "path": format!("src/m{i}.rs"), "contentHash": format!("sha256:{i:064x}"), "padding": "x".repeat(256)})],
+        })
+        .collect();
+    let edges: Vec<GraphEdge> = (1..48)
+        .map(|i| GraphEdge {
+            id: format!("edge:CALLS:f{}->f{}", i - 1, i),
+            kind: "CALLS".into(),
+            source: format!("symbol:src/m{}.rs::f{}", i - 1, i - 1),
+            target: Some(format!("symbol:src/m{i}.rs::f{i}")),
+            generation_id: id.clone(),
+            evidence: vec![json!({"confidenceTier":"EXACT_RESOLUTION","padding":"y".repeat(256)})],
+        })
+        .collect();
+    let generation = GraphGeneration {
+        schema_version: 1, provider: "test".into(), provider_version: "1".into(),
+        generation_id: id.clone(), source_hash: "hash".into(), repo_root: "/repo".into(),
+        complete: true, nodes, edges, files: vec![], truncation_reasons: vec![],
+    };
+    let mut request = BlueprintRequest::new("q", Operation::Recall, "/repo");
+    request.generation = Some(id.clone());
+    request.input["seed"] = json!("symbol:src/m0.rs::f0");
+    request.input["maxDepth"] = json!(48);
+    request.input["maxBytes"] = json!(4096);
+    let result = execute_query(&generation, &request, &context(&request)).unwrap();
+    let wrapped = membrane_blueprint::BlueprintResponse::success("q", Some(id), result.clone());
+    assert!(
+        serde_json::to_vec(&wrapped).unwrap().len() <= 4096,
+        "wrapped response must fit the requested byte bound, got {} bytes",
+        serde_json::to_vec(&wrapped).unwrap().len()
+    );
+    let omissions = result["omissions"].as_array().unwrap();
+    assert!(
+        omissions.iter().any(|o| o["reason"] == "byte_ceiling" && o["field"].is_string() && o["count"].as_u64().unwrap_or(0) > 0),
+        "every cut must be receipted as a typed byte_ceiling omission, got {omissions:?}"
+    );
+    assert!(
+        result["candidateSet"]["candidates"].as_array().map_or(0, Vec::len) >= 1,
+        "delivered candidates must survive presentational cuts"
+    );
+}
+
+#[test]
 fn impact_reports_uncertainty_class() {
     let mut request = BlueprintRequest::new("q", Operation::Impact, "/repo"); request.generation = Some("generation-query".into()); request.input["nodeId"] = json!("symbol:src/a.rs::run");
     let result = execute_query(&generation(), &request, &context(&request)).unwrap();
