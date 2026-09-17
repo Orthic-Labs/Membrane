@@ -3656,10 +3656,27 @@ where
                 }
             };
             if removed {
-                require_command_success(client, "remove", runner(client, &remove_args(client)))?;
+                let remove_result = runner(client, &remove_args(client));
+                // Codex `mcp remove` only clears user registrations and
+                // reports "No MCP server named ..." when none existed, while
+                // `mcp get` still resolves plugin-declared servers — an entry
+                // that survives remove is the plugin's own provision, which
+                // is exactly the binding ownership this branch asserts.
+                let no_user_entry = remove_result.stdout.contains("No MCP server named")
+                    || remove_result.stderr.contains("No MCP server named");
+                require_command_success(client, "remove", remove_result)?;
                 let verify = runner(client, &get_args(client));
-                if verify.success() && parse_prior_config(&verify.stdout).is_some() {
-                    return Err(format!("{} global remove verification failed", client.as_str()));
+                if verify.success() {
+                    match parse_prior_config(&verify.stdout) {
+                        Some(config) if no_user_entry || owned_command_entry(&config, client, &executable) => {
+                            completed.push((client, ClientState::PluginOwned { removed: !no_user_entry }));
+                            continue;
+                        }
+                        Some(_) => {
+                            return Err(format!("{} global remove verification failed", client.as_str()));
+                        }
+                        None => {}
+                    }
                 }
             }
             completed.push((client, ClientState::PluginOwned { removed }));
@@ -4467,6 +4484,63 @@ mod tests {
                 .to_string_lossy(),
             &current
         ));
+    }
+
+    #[test]
+    fn plugin_owned_surviving_entry_is_plugin_provision_not_failure() {
+        // Codex `mcp get` resolves plugin-declared servers; `mcp remove`
+        // only clears user registrations. When the plugin owns the binding,
+        // the entry still visible after remove is the plugin's provision —
+        // not a stray global to error on.
+        let membrane = Path::new(r"C:\Membrane\membrane.exe");
+        let plugin_entry = r#"{"transport":{"type":"streamable_http","url":"http://127.0.0.1:47851/mcp"}}"#;
+        let mut responses = VecDeque::from([
+            result(0, "codex-cli"),                                        // --version
+            result(0, plugin_entry),                                       // get: plugin provision
+            result(0, "No MCP server named 'membrane' found."),            // remove: no user entry
+            result(0, plugin_entry),                                       // verify get: provision persists
+        ]);
+        let plugin_states = BTreeMap::from([(
+            HarnessClient::Codex,
+            plugin_receipt(HarnessClient::Codex, "enabled", None, false, None),
+        )]);
+        let receipts = reconcile_clients(
+            membrane,
+            &[HarnessClient::Codex],
+            false,
+            |_client, _args| responses.pop_front().unwrap(),
+            &plugin_states,
+        )
+        .unwrap();
+        assert_eq!(receipts[0].after, "plugin_owned");
+    }
+
+    #[test]
+    fn plugin_owned_foreign_survivor_still_fails_verification() {
+        // A surviving entry that is neither absent-user-entry nor owned is a
+        // genuine remove failure — still an error, not silently accepted.
+        let membrane = Path::new(r"C:\Membrane\membrane.exe");
+        let plugin_entry = r#"{"transport":{"type":"streamable_http","url":"http://127.0.0.1:47851/mcp"}}"#;
+        let foreign = r#"{"transport":{"command":"other-tool","args":["serve"]}}"#;
+        let mut responses = VecDeque::from([
+            result(0, "codex-cli"),
+            result(0, plugin_entry),
+            result(0, "Removed MCP server 'membrane'."),
+            result(0, foreign),
+        ]);
+        let plugin_states = BTreeMap::from([(
+            HarnessClient::Codex,
+            plugin_receipt(HarnessClient::Codex, "enabled", None, false, None),
+        )]);
+        let error = reconcile_clients(
+            membrane,
+            &[HarnessClient::Codex],
+            false,
+            |_client, _args| responses.pop_front().unwrap(),
+            &plugin_states,
+        )
+        .unwrap_err();
+        assert!(error.contains("global remove verification failed"));
     }
 
     fn codex_json_config_is_parsed_and_matched() {
