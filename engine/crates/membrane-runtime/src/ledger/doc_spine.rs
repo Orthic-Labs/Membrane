@@ -906,6 +906,9 @@ pub fn sync_bounded(db: &LedgerDb, root: &Path, budget: &super::limits::WorkBudg
     let (files, excluded_health, mut policy) = super::policy::walk_markdown(&root, budget)?;
     let mut conn = db.lock();
     let tx = conn.transaction().map_err(|e| e.to_string())?;
+    // Manifest retention is bounded history, so ensure the table exists before
+    // the unchanged-path existence check below.
+    tx.execute_batch(super::diagnostics::SCHEMA).map_err(|e| e.to_string())?;
     let generation: i64 = tx
         .query_row(
             "SELECT COALESCE(MAX(index_generation),0)+1 FROM ledger_doc_artifacts",
@@ -1007,7 +1010,21 @@ pub fn sync_bounded(db: &LedgerDb, root: &Path, budget: &super::limits::WorkBudg
                 .map_err(|e| e.to_string())?;
                 advance_unchanged_generation_tx(&tx, id, &revision, generation)
                     .map_err(|e| e.to_string())?;
-                if !super::diagnostics::record_manifest_tx(&tx, id).map_err(|e|e.to_string())? {
+                // Unchanged content produces an identical manifest_id, so a
+                // re-record would be an INSERT OR IGNORE no-op that still pays
+                // the full node load and JSON serialization every pass. Record
+                // only when no manifest exists (backfill); oversized docs then
+                // retry once per pass and stay typed-skipped.
+                let has_manifest: bool = tx
+                    .query_row(
+                        "SELECT EXISTS(SELECT 1 FROM ledger_document_manifests WHERE doc_id=?1)",
+                        [id],
+                        |r| r.get(0),
+                    )
+                    .map_err(|e| e.to_string())?;
+                if !has_manifest
+                    && !super::diagnostics::record_manifest_tx(&tx, id).map_err(|e|e.to_string())?
+                {
                     manifests_oversized += 1;
                 }
                 registered += 1;
