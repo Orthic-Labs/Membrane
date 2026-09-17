@@ -583,7 +583,7 @@ fn recall_op(generation: &GraphGeneration, request: &BlueprintRequest, context: 
         "omissions": circuit.omissions,
     });
 
-    Ok(envelope(request, &generation.generation_id, &state, Map::from_iter([
+    let mut result = envelope(request, &generation.generation_id, &state, Map::from_iter([
         ("requestedSeed".into(), json!(raw)), ("resolution".into(), resolution.json),
         ("root".into(), json!(seed_id_list.first().cloned().unwrap_or_default())),
         ("direction".into(), json!(policy.direction)),
@@ -591,7 +591,69 @@ fn recall_op(generation: &GraphGeneration, request: &BlueprintRequest, context: 
         ("depths".into(), json!(depths)), ("impact".into(), json!([])),
         ("omissions".into(), json!(circuit.omissions)), ("candidateSet".into(), set),
         ("recallCircuit".into(), recall_circuit_json), ("orientation".into(), orientation),
-    ])))
+    ]));
+    fit_envelope_bytes(&mut result, limits.bytes);
+    Ok(result)
+}
+
+/// Shrink a response envelope until it fits the request's byte bound. A wide
+/// traversal can fill the bound with presentational nodes/edges/depths before
+/// candidates are reached, so the largest projection is halved each pass and
+/// every cut is recorded as a `byte_ceiling` omission; candidate payloads
+/// shrink last so delivered evidence survives as long as possible.
+fn fit_envelope_bytes(result: &mut Value, budget: usize) {
+    fn envelope_size(value: &Value) -> usize {
+        serde_json::to_vec(value).map(|bytes| bytes.len()).unwrap_or(usize::MAX)
+    }
+    fn cut_largest(result: &mut Value) -> Option<(&'static str, usize)> {
+        let mut largest: Option<(&'static str, usize)> = None;
+        for (field, len) in [
+            ("edges", result["edges"].as_array().map_or(0, Vec::len)),
+            ("nodes", result["nodes"].as_array().map_or(0, Vec::len)),
+            ("depths", result["depths"].as_object().map_or(0, Map::len)),
+            ("recallCircuit.paths", result["recallCircuit"]["paths"].as_array().map_or(0, Vec::len)),
+            ("candidateSet.candidates", result["candidateSet"]["candidates"].as_array().map_or(0, Vec::len)),
+            ("candidates", result["candidates"].as_array().map_or(0, Vec::len)),
+        ] {
+            if len > largest.map_or(0, |(_, current)| current) {
+                largest = Some((field, len));
+            }
+        }
+        largest.filter(|(_, len)| *len > 1).map(|(field, len)| {
+            let keep = len / 2;
+            match field {
+                "edges" => result["edges"].as_array_mut().unwrap().truncate(keep),
+                "nodes" => result["nodes"].as_array_mut().unwrap().truncate(keep),
+                "depths" => {
+                    let keys: Vec<String> = result["depths"].as_object().unwrap().keys().skip(keep).cloned().collect();
+                    for key in keys { result["depths"].as_object_mut().unwrap().remove(&key); }
+                }
+                "recallCircuit.paths" => result["recallCircuit"]["paths"].as_array_mut().unwrap().truncate(keep),
+                "candidates" => result["candidates"].as_array_mut().unwrap().truncate(keep),
+                _ => {
+                    result["candidateSet"]["candidates"].as_array_mut().unwrap().truncate(keep);
+                    result["candidateSet"]["candidateCount"] = json!(keep);
+                    result["candidateSet"]["truncated"] = json!(true);
+                    if result["candidateSet"]["state"] == "complete" {
+                        result["candidateSet"]["state"] = json!("partial");
+                    }
+                    if result["candidateSet"]["coverage"] == "complete" {
+                        result["candidateSet"]["coverage"] = json!("partial");
+                    }
+                }
+            }
+            (field, len - keep)
+        })
+    }
+    while envelope_size(result) > budget {
+        let Some((field, omitted)) = cut_largest(result) else { break };
+        if let Some(list) = result["omissions"].as_array_mut() {
+            list.push(json!({"reason": "byte_ceiling", "field": field, "count": omitted}));
+        }
+        if field == "candidateSet.candidates" && result["state"] == "complete" {
+            result["state"] = json!("partial");
+        }
+    }
 }
 
 fn search(generation: &GraphGeneration, request: &BlueprintRequest, context: &RequestContext, limits: Limits) -> Result<Value, BlueprintError> {
@@ -602,7 +664,9 @@ fn search(generation: &GraphGeneration, request: &BlueprintRequest, context: &Re
     let omitted = found.len().saturating_sub(limits.candidates);
     found.truncate(limits.candidates);
     check(context)?;
-    Ok(envelope(request, &generation.generation_id, "complete", Map::from_iter([("query".into(),json!(query)),("requestedQuery".into(),json!(query)),("candidates".into(),json!(found.iter().map(|n| node_value(n)).collect::<Vec<_>>())),("omissions".into(),json!(if omitted>0 {vec![omission("candidate_ceiling",Some(omitted))]} else {vec![]}))])))
+    let mut result = envelope(request, &generation.generation_id, "complete", Map::from_iter([("query".into(),json!(query)),("requestedQuery".into(),json!(query)),("candidates".into(),json!(found.iter().map(|n| node_value(n)).collect::<Vec<_>>())),("omissions".into(),json!(if omitted>0 {vec![omission("candidate_ceiling",Some(omitted))]} else {vec![]}))]));
+    fit_envelope_bytes(&mut result, limits.bytes);
+    Ok(result)
 }
 
 /// Append `incomplete_generation` to an envelope's top-level and candidate-set
