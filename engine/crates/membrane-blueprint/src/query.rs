@@ -592,16 +592,28 @@ fn recall_op(generation: &GraphGeneration, request: &BlueprintRequest, context: 
         ("omissions".into(), json!(circuit.omissions)), ("candidateSet".into(), set),
         ("recallCircuit".into(), recall_circuit_json), ("orientation".into(), orientation),
     ]));
-    fit_envelope_bytes(&mut result, limits.bytes);
+    fit_envelope_bytes(&mut result, limits.bytes, request);
     Ok(result)
 }
 
-/// Shrink a response envelope until it fits the request's byte bound. A wide
-/// traversal can fill the bound with presentational nodes/edges/depths before
-/// candidates are reached, so the largest projection is halved each pass and
-/// every cut is recorded as a `byte_ceiling` omission; candidate payloads
-/// shrink last so delivered evidence survives as long as possible.
-fn fit_envelope_bytes(result: &mut Value, budget: usize) {
+/// Shrink a response envelope until the wrapped `BlueprintResponse` fits the
+/// request's byte bound. A wide traversal can fill the bound with
+/// presentational nodes/edges/depths before candidates are reached, so the
+/// largest projection is halved each pass and every cut is recorded as a
+/// `byte_ceiling` omission; candidate payloads shrink last so delivered
+/// evidence survives as long as possible.
+fn fit_envelope_bytes(result: &mut Value, budget: usize, request: &BlueprintRequest) {
+    // `Response::validate` bounds the whole wire envelope, not just `result`.
+    // Reserve the wrapper's serialized size so a fitted body cannot push the
+    // response over the cap; `null` occupies 4 bytes in the success slot.
+    let wrapper = serde_json::to_vec(&crate::api::BlueprintResponse::success(
+        request.request_id.clone(),
+        request.generation.clone(),
+        Value::Null,
+    ))
+    .map(|bytes| bytes.len().saturating_sub(4))
+    .unwrap_or(0);
+    let budget = budget.saturating_sub(wrapper);
     fn envelope_size(value: &Value) -> usize {
         serde_json::to_vec(value).map(|bytes| bytes.len()).unwrap_or(usize::MAX)
     }
@@ -612,6 +624,7 @@ fn fit_envelope_bytes(result: &mut Value, budget: usize) {
             ("nodes", result["nodes"].as_array().map_or(0, Vec::len)),
             ("depths", result["depths"].as_object().map_or(0, Map::len)),
             ("recallCircuit.paths", result["recallCircuit"]["paths"].as_array().map_or(0, Vec::len)),
+            ("resolution.candidates", result["resolution"]["candidates"].as_array().map_or(0, Vec::len)),
             ("candidateSet.candidates", result["candidateSet"]["candidates"].as_array().map_or(0, Vec::len)),
             ("candidates", result["candidates"].as_array().map_or(0, Vec::len)),
         ] {
@@ -629,6 +642,7 @@ fn fit_envelope_bytes(result: &mut Value, budget: usize) {
                     for key in keys { result["depths"].as_object_mut().unwrap().remove(&key); }
                 }
                 "recallCircuit.paths" => result["recallCircuit"]["paths"].as_array_mut().unwrap().truncate(keep),
+                "resolution.candidates" => result["resolution"]["candidates"].as_array_mut().unwrap().truncate(keep),
                 "candidates" => result["candidates"].as_array_mut().unwrap().truncate(keep),
                 _ => {
                     result["candidateSet"]["candidates"].as_array_mut().unwrap().truncate(keep);
@@ -665,7 +679,7 @@ fn search(generation: &GraphGeneration, request: &BlueprintRequest, context: &Re
     found.truncate(limits.candidates);
     check(context)?;
     let mut result = envelope(request, &generation.generation_id, "complete", Map::from_iter([("query".into(),json!(query)),("requestedQuery".into(),json!(query)),("candidates".into(),json!(found.iter().map(|n| node_value(n)).collect::<Vec<_>>())),("omissions".into(),json!(if omitted>0 {vec![omission("candidate_ceiling",Some(omitted))]} else {vec![]}))]));
-    fit_envelope_bytes(&mut result, limits.bytes);
+    fit_envelope_bytes(&mut result, limits.bytes, request);
     Ok(result)
 }
 
