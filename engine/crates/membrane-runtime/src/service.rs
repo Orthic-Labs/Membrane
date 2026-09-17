@@ -563,7 +563,8 @@ fn reconcile_resident_ledger(state: &Arc<Mutex<ResidentBlueprintState>>) {
         let cancelled = state.lock().map(|state| state.cancellation.is_cancelled()).unwrap_or(true);
         if cancelled { break; }
         let root = Path::new(&binding.root);
-        let caller = match crate::ledger::service::Caller::enrolled(root, &binding.repository_id) {
+        let canonical_id = membrane_federation::root::canonical_repository_id(root);
+        let caller = match crate::ledger::service::Caller::enrolled(root, &canonical_id) {
             Ok(caller) => caller,
             Err(error) => {
                 eprintln!("{}", serde_json::json!({"event":"resident_ledger_maintenance", "stage":"skipped", "root":binding.root, "error":error}));
