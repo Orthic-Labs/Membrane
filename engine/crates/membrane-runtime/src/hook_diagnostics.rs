@@ -84,20 +84,23 @@ fn recall_one_shot_budget_ms(elapsed: Duration) -> u64 {
         .max(10)
 }
 
-/// Installed resident endpoint (port + bearer token) when this binary runs
-/// from an installed root; development falls back to `MEMBRANE_API_TOKEN_FILE`
-/// or the workspace cache token.  `None` means no resident credential exists,
-/// which is not an error: explicit one-shot execution still runs.
-fn resident_endpoint(root: &Path) -> Option<(u16, String)> {
+/// Installed resident endpoint (port + token + installed flag) when this
+/// binary runs from an installed root; development falls back to
+/// `MEMBRANE_API_TOKEN_FILE` or the workspace cache token.  `None` means no
+/// resident credential exists, which is not an error: explicit one-shot
+/// execution still runs.  Installed residents gate canonical routes behind
+/// loopback-auth V1 (HMAC), not bearer — callers must select the scheme from
+/// the flag.
+fn resident_endpoint(root: &Path) -> Option<(u16, String, bool)> {
     let installed = env::current_exe().ok().and_then(|exe| crate::service::runtime_from_exe(&exe).ok()).filter(|runtime| runtime.origin == "installed");
-    let (port, token_path) = match installed {
+    let (port, token_path) = match &installed {
         Some(runtime) => (runtime.port, runtime.token.clone()),
         None => (
             env::var("MEMBRANE_PORT").ok().and_then(|value| value.parse::<u16>().ok()).filter(|value| *value >= 1024).unwrap_or(47851),
             env::var_os("MEMBRANE_API_TOKEN_FILE").map(PathBuf::from).unwrap_or_else(|| root.join("tools/.cache/memory/api-token")),
         ),
     };
-    token_from_file(&token_path).map(|token| (port, token))
+    token_from_file(&token_path).map(|token| (port, token, installed.is_some()))
 }
 
 fn packet_text(packet: &Value) -> Option<String> {
@@ -178,13 +181,17 @@ pub(crate) fn recall_attempt(input: &HookInputEnvelopeV1, task: &str) -> RecallO
         return with_stage_timings(RecallOutcome { context: None, sufficient: false, reason: "membrane_retrieval_failed",
             detail: json!({"transport":"hook","reason":"host_observation_invalid","error":error}) }, stages, started);
     }
-    if let Some((port, token)) = resident {
+    if let Some((port, token, installed)) = resident {
         let mut body = json!({"task": task, "repo": root, "maxTokens": max_tokens, "client": client, "session": session, "budgetPolicy": if observed_ceiling.is_some() { "host_observed" } else { "configured_cap" }, "maxWaitMs": RECALL_RESIDENT_BUDGET_MS});
         if let Some(ceiling) = observed_ceiling.as_ref() {
             body["remainingContextCeiling"] = serde_json::to_value(ceiling).unwrap_or(Value::Null);
         }
         let resident_started = Instant::now();
-        let response = authenticated_json_at(port, "/federate", body, &token, RECALL_RESIDENT_BUDGET_MS);
+        let response = if installed {
+            authenticated_loopback_json_at(port, "/federate", &body, &token, RECALL_RESIDENT_BUDGET_MS)
+        } else {
+            authenticated_json_at(port, "/federate", body, &token, RECALL_RESIDENT_BUDGET_MS)
+        };
         stages.insert("resident_exchange_ms".to_owned(), json!(resident_started.elapsed().as_millis() as u64));
         if let Some(response) = response {
             if response.get("packet").is_some() {
@@ -705,6 +712,68 @@ fn authenticated_json_at(port: u16, path: &str, body: Value, token: &str, deadli
     let split = response.windows(4).position(|window| window == b"\r\n\r\n")? + 4;
     let status = std::str::from_utf8(&response[..split]).ok()?.split_whitespace().nth(1)?.parse::<u16>().ok()?;
     ((200..300).contains(&status)).then(|| serde_json::from_slice(&response[split..]).ok()).flatten()
+}
+
+/// Signed POST to a canonical resident route under loopback-auth V1: identity
+/// is discovered through the unsigned `/livez` exemption, request headers are
+/// HMAC-bound to method/target/body/identity/nonce/expiry, and the response is
+/// verified before its body is trusted.  Mirrors installed_health/cli.rs;
+/// bearer tokens are never sent to canonical routes on an installed resident.
+fn authenticated_loopback_json_at(port: u16, path: &str, body: &Value, token: &str, deadline_ms: u64) -> Option<Value> {
+    use membrane_client::{build_loopback_request_headers, verify_loopback_request_headers, verify_loopback_response_headers, LoopbackAuthSigner, LoopbackIdentityFields};
+    if token.contains('\r') || token.contains('\n') { return None; }
+    let deadline = Instant::now() + Duration::from_millis(deadline_ms);
+    let remaining = |deadline: Instant| deadline.checked_duration_since(Instant::now()).filter(|duration| !duration.is_zero());
+    let Ok(address) = format!("127.0.0.1:{port}").parse::<std::net::SocketAddr>() else { return None; };
+    let read_response = |stream: &mut TcpStream| -> Option<(u16, Vec<(String, String)>, Vec<u8>)> {
+        let mut response = Vec::new();
+        stream.try_clone().ok()?.take(2 * 1024 * 1024).read_to_end(&mut response).ok()?;
+        let split = response.windows(4).position(|window| window == b"\r\n\r\n")? + 4;
+        let head = std::str::from_utf8(&response[..split]).ok()?;
+        let mut lines = head.split("\r\n");
+        let status = lines.next()?.split_whitespace().nth(1)?.parse::<u16>().ok()?;
+        let headers = lines.filter(|line| !line.is_empty()).filter_map(|line| {
+            let (name, value) = line.split_once(':')?;
+            Some((name.trim().to_ascii_lowercase(), value.trim().to_owned()))
+        }).collect();
+        Some((status, headers, response[split..].to_vec()))
+    };
+    // Unsigned liveness exemption supplies the resident identity fields that
+    // loopback-auth binds into the request signature.
+    let identity = {
+        let mut stream = TcpStream::connect_timeout(&address, remaining(deadline)?).ok()?;
+        stream.set_read_timeout(remaining(deadline)).ok()?; stream.set_write_timeout(remaining(deadline)).ok()?;
+        stream.write_all(b"GET /livez HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n").ok()?;
+        let _ = stream.shutdown(Shutdown::Write);
+        let (status, _headers, livez) = read_response(&mut stream)?;
+        if status != 200 { return None; }
+        let hints: Value = serde_json::from_slice(&livez).ok()?;
+        let field = |name: &str| hints.get(name).and_then(Value::as_str).filter(|value| !value.trim().is_empty()).map(str::to_owned);
+        LoopbackIdentityFields {
+            installation_id: field("installationId")?,
+            cortex_store_id: field("cortexStoreId")?,
+            release_generation: field("releaseGeneration")?,
+            startup_generation: hints.get("startupGeneration").and_then(Value::as_u64).filter(|value| *value != 0)?,
+            stable_install_root: field("stableInstallRoot")?,
+        }
+    };
+    let signer = LoopbackAuthSigner::from_hex_token(token).ok()?;
+    let nonce = LoopbackAuthSigner::generate_nonce().ok()?;
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).ok()?.as_secs();
+    let expiry = LoopbackAuthSigner::bounded_expiry(now, 10);
+    let bytes = serde_json::to_vec(body).ok()?;
+    let headers = build_loopback_request_headers(&signer, &identity, "POST", path, "127.0.0.1", "application/json", &bytes, nonce, expiry).ok()?;
+    let fields = verify_loopback_request_headers(&signer, &headers, "POST", path, "127.0.0.1", "application/json", &bytes, &identity, now).ok()?;
+    let mut stream = TcpStream::connect_timeout(&address, remaining(deadline)?).ok()?;
+    stream.set_read_timeout(remaining(deadline)).ok()?; stream.set_write_timeout(remaining(deadline)).ok()?;
+    let mut request = format!("POST {path} HTTP/1.1\r\n").into_bytes();
+    for (name, value) in &headers { request.extend_from_slice(format!("{name}: {value}\r\n").as_bytes()); }
+    request.extend_from_slice(b"\r\n"); request.extend_from_slice(&bytes);
+    stream.write_all(&request).ok()?;
+    let _ = stream.shutdown(Shutdown::Write);
+    let (status, response_headers, response_body) = read_response(&mut stream)?;
+    if verify_loopback_response_headers(&signer, &response_headers, &fields, status, &response_body, &identity, now).is_err() { return None; }
+    ((200..300).contains(&status)).then(|| serde_json::from_slice(&response_body).ok()).flatten()
 }
 fn response_body_ok(response: &Value) -> Option<&Value> { (response.get("status")?.as_u64()? >= 200 && response.get("status")?.as_u64()? < 300).then(|| response.get("body")).flatten() }
 
