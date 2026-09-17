@@ -9,7 +9,7 @@ use std::{
     env,
     fs,
     io::{Read, Write},
-    net::{Shutdown, TcpStream},
+    net::TcpStream,
     path::{Path, PathBuf},
     process::Stdio,
     thread,
@@ -669,7 +669,7 @@ fn diagnostics_request(root: Option<&Path>, method: &str, path: &str, body: Opti
     let bearer = resident_bearer(root)?;
     let authorization = bearer.map(|token| format!("Authorization: Bearer {token}\r\n")).unwrap_or_default();
     let request = format!("{method} {path} HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n{authorization}Content-Type: application/json\r\nContent-Length: {}\r\n\r\n", bytes.len());
-    stream.write_all(request.as_bytes()).ok()?; if !bytes.is_empty() { stream.write_all(&bytes).ok()?; } let _ = stream.shutdown(Shutdown::Write);
+    stream.write_all(request.as_bytes()).ok()?; if !bytes.is_empty() { stream.write_all(&bytes).ok()?; }
     let mut response = Vec::new(); stream.take(4 * 1024 * 1024).read_to_end(&mut response).ok()?;
     let split = response.windows(4).position(|window| window == b"\r\n\r\n")? + 4;
     let status = std::str::from_utf8(&response[..split]).ok()?.split_whitespace().nth(1)?.parse::<u16>().ok()?;
@@ -708,7 +708,7 @@ fn authenticated_json_at(port: u16, path: &str, body: Value, token: &str, deadli
     let Ok(bytes) = serde_json::to_vec(&body) else { return None; };
     let request = format!("POST {path} HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\nAuthorization: Bearer {token}\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n", bytes.len());
     if stream.write_all(request.as_bytes()).is_err() || stream.write_all(&bytes).is_err() { return None; }
-    let _ = stream.shutdown(Shutdown::Write); let mut response = Vec::new(); stream.take(2 * 1024 * 1024).read_to_end(&mut response).ok()?;
+    let mut response = Vec::new(); stream.take(2 * 1024 * 1024).read_to_end(&mut response).ok()?;
     let split = response.windows(4).position(|window| window == b"\r\n\r\n")? + 4;
     let status = std::str::from_utf8(&response[..split]).ok()?.split_whitespace().nth(1)?.parse::<u16>().ok()?;
     ((200..300).contains(&status)).then(|| serde_json::from_slice(&response[split..]).ok()).flatten()
@@ -744,7 +744,6 @@ fn authenticated_loopback_json_at(port: u16, path: &str, body: &Value, token: &s
         let mut stream = TcpStream::connect_timeout(&address, remaining(deadline)?).ok()?;
         stream.set_read_timeout(remaining(deadline)).ok()?; stream.set_write_timeout(remaining(deadline)).ok()?;
         stream.write_all(b"GET /livez HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n").ok()?;
-        let _ = stream.shutdown(Shutdown::Write);
         let (status, _headers, livez) = read_response(&mut stream)?;
         if status != 200 { return None; }
         let hints: Value = serde_json::from_slice(&livez).ok()?;
@@ -770,7 +769,6 @@ fn authenticated_loopback_json_at(port: u16, path: &str, body: &Value, token: &s
     for (name, value) in &headers { request.extend_from_slice(format!("{name}: {value}\r\n").as_bytes()); }
     request.extend_from_slice(b"\r\n"); request.extend_from_slice(&bytes);
     stream.write_all(&request).ok()?;
-    let _ = stream.shutdown(Shutdown::Write);
     let (status, response_headers, response_body) = read_response(&mut stream)?;
     if verify_loopback_response_headers(&signer, &response_headers, &fields, status, &response_body, &identity, now).is_err() { return None; }
     ((200..300).contains(&status)).then(|| serde_json::from_slice(&response_body).ok()).flatten()
