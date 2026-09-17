@@ -83,7 +83,8 @@ impl BlueprintProvider {
             return Err(ProviderError::DeadlineExceeded);
         }
         let mut query = context.query();
-        // Only a scope grant can pin an expected Blueprint generation.
+        // Only a scope grant or the request's freshness snapshot can pin an
+        // expected Blueprint generation.
         //
         // `ProviderContext::query()` fills `generation` with the *release*
         // generation — the Membrane build's `sha256:` identity — while
@@ -92,10 +93,18 @@ impl BlueprintProvider {
         // equal, so falling back to it gapped every Blueprint query as
         // generation-incoherent: zero candidates, an empty packet, and a
         // context request that failed with no sign the provider had answered.
+        //
+        // Grant-free requests (hooks, ambient pulls) pin the freshness
+        // snapshot's graph generation instead — the same identity admission
+        // binds — so the shared client cache engages and the provider check
+        // cannot disagree with admission. A degraded snapshot contributes no
+        // pin, matching admission's unconstrained degraded path.
         query.generation = context
             .scope_grant
             .as_ref()
-            .map(|grant| grant.blueprint_generation.clone());
+            .map(|grant| grant.blueprint_generation.clone())
+            .filter(|value| !value.is_empty())
+            .or_else(|| context.freshness.generation.clone().filter(|value| !value.is_empty()));
         let expected_generation = query.generation.clone();
         let response = match match self.contextual_source.as_ref() {
             Some(source) => {
