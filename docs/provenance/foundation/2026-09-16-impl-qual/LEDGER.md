@@ -260,7 +260,7 @@ installed case row; (c) PR-2 repoints `native.skills`; (d)
 
 ## Reconciliation
 
-Material revision: `40a4d5910f839c3edfe18b611ff6cf957a1aa51c`. Exact source/consumer locators verified against this revision.
+Material revision: `0c326b31a6c7b4803a590d7d6ca951d203c50da0`. Exact source/consumer locators verified against this revision.
 
 | Capability | State | Exact source | Exact consumer | Residual |
 |---|---|---|---|---|

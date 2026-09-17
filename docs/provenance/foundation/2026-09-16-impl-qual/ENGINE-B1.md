@@ -247,7 +247,7 @@ evidence.
 
 ## Reconciliation
 
-Material revision: `40a4d5910f839c3edfe18b611ff6cf957a1aa51c`. Exact source/consumer locators verified against this revision.
+Material revision: `0c326b31a6c7b4803a590d7d6ca951d203c50da0`. Exact source/consumer locators verified against this revision.
 
 | Capability | State | Exact source | Exact consumer | Residual |
 |---|---|---|---|---|
@@ -279,10 +279,10 @@ Material revision: `40a4d5910f839c3edfe18b611ff6cf957a1aa51c`. Exact source/cons
 
 | Capability targets | Focused command | Direct test evidence | Result | Run identity/time |
 |---|---|---|---|---|
-| MEM-002 | rightkit cargo test --manifest-path engine/Cargo.toml -p membrane-mcp --locked | `discovery_matches_initialize_contract_and_public_registry` plus `list_payload_returns_four_canonical_resources`, `list_payload_returns_four_canonical_prompts` prove the public registry advertises only the V1 pull/push shapes with bounded versioned resources and prompts | FOCUSED_PASS — 0 failures. | local rightkit-managed lane via pnpm test:mcp 2026-09-16; membrane-mcp suite 101 tests, 0 fail |
-| MEM-014 | rightkit cargo test --manifest-path engine/Cargo.toml -p membrane-mcp --locked | `read_with_matching_grant_returns_body`, `read_without_grant_returns_typed_rejection_with_no_body`, `resources_index_lists_every_committed_resource` prove grant-bound canonical resource listing/reads | FOCUSED_PASS — 0 failures. | local rightkit-managed lane via pnpm test:mcp 2026-09-16; membrane-mcp suite 101 tests, 0 fail |
-| MEM-015 | rightkit cargo test --manifest-path engine/Cargo.toml -p membrane-mcp --locked | `get_payload_returns_every_named_prompt`, `prompt_messages_only_mention_declared_operations`, `assert_no_escalation` prove bounded prompt get/list without authority escalation | FOCUSED_PASS — 0 failures. | local rightkit-managed lane via pnpm test:mcp 2026-09-16; membrane-mcp suite 101 tests, 0 fail |
-| MEM-044 | node --test scripts/qualification/cases/semantic-producer-windows.test.mjs | `MEM_044` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `recall_scored_detailed_timed_cancellable` `try_admit_idempotent_observed` `remember_consolidated_is_idempotent_by_stable_id` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-16; semantic-producer-windows suite green, 0 fail (93 tests, 0 fail total) |
-| MEM-068 | rightkit cargo test --manifest-path engine/Cargo.toml -p membrane-mcp --locked | `push_schema_is_cortex_memory_write` proves the public push tool schema routes durable-memory writes to Cortex only | FOCUSED_PASS — 0 failures. | local rightkit-managed lane via pnpm test:mcp 2026-09-16; membrane-mcp suite 101 tests, 0 fail |
+| MEM-002 | rightkit cargo test --manifest-path engine/Cargo.toml -p membrane-mcp --locked | `discovery_matches_initialize_contract_and_public_registry` plus `list_payload_returns_four_canonical_resources`, `list_payload_returns_four_canonical_prompts` prove the public registry advertises only the V1 pull/push shapes with bounded versioned resources and prompts | FOCUSED_PASS — 0 failures. | local rightkit-managed lane via pnpm test:mcp 2026-09-17; membrane-mcp suite 101 tests, 0 fail |
+| MEM-014 | rightkit cargo test --manifest-path engine/Cargo.toml -p membrane-mcp --locked | `read_with_matching_grant_returns_body`, `read_without_grant_returns_typed_rejection_with_no_body`, `resources_index_lists_every_committed_resource` prove grant-bound canonical resource listing/reads | FOCUSED_PASS — 0 failures. | local rightkit-managed lane via pnpm test:mcp 2026-09-17; membrane-mcp suite 101 tests, 0 fail |
+| MEM-015 | rightkit cargo test --manifest-path engine/Cargo.toml -p membrane-mcp --locked | `get_payload_returns_every_named_prompt`, `prompt_messages_only_mention_declared_operations`, `assert_no_escalation` prove bounded prompt get/list without authority escalation | FOCUSED_PASS — 0 failures. | local rightkit-managed lane via pnpm test:mcp 2026-09-17; membrane-mcp suite 101 tests, 0 fail |
+| MEM-044 | node --test scripts/qualification/cases/semantic-producer-windows.test.mjs | `MEM_044` case attestation executed against the live repository (structural source/consumer markers, fail-closed negative controls); mechanism anchor `recall_scored_detailed_timed_cancellable` `try_admit_idempotent_observed` `remember_consolidated_is_idempotent_by_stable_id` | FOCUSED_PASS — 0 failures. | local node --test qualification battery 2026-09-17; semantic-producer-windows suite green, 0 fail (93 tests, 0 fail total) |
+| MEM-068 | rightkit cargo test --manifest-path engine/Cargo.toml -p membrane-mcp --locked | `push_schema_is_cortex_memory_write` proves the public push tool schema routes durable-memory writes to Cortex only | FOCUSED_PASS — 0 failures. | local rightkit-managed lane via pnpm test:mcp 2026-09-17; membrane-mcp suite 101 tests, 0 fail |
 
 <!-- reconcile:end -->
