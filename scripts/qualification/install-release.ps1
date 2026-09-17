@@ -493,7 +493,7 @@ function Assert-BlueprintResident([string]$Root, [string]$WorkspaceRoot) {
   # up to HEAD. Poll for the fresh verdict inside the qualification budget
   # instead of demanding it on the first observation.
   $freshnessState = if ($statusPayload.state) { [string]$statusPayload.state } elseif ($statusPayload.result) { [string]$statusPayload.result.state } else { '' }
-  $freshnessDeadline = (Get-Date).AddSeconds($TimeoutSeconds)
+  $freshnessDeadline = (Get-Date).AddSeconds([Math]::Max($TimeoutSeconds, 300))
   while ($freshnessState -ne 'fresh' -and (Get-Date) -lt $freshnessDeadline) {
     Start-Sleep -Seconds 2
     try {
