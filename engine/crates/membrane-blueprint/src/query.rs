@@ -659,7 +659,7 @@ fn fit_envelope_bytes(result: &mut Value, budget: usize, request: &BlueprintRequ
                     if path == "depths" && map.len() > 1 {
                         let size = serde_json::to_vec(node).map(|b| b.len()).unwrap_or(0);
                         if size > best.as_ref().map_or(0, |(_, current)| *current) {
-                            best = Some((path, size));
+                            best = Some((path.clone(), size));
                         }
                     }
                     for (key, child) in map {
