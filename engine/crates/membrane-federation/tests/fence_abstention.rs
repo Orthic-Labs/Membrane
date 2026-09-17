@@ -265,6 +265,98 @@ async fn inherited_expired_deadline_is_not_replaced_by_request_budget() {
     assert!(calls.0.lock().unwrap().is_empty());
 }
 
+/// A provider that runs until its lane deadline, the Ledger `legacy_scan`
+/// shape: honest work that cannot finish inside the caller's window.
+struct ExhaustingProvider {
+    id: ProviderId,
+}
+
+#[async_trait]
+impl Provider for ExhaustingProvider {
+    async fn provide(&self, context: &ProviderContext) -> Result<ProviderOutputV1, ProviderError> {
+        while !context.is_cancelled() && !context.is_deadline_exhausted() {
+            tokio::task::yield_now().await;
+        }
+        Err(if context.is_cancelled() {
+            ProviderError::Cancelled
+        } else {
+            ProviderError::DeadlineExceeded
+        })
+    }
+}
+
+/// Lane-completion reserve: a lane that can only finish at the request
+/// deadline must be cut at its earlier lane instant so merge and the caller's
+/// post-federation work still fit. The engine resolves inside the caller's
+/// deadline with the slow lane recorded as a typed timeout omission and the
+/// healthy lane's candidates intact — instead of letting one lane's miss
+/// consume the request's last millisecond and sink the whole packet.
+#[tokio::test]
+async fn exhausted_lane_returns_typed_omission_before_request_deadline() {
+    let registrations = ProviderId::ALL
+        .into_iter()
+        .map(|id| {
+            let provider: Arc<dyn Provider> = if id == ProviderId::Ledger {
+                Arc::new(ExhaustingProvider { id })
+            } else {
+                Arc::new(FixtureProvider {
+                    id,
+                    calls: Calls::default(),
+                    with_candidate: true,
+                })
+            };
+            ProviderRegistration::new(id, format!("lane-reserve.{}", id.as_str()), Vec::new(), provider)
+        })
+        .collect();
+    let registry = ProviderRegistry::new(registrations).unwrap();
+    let config = FederationConfig::new(
+        ProviderId::ALL
+            .into_iter()
+            .map(|id| {
+                if matches!(id, ProviderId::Cortex | ProviderId::Ledger) {
+                    ProviderConfig::enabled(id)
+                } else {
+                    ProviderConfig::disabled(id)
+                }
+            })
+            .collect(),
+    )
+    .unwrap();
+    let sources = SourceSet {
+        freshness: Some(Arc::new(FixtureFreshness)),
+        ..SourceSet::default()
+    };
+    let engine = FederationEngine::with_release_source(registry, config, sources, FixtureRelease)
+        .unwrap();
+    let mut request = request();
+    request.deadline_ms = 1_500;
+    let started = std::time::Instant::now();
+    let response = engine
+        .federate(&request, CancellationToken::new())
+        .await
+        .expect("a stalled lane must degrade to a typed omission, not sink the response");
+    let elapsed = started.elapsed();
+    assert!(
+        elapsed < std::time::Duration::from_millis(1_500),
+        "engine resolved at {elapsed:?}; the lane reserve must leave the caller's deadline intact"
+    );
+    assert!(
+        response
+            .candidates
+            .iter()
+            .any(|candidate| candidate.provider.as_deref() == Some("cortex")),
+        "healthy lanes must still publish: {response:?}"
+    );
+    assert!(
+        response.omissions.iter().any(|omission| {
+            omission.provider == ProviderId::Ledger
+                && omission.reason == ReasonCode::ProviderTimeout
+        }),
+        "the stalled lane must be recorded as a typed timeout omission: {:?}",
+        response.omissions
+    );
+}
+
 /// A freshness source that reports itself incomplete (the Hub/watcher warm-up
 /// case): `acquire` turns this into a `freshness_unavailable:` error.
 #[derive(Clone)]

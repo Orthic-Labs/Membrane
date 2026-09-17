@@ -30,8 +30,19 @@ use membrane_protocol::{
 use membrane_provider_sdk::{ProviderContext, SourceQuery, SourceSet};
 use std::collections::BTreeMap;
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use tokio_util::sync::CancellationToken;
+
+/// Provider lanes run against an instant slightly inside the request
+/// deadline. A lane that cannot finish drains at its lane instant and
+/// contributes a typed timeout omission; without the reserve it consumed the
+/// request's last millisecond and the caller refused the assembled packet as
+/// `federation deadline exhausted`, turning a lane-local miss into total
+/// retrieval failure. The reserve covers the bounded scheduler drain, merge,
+/// and the caller's post-federation envelope, reduction, and publication
+/// work, and is capped at a quarter of the request budget so tight callers
+/// still give lanes a usable window.
+const LANE_COMPLETION_RESERVE: Duration = Duration::from_millis(250);
 
 /// Errors which prevent request-bound composition.  Provider-local errors are
 /// represented in the response as lane omissions and do not abort healthy
@@ -248,6 +259,12 @@ impl FederationEngine {
         if deadline.is_exhausted(&SystemClock) {
             return Err(FederationEngineError::BindingDeadline);
         }
+        let lane_deadline = Deadline::at(
+            deadline
+                .instant()
+                .checked_sub(LANE_COMPLETION_RESERVE.min(deadline.remaining_at(started) / 4))
+                .unwrap_or(started),
+        );
         // Validate any caller-provided publication-fence observation before
         // provider execution. Runtime adapters independently re-observe grant
         // state at the packet-emission boundary (§17.2).
@@ -381,7 +398,7 @@ impl FederationEngine {
         let tasks = self.provider_tasks(&active, fatal.clone());
         let mut schedule = schedule_providers(
             provider_context.clone(),
-            deadline,
+            lane_deadline,
             tasks,
             self.scheduler_policy,
         )
@@ -415,7 +432,7 @@ impl FederationEngine {
                 if let Some((trigger_provider, target_provider, target_requirement)) =
                     corrective_plan(&contract, &initial_assessment, &merged.providers, &active)
                 {
-                    if deadline.is_exhausted(&SystemClock) {
+                    if lane_deadline.is_exhausted(&SystemClock) {
                         corrective_receipt = CorrectiveRetrievalReceiptV1::after_stage(
                             initial_assessment,
                             trigger_provider,
@@ -448,7 +465,7 @@ impl FederationEngine {
                             self.provider_tasks(&[target_provider], stage_fatal.clone());
                         let stage = schedule_providers(
                             provider_context.clone(),
-                            deadline,
+                            lane_deadline,
                             stage_tasks,
                             self.scheduler_policy,
                         )
