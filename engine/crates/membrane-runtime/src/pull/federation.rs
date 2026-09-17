@@ -621,6 +621,57 @@ fn run_federate_value(
             fit.provenance,
             ceiling.as_ref(),
         );
+        // PUL-033: an empty packet is a versioned insufficient_confidence
+        // result carrying the searched-lane accounting, never a bare
+        // packet-without-selection that downstream surfaces must guess at.
+        // The resident host-fit path already emits this shape; bounded
+        // responses must produce the same typed insufficiency.
+        let packet_empty = fields
+            .get("packet")
+            .and_then(|packet| packet.get("blocks"))
+            .and_then(Value::as_array)
+            .is_some_and(Vec::is_empty);
+        if packet_empty && fields.get("status").is_none() {
+            let candidate_count = ccs
+                .get("candidates")
+                .and_then(Value::as_array)
+                .map_or(0, Vec::len);
+            // Same accounting as the resident host-fit empty-packet path:
+            // format the typed omission records — the wire schema drops
+            // detail_id/stage, so packet.omissions would flatten every
+            // distinct cause into the same generic code.
+            let mut reasons = response
+                .omissions
+                .iter()
+                .map(|omission| {
+                    let id = omission
+                        .candidate_id
+                        .clone()
+                        .unwrap_or_else(|| omission.provider.as_str().to_owned());
+                    let reason = omission.reason.as_str();
+                    match (omission.detail_id.as_deref(), omission.stage.as_deref()) {
+                        (Some(detail), Some(stage)) => format!("{id}:{reason}({detail}@{stage})"),
+                        (Some(detail), None) => format!("{id}:{reason}({detail})"),
+                        (None, Some(stage)) => format!("{id}:{reason}(@{stage})"),
+                        (None, None) => format!("{id}:{reason}"),
+                    }
+                })
+                .collect::<Vec<_>>();
+            let total = reasons.len();
+            reasons.truncate(16);
+            fields.insert(
+                "status".to_owned(),
+                Value::String("insufficient_confidence".to_owned()),
+            );
+            fields.insert(
+                "emptyEvidenceSummary".to_owned(),
+                serde_json::json!({
+                    "candidateCount": candidate_count,
+                    "omissions": reasons,
+                    "elided": total.saturating_sub(16),
+                }),
+            );
+        }
     }
     check_pull_live(federation_deadline, &inherited_cancellation)?;
     Ok(payload)

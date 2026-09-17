@@ -1,0 +1,12 @@
+PASS sessionstart_hook_transport: exit=0 stdout={"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":""},"membraneHook":{"schemaVersion":1,"event":"SessionStart","status":"ok","results":[{"id":"membrane.cortex-status","status":"ok","output":{"schemaVersion":1,"kind":"membrane.hook.status","state":"available","reason":"cortex_
+PASS sessionstart_orientation_insertion: {"hookEventName":"SessionStart","additionalContext":""}
+PASS mcp_initialize_and_registry: tools=pull,push
+PASS push_admission: kind=success memoryId=membrane/agent_push_b0a8450ae5dbf50fd1cb307531e9d99e bodySha256=f363f034a9aa7892d3e2c51436e5ceff4cfc2e2e6e5e856c40edd16b6078cf7c raw={"errorVersion":1,"operation":"push","result":{"data":{"authority":"A2","contentHash":"sha256:f363f034a9aa7892d3e2c51436e5ceff4cfc2e2e6e5e856c40edd16b6078cf7c","dedup":{"merged":false},"lifecycle":{"callerAuthority":"untrusted","managedBy":"cortex"},"memoryId":"membrane/agent_push_b0a8450ae5dbf50fd1cb307531e9d99e","provenance":{"callerFieldsStripped":[],"callerId":"membrane","repositoryId":"membra
+PASS push_admission_fs_scope: kind=success memoryId=D--Claude-membrane/agent_push_ea3f230731c1bfb1016107c0144ea3d6
+PASS byte_exact_recall: readSha=f363f034a9aa7892d3e2c51436e5ceff4cfc2e2e6e5e856c40edd16b6078cf7c expected=f363f034a9aa7892d3e2c51436e5ceff4cfc2e2e6e5e856c40edd16b6078cf7c readKind=success
+PASS memory_recall_finds_push: recall={"errorVersion":1,"operation":"membrane_memory","result":{"data":{"completeness":{"causes":[],"consideredCount":4,"countsExact":true,"droppedCount":0,"returnedCount":4,"schemaVersion":1,"state":"exact"},"items":[{"contentHash":"sha256:f363f034a9aa7892d3e2c51436e5ceff4cfc2e2e6e5e856c40edd16b6078cf7c","id":"membrane/agent_push_b0a8450ae5dbf50fd1cb307531e9d99e","preview":"Byte-exactness probe qual-by
+PASS pull_no_selection_invalid: kind=success status=ok code=undefined raw={"errorVersion":1,"operation":"pull","result":{"data":{"degradationReason":"none","deliveryMeasurement":{"basis":"o200k_base/1","bytes":12426,"hostCapacity":{"coverage":"unavailable"},"providerBilledTokens":null,"responseBudget":51200,"schemaVersion":1,"scope":"serialized_mcp_tool_result","tokens":4062},"packet":{"allocations":{"3":0,"7":148,"other":0},"blocks":[{"allottedTokens":47,"deliveredChar
+PASS pull_typed_envelope: kind=success status=ok degradation=none
+PASS pull_semantic_retrieval: foundMarker=true status=ok
+
+10/10 passed
