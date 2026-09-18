@@ -431,39 +431,32 @@ fn ledger_service_composition_heldout() {
                 ticket_missing.push(case.id.clone());
             }
         }
-        // Cross-validation: the production FTS arm may only emit documents the
-        // qualification lane arm surfaced, in the lane arm's order. Production
-        // fuses exact/graph/FTS candidates and deduplicates by span containment,
-        // so a lane doc legitimately absent from the top-k is not a failure —
-        // but a ledger_fts-lane hit the lane arm never ranked, or an ordering
-        // the lane arm contradicts, is real divergence. Restrict to FTS-lane
-        // hits: exact-lane evidence outranking FTS docs is fusion working, not
-        // an FTS regression.
-        let lane_seq: Vec<String> = {
-            let mut seen = BTreeSet::new();
-            shadow
-                .fts_hits
-                .iter()
-                .filter_map(|h| hit_document_path(&h.source_ref))
-                .filter(|path| seen.insert(path.clone()))
-                .collect()
-        };
-        let dispatch_fts: Vec<String> = {
-            let mut seen = BTreeSet::new();
-            hits.iter()
-                .filter(|h| h.get("lane").and_then(Value::as_str) == Some("ledger_fts"))
-                .filter_map(|h| h.get("sourceRef").and_then(Value::as_str))
-                .filter_map(hit_document_path)
-                .filter(|path| seen.insert(path.clone()))
-                .collect()
-        };
-        let mut lane_iter = lane_seq.iter();
-        let ordered = dispatch_fts.iter().all(|path| {
-            lane_iter.by_ref().any(|lane| lane == path)
-        });
-        if !ordered {
+        // Cross-validation: every document the production FTS arm emits must
+        // come from the lane arm's matched document set — the same FTS match
+        // under the same eligibility filters. Production rank-prunes, dedups by
+        // span containment and fuses lanes before emitting k unique docs, so
+        // positional equality with the lane arm's truncated hit list is not the
+        // contract; a ledger_fts-lane hit whose document the lane arm could
+        // never match is real divergence. Exact/graph hits are separate lanes
+        // and are not checked here — fusion outranking FTS docs is by design.
+        let lane_matched: BTreeSet<String> = shadow
+            .fts_matched_doc_paths
+            .iter()
+            .map(|path| normalize_doc_path(path))
+            .collect();
+        let dispatch_fts: Vec<String> = hits
+            .iter()
+            .filter(|h| h.get("lane").and_then(Value::as_str) == Some("ledger_fts"))
+            .filter_map(|h| h.get("sourceRef").and_then(Value::as_str))
+            .filter_map(hit_document_path)
+            .collect();
+        let outside: Vec<&String> = dispatch_fts
+            .iter()
+            .filter(|path| !lane_matched.contains(*path))
+            .collect();
+        if !outside.is_empty() {
             cross_mismatch.push(format!(
-                "{}: fts dispatch {dispatch_fts:?} diverges from lane {lane_seq:?}",
+                "{}: fts dispatch docs outside lane match set {outside:?}",
                 case.id
             ));
         }

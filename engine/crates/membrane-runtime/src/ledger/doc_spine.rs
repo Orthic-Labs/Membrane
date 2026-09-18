@@ -677,6 +677,14 @@ pub struct LedgerShadowRecallV1 {
     pub normalized_query: String,
     pub legacy_hits: Vec<DocRecallHitV1>,
     pub fts_hits: Vec<DocRecallHitV1>,
+    /// The lane arm's complete matched document set under its own eligibility
+    /// filters (active/normal lifecycle, generation & revision parity) — not
+    /// just the `k` materialized hits. Production emits `k` unique documents
+    /// after rank-pruning, eligibility and span-containment dedup, so it can
+    /// legitimately surface documents far below the lane arm's truncated hit
+    /// list; provenance — not positional equality — is what cross-validation
+    /// can honestly require of a pruned production arm.
+    pub fts_matched_doc_paths: Vec<String>,
     pub alias_hits: Vec<super::query_alias::QueryAliasShadowHitV1>,
 }
 
@@ -685,13 +693,50 @@ pub struct LedgerShadowRecallV1 {
 pub fn recall_shadow(db: &LedgerDb, query: &str, k: usize) -> Result<LedgerShadowRecallV1, String> {
     let legacy_hits = recall_legacy(db, query, k)?;
     let fts_hits = recall_fts(db, query, k)?;
+    let fts_matched_doc_paths = fts_matched_doc_paths(db, query)?;
     let alias_hits = super::query_alias::recall_query_aliases_shadow(db, query, k)?;
     Ok(LedgerShadowRecallV1 {
         normalized_query: super::index::normalize_query(query),
         legacy_hits,
         fts_hits,
+        fts_matched_doc_paths,
         alias_hits,
     })
+}
+
+/// Every document the lane arm's FTS match could legitimately emit — the same
+/// eligibility filters `recall_fts` applies (active/normal artifacts with
+/// generation and revision parity), without the hit-list truncation.
+fn fts_matched_doc_paths(db: &LedgerDb, query: &str) -> Result<Vec<String>, String> {
+    let terms = query_terms(query);
+    if terms.is_empty() {
+        return Ok(Vec::new());
+    }
+    let match_query = terms
+        .iter()
+        .map(|term| format!("\"{}\"", term.replace('"', "\"\"")))
+        .collect::<Vec<_>>()
+        .join(" OR ");
+    let conn = db.lock();
+    let mut statement = conn
+        .prepare(
+            "SELECT DISTINCT artifact.path
+             FROM ledger_node_fts fts
+             JOIN ledger_nodes node ON node.doc_id=fts.doc_id AND node.node_id=fts.node_id
+             JOIN ledger_doc_artifacts artifact ON artifact.doc_id=fts.doc_id
+             WHERE ledger_node_fts MATCH ?1
+               AND artifact.lifecycle_state='active'
+               AND artifact.sensitivity='normal'
+               AND node.ledger_generation=artifact.index_generation
+               AND node.source_revision=artifact.revision",
+        )
+        .map_err(|error| error.to_string())?;
+    let rows = statement
+        .query_map(rusqlite::params![match_query], |row| row.get::<_, String>(0))
+        .map_err(|error| error.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| error.to_string())?;
+    Ok(rows)
 }
 
 fn recall_legacy(db: &LedgerDb, query: &str, k: usize) -> Result<Vec<DocRecallHitV1>, String> {
