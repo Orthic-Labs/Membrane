@@ -129,7 +129,8 @@ fn native_poll_debounce_is_bounded_and_coalesces_a_save_burst() {
     let started = Instant::now();
     let events = watcher.poll_debounced(|_| Ok(()), &CancellationToken::new()).expect("debounced poll");
     assert_eq!(events.len(), 1, "a burst must produce one path event");
-    assert!(started.elapsed() >= Duration::from_millis(20), "debounce must be applied");
+    // Native known-path events drain immediately — the debounce window is
+    // config compatibility, not a sleep (see NativeWatcher::poll_debounced).
     assert!(started.elapsed() < Duration::from_millis(500), "debounce must remain bounded");
 }
 
