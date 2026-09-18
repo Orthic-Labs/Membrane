@@ -461,7 +461,18 @@ function validateSemanticOwnership(parsed) {
   requireAll("ADP-029", [/Cortex/i, /admission boundary/i], "ADP-029 must route accepted Adapt data through Cortex");
   requireWords("ADP-035", /learner|proposal sink/i, "ADP-035 must own learner semantics/proposal sink");
   if (byId.get("PUL-001")?.Implementation !== "PARTIAL") throw new Error("PUL-001 must remain PARTIAL until deterministic requirement detail lands");
-  if (byId.get("PUL-015")?.Implementation !== "PARTIAL") throw new Error("PUL-015 must remain PARTIAL while only shadow activation exists");
+  {
+    // PUL-015 stays PARTIAL only while shadow is the sole activation. A
+    // service-composition FTS receipt pinned in qualification.rs AND
+    // allowlisted in index.rs means activation is no longer shadow-only;
+    // the canon row's own evidence then governs whether PUL-015 advances.
+    const qualificationSource = readFileSync(path.join(root, "engine", "crates", "membrane-runtime", "src", "ledger", "qualification.rs"), "utf8");
+    const indexSource = readFileSync(path.join(root, "engine", "crates", "membrane-runtime", "src", "ledger", "index.rs"), "utf8");
+    const pinned = /QUALIFIED_FTS_ACTIVATION[^;]*=\s*Some\(QualifiedFtsActivation\s*\{([^}]*)\}\s*\)/s.exec(qualificationSource);
+    const receiptHash = pinned && /receipt_sha256:\s*"([0-9a-f]{64})"/.exec(pinned[1])?.[1];
+    const ftsBeyondShadow = Boolean(receiptHash) && indexSource.includes(`"${receiptHash}"`);
+    if (!ftsBeyondShadow && byId.get("PUL-015")?.Implementation !== "PARTIAL") throw new Error("PUL-015 must remain PARTIAL while only shadow activation exists");
+  }
   if (byId.get("MEM-024")?.Implementation !== "PARTIAL") throw new Error("MEM-024 must remain PARTIAL until receipt/verdict resolution is correct");
   if (byId.has("BPT-045")) throw new Error("BPT-045 must remain preservation-only legacy alias");
   for (let left = 0; left < capabilities.length; left += 1) for (let right = left + 1; right < capabilities.length; right += 1) {
