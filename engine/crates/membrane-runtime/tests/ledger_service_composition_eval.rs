@@ -431,26 +431,41 @@ fn ledger_service_composition_heldout() {
                 ticket_missing.push(case.id.clone());
             }
         }
-        // Cross-validation: every document the qualification lane arm surfaced
-        // must be delivered through the production dispatch. The lane arm emits
-        // raw ranked rows while production fuses exact/graph/FTS candidates and
-        // deduplicates by span containment, so sequence equality is the wrong
-        // shape — coverage is the honest check. A divergent production FTS arm
-        // drops lane-proven docs; fused lanes covering them deliver the same
-        // evidence by design.
-        let lane_paths: BTreeSet<String> = shadow
-            .fts_hits
-            .iter()
-            .filter_map(|h| hit_document_path(&h.source_ref))
-            .collect();
-        let dispatch_paths: BTreeSet<String> = hits
-            .iter()
-            .filter_map(|h| h.get("sourceRef").and_then(Value::as_str))
-            .filter_map(hit_document_path)
-            .collect();
-        if !lane_paths.is_subset(&dispatch_paths) {
-            let missing: Vec<&String> = lane_paths.difference(&dispatch_paths).collect();
-            cross_mismatch.push(format!("{}: undelivered lane docs {missing:?}", case.id));
+        // Cross-validation: the production FTS arm may only emit documents the
+        // qualification lane arm surfaced, in the lane arm's order. Production
+        // fuses exact/graph/FTS candidates and deduplicates by span containment,
+        // so a lane doc legitimately absent from the top-k is not a failure —
+        // but a ledger_fts-lane hit the lane arm never ranked, or an ordering
+        // the lane arm contradicts, is real divergence. Restrict to FTS-lane
+        // hits: exact-lane evidence outranking FTS docs is fusion working, not
+        // an FTS regression.
+        let lane_seq: Vec<String> = {
+            let mut seen = BTreeSet::new();
+            shadow
+                .fts_hits
+                .iter()
+                .filter_map(|h| hit_document_path(&h.source_ref))
+                .filter(|path| seen.insert(path.clone()))
+                .collect()
+        };
+        let dispatch_fts: Vec<String> = {
+            let mut seen = BTreeSet::new();
+            hits.iter()
+                .filter(|h| h.get("lane").and_then(Value::as_str) == Some("ledger_fts"))
+                .filter_map(|h| h.get("sourceRef").and_then(Value::as_str))
+                .filter_map(hit_document_path)
+                .filter(|path| seen.insert(path.clone()))
+                .collect()
+        };
+        let mut lane_iter = lane_seq.iter();
+        let ordered = dispatch_fts.iter().all(|path| {
+            lane_iter.by_ref().any(|lane| lane == path)
+        });
+        if !ordered {
+            cross_mismatch.push(format!(
+                "{}: fts dispatch {dispatch_fts:?} diverges from lane {lane_seq:?}",
+                case.id
+            ));
         }
         let dispatch_rank = score_dispatch_hits(&case.expected, &hits);
 
