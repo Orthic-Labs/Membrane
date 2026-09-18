@@ -185,12 +185,21 @@ fn fts_nodes(db: &LedgerDb, root: &str, query: &str) -> Result<Vec<Node>, String
     if terms.is_empty() { return Ok(Vec::new()); }
     let expression = terms.iter().map(|t| format!("\"{}\"", t.replace('"', "\"\""))).collect::<Vec<_>>().join(" OR ");
     let conn = db.lock();
+    // Custom-weight bm25() costs ~µs-per-row inside FTS5's own `rank` ordering,
+    // but tens of µs per row when evaluated as an outer scalar over every OR'd
+    // match — so the weighted score is computed inside a bounded `ORDER BY rank
+    // LIMIT` projection (top-4096 by the engine's native ranking), and the
+    // scope/revision/lifecycle joins plus the weighted re-rank apply only to
+    // those survivors instead of every match on the corpus.
     let mut statement = conn.prepare(
         "SELECT n.doc_id,n.node_id,n.node_kind,n.source_start_byte,n.source_end_byte,n.span_hash,
-                -bm25(ledger_node_fts,0.0,0.0,8.0,6.0,5.0,1.0,4.0),0
-         FROM ledger_node_fts f JOIN ledger_nodes n ON n.doc_id=f.doc_id AND n.node_id=f.node_id
+                top.score,0
+         FROM (SELECT doc_id, node_id, -bm25(ledger_node_fts,0.0,0.0,8.0,6.0,5.0,1.0,4.0) AS score
+               FROM ledger_node_fts WHERE ledger_node_fts MATCH ?1
+               ORDER BY rank LIMIT 4096) top
+         JOIN ledger_nodes n ON n.doc_id=top.doc_id AND n.node_id=top.node_id
          JOIN ledger_doc_artifacts a ON a.doc_id=n.doc_id
-         WHERE ledger_node_fts MATCH ?1 AND a.repository_root=?2
+         WHERE a.repository_root=?2
            AND a.lifecycle_state='active' AND a.sensitivity='normal'
            AND n.ledger_generation=a.index_generation AND n.source_revision=a.revision
            AND n.projection_schema_version=?3
@@ -205,21 +214,28 @@ fn fts_nodes(db: &LedgerDb, root: &str, query: &str) -> Result<Vec<Node>, String
 fn exact_nodes(db: &LedgerDb, root: &str, query: &str) -> Result<Vec<Node>, String> {
     let alias = index::normalize_query(query.trim());
     let alias = (!alias.is_empty() && !alias.chars().any(char::is_whitespace)).then_some(alias);
+    // The alias leg must run through the FTS index: identifier_aliases is an
+    // UNINDEXED FTS column, so joining or correlated-MATCH-ing it per node row
+    // re-runs a full FTS query for every node and starves the whole scan on
+    // real corpora. The match set is materialized once behind the ?4 guard —
+    // when no single-token alias exists the IN is never evaluated at all.
+    let match_alias = alias.as_ref().map(|a| format!("\"{}\"", a.replace('"', "\"\"")));
     let conn = db.lock();
     let mut statement = conn.prepare(
         "SELECT n.doc_id,n.node_id,n.node_kind,n.source_start_byte,n.source_end_byte,n.span_hash,1.0,1
          FROM ledger_nodes n JOIN ledger_doc_artifacts a ON a.doc_id=n.doc_id
-         LEFT JOIN ledger_node_fts f ON f.doc_id=n.doc_id AND f.node_id=n.node_id
          WHERE a.repository_root=?1 AND a.lifecycle_state='active' AND a.sensitivity='normal'
            AND n.ledger_generation=a.index_generation AND n.source_revision=a.revision
            AND n.projection_schema_version=?3
            AND (n.anchor_id=?2 OR n.node_id=?2 OR n.heading=?2
                 OR ((a.path=?2 OR a.title=?2) AND n.node_kind IN ('document','section','preamble'))
-                OR (?4 IS NOT NULL AND instr(' ' || f.identifier_aliases || ' ', ' ' || ?4 || ' ') > 0))
+                OR (?4 IS NOT NULL AND (n.doc_id,n.node_id) IN (
+                      SELECT doc_id,node_id FROM ledger_node_fts
+                      WHERE identifier_aliases MATCH ?5)))
            AND EXISTS(SELECT 1 FROM ledger_query_scope allowed WHERE allowed.doc_id=n.doc_id
                       AND n.source_start_byte>=allowed.start_byte AND n.source_end_byte<=allowed.end_byte)
          ORDER BY a.doc_id,n.ordinal LIMIT 257").map_err(|e| e.to_string())?;
-    let rows = statement.query_map(params![root, query, index::PROJECTION_SCHEMA_VERSION, alias], node_row)
+    let rows = statement.query_map(params![root, query, index::PROJECTION_SCHEMA_VERSION, alias, match_alias], node_row)
         .map_err(|e| e.to_string())?.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?;
     Ok(rows)
 }
@@ -361,21 +377,29 @@ pub(crate) fn search(db: &LedgerDb, scope: &QueryScope, query: &str, k: usize, l
         return Err("ledger_query_invalid".into());
     }
     budget.check()?;
+    let t0 = std::time::Instant::now();
     let (documents, ranges, policy, mut omissions) = eligible(db, scope, budget)?;
+    eprintln!("search.eligible docs={} {:?}", documents.len(), t0.elapsed());
+    let t1 = std::time::Instant::now();
     install_ranges(db, &ranges)?;
+    eprintln!("search.install_ranges {:?}", t1.elapsed());
     let generation = documents.iter().map(|d| d.generation).max().unwrap_or(0);
     let mode = index::recall_mode(db)?;
     let lane = if literal { "literal" } else { mode.storage_name() };
     let mut hits = Vec::new();
     let mut sources = BTreeMap::new();
     let mut candidates = Vec::new();
+    let t2 = std::time::Instant::now();
     if !literal {
         let exact = exact_nodes(db, &scope.root, query.trim())?;
         if exact.len() > MAX_POOL { omissions.push("exact_candidate_pool_truncated".into()); }
         candidates.extend(exact.into_iter().take(MAX_POOL));
     }
+    eprintln!("search.exact cands={} {:?}", candidates.len(), t2.elapsed());
+    let t3 = std::time::Instant::now();
     if !literal && mode == index::LedgerRecallMode::LedgerFts {
         let rows = fts_nodes(db, &scope.root, query)?;
+        eprintln!("search.fts_nodes rows={} {:?}", rows.len(), t3.elapsed());
         if rows.len() > MAX_POOL { omissions.push("candidate_pool_truncated".into()); }
         candidates.extend(rows.into_iter().take(MAX_POOL));
     } else {
@@ -453,9 +477,16 @@ pub(crate) fn search(db: &LedgerDb, scope: &QueryScope, query: &str, k: usize, l
             }
         }
     }
+    // Candidates arrive score-ordered, so materializing stops as soon as `k`
+    // deduplicated hits are emitted — indexed lanes must not pay a source load
+    // for every pooled candidate when only k results ship.
+    let t4 = std::time::Instant::now();
     let mut seen = BTreeSet::new();
+    let mut unique: Vec<LedgerHit> = Vec::new();
+    let mut materialized = 0usize;
     for node in candidates {
         budget.visit()?;
+        materialized += 1;
         if !seen.insert(node.id.clone()) { continue; }
         if !sources.contains_key(&node.doc) {
             match resolve::load_source(db, &scope.root, &node.doc) {
@@ -464,17 +495,19 @@ pub(crate) fn search(db: &LedgerDb, scope: &QueryScope, query: &str, k: usize, l
             }
         }
         let source = &sources[&node.doc];
-        let score = if node.exact { 1.0 } else { 1.0 / (2.0 + hits.len() as f64) };
+        let score = if node.exact { 1.0 } else { 1.0 / (2.0 + unique.len() as f64) };
         let hit_lane = if node.exact { "exact" } else if graph_node_ids.contains(&node.id) { "ledger_graph" } else { lane };
-        match source_hit(source, &node, hit_lane, score) {
-            Ok(hit) => hits.push(hit),
-            Err(_) => omissions.push("span_stale".into()),
-        }
-        if hits.len() >= MAX_POOL { break; }
+        let hit = match source_hit(source, &node, hit_lane, score) {
+            Ok(hit) => hit,
+            Err(_) => { omissions.push("span_stale".into()); continue; }
+        };
+        if unique.iter().any(|old| old.doc_id == hit.doc_id && old.start_byte <= hit.start_byte && hit.end_byte <= old.end_byte) { continue; }
+        unique.push(hit);
+        if unique.len() == k { break; }
     }
+    eprintln!("search.materialize cands={} unique={} sources={} {:?}", materialized, unique.len(), sources.len(), t4.elapsed());
     hits.sort_by(|a,b| b.score.total_cmp(&a.score).then_with(|| a.doc_id.cmp(&b.doc_id))
         .then_with(|| (a.end_byte-a.start_byte).cmp(&(b.end_byte-b.start_byte))).then_with(|| a.node_id.cmp(&b.node_id)));
-    let mut unique: Vec<LedgerHit> = Vec::new();
     for hit in hits {
         if unique.iter().any(|old| old.doc_id == hit.doc_id && old.start_byte <= hit.start_byte && hit.end_byte <= old.end_byte) { continue; }
         unique.push(hit);
