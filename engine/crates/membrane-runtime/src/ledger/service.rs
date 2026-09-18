@@ -5,7 +5,7 @@
 //! Resolution tickets retain the original source expectations and task grant;
 //! neither a cursor nor an agent-supplied root can increase read authority.
 
-use super::{doc_spine, index, limits::WorkBudget, policy::SourcePolicy, query,
+use super::{doc_spine, index, limits::WorkBudget, policy::SourcePolicy, qualification, query,
     resolve::{self, ResolveRequest}, skill_documents, LedgerDb};
 use crate::authorization::{self, AuthorizationRequest};
 use membrane_protocol::ReadPathV1;
@@ -33,6 +33,20 @@ CREATE TABLE IF NOT EXISTS ledger_erasure_fences (
     repository_root TEXT NOT NULL, path_digest TEXT NOT NULL,
     erased_at_ms INTEGER NOT NULL, PRIMARY KEY(repository_root,path_digest)
 );
+"#;
+/// Ticket store schema for the durable catalog. Resolution tickets are
+/// runtime state, not index projection: they live beside the catalog's
+/// erasure/exclusion records so retrieval on the read connection never opens
+/// a write transaction against the index file. The legacy index-side table
+/// above is retained for forward compatibility; new tickets are issued and
+/// validated only through the catalog.
+const TICKET_SCHEMA: &str = r#"
+CREATE TABLE IF NOT EXISTS ledger_resolution_tickets (
+    ticket_hash TEXT PRIMARY KEY, repository_root TEXT NOT NULL,
+    caller_digest TEXT NOT NULL, doc_id TEXT NOT NULL,
+    request_json TEXT NOT NULL, grant_id TEXT, expires_at_ms INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ledger_tickets_root ON ledger_resolution_tickets(repository_root,expires_at_ms);
 "#;
 
 static DAEMON_OWNER: OnceLock<Result<Arc<LedgerService>, String>> = OnceLock::new();
@@ -108,12 +122,18 @@ impl Caller {
 
 pub(crate) struct LedgerService {
     db: LedgerDb,
+    /// Second WAL connection to the same index file used by every read-only
+    /// retrieval op. Published-index reads observe the last committed
+    /// projection while maintenance holds a long write transaction — they
+    /// never queue behind `operation` or wait out a sync pass. `None` for
+    /// in-memory owners, which cannot open a second connection.
+    read_db: Option<LedgerDb>,
     catalog: crate::catalog::ContextCatalog,
     operation: Mutex<()>,
 }
 struct ResetProgress<'a>(&'a LedgerDb);
 impl Drop for ResetProgress<'_> {
-    fn drop(&mut self) { self.0.lock().progress_handler(0, None::<fn() -> bool>); }
+    fn drop(&mut self) { let _ = self.0.lock().progress_handler(0, None::<fn() -> bool>); }
 }
 impl LedgerService {
     fn new(db: LedgerDb) -> Result<Self, String> {
@@ -121,12 +141,59 @@ impl LedgerService {
         Self::with_catalog(db,catalog)
     }
     fn with_catalog(db:LedgerDb,catalog:crate::catalog::ContextCatalog)->Result<Self,String> {
-        db.lock().execute_batch(super::diagnostics::SCHEMA).map_err(|e|e.to_string())?;
-        if index::recall_mode(&db)? == index::LedgerRecallMode::LedgerFts {
-            index::activate(&db,index::LedgerRecallMode::Shadow,None)?;
+        // Owner DDL is a write transaction; a concurrent maintenance pass may
+        // hold the index writer for a whole corpus walk, so the batches run
+        // only when their objects are actually missing (fresh index).
+        if !Self::owner_objects_ready(&db)? {
+            db.lock().execute_batch(super::diagnostics::SCHEMA).map_err(|e|e.to_string())?;
+            db.lock().execute_batch(OWNER_SCHEMA).map_err(|e| e.to_string())?;
         }
-        db.lock().execute_batch(OWNER_SCHEMA).map_err(|e| e.to_string())?;
-        Ok(Self { db, catalog, operation: Mutex::new(()) })
+        // `ledger_fts` activation is a host decision bound to this build, not
+        // a property a caller or a stale persisted row can carry forward:
+        //   * a build shipping a qualified owner/resolver composition receipt
+        //     reconciles the activation row to that receipt;
+        //   * otherwise a persisted `ledger_fts` activation survives only
+        //     while the receipt that authorized it remains trusted — a stale
+        //     activation degrades to `shadow`, never silently to unrestricted
+        //     retrieval.
+        let mode = index::recall_mode(&db)?;
+        let stored = index::activation_receipt(&db)?;
+        if let Some(receipt) = qualification::qualified_fts_activation() {
+            let already = mode == index::LedgerRecallMode::LedgerFts
+                && stored.as_deref() == Some(receipt.receipt_sha256.as_str());
+            if !already {
+                index::activate(&db, index::LedgerRecallMode::LedgerFts, Some(&receipt))?;
+            }
+        } else if mode == index::LedgerRecallMode::LedgerFts
+            && !stored.as_deref().is_some_and(index::trusted_fts_receipt)
+        {
+            index::activate(&db, index::LedgerRecallMode::Shadow, None)?;
+        }
+        let read_db = db
+            .path()
+            .map(|path| LedgerDb::open_reader(path))
+            .transpose()?;
+        Ok(Self { db, read_db, catalog, operation: Mutex::new(()) })
+    }
+
+    /// True when the owner-layer objects (`diagnostics::SCHEMA` and
+    /// `OWNER_SCHEMA`) already exist. Read-only so an open during maintenance
+    /// never queues behind the writer for a no-op DDL batch.
+    fn owner_objects_ready(db: &LedgerDb) -> Result<bool, String> {
+        db.lock()
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE name IN (
+                    'ledger_document_manifests','idx_ledger_manifest_document',
+                    'ledger_resolution_tickets','ledger_tickets_root','ledger_erasure_fences')",
+                [],
+                |row| row.get::<_, i64>(0),
+            )
+            .map(|count| count == 5)
+            .map_err(|error| error.to_string())
+    }
+
+    fn read_db(&self) -> &LedgerDb {
+        self.read_db.as_ref().unwrap_or(&self.db)
     }
     #[cfg(test)]
     pub(crate) fn in_memory() -> Self { Self::with_catalog(LedgerDb::open_in_memory(),crate::catalog::ContextCatalog::open_in_memory()).unwrap() }
@@ -137,7 +204,7 @@ impl LedgerService {
         &self,
         doc_id: &str,
     ) -> Result<(String, String, String, String), String> {
-        self.db
+        self.read_db()
             .lock()
             .query_row(
                 "SELECT c.markdown,c.source_ref,c.markdown_sha256,c.source_revision
@@ -165,10 +232,35 @@ impl LedgerService {
             }
         };
         let observed = budget.clone();
-        self.db.lock().progress_handler(1000, Some(move || observed.interrupted()));
+        let _ = self.db.lock().progress_handler(1000, Some(move || observed.interrupted()));
         let _reset = ResetProgress(&self.db);
         super::erasure::synchronize(&self.catalog,&self.db,&caller.root,budget)?;
         let result = work(&self.db);
+        budget.check()?;
+        // Revocation is checked again before anything leaves the owner.
+        caller.authorize(action)?;
+        result
+    }
+
+    /// Read-only retrieval lane: published-index reads on the dedicated WAL
+    /// connection. Unlike `run`, this never takes the `operation` mutex, so a
+    /// maintenance sync holding the writer for a whole corpus pass cannot
+    /// starve status/recall/skill reads — each op observes the last committed
+    /// publication and degrades typed on real gaps rather than reporting a
+    /// blanket availability floor. Erasure still binds: durable catalog
+    /// exclusions are mirrored into the connection's TEMP view by
+    /// `synchronize_read` before any query work, so a catalog-recorded
+    /// erasure cannot resurrect through a stale fence cache.
+    fn run_read<T>(&self, caller: &Caller, action: &str, budget: &WorkBudget,
+        work: impl FnOnce(&LedgerDb) -> Result<T, String>) -> Result<T, String>
+    {
+        caller.authorize(action)?;
+        let db = self.read_db();
+        let observed = budget.clone();
+        let _ = db.lock().progress_handler(1000, Some(move || observed.interrupted()));
+        let _reset = ResetProgress(db);
+        super::erasure::synchronize_read(&self.catalog, db, &caller.root, budget)?;
+        let result = work(db);
         budget.check()?;
         // Revocation is checked again before anything leaves the owner.
         caller.authorize(action)?;
@@ -215,7 +307,7 @@ impl LedgerService {
         ranges: Option<Vec<ReadPathV1>>, grant_id: Option<&str>, budget: &WorkBudget)
         -> Result<(query::QueryResult, Vec<String>), String>
     {
-        self.run(caller, "context", budget, |db| {
+        self.run_read(caller, "context", budget, |db| {
             validate_task_grant(grant_id, caller, None, None)?;
             // Retrieval queries persisted projections only — full-root
             // reconciliation is maintenance work owned by the explicit "sync"
@@ -233,7 +325,7 @@ impl LedgerService {
             let mut tickets = Vec::new();
             for hit in &result.hits {
                 budget.check()?;
-                tickets.push(issue_ticket(db, caller, hit, grant_id)?);
+                tickets.push(issue_ticket(&self.catalog, caller, hit, grant_id)?);
             }
             validate_task_grant(grant_id, caller, None, None)?;
             Ok((result, tickets))
@@ -257,7 +349,7 @@ impl LedgerService {
         grant_id: Option<&str>,
         budget: &WorkBudget,
     ) -> Result<Vec<skill_documents::SkillDocumentEntryV1>, String> {
-        self.run(caller, "context", budget, |db| {
+        self.run_read(caller, "context", budget, |db| {
             validate_task_grant(grant_id, caller, None, None)?;
             skill_documents::catalog(db, &caller.root, ranges.as_deref(), budget)
         })
@@ -280,13 +372,13 @@ impl LedgerService {
         grant_id: Option<&str>,
         budget: &WorkBudget,
     ) -> Result<(query::QueryResult, Vec<skill_documents::TicketedSkillDocumentV1>), String> {
-        self.run(caller, "context", budget, |db| {
+        self.run_read(caller, "context", budget, |db| {
             validate_task_grant(grant_id, caller, None, None)?;
             let outcome = skill_documents::search(db, &caller.root, task, k, ranges, budget)?;
             let mut skills = Vec::new();
             for skill in outcome.skills {
                 budget.check()?;
-                let ticket = issue_ticket(db, caller, &skill.hit, grant_id)?;
+                let ticket = issue_ticket(&self.catalog, caller, &skill.hit, grant_id)?;
                 skills.push(skill_documents::TicketedSkillDocumentV1 {
                     skill_id: skill.skill_id,
                     title: skill.title,
@@ -311,7 +403,7 @@ impl LedgerService {
         grant_id: Option<&str>,
         budget: &WorkBudget,
     ) -> Result<Vec<skill_documents::TicketedSkillDocumentV1>, String> {
-        self.run(caller, "context", budget, |db| {
+        self.run_read(caller, "context", budget, |db| {
             validate_task_grant(grant_id, caller, None, None)?;
             let entry = skill_documents::catalog(db, &caller.root, None, budget)?
                 .into_iter()
@@ -326,7 +418,7 @@ impl LedgerService {
             let mut ticketed = Vec::new();
             for skill in skills {
                 budget.check()?;
-                let ticket = issue_ticket(db, caller, &skill.hit, grant_id)?;
+                let ticket = issue_ticket(&self.catalog, caller, &skill.hit, grant_id)?;
                 ticketed.push(skill_documents::TicketedSkillDocumentV1 {
                     skill_id: skill.skill_id,
                     title: skill.title,
@@ -460,7 +552,7 @@ impl LedgerService {
             "sync" => self.run(&caller, "context", budget, |db| {
                 serde_json::to_value(Self::sync_locked(db, &caller, budget)?).map_err(|e| e.to_string())
             }),
-            "status" => self.run(&caller, "system_status", budget, |db| {
+            "status" => self.run_read(&caller, "system_status", budget, |db| {
                 let (active, total): (i64, i64) = db.lock().query_row(
                     "SELECT COALESCE(SUM(lifecycle_state='active' AND sensitivity='normal'),0),COUNT(*)
                      FROM ledger_doc_artifacts WHERE repository_root=?1", [&caller.root], |r| Ok((r.get(0)?,r.get(1)?)))
@@ -475,7 +567,7 @@ impl LedgerService {
                     "providerDelivery":"direct_pull","runtimeQualified":false,
                     "literalMatch":"source_bytes","cursorSupported":true,"sourceByteLimit":resolve::MAX_SOURCE_BYTES}))
             }),
-            "outline" => self.run(&caller, "source_read", budget, |db| {
+            "outline" => self.run_read(&caller, "source_read", budget, |db| {
                 let path = arguments.get("path").and_then(Value::as_str).ok_or("ledger_path_required")?;
                 permitted_path(db, &caller.root, path, budget)?;
                 let bytes = resolve::confined_bytes(Path::new(&caller.root), path).map_err(|e| e.to_string())?;
@@ -500,7 +592,7 @@ impl LedgerService {
                 Ok(json!({"mode":mode.storage_name(),"providerDelivery":"direct_pull"}))
             }),
             "erase" => self.run(&caller, "checkpoint", budget, |db| erase(db, &self.catalog, &caller, arguments)),
-            "backlinks" | "related" | "manifests" | "drift" => self.run(&caller, "context", budget, |db| {
+            "backlinks" | "related" | "manifests" | "drift" => self.run_read(&caller, "context", budget, |db| {
                 let doc = required_string(arguments,"docId")?;
                 match operation {
                     "backlinks" => super::diagnostics::backlinks(db,&caller.root,&doc,arguments.get("nodeId").and_then(Value::as_str),
@@ -581,10 +673,10 @@ impl LedgerService {
             continuation_cursor: optional_string(arguments,"continuationCursor"),
             max_bytes: arguments.get("maxBytes").and_then(Value::as_u64).unwrap_or(12_000).min(12_000) as usize,
         };
-        self.run(&caller, "source_read", budget, |db| {
+        self.run_read(&caller, "source_read", budget, |db| {
             let ticket = arguments.get("ledgerTicket").and_then(Value::as_str);
             if request.node_id.is_some() || request.anchor_id.starts_with("ledger.node:") || request.source_ref.starts_with("ledger://") {
-                validate_ticket(db, &caller, ticket.ok_or("ledger_ticket_required")?, &request, session_id.as_deref())?;
+                validate_ticket(&self.catalog, &caller, ticket.ok_or("ledger_ticket_required")?, &request, session_id.as_deref())?;
             }
             if let Some(doc)=request.doc_id.as_deref().or_else(||request.source_ref.strip_prefix("ledger://doc/")) {
                 let path:String=db.lock().query_row("SELECT path FROM ledger_doc_artifacts WHERE repository_root=?1 AND doc_id=?2",
@@ -619,7 +711,7 @@ impl LedgerService {
                 }
                 Err(error) => return Err(error.to_string()),
             };
-            if let Some(ticket) = ticket { validate_ticket(db, &caller, ticket, &request, session_id.as_deref())?; }
+            if let Some(ticket) = ticket { validate_ticket(&self.catalog, &caller, ticket, &request, session_id.as_deref())?; }
             if let Some(doc)=request.doc_id.as_deref().or_else(||request.source_ref.strip_prefix("ledger://doc/")) {
                 let path:String=db.lock().query_row("SELECT path FROM ledger_doc_artifacts WHERE repository_root=?1 AND doc_id=?2",
                     params![caller.root,doc],|r|r.get(0)).map_err(|_|"ledger_source_missing")?;
@@ -677,20 +769,31 @@ pub(crate) fn validate_task_grant(id: Option<&str>, caller: &Caller, task: Optio
 }
 
 pub(crate) fn permitted_path(db: &LedgerDb, root: &str, path: &str, budget: &WorkBudget) -> Result<(), String> {
-    let erased: bool = db.lock().query_row("SELECT EXISTS(SELECT 1 FROM ledger_erasure_fences WHERE repository_root=?1 AND path_digest=?2)",
-        params![root,resolve::digest(path.as_bytes())],|r|r.get(0)).map_err(|e| e.to_string())?;
-    if erased { return Err("ledger_source_erased".into()); }
+    {
+        let conn = db.lock();
+        super::erasure::ensure_read_exclusions(&conn)?;
+        let erased: bool = conn.query_row("SELECT EXISTS(SELECT 1 FROM ledger_erasure_fences WHERE repository_root=?1 AND path_digest=?2)
+            OR EXISTS(SELECT 1 FROM ledger_read_exclusions WHERE path_digest=?2)",
+            params![root,resolve::digest(path.as_bytes())],|r|r.get(0)).map_err(|e| e.to_string())?;
+        if erased { return Err("ledger_source_erased".into()); }
+    }
     let mut policy = SourcePolicy::new(Path::new(root))?;
     if !policy.allows(path,false,budget)? { return Err("ledger_source_ineligible".into()); }
     policy.revalidate(budget)
 }
 
-fn issue_ticket(db: &LedgerDb, caller: &Caller, hit: &query::LedgerHit, grant_id: Option<&str>) -> Result<String, String> {
+/// Resolution tickets live in the durable catalog, not the index file. A
+/// ticket write is runtime state, not projection data: keeping it off the
+/// index means a search lane on the read connection never needs a write
+/// transaction there, so retrieval stays responsive while maintenance holds
+/// the index writer. The catalog's own lock serializes its brief writes.
+fn issue_ticket(catalog: &crate::catalog::ContextCatalog, caller: &Caller, hit: &query::LedgerHit, grant_id: Option<&str>) -> Result<String, String> {
     let mut random = [0u8;32];
     getrandom::fill(&mut random).map_err(|_| "ledger_ticket_entropy_unavailable")?;
     let ticket = format!("ledger-ticket:{}",hex::encode(random));
     let now = crate::time::now_millis() as i64;
-    let conn = db.lock();
+    let conn = catalog.lock();
+    conn.execute_batch(TICKET_SCHEMA).map_err(|e| e.to_string())?;
     conn.execute("DELETE FROM ledger_resolution_tickets WHERE expires_at_ms<=?1",[now]).map_err(|e| e.to_string())?;
     conn.execute("DELETE FROM ledger_resolution_tickets WHERE ticket_hash IN (
         SELECT ticket_hash FROM ledger_resolution_tickets WHERE repository_root=?1 ORDER BY expires_at_ms DESC LIMIT -1 OFFSET 480)",
@@ -701,12 +804,16 @@ fn issue_ticket(db: &LedgerDb, caller: &Caller, hit: &query::LedgerHit, grant_id
         .map_err(|e| e.to_string())?;
     Ok(ticket)
 }
-fn validate_ticket(db: &LedgerDb, caller: &Caller, ticket: &str, request: &ResolveRequest, session_id: Option<&str>) -> Result<(), String> {
+fn validate_ticket(catalog: &crate::catalog::ContextCatalog, caller: &Caller, ticket: &str, request: &ResolveRequest, session_id: Option<&str>) -> Result<(), String> {
     if ticket.len() != 78 || !ticket.starts_with("ledger-ticket:") { return Err("ledger_ticket_invalid".into()); }
-    let (request_json, grant): (String,Option<String>) = db.lock().query_row(
+    let (request_json, grant): (String,Option<String>) = {
+        let conn = catalog.lock();
+        conn.execute_batch(TICKET_SCHEMA).map_err(|e| e.to_string())?;
+        conn.query_row(
         "SELECT request_json,grant_id FROM ledger_resolution_tickets WHERE ticket_hash=?1 AND repository_root=?2
          AND caller_digest=?3 AND expires_at_ms>?4",params![resolve::digest(ticket.as_bytes()),caller.root,caller.digest(),crate::time::now_millis() as i64],
-        |r| Ok((r.get(0)?,r.get(1)?))).optional().map_err(|e|e.to_string())?.ok_or("ledger_ticket_expired_or_denied")?;
+        |r| Ok((r.get(0)?,r.get(1)?))).optional().map_err(|e|e.to_string())?.ok_or("ledger_ticket_expired_or_denied")?
+    };
     let expected: ResolveRequest = serde_json::from_str(&request_json).map_err(|_| "ledger_ticket_invalid")?;
     if expected.doc_id != request.doc_id || expected.node_id != request.node_id
         || expected.source_ref != request.source_ref || expected.anchor_id != request.anchor_id
@@ -742,6 +849,159 @@ fn erase(db: &LedgerDb, catalog: &crate::catalog::ContextCatalog, caller: &Calle
     tx.execute("DELETE FROM ledger_link_targets WHERE source_doc_id=?1 OR target_doc_id=?1",[&doc_id]).map_err(|e|e.to_string())?;
     tx.execute("DELETE FROM ledger_doc_artifacts WHERE repository_root=?1 AND doc_id=?2",params![caller.root,doc_id]).map_err(|e|e.to_string())?;
     tx.commit().map_err(|e|e.to_string())?;
+    // Resolution tickets are runtime state in the durable catalog; erasing a
+    // source invalidates every ticket bound to it so a held ticket cannot
+    // resurrect a deleted span.
+    {
+        let conn = catalog.lock();
+        conn.execute_batch(TICKET_SCHEMA).map_err(|e| e.to_string())?;
+        conn.execute("DELETE FROM ledger_resolution_tickets WHERE repository_root=?1 AND doc_id=?2",
+            params![caller.root, doc_id]).map_err(|e| e.to_string())?;
+    }
     Ok(json!({"schemaVersion":1,"operation":"erase","docId":doc_id,"logicalProjectionErasure":true,
         "sourceFilesChanged":false,"physicalErasure":"not_claimed","automaticReindexFenced":true}))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    /// Serialization for the process-global registry env var so parallel test
+    /// binaries cannot interleave two registries inside one service check.
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    fn env_lock() -> std::sync::MutexGuard<'static, ()> {
+        ENV_LOCK.lock().unwrap_or_else(|error| error.into_inner())
+    }
+
+    fn enrolled_workspace(dir: &tempfile::TempDir) -> (std::path::PathBuf, String) {
+        let workspace = dir.path().join("workspace");
+        fs::create_dir_all(workspace.join("docs")).unwrap();
+        fs::write(
+            workspace.join("docs/guide.md"),
+            "# Guide\n\nneedle alpha content\n\n## Child\nchild needle\n",
+        )
+        .unwrap();
+        fs::write(workspace.join("docs/target.md"), "# Target\n\nneedle beta\n").unwrap();
+        let workspace = workspace.canonicalize().unwrap();
+        let registry_path = dir.path().join("registry.json");
+        fs::write(
+            &registry_path,
+            serde_json::json!({
+                "schema_version":2,
+                "bindings":{workspace.to_string_lossy().as_ref():{
+                    "repository_id":"repo-contention","scope_id":"installation-scope",
+                    "grant_policy":{"level":"read-only"}}}
+            })
+            .to_string(),
+        )
+        .unwrap();
+        std::env::set_var("MEMBRANE_PROJECT_REGISTRY", &registry_path);
+        (workspace, "repo-contention".to_owned())
+    }
+
+    fn caller(workspace: &std::path::Path, repository: &str) -> Caller {
+        Caller::from_arguments(&json!({
+            "repository":repository,
+            "caller":{"root":workspace.to_string_lossy(),"repositoryId":repository,"scopeId":"installation-scope"}
+        }))
+        .unwrap()
+    }
+
+    /// Retrieval/maintenance separation: while the writer connection holds one
+    /// open transaction — exactly the shape `sync_bounded` holds across a whole
+    /// corpus walk — published-index reads on the dedicated WAL connection must
+    /// return committed hits rather than queue behind maintenance and starve
+    /// into `ledger_deadline_exhausted`. Erasure still binds mid-transaction:
+    /// catalog exclusions are mirrored into the read connection's TEMP view,
+    /// so an erased source cannot be recalled through a stale fence cache.
+    /// Tickets are catalog writes, so issuance cannot contend with the index.
+    #[test]
+    fn published_reads_complete_while_maintenance_holds_writer() {
+        let _env = env_lock();
+        let dir = tempfile::tempdir().unwrap();
+        let (workspace, repository) = enrolled_workspace(&dir);
+        let index_path = dir.path().join("ledger-index.sqlite3");
+        let db = LedgerDb::open(&index_path).unwrap();
+        let budget = WorkBudget::bounded(Duration::from_secs(30));
+        let report = doc_spine::sync_bounded(&db, &workspace, &budget).unwrap();
+        let catalog = crate::catalog::ContextCatalog::open(dir.path().join("catalog.db")).unwrap();
+        let service = LedgerService::with_catalog(db, catalog).unwrap();
+        // Mirror `sync_locked`'s owner-root publication row so `index_published`
+        // reflects the maintenance-completed state rather than a fresh index.
+        service
+            .db
+            .lock()
+            .execute(
+                "INSERT INTO ledger_owner_roots VALUES (?1,?2,?3,?4)",
+                params![workspace.to_string_lossy().replace('\\', "/"), report.index_generation,
+                    report.policy_digest, crate::time::now_millis() as i64],
+            )
+            .unwrap();
+        let caller = caller(&workspace, &repository);
+
+        // The pre-change starvation shape: the writer holds one open write
+        // transaction exactly as `sync_bounded` does across a corpus walk.
+        let mut writer = service.db.lock();
+        let tx = writer.transaction().unwrap();
+        tx.execute_batch(
+            "INSERT OR IGNORE INTO ledger_erasure_fences VALUES ('maintenance','probe',0)",
+        )
+        .unwrap();
+
+        let read_budget = WorkBudget::bounded(Duration::from_secs(5));
+        let (result, tickets) = service
+            .search(&caller, "needle alpha", 4, false, None, None, &read_budget)
+            .expect("published-index read must complete while maintenance holds the writer");
+        assert!(
+            result.hits.iter().any(|hit| hit.source_ref.contains("guide.md")),
+            "read must observe the committed publication, not starve: {result:?}"
+        );
+        assert_eq!(tickets.len(), result.hits.len());
+        assert!(result.omissions.is_empty(), "{result:?}");
+
+        // A catalog exclusion recorded while the writer transaction is open is
+        // still enforced on the read connection via its TEMP exclusion view.
+        let erased_digest = resolve::digest(b"docs/guide.md");
+        super::super::erasure::record(&service.catalog, &caller.root, &erased_digest).unwrap();
+        let (excluded, _) = service
+            .search(&caller, "needle alpha", 4, false, None, None, &read_budget)
+            .unwrap();
+        assert!(
+            excluded.hits.iter().all(|hit| !hit.source_ref.contains("guide.md")),
+            "catalog-recorded erasure must bind reads even mid-maintenance: {excluded:?}"
+        );
+
+        tx.rollback().unwrap();
+        drop(writer);
+    }
+
+    /// A persisted `ledger_fts` activation survives an owner open only while
+    /// the receipt that authorized it remains trusted by this build; a stale
+    /// or receipt-less activation degrades to `shadow` rather than running an
+    /// unqualified retrieval lane.
+    #[test]
+    fn stale_fts_activation_degrades_at_open() {
+        let _env = env_lock();
+        let dir = tempfile::tempdir().unwrap();
+        let index_path = dir.path().join("ledger-index.sqlite3");
+        {
+            let db = LedgerDb::open(&index_path).unwrap();
+            db.lock()
+                .execute(
+                    "UPDATE ledger_activation SET mode='ledger_fts', qualification_receipt_sha256='0000000000000000000000000000000000000000000000000000000000000000'",
+                    [],
+                )
+                .unwrap();
+        }
+        let catalog = crate::catalog::ContextCatalog::open(dir.path().join("catalog.db")).unwrap();
+        let db = LedgerDb::open(&index_path).unwrap();
+        let _service = LedgerService::with_catalog(db, catalog).unwrap();
+        assert_eq!(
+            index::recall_mode(&_service.db).unwrap(),
+            index::LedgerRecallMode::Shadow,
+            "untrusted persisted activation must degrade to shadow at open"
+        );
+    }
 }

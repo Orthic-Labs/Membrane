@@ -212,14 +212,93 @@ impl LedgerDb {
                 std::fs::create_dir_all(parent).map_err(|error| error.to_string())?;
             }
         }
-        let connection = Connection::open(path).map_err(|error| error.to_string())?;
-        connection
-            .execute_batch(LEDGER_SCHEMA)
-            .map_err(|error| error.to_string())?;
+        let connection = Self::open_connection(path)?;
+        // Schema DDL is a write transaction. A maintenance sync may hold the
+        // index writer for a whole corpus walk, so opening must not blindly
+        // take that write: when the schema objects already exist this is a
+        // read-only open and maintenance cannot starve it.
+        if !Self::schema_ready(&connection)? {
+            connection
+                .execute_batch(LEDGER_SCHEMA)
+                .map_err(|error| error.to_string())?;
+        }
         Ok(Self {
             connection: Mutex::new(connection),
             path: Some(path.to_path_buf()),
         })
+    }
+
+    /// True when every schema object `LEDGER_SCHEMA` creates already exists.
+    /// Read-only (`sqlite_master` plus the seeded activation row) so it can be
+    /// answered while another connection holds the write transaction.
+    fn schema_ready(connection: &Connection) -> Result<bool, String> {
+        const EXPECTED: &[&str] = &[
+            "ledger_erasure_fences",
+            "ledger_doc_artifacts",
+            "idx_ledger_doc_artifacts_root_state",
+            "ledger_doc_projections",
+            "idx_ledger_doc_projections_parent_generation",
+            "ledger_nodes",
+            "idx_ledger_nodes_generation",
+            "ledger_link_targets",
+            "idx_ledger_link_targets_source_generation",
+            "idx_ledger_link_targets_target",
+            "ledger_query_aliases",
+            "idx_ledger_query_aliases_generation",
+            "ledger_query_alias_evidence",
+            "ledger_document_conversions",
+            "ledger_index_publications",
+            "ledger_node_fts",
+            "ledger_activation",
+        ];
+        let placeholders = EXPECTED
+            .iter()
+            .map(|_| "?")
+            .collect::<Vec<_>>()
+            .join(",");
+        let present: i64 = connection
+            .query_row(
+                &format!("SELECT COUNT(*) FROM sqlite_master WHERE name IN ({placeholders})"),
+                rusqlite::params_from_iter(EXPECTED.iter()),
+                |row| row.get(0),
+            )
+            .map_err(|error| error.to_string())?;
+        if present != EXPECTED.len() as i64 {
+            return Ok(false);
+        }
+        let seeded: i64 = connection
+            .query_row("SELECT COUNT(*) FROM ledger_activation", [], |row| {
+                row.get(0)
+            })
+            .map_err(|error| error.to_string())?;
+        Ok(seeded > 0)
+    }
+
+    /// Open a second connection to the same index file for read-only
+    /// retrieval lanes. WAL lets a reader observe the last committed
+    /// (published) projection while maintenance holds a long write
+    /// transaction — published-index reads never wait out a sync pass.
+    /// The schema batch is deliberately not run here: the writer
+    /// connection that constructed the service owns DDL, and a reader
+    /// must not take a write transaction to create tables.
+    pub fn open_reader(path: impl AsRef<Path>) -> Result<Self, String> {
+        let path = path.as_ref();
+        Ok(Self {
+            connection: Mutex::new(Self::open_connection(path)?),
+            path: Some(path.to_path_buf()),
+        })
+    }
+
+    fn open_connection(path: &Path) -> Result<Connection, String> {
+        let connection = Connection::open(path).map_err(|error| error.to_string())?;
+        connection
+            .execute_batch(
+                "PRAGMA journal_mode=WAL;
+                 PRAGMA synchronous=NORMAL;
+                 PRAGMA busy_timeout=5000;",
+            )
+            .map_err(|error| error.to_string())?;
+        Ok(connection)
     }
 
     /// Open an isolated in-memory Ledger index for tests.

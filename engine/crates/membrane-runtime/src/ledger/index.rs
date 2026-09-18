@@ -70,6 +70,25 @@ pub fn recall_mode(db: &LedgerDb) -> Result<LedgerRecallMode, String> {
     }
 }
 
+/// The qualification receipt the persisted activation row was authorized by,
+/// if any. Reads the committed row — a concurrent maintenance transaction
+/// does not block this snapshot.
+pub(crate) fn activation_receipt(db: &LedgerDb) -> Result<Option<String>, String> {
+    db.lock()
+        .query_row(
+            "SELECT qualification_receipt_sha256 FROM ledger_activation WHERE singleton=1",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(|error| error.to_string())
+}
+
+/// True when `sha` is one of the qualification receipts this build trusts to
+/// authorize the `ledger_fts` production lane.
+pub(crate) fn trusted_fts_receipt(sha: &str) -> bool {
+    TRUSTED_LEDGER_FTS_RECEIPTS.contains(&sha)
+}
+
 /// Change the production retrieval lane. FTS activation is fail-closed unless a versioned,
 /// content-addressed qualification receipt proves the three safety/reachability gates.
 pub fn activate(

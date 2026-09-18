@@ -95,6 +95,7 @@ fn eligible(
     let mut policy = SourcePolicy::new(Path::new(&root))?;
     let rows = {
         let conn = db.lock();
+        super::erasure::ensure_read_exclusions(&conn)?;
         let mut statement = conn.prepare(
             "SELECT doc_id,path,index_generation FROM ledger_doc_artifacts
              WHERE repository_root=?1 AND lifecycle_state='active' AND sensitivity='normal'
@@ -111,7 +112,8 @@ fn eligible(
     for document in rows {
         budget.visit()?;
         let erased: bool = db.lock().query_row(
-            "SELECT EXISTS(SELECT 1 FROM ledger_erasure_fences WHERE repository_root=?1 AND path_digest=?2)",
+            "SELECT EXISTS(SELECT 1 FROM ledger_erasure_fences WHERE repository_root=?1 AND path_digest=?2)
+             OR EXISTS(SELECT 1 FROM ledger_read_exclusions WHERE path_digest=?2)",
             params![root,resolve::digest(document.path.as_bytes())],|r|r.get(0)).map_err(|e|e.to_string())?;
         if erased || !policy.allows(&document.path, false, budget)? { continue; }
         if let Some(granted) = &scope.ranges {

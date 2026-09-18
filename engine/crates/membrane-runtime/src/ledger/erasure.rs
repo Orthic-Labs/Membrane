@@ -19,6 +19,61 @@ pub(crate) fn record(catalog:&ContextCatalog,root:&str,path_digest:&str)->Result
     Ok(())
 }
 
+/// Read-path erasure handling. Retrieval connections never take a write
+/// transaction against the index file — a maintenance sync may hold one for
+/// a whole corpus walk — so the durable catalog exclusions are mirrored into
+/// a per-connection TEMP table (`ledger_read_exclusions`) that the fence
+/// checks union with `ledger_erasure_fences`. TEMP objects live in the
+/// connection's own temp store, never in the index file, so installing the
+/// view cannot contend with a writer. The catalog remains the authority:
+/// a source erased after the last fence propagation is still excluded from
+/// reads without resurrecting.
+///
+/// The pre-registry migration leg (index fences -> catalog) also runs here:
+/// it only writes the catalog, never the index.
+pub(crate) fn synchronize_read(catalog:&ContextCatalog,db:&LedgerDb,root:&str,budget:&WorkBudget)->Result<(),String> {
+    budget.check()?;
+    let cached={
+        let conn=db.lock();
+        let mut statement=conn.prepare("SELECT path_digest FROM ledger_erasure_fences WHERE repository_root=?1 LIMIT 16385")
+            .map_err(|_|"ledger_policy_cache_unavailable")?;
+        let values=statement.query_map([root],|r|r.get::<_,String>(0)).map_err(|_|"ledger_policy_cache_unavailable")?
+            .collect::<Result<Vec<_>,_>>().map_err(|_|"ledger_policy_cache_unavailable")?;
+        values
+    };
+    if cached.len()>16384 {return Err("ledger_policy_budget_exhausted".into());}
+    for digest in cached {budget.visit()?;record(catalog,root,&digest)?;}
+    let excluded={
+        let conn=catalog.lock();
+        conn.execute_batch(SCHEMA).map_err(|_|"ledger_policy_store_unavailable")?;
+        let mut statement=conn.prepare("SELECT path_digest FROM ledger_source_exclusions WHERE repository_root=?1 ORDER BY path_digest LIMIT 16385")
+            .map_err(|_|"ledger_policy_store_unavailable")?;
+        let values=statement.query_map([root],|r|r.get::<_,String>(0)).map_err(|_|"ledger_policy_store_unavailable")?
+            .collect::<Result<Vec<_>,_>>().map_err(|_|"ledger_policy_store_unavailable")?;
+        values
+    };
+    if excluded.len()>16384 {return Err("ledger_policy_budget_exhausted".into());}
+    let conn=db.lock();
+    conn.execute_batch("CREATE TEMP TABLE IF NOT EXISTS ledger_read_exclusions (
+        path_digest TEXT NOT NULL PRIMARY KEY); DELETE FROM ledger_read_exclusions;")
+        .map_err(|_|"ledger_policy_cache_unavailable")?;
+    {
+        let mut insert=conn.prepare("INSERT OR IGNORE INTO ledger_read_exclusions VALUES (?1)")
+            .map_err(|_|"ledger_policy_cache_unavailable")?;
+        for digest in excluded {budget.visit()?;insert.execute(rusqlite::params![digest]).map_err(|_|"ledger_policy_cache_unavailable")?;}
+    }
+    Ok(())
+}
+
+/// Ensure the TEMP exclusion view exists on a connection so fence checks can
+/// union against it. Retrieval ops populate it via `synchronize_read`; any
+/// other caller gets an empty view, which reduces the union to the
+/// index-fence cache exactly as before.
+pub(crate) fn ensure_read_exclusions(conn:&rusqlite::Connection)->Result<(),String> {
+    conn.execute_batch("CREATE TEMP TABLE IF NOT EXISTS ledger_read_exclusions (
+        path_digest TEXT NOT NULL PRIMARY KEY);").map_err(|_|"ledger_policy_cache_unavailable".to_string())
+}
+
 pub(crate) fn synchronize(catalog:&ContextCatalog,db:&LedgerDb,root:&str,budget:&WorkBudget)->Result<(),String> {
     budget.check()?;
     // Migrate a pre-registry deny cache conservatively. It can only reduce

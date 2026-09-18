@@ -170,15 +170,18 @@ pub(crate) fn catalog(
         if entries.len() >= MAX_SKILL_DOCUMENTS {
             return Err("ledger_skill_catalog_budget_exhausted".into());
         }
-        let erased: bool = db
-            .lock()
-            .query_row(
+        let erased: bool = {
+            let conn = db.lock();
+            super::erasure::ensure_read_exclusions(&conn)?;
+            conn.query_row(
                 "SELECT EXISTS(SELECT 1 FROM ledger_erasure_fences
-                 WHERE repository_root=?1 AND path_digest=?2)",
+                 WHERE repository_root=?1 AND path_digest=?2)
+                 OR EXISTS(SELECT 1 FROM ledger_read_exclusions WHERE path_digest=?2)",
                 params![normalized, resolve::digest(path.as_bytes())],
                 |r| r.get(0),
             )
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| e.to_string())?
+        };
         if erased || !policy.allows(&path, false, budget)? {
             continue;
         }
@@ -438,8 +441,10 @@ mod tests {
         let (_root, db, text) = fixture();
         let entries = catalog(&db, &text, None, &budget()).unwrap();
         let ids: Vec<&str> = entries.iter().map(|e| e.skill_id.as_str()).collect();
-        assert_eq!(ids, ["deploy", "deploy-stage"]);
-        let deploy = &entries[0];
+        // Catalog order is the persisted `ORDER BY path`: byte order places
+        // "tools/skills/deploy-stage/SKILL.md" before "tools/skills/deploy/SKILL.md".
+        assert_eq!(ids, ["deploy-stage", "deploy"]);
+        let deploy = entries.iter().find(|e| e.skill_id == "deploy").unwrap();
         assert_eq!(deploy.path, "tools/skills/deploy/SKILL.md");
         assert_eq!(deploy.content_hash.len(), 64);
         assert!(!deploy.revision.is_empty());
