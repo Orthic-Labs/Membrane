@@ -97,7 +97,7 @@ function nativeCli(options = {}, args, input) {
 function nativeQualificationCli(options = {}, id) {
   const cli = options.cliPath || process.env.MEMBRANE_CLI_PATH || "membrane";
   const env = options.env ? { ...process.env, ...options.env } : process.env;
-  const result = spawnSync(cli, ["qualification", "cortex", id], {
+  const result = spawnSync(cli, ["cli", "qualification", "cortex", id], {
     encoding: "utf8",
     windowsHide: true,
     timeout: 120000,

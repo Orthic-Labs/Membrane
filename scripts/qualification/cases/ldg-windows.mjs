@@ -156,7 +156,7 @@ function installedDocId(repo, pathName) {
 }
 
 function nativeLedgerQualification(cli, id, identity) {
-  const run = spawnSync(cli, ['qualification', 'ledger', id], {
+  const run = spawnSync(cli, ['cli', 'qualification', 'ledger', id], {
     encoding: 'utf8', windowsHide: true, timeout: 120000,
   });
   let value;
