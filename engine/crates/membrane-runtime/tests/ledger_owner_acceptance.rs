@@ -198,6 +198,13 @@ fn public_resolver_binds_session_and_rechecks_grant_lifecycle() {
     }));
     assert_eq!(data(&legacy)["registered"], false, "{legacy}");
 
+    // Retrieval reads only the published projection; reconciliation is the
+    // maintenance op's job. Publish the enrolled root before recall.
+    let synced = call(&server, "membrane_ledger", json!({
+        "repository":repository,"caller":caller.clone(),"operation":"sync"
+    }));
+    assert_eq!(data(&synced)["parsed"], 1, "{synced}");
+
     let ticket_for = |grant_id: &str, session: &str| -> Value {
         resolver_grant(&catalog, grant_id, repository, session);
         let recall = call(&server, "membrane_ledger", json!({
