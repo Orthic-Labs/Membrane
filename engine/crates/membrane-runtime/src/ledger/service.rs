@@ -254,19 +254,13 @@ impl LedgerService {
     fn run_read<T>(&self, caller: &Caller, action: &str, budget: &WorkBudget,
         work: impl FnOnce(&LedgerDb) -> Result<T, String>) -> Result<T, String>
     {
-        let stage = std::time::Instant::now();
         caller.authorize(action)?;
-        eprintln!("run_read[{action}] authorize {:?}", stage.elapsed());
         let db = self.read_db();
         let observed = budget.clone();
         let _ = db.lock().progress_handler(1000, Some(move || observed.interrupted()));
         let _reset = ResetProgress(db);
-        let stage = std::time::Instant::now();
         super::erasure::synchronize_read(&self.catalog, db, &caller.root, budget)?;
-        eprintln!("run_read[{action}] synchronize_read {:?}", stage.elapsed());
-        let stage = std::time::Instant::now();
         let result = work(db);
-        eprintln!("run_read[{action}] work {:?}", stage.elapsed());
         budget.check()?;
         // Revocation is checked again before anything leaves the owner.
         caller.authorize(action)?;

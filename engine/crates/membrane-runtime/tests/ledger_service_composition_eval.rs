@@ -254,28 +254,12 @@ impl Drop for Environment {
 }
 
 fn call(server: &membrane_mcp::McpServer, name: &str, arguments: Value) -> Value {
-    let label = format!(
-        "{}/{}",
-        name,
-        arguments.get("operation").and_then(Value::as_str).unwrap_or("-")
-    );
-    let started = Instant::now();
-    let response = server
+    server
         .dispatch(&json!({
             "jsonrpc":"2.0","id":1,"method":"tools/call",
             "params":{"name":name,"arguments":arguments}
         }))
-        .unwrap();
-    let code = response
-        .pointer("/result/structuredContent/result/code")
-        .and_then(Value::as_str)
-        .unwrap_or("none");
-    eprintln!(
-        "dispatch {label} elapsed={:?} isError={} code={code}",
-        started.elapsed(),
-        response.pointer("/result/isError").and_then(Value::as_bool).unwrap_or(true)
-    );
-    response
+        .unwrap()
 }
 
 fn data(response: &Value) -> &Value {
@@ -715,101 +699,4 @@ fn ledger_service_composition_heldout() {
         receipt.receipt_sha256
     );
     assert!(promote, "composition qualification failed: {gates}");
-}
-
-/// Minimal composition smoke: same wiring as the heldout eval over a 3-file
-/// fixture. Isolates which stage spends the dispatch deadline. Run alone —
-/// `DAEMON_OWNER`/`install_executor` are process-global OnceLocks.
-#[test]
-#[ignore]
-fn composition_status_smoke() {
-    let dir = tempfile::tempdir().unwrap();
-    let ws = dir.path().join("ws");
-    std::fs::create_dir_all(&ws).unwrap();
-    for (name, body) in [
-        ("a.md", "# Alpha\n\nneedle alpha bravo\n"),
-        ("b.md", "# Bravo\n\ncharlie delta echo\n"),
-        ("c.md", "# Charlie\n\nfoxtrot golf hotel\n"),
-    ] {
-        std::fs::write(ws.join(name), body).unwrap();
-    }
-    let root = ws.canonicalize().unwrap();
-    let root_arg = root.to_string_lossy().replace('\\', "/");
-    let repository = "smoke-repo";
-    let scope = "installation-scope";
-    let registry = dir.path().join("registry.json");
-    std::fs::write(
-        &registry,
-        json!({"schema_version":2,"bindings":{
-            root_arg.as_str():{
-                "repository_id":repository,"scope_id":scope,
-                "grant_policy":{"level":"write-trusted"}
-            }
-        }})
-        .to_string(),
-    )
-    .unwrap();
-    let _environment = Environment::set(&[
-        ("MEMBRANE_CACHE_ROOT", dir.path().join("cache")),
-        ("MEMBRANE_CATALOG", dir.path().join("catalog.db")),
-        ("MEMBRANE_PROJECT_REGISTRY", registry),
-        ("WORKSPACE_ROOT", dir.path().to_path_buf()),
-    ]);
-    let t = Instant::now();
-    let executor = membrane_runtime::mcp_executor::RuntimeMcpExecutor::for_hub(
-        MemoryStore::open(MemDb::open_in_memory()),
-    )
-    .unwrap();
-    assert!(membrane_mcp::install_executor(Arc::new(executor)).is_ok());
-    let server = membrane_mcp::McpServer::default();
-    eprintln!("for_hub+install elapsed={:?}", t.elapsed());
-    let caller = json!({"root":root_arg,"repositoryId":repository,"scopeId":scope});
-
-    // status before any sync — daemon index exists (schema init at for_hub)
-    // but holds no published owner row.
-    let t = Instant::now();
-    let pre = call(
-        &server,
-        "membrane_ledger",
-        json!({"repository":repository,"caller":caller,"operation":"status","deadlineMs":30000}),
-    );
-    eprintln!("pre-sync status elapsed={:?} resp={pre}", t.elapsed());
-
-    let index_path = dir.path().join("cache").join("ledger-index.sqlite3");
-    let db = LedgerDb::open(&index_path).unwrap();
-    let budget = membrane_runtime::ledger::limits::WorkBudget::bounded(
-        std::time::Duration::from_secs(120),
-    );
-    let t = Instant::now();
-    let report = doc_spine::sync_bounded(&db, &root, &budget).expect("sync fixture");
-    eprintln!("sync elapsed={:?} parsed={}", t.elapsed(), report.parsed);
-    db.lock()
-        .execute(
-            "INSERT INTO ledger_owner_roots VALUES (?1,?2,?3,?4)",
-            rusqlite::params![
-                root_arg,
-                report.index_generation,
-                report.policy_digest,
-                membrane_runtime::time::now_millis() as i64
-            ],
-        )
-        .unwrap();
-
-    let t = Instant::now();
-    let post = call(
-        &server,
-        "membrane_ledger",
-        json!({"repository":repository,"caller":caller,"operation":"status","deadlineMs":30000}),
-    );
-    eprintln!("post-sync status elapsed={:?} resp={post}", t.elapsed());
-    let t = Instant::now();
-    let recall = call(
-        &server,
-        "membrane_ledger",
-        json!({"repository":repository,"caller":caller,"operation":"recall",
-            "query":"needle alpha","k":3,"deadlineMs":30000}),
-    );
-    eprintln!("recall elapsed={:?} resp={recall}", t.elapsed());
-    assert_eq!(data(&post)["indexState"], json!("published"), "{post}");
-    assert!(data(&recall)["hits"].as_array().is_some_and(|h| !h.is_empty()), "{recall}");
 }

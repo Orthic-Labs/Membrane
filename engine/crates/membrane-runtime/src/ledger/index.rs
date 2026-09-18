@@ -13,13 +13,14 @@ pub const TOKENIZER_ID: &str = "fts5-unicode61+identifier-cjk-ngrams-v1";
 pub const QUERY_NORMALIZER_VERSION: &str = "nfkc-casefold-identifiers-v1";
 
 // Activation is a host decision, not a property a caller can grant itself by hashing JSON.
-// This receipt is minted from measured ledger-eval-v1 dev+heldout results (see
-// docs/evidence/qualification/ledger-metrics.json, `evaluation.qualificationReceipt`, and
-// tests/ledger_eval_v1_harness.rs, which produced the numbers the receipt's `runSha256` and
-// `resultSha256` are bound to). `ledger_eval_v1_receipt_matches_evidence_file` in
-// tests/ledger_indexing.rs asserts this constant stays in sync with that file.
+// This receipt is minted from the measured ledger-eval-v1 heldout run through the production
+// service composition (see docs/evidence/qualification/ledger-metrics.json,
+// `evaluation.qualificationReceipt`, and tests/ledger_service_composition_eval.rs, which
+// produced the numbers the receipt's `runSha256` and `resultSha256` are bound to).
+// `ledger_eval_v1_receipt_matches_evidence_file` in tests/ledger_indexing.rs asserts this
+// constant stays in sync with that file.
 const TRUSTED_LEDGER_FTS_RECEIPTS: &[&str] =
-    &["c7547262dbc5a11109236f8b343b421cd6a248a2447df697483624166978360e"];
+    &["a796a687cb1275aa50c2ebd5661f6019ce4243748d57314cf90adc9faad6dbb6"];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LedgerRecallMode {

@@ -377,29 +377,21 @@ pub(crate) fn search(db: &LedgerDb, scope: &QueryScope, query: &str, k: usize, l
         return Err("ledger_query_invalid".into());
     }
     budget.check()?;
-    let t0 = std::time::Instant::now();
     let (documents, ranges, policy, mut omissions) = eligible(db, scope, budget)?;
-    eprintln!("search.eligible docs={} {:?}", documents.len(), t0.elapsed());
-    let t1 = std::time::Instant::now();
     install_ranges(db, &ranges)?;
-    eprintln!("search.install_ranges {:?}", t1.elapsed());
     let generation = documents.iter().map(|d| d.generation).max().unwrap_or(0);
     let mode = index::recall_mode(db)?;
     let lane = if literal { "literal" } else { mode.storage_name() };
     let mut hits = Vec::new();
     let mut sources = BTreeMap::new();
     let mut candidates = Vec::new();
-    let t2 = std::time::Instant::now();
     if !literal {
         let exact = exact_nodes(db, &scope.root, query.trim())?;
         if exact.len() > MAX_POOL { omissions.push("exact_candidate_pool_truncated".into()); }
         candidates.extend(exact.into_iter().take(MAX_POOL));
     }
-    eprintln!("search.exact cands={} {:?}", candidates.len(), t2.elapsed());
-    let t3 = std::time::Instant::now();
     if !literal && mode == index::LedgerRecallMode::LedgerFts {
         let rows = fts_nodes(db, &scope.root, query)?;
-        eprintln!("search.fts_nodes rows={} {:?}", rows.len(), t3.elapsed());
         if rows.len() > MAX_POOL { omissions.push("candidate_pool_truncated".into()); }
         candidates.extend(rows.into_iter().take(MAX_POOL));
     } else {
@@ -480,13 +472,10 @@ pub(crate) fn search(db: &LedgerDb, scope: &QueryScope, query: &str, k: usize, l
     // Candidates arrive score-ordered, so materializing stops as soon as `k`
     // deduplicated hits are emitted — indexed lanes must not pay a source load
     // for every pooled candidate when only k results ship.
-    let t4 = std::time::Instant::now();
     let mut seen = BTreeSet::new();
     let mut unique: Vec<LedgerHit> = Vec::new();
-    let mut materialized = 0usize;
     for node in candidates {
         budget.visit()?;
-        materialized += 1;
         if !seen.insert(node.id.clone()) { continue; }
         if !sources.contains_key(&node.doc) {
             match resolve::load_source(db, &scope.root, &node.doc) {
@@ -505,7 +494,6 @@ pub(crate) fn search(db: &LedgerDb, scope: &QueryScope, query: &str, k: usize, l
         unique.push(hit);
         if unique.len() == k { break; }
     }
-    eprintln!("search.materialize cands={} unique={} sources={} {:?}", materialized, unique.len(), sources.len(), t4.elapsed());
     hits.sort_by(|a,b| b.score.total_cmp(&a.score).then_with(|| a.doc_id.cmp(&b.doc_id))
         .then_with(|| (a.end_byte-a.start_byte).cmp(&(b.end_byte-b.start_byte))).then_with(|| a.node_id.cmp(&b.node_id)));
     for hit in hits {

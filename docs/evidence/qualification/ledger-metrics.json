@@ -1,80 +1,508 @@
 {
-  "schemaVersion": 1,
   "axis": "ledger",
-  "status": "qualified",
-  "entrypoint": "membrane-runtime::ledger",
-  "metrics": [
-    "anchor_resolution",
-    "hash_staleness",
-    "incremental_sync",
-    "recall_determinism",
-    "projection_rebuild"
-  ],
+  "entrypoint": "membrane-runtime::ledger::service",
   "evaluation": {
+    "commit": "0ede8135e733edb58f240bdaf065388d7ecec5b8",
+    "commitSha256": "3e9889f700cb61d612f4f9f591b7fbd8a0ebca0c02c57921204ff73e2c44fd56",
+    "composition": "McpServer dispatch -> RuntimeMcpExecutor -> daemon LedgerService -> run_read (dedicated WAL reader) -> query::search -> catalog ticket issuance; corpus indexed via doc_spine::sync_bounded (the engine the sync op wraps) into the canonical index file; baseline arms via recall_shadow on the same index.",
     "corpus": "ledger-eval-v1",
-    "corpusDigestSha256": "c6ef82461acd5540c1512c5bc0ae2857f07b90662b976c53bbfcc61e29434b60",
-    "harness": "engine/crates/membrane-runtime/tests/ledger_eval_v1_harness.rs",
-    "harnessCommand": "cargo test --manifest-path engine/Cargo.toml -p membrane-runtime --test ledger_eval_v1_harness -- --nocapture",
-    "commitSha256": "03fe855820c8344270da9922795700ef0730d4b223f5944314eb8552851af395",
-    "commit": "5dd5f6a3fe284679dd514d9648b937f67ab585d4",
-    "tuning": {
-      "tunedOn": "dev",
-      "changesApplied": "none \u2014 default BM25 column weights (path=8.0, title=6.0, heading=5.0, body=1.0, identifier_aliases=4.0) already in ledger::index::recall_fts were evaluated as-is on dev and were decisively ahead of legacy_scan; no weight/normalization changes were made or needed before freezing the candidate for held-out.",
-      "frozenConfig": {
-        "tokenizer": "fts5-unicode61+identifier-cjk-ngrams-v1",
-        "queryNormalizer": "nfkc-casefold-identifiers-v1",
-        "bm25ColumnWeights": {
-          "doc_id": 0.0,
-          "node_id": 0.0,
-          "path": 8.0,
-          "title": 6.0,
-          "heading": 5.0,
-          "body": 1.0,
-          "identifier_aliases": 4.0
-        }
-      }
-    },
-    "dev": {
-      "n": 51,
-      "legacy_scan": {
-        "recallAt1": 0.059,
-        "recallAt5": 0.118,
-        "mrr": 0.0752
-      },
-      "ledger_fts": {
-        "recallAt1": 0.588,
-        "recallAt5": 0.745,
-        "mrr": 0.6422
-      }
-    },
-    "heldout": {
-      "n": 50,
-      "runOnce": true,
-      "legacy_scan": {
-        "recallAt1": 0.08,
-        "recallAt5": 0.14,
-        "mrr": 0.104
-      },
-      "ledger_fts": {
-        "recallAt1": 0.58,
-        "recallAt5": 0.68,
-        "mrr": 0.6037
-      }
-    },
-    "decisionRule": "ledger_fts activates iff heldout.ledger_fts.mrr >= heldout.legacy_scan.mrr AND heldout.ledger_fts.recallAt5 >= heldout.legacy_scan.recallAt5 - 0.02",
+    "corpusDigestSha256": "be0421e5790306e237b933fbf040a7ca70e03532826135eb82158e930d05f7af",
     "decision": "promote",
-    "notes": "Both arms measured via ledger::doc_spine::recall_shadow (production sync + both live recall lanes computed simultaneously; no separate/synthetic code path per arm). legacy_scan (whole-document lexical scan + best-section reselection) underperforms materially on both splits; ledger_fts (BM25 over ledger_node_fts) wins decisively on every headline metric on both dev and heldout, with the largest gap on identifier/exact-section/table/fenced-code categories and expected weakness on negative_no_answer (0.0 recall on both arms/splits, consistent with abstention not being implemented as a scored behavior in either lane) and short_query. MEMBRANE_DOC_PROVIDER_ENABLED (planner federation of the doc candidate provider) is a separate promotion and is left untouched by this qualification.",
+    "decisionRule": "ledger_fts promotes iff heldout.ledger_fts.mrr >= heldout.legacy_scan.mrr AND heldout.ledger_fts.recallAt5 >= heldout.legacy_scan.recallAt5 - 0.02, and every hard gate passes (cross-validation vs lane arm, per-hit source binding + tickets, grant narrowing, erasure binding, read completion under a held writer transaction).",
+    "gates": {
+      "crossValidationMatch": true,
+      "erasureBinds": true,
+      "grantNarrowsOnly": true,
+      "mrrParity": true,
+      "readCompletesUnderMaintenance": true,
+      "recall5Within2pp": true,
+      "sourceBoundHits": true,
+      "ticketsIssued": true
+    },
+    "harness": "engine/crates/membrane-runtime/tests/ledger_service_composition_eval.rs",
+    "harnessCommand": "cargo test -p membrane-runtime --test ledger_service_composition_eval -- --ignored --nocapture",
+    "heldout": {
+      "ledger_fts": {
+        "mrr": 0.6070921985815602,
+        "recallAt1": 0.5319148936170213,
+        "recallAt5": 0.7446808510638298
+      },
+      "ledger_fts_max_latency_ms": 1922,
+      "legacy_scan": {
+        "mrr": 0.05106382978723405,
+        "recallAt1": 0.0425531914893617,
+        "recallAt5": 0.0851063829787234
+      },
+      "n": 47
+    },
     "qualificationReceipt": {
-      "schemaVersion": "ledger.qualification-receipt.v1",
-      "receiptSource": "membrane-host/ledger-qualification",
-      "hostId": "membrane-eval-harness/ledger-eval-v1",
-      "verifierId": "ledger-eval-v1-harness",
-      "commitSha256": "03fe855820c8344270da9922795700ef0730d4b223f5944314eb8552851af395",
-      "receiptSha256": "c7547262dbc5a11109236f8b343b421cd6a248a2447df697483624166978360e",
+      "commitSha256": "3e9889f700cb61d612f4f9f591b7fbd8a0ebca0c02c57921204ff73e2c44fd56",
+      "corpusSha256": "be0421e5790306e237b933fbf040a7ca70e03532826135eb82158e930d05f7af",
       "corpusVersion": "ledger-eval-v1",
-      "corpusSha256": "c6ef82461acd5540c1512c5bc0ae2857f07b90662b976c53bbfcc61e29434b60",
-      "runSha256": "b18eebce79fd2774f57a0bb6d86bdc2a7491b57ea75849921a72764af02651aa",
-      "resultSha256": "1fa41ad294a02e277bbdd68ca7c9f18bed433c7233bee66bf56691f0371d4639"
-    }
-  }
+      "hostId": "membrane-eval-harness/ledger-service-composition-v1",
+      "receiptSha256": "a796a687cb1275aa50c2ebd5661f6019ce4243748d57314cf90adc9faad6dbb6",
+      "receiptSource": "membrane-host/ledger-qualification",
+      "resultSha256": "30d56cd00962aec4c58c24a43800c105b6b027f64f0812774b45ea543a724cde",
+      "runSha256": "d51f984aa07771c2132f68885a0d728b8a6ac3679a228b089fce0b0ca85ba4ca",
+      "schemaVersion": "ledger.qualification-receipt.v1",
+      "verifierId": "ledger-service-composition-eval"
+    },
+    "resultSha256": "30d56cd00962aec4c58c24a43800c105b6b027f64f0812774b45ea543a724cde",
+    "run": {
+      "cases": [
+        {
+          "case": "LEDG-EVAL-0011",
+          "caseType": "exact_document",
+          "dispatchMs": 990,
+          "dispatchRank": 1,
+          "ftsLaneRank": 1,
+          "legacyRank": null
+        },
+        {
+          "case": "LEDG-EVAL-0012",
+          "caseType": "exact_document",
+          "dispatchMs": 1006,
+          "dispatchRank": null,
+          "ftsLaneRank": null,
+          "legacyRank": null
+        },
+        {
+          "case": "LEDG-EVAL-0013",
+          "caseType": "exact_document",
+          "dispatchMs": 606,
+          "dispatchRank": null,
+          "ftsLaneRank": null,
+          "legacyRank": null
+        },
+        {
+          "case": "LEDG-EVAL-0023",
+          "caseType": "exact_section",
+          "dispatchMs": 746,
+          "dispatchRank": 1,
+          "ftsLaneRank": 1,
+          "legacyRank": null
+        },
+        {
+          "case": "LEDG-EVAL-0024",
+          "caseType": "exact_section",
+          "dispatchMs": 802,
+          "dispatchRank": 2,
+          "ftsLaneRank": 2,
+          "legacyRank": null
+        },
+        {
+          "case": "LEDG-EVAL-0025",
+          "caseType": "exact_section",
+          "dispatchMs": 990,
+          "dispatchRank": 1,
+          "ftsLaneRank": 1,
+          "legacyRank": null
+        },
+        {
+          "case": "LEDG-EVAL-0026",
+          "caseType": "exact_section",
+          "dispatchMs": 1148,
+          "dispatchRank": 1,
+          "ftsLaneRank": 1,
+          "legacyRank": null
+        },
+        {
+          "case": "LEDG-EVAL-0033",
+          "caseType": "table_content",
+          "dispatchMs": 1184,
+          "dispatchRank": 1,
+          "ftsLaneRank": 1,
+          "legacyRank": null
+        },
+        {
+          "case": "LEDG-EVAL-0034",
+          "caseType": "table_content",
+          "dispatchMs": 830,
+          "dispatchRank": 1,
+          "ftsLaneRank": 1,
+          "legacyRank": null
+        },
+        {
+          "case": "LEDG-EVAL-0035",
+          "caseType": "table_content",
+          "dispatchMs": 796,
+          "dispatchRank": 1,
+          "ftsLaneRank": 1,
+          "legacyRank": null
+        },
+        {
+          "case": "LEDG-EVAL-0042",
+          "caseType": "fenced_code",
+          "dispatchMs": 747,
+          "dispatchRank": 1,
+          "ftsLaneRank": 1,
+          "legacyRank": null
+        },
+        {
+          "case": "LEDG-EVAL-0043",
+          "caseType": "fenced_code",
+          "dispatchMs": 829,
+          "dispatchRank": 1,
+          "ftsLaneRank": 1,
+          "legacyRank": null
+        },
+        {
+          "case": "LEDG-EVAL-0044",
+          "caseType": "fenced_code",
+          "dispatchMs": 850,
+          "dispatchRank": 1,
+          "ftsLaneRank": 1,
+          "legacyRank": null
+        },
+        {
+          "case": "LEDG-EVAL-0051",
+          "caseType": "list_item",
+          "dispatchMs": 900,
+          "dispatchRank": 1,
+          "ftsLaneRank": 1,
+          "legacyRank": null
+        },
+        {
+          "case": "LEDG-EVAL-0052",
+          "caseType": "list_item",
+          "dispatchMs": 1165,
+          "dispatchRank": 1,
+          "ftsLaneRank": 1,
+          "legacyRank": null
+        },
+        {
+          "case": "LEDG-EVAL-0053",
+          "caseType": "list_item",
+          "dispatchMs": 701,
+          "dispatchRank": 1,
+          "ftsLaneRank": 1,
+          "legacyRank": null
+        },
+        {
+          "case": "LEDG-EVAL-0060",
+          "caseType": "blockquote",
+          "dispatchMs": 706,
+          "dispatchRank": 1,
+          "ftsLaneRank": 1,
+          "legacyRank": null
+        },
+        {
+          "case": "LEDG-EVAL-0061",
+          "caseType": "blockquote",
+          "dispatchMs": 1008,
+          "dispatchRank": null,
+          "ftsLaneRank": null,
+          "legacyRank": null
+        },
+        {
+          "case": "LEDG-EVAL-0062",
+          "caseType": "blockquote",
+          "dispatchMs": 845,
+          "dispatchRank": 4,
+          "ftsLaneRank": 4,
+          "legacyRank": null
+        },
+        {
+          "case": "LEDG-EVAL-0069",
+          "caseType": "link_reference",
+          "dispatchMs": 1271,
+          "dispatchRank": 1,
+          "ftsLaneRank": 1,
+          "legacyRank": null
+        },
+        {
+          "case": "LEDG-EVAL-0070",
+          "caseType": "link_reference",
+          "dispatchMs": 1070,
+          "dispatchRank": 1,
+          "ftsLaneRank": 1,
+          "legacyRank": null
+        },
+        {
+          "case": "LEDG-EVAL-0071",
+          "caseType": "link_reference",
+          "dispatchMs": 1595,
+          "dispatchRank": 1,
+          "ftsLaneRank": 1,
+          "legacyRank": null
+        },
+        {
+          "case": "LEDG-EVAL-0078",
+          "caseType": "negative_no_answer",
+          "dispatchMs": 797,
+          "dispatchRank": null,
+          "ftsLaneRank": null,
+          "legacyRank": null
+        },
+        {
+          "case": "LEDG-EVAL-0079",
+          "caseType": "negative_no_answer",
+          "dispatchMs": 882,
+          "dispatchRank": null,
+          "ftsLaneRank": null,
+          "legacyRank": null
+        },
+        {
+          "case": "LEDG-EVAL-0080",
+          "caseType": "negative_no_answer",
+          "dispatchMs": 956,
+          "dispatchRank": null,
+          "ftsLaneRank": null,
+          "legacyRank": null
+        },
+        {
+          "case": "LEDG-EVAL-0087",
+          "caseType": "paraphrase",
+          "dispatchMs": 1114,
+          "dispatchRank": null,
+          "ftsLaneRank": null,
+          "legacyRank": null
+        },
+        {
+          "case": "LEDG-EVAL-0088",
+          "caseType": "paraphrase",
+          "dispatchMs": 999,
+          "dispatchRank": 2,
+          "ftsLaneRank": 2,
+          "legacyRank": null
+        },
+        {
+          "case": "LEDG-EVAL-0089",
+          "caseType": "paraphrase",
+          "dispatchMs": 1186,
+          "dispatchRank": null,
+          "ftsLaneRank": null,
+          "legacyRank": null
+        },
+        {
+          "case": "LEDG-EVAL-0094",
+          "caseType": "non_ascii_cjk",
+          "dispatchMs": 652,
+          "dispatchRank": 1,
+          "ftsLaneRank": 1,
+          "legacyRank": 1
+        },
+        {
+          "case": "LEDG-EVAL-0095",
+          "caseType": "non_ascii_cjk",
+          "dispatchMs": 443,
+          "dispatchRank": 1,
+          "ftsLaneRank": 1,
+          "legacyRank": 1
+        },
+        {
+          "case": "LEDG-EVAL-0100",
+          "caseType": "mixed_script",
+          "dispatchMs": 609,
+          "dispatchRank": 1,
+          "ftsLaneRank": 1,
+          "legacyRank": null
+        },
+        {
+          "case": "LEDG-EVAL-0101",
+          "caseType": "mixed_script",
+          "dispatchMs": 633,
+          "dispatchRank": 1,
+          "ftsLaneRank": 1,
+          "legacyRank": null
+        },
+        {
+          "case": "LEDG-EVAL-0108",
+          "caseType": "identifier_snake_case",
+          "dispatchMs": 620,
+          "dispatchRank": null,
+          "ftsLaneRank": null,
+          "legacyRank": null
+        },
+        {
+          "case": "LEDG-EVAL-0109",
+          "caseType": "identifier_snake_case",
+          "dispatchMs": 673,
+          "dispatchRank": 3,
+          "ftsLaneRank": 1,
+          "legacyRank": 5
+        },
+        {
+          "case": "LEDG-EVAL-0110",
+          "caseType": "identifier_snake_case",
+          "dispatchMs": 727,
+          "dispatchRank": 1,
+          "ftsLaneRank": 1,
+          "legacyRank": null
+        },
+        {
+          "case": "LEDG-EVAL-0119",
+          "caseType": "identifier_camel_case",
+          "dispatchMs": 836,
+          "dispatchRank": 3,
+          "ftsLaneRank": 5,
+          "legacyRank": null
+        },
+        {
+          "case": "LEDG-EVAL-0126",
+          "caseType": "identifier_path_fragment",
+          "dispatchMs": 1079,
+          "dispatchRank": 3,
+          "ftsLaneRank": 2,
+          "legacyRank": null
+        },
+        {
+          "case": "LEDG-EVAL-0127",
+          "caseType": "identifier_path_fragment",
+          "dispatchMs": 1148,
+          "dispatchRank": 4,
+          "ftsLaneRank": 4,
+          "legacyRank": null
+        },
+        {
+          "case": "LEDG-EVAL-0128",
+          "caseType": "identifier_path_fragment",
+          "dispatchMs": 943,
+          "dispatchRank": 2,
+          "ftsLaneRank": 2,
+          "legacyRank": null
+        },
+        {
+          "case": "LEDG-EVAL-0135",
+          "caseType": "short_query",
+          "dispatchMs": 831,
+          "dispatchRank": null,
+          "ftsLaneRank": null,
+          "legacyRank": null
+        },
+        {
+          "case": "LEDG-EVAL-0136",
+          "caseType": "short_query",
+          "dispatchMs": 726,
+          "dispatchRank": null,
+          "ftsLaneRank": null,
+          "legacyRank": null
+        },
+        {
+          "case": "LEDG-EVAL-0137",
+          "caseType": "short_query",
+          "dispatchMs": 753,
+          "dispatchRank": 3,
+          "ftsLaneRank": 3,
+          "legacyRank": 5
+        },
+        {
+          "case": "LEDG-EVAL-0144",
+          "caseType": "multi_section_synthesis",
+          "dispatchMs": 1490,
+          "dispatchRank": 5,
+          "ftsLaneRank": null,
+          "legacyRank": null
+        },
+        {
+          "case": "LEDG-EVAL-0145",
+          "caseType": "multi_section_synthesis",
+          "dispatchMs": 1196,
+          "dispatchRank": 1,
+          "ftsLaneRank": 1,
+          "legacyRank": null
+        },
+        {
+          "case": "LEDG-EVAL-0146",
+          "caseType": "multi_section_synthesis",
+          "dispatchMs": 1922,
+          "dispatchRank": 1,
+          "ftsLaneRank": 1,
+          "legacyRank": null
+        },
+        {
+          "case": "LEDG-EVAL-0151",
+          "caseType": "stale_relocation",
+          "dispatchMs": 753,
+          "dispatchRank": 1,
+          "ftsLaneRank": 1,
+          "legacyRank": null
+        },
+        {
+          "case": "LEDG-EVAL-0152",
+          "caseType": "stale_relocation",
+          "dispatchMs": 836,
+          "dispatchRank": null,
+          "ftsLaneRank": null,
+          "legacyRank": null
+        }
+      ],
+      "catalogTickets": 100,
+      "crossValidationMismatches": [],
+      "erasureTarget": "docs/product/hub/overview.md",
+      "grantNarrowingPaths": [
+        "docs/product/getting-started.md",
+        "docs/product/getting-started.md",
+        "docs/product/getting-started.md",
+        "docs/product/getting-started.md",
+        "docs/product/getting-started.md"
+      ],
+      "latenciesMs": {
+        "ledger_fts": [
+          990,
+          1006,
+          606,
+          746,
+          802,
+          990,
+          1148,
+          1184,
+          830,
+          796,
+          747,
+          829,
+          850,
+          900,
+          1165,
+          701,
+          706,
+          1008,
+          845,
+          1271,
+          1070,
+          1595,
+          797,
+          882,
+          956,
+          1114,
+          999,
+          1186,
+          652,
+          443,
+          609,
+          633,
+          620,
+          673,
+          727,
+          836,
+          1079,
+          1148,
+          943,
+          831,
+          726,
+          753,
+          1490,
+          1196,
+          1922,
+          753,
+          836
+        ],
+        "maintenanceReadMs": 716
+      },
+      "ticketMissing": [],
+      "unboundHits": []
+    },
+    "runSha256": "d51f984aa07771c2132f68885a0d728b8a6ac3679a228b089fce0b0ca85ba4ca"
+  },
+  "metrics": [
+    "semantic_recall",
+    "source_binding",
+    "ticket_issuance",
+    "typed_abstention",
+    "erasure_binding",
+    "grant_narrowing",
+    "maintenance_read_isolation"
+  ],
+  "schemaVersion": 1,
+  "status": "qualified"
 }

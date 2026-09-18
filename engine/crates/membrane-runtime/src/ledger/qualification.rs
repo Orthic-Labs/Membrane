@@ -35,16 +35,26 @@ pub(crate) struct QualifiedFtsActivation {
     pub receipt_sha256: &'static str,
 }
 
-/// `None` until a `ledger.qualification-receipt.v1` measured through the
-/// production service composition (`membrane_ledger` dispatch into the daemon
-/// owner -> `run_read` on the WAL reader -> `query::search` on the persisted
-/// activation -> catalog ticket issuance) is recorded under
-/// `docs/evidence/qualification/` and its `receipt_sha256` is added to
-/// `TRUSTED_LEDGER_FTS_RECEIPTS`. When present, the resident owner treats
-/// activation as a host decision: `LedgerService` reconciles the persisted
-/// activation row to this receipt at open, and an activation bound to a
-/// receipt this build no longer trusts is degraded to `shadow`.
-const QUALIFIED_FTS_ACTIVATION: Option<QualifiedFtsActivation> = None;
+/// The `ledger.qualification-receipt.v1` measured through the production
+/// service composition (`membrane_ledger` dispatch into the daemon owner ->
+/// `run_read` on the WAL reader -> `query::search` on the persisted
+/// activation -> catalog ticket issuance), recorded under
+/// `docs/evidence/qualification/ledger-metrics.json` with its
+/// `receipt_sha256` in `TRUSTED_LEDGER_FTS_RECEIPTS`. The resident owner
+/// treats activation as a host decision: `LedgerService` reconciles the
+/// persisted activation row to this receipt at open, and an activation bound
+/// to a receipt this build no longer trusts is degraded to `shadow`.
+const QUALIFIED_FTS_ACTIVATION: Option<QualifiedFtsActivation> =
+    Some(QualifiedFtsActivation {
+        host_id: "membrane-eval-harness/ledger-service-composition-v1",
+        verifier_id: "ledger-service-composition-eval",
+        commit_sha256: "3e9889f700cb61d612f4f9f591b7fbd8a0ebca0c02c57921204ff73e2c44fd56",
+        corpus_version: "ledger-eval-v1",
+        corpus_sha256: "be0421e5790306e237b933fbf040a7ca70e03532826135eb82158e930d05f7af",
+        run_sha256: "d51f984aa07771c2132f68885a0d728b8a6ac3679a228b089fce0b0ca85ba4ca",
+        result_sha256: "30d56cd00962aec4c58c24a43800c105b6b027f64f0812774b45ea543a724cde",
+        receipt_sha256: "a796a687cb1275aa50c2ebd5661f6019ce4243748d57314cf90adc9faad6dbb6",
+    });
 
 pub(crate) fn qualified_fts_activation() -> Option<super::index::LedgerQualificationReceiptV1> {
     QUALIFIED_FTS_ACTIVATION.map(|activation| super::index::LedgerQualificationReceiptV1 {
