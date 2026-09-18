@@ -38,15 +38,15 @@ impl From<rusqlite::Error> for ResolveError {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ResolveRequest {
-    #[serde(default)] pub doc_id: Option<String>,
-    #[serde(default)] pub node_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")] pub doc_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")] pub node_id: Option<String>,
     pub source_ref: String,
     pub anchor_id: String,
     pub expected_content_hash: String,
-    #[serde(default)] pub expected_revision: Option<String>,
-    #[serde(default)] pub expected_span_hash: Option<String>,
-    #[serde(default)] pub ledger_generation: Option<i64>,
-    #[serde(default)] pub continuation_cursor: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")] pub expected_revision: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")] pub expected_span_hash: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")] pub ledger_generation: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")] pub continuation_cursor: Option<String>,
     #[serde(default = "default_read_bytes")] pub max_bytes: usize,
 }
 fn default_read_bytes() -> usize { MAX_READ_BYTES }
