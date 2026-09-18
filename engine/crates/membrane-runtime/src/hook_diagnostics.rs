@@ -114,7 +114,17 @@ fn packet_text(packet: &Value) -> Option<String> {
 /// Configured attention cap for ambient hook recall (see
 /// `pull::federation::hook_mode_federate`); `MEMBRANE_HOOK_RECALL_MAX_TOKENS`
 /// overrides the default.
-const DEFAULT_HOOK_RECALL_MAX_TOKENS: u64 = 1_024;
+///
+/// Packet reduction is fail-closed below its floor: representations shrink
+/// block text but never drop evidence, so a multi-source orientation packet
+/// (Cortex memory + Blueprint candidates + provenance) has a minimum viable
+/// size measured in the low thousands of tokens — ~3.7k observed for a
+/// 15-block packet. The previous 1024 default could only ever serve a
+/// Cortex-only packet and refused with `NoRepresentationFits` once Blueprint
+/// began delivering, which surfaced to hosts as `membrane_retrieval_failed`
+/// with empty `additionalContext`. 8_192 covers realistic packet floors with
+/// headroom while `STARTUP_PACKET_MAX_BYTES` still bounds the injected text.
+const DEFAULT_HOOK_RECALL_MAX_TOKENS: u64 = 8_192;
 const STARTUP_PACKET_MAX_BYTES: usize = 8 * 1024;
 
 pub(crate) fn resident_recall(input: &HookInputEnvelopeV1) -> Option<String> {
