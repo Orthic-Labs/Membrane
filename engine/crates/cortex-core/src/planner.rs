@@ -1119,7 +1119,7 @@ fn is_version_demoted(cand: &CandidateV1) -> bool {
 fn kind_priority(cand: &CandidateV1) -> u8 {
     match cand.source_kind.as_str() {
         "repo_code" | "repo_code_overlay" => 0,
-        "handoff_envelope" | "audit_finding" | "architect_decision" | "portable_text_fallback" => 1,
+        "handoff_envelope" | "audit_finding" | "architect_decision" | "portable_text_fallback" | "skill" => 1,
         "doc" => 2,
         "memory" => 3,
         _ => 2,
@@ -1726,6 +1726,34 @@ mod tests {
             2,
             "unused reservations must not shrink the budget"
         );
+    }
+
+    #[test]
+    fn skill_candidate_wins_duplicate_source_hash_over_same_span_doc_candidate() {
+        // LDG-032/PUL-010: the skills lane has a reserved admission lane, so a
+        // skill-typed candidate must win same-source dedup over a doc-typed
+        // duplicate — even when the doc id sorts first — or the lane is
+        // unreachable whenever the document lane co-surfaces the span.
+        let mut doc = candidate("aaa-doc", "doc", 20, 0.5, false);
+        doc.provider = Some("ledger".into());
+        doc.source_hash = format!("sha256:{}", "c".repeat(64));
+        doc.text = "shared skill span".into();
+        let mut skill = candidate("zzz-skill", "skill", 20, 0.5, false);
+        skill.provider = Some("skills".into());
+        skill.source_hash = format!("sha256:{}", "c".repeat(64));
+        skill.text = "shared skill span".into();
+
+        let out = plan(&empty_planner_input(vec![doc, skill])).unwrap();
+
+        assert_eq!(out.packet.blocks.len(), 1);
+        assert_eq!(out.packet.blocks[0].id, "zzz-skill");
+        let doc_receipt = out
+            .receipts
+            .iter()
+            .find(|receipt| receipt.id == "aaa-doc")
+            .unwrap();
+        assert_eq!(doc_receipt.reason, "duplicate_source_hash");
+        assert_eq!(doc_receipt.deduplicated_to.as_deref(), Some("zzz-skill"));
     }
 
     #[test]

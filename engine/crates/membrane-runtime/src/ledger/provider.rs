@@ -206,6 +206,9 @@ fn skill_materialize(owner: &LedgerService, context: &ProviderContext, budget: &
 /// The skills-lane counterpart of [`candidate_for_hit`]: identical
 /// `membrane_source_read` resolver envelope and hash/span/generation binding,
 /// with the candidate identity and trust class the Pull skills lane expects.
+/// Candidate identity is per returned span (`skills:<skill_id>:<node_id>`):
+/// one skill document legitimately yields several node hits, and a shared
+/// skill-level id would group distinct bodies into a merge identity conflict.
 fn candidate_for_skill(
     skill: &super::skill_documents::TicketedSkillDocumentV1,
     repository_id: &str,
@@ -219,10 +222,10 @@ fn candidate_for_skill(
     arguments["ledgerTicket"] = json!(skill.ticket);
     arguments["sessionId"] = json!(session_id);
     let resolver = json!({"tool":"membrane_source_read","arguments":arguments}).to_string();
-    let text = format!("Skill document: {} ({}, {} bytes). Resolve the captured document span.",
-        skill.title,hit.source_ref,hit.end_byte-hit.start_byte);
+    let text = format!("Skill document: {} ({}#{}, {} bytes). Resolve the captured document span.",
+        skill.title,hit.source_ref,hit.node_id,hit.end_byte-hit.start_byte);
     let estimated_tokens = cortex_core::estimate_tokens(&format!("{text}\n{resolver}")) as u32;
-    Ok(CandidateV1 {id:format!("skills:{}",skill.skill_id),layer:7,provider:Some(ProviderId::Skills.as_str().into()),
+    Ok(CandidateV1 {id:format!("skills:{}:{}",skill.skill_id,hit.node_id),layer:7,provider:Some(ProviderId::Skills.as_str().into()),
         source_kind:"skill".into(),source_ref:format!("{}#{}",hit.source_ref,hit.node_id),
         source_hash:format!("sha256:{}",hit.expected_span_hash),trust_class:"workspace_tracked".into(),
         instruction_policy:"data_only".into(),provider_score:hit.score.clamp(0.0,1.0),
@@ -304,13 +307,38 @@ mod tests {
         let candidate = candidate_for_skill(
             &skill, "repo-1", json!({"root":"/repo","repositoryId":"repo-1"}), "session-1",
         ).unwrap();
-        assert_eq!(candidate.id, "skills:deploy");
+        assert_eq!(candidate.id, "skills:deploy:node-skill");
         assert_eq!(candidate.provider.as_deref(), Some("skills"));
         assert_eq!(candidate.source_kind, "skill");
         assert!(candidate.exact && candidate.recoverable);
         assert!(candidate.resolver.contains("membrane_source_read"));
         assert!(candidate.resolver.contains("ticket-s"));
         assert!(!candidate.resolver.contains("cortex"));
+    }
+
+    #[test]
+    fn skill_candidates_from_one_document_get_distinct_span_identities() {
+        // Regression: a shared `skills:<skill_id>` id grouped two different
+        // node hits into one merge identity conflict and both were dropped.
+        let skill = |node_id: &str| super::super::skill_documents::TicketedSkillDocumentV1 {
+            skill_id: "deploy".into(), title: "Deploy".into(), ticket: format!("ticket-{node_id}"),
+            hit: super::super::query::LedgerHit {
+                doc_id: "doc-skill".into(), node_id: node_id.into(),
+                source_ref: "doc://tools/skills/deploy/SKILL.md".into(), anchor_id: "a".into(),
+                expected_content_hash: "c".into(), expected_revision: "rev-1".into(),
+                expected_span_hash: format!("span-{node_id}"), ledger_generation: 3,
+                source_kind: "worktree".into(), node_kind: "section".into(),
+                start_byte: 0, end_byte: 10, lane: "ledger_skill".into(), score: 0.8,
+                literal_range: None,
+            },
+        };
+        let caller = json!({"root":"/repo","repositoryId":"repo-1"});
+        let first = candidate_for_skill(&skill("node-1"), "repo-1", caller.clone(), "s").unwrap();
+        let second = candidate_for_skill(&skill("node-2"), "repo-1", caller, "s").unwrap();
+        assert_eq!(first.id, "skills:deploy:node-1");
+        assert_eq!(second.id, "skills:deploy:node-2");
+        assert_ne!(first.id, second.id);
+        assert_ne!(first.source_hash, second.source_hash);
     }
 
     fn budget_context(deadline: std::time::Instant) -> ProviderContext {
