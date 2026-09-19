@@ -1,0 +1,47 @@
+{
+  "schema": "foundation-receipt.v1",
+  "product": "Membrane",
+  "mode": ["RECONCILE"],
+  "generatedAt": "2026-09-20",
+  "authority": {
+    "kind": "explicit-user",
+    "scope": "continue required Membrane implementation and qualification on main"
+  },
+  "currentProduct": {
+    "root": "D:/Claude/membrane",
+    "revision": "b6650edb506d26d93a82617711319b32cb847873"
+  },
+  "scope": {
+    "canons": ["Membrane", "Cortex"],
+    "capabilities": ["MEM-010", "MEM-012", "MEM-055", "MEM-056", "MEM-068", "CTX-043"],
+    "runtimeSet": ["installed shared engine", "thin CLI", "Streamable HTTP MCP", "stdio MCP", "Cortex durable memory"],
+    "platforms": ["windows-x86_64"]
+  },
+  "installedCandidate": {
+    "profile": "internal-unsigned",
+    "certification": "unsigned-functional",
+    "version": "0.1.24",
+    "installerSha256": "ade8fc0900102c38e23d0c44984b8cbc779c9f0d5edcbafc5093dddeea357bf7",
+    "releaseGeneration": "217b2e4c1145e3d5ddcc8155328ff692d9d427ca57ba0452b979476c05f5ef23",
+    "receiptSchema": "membrane.windows-installed-qualification.v1",
+    "receiptGeneratedAt": "2026-09-19T22:34:17.7527120Z"
+  },
+  "exclusions": [
+    "public signed release qualification",
+    "macOS qualification",
+    "actual-host Codex or Claude rerun on this candidate",
+    "current-candidate full MEM-068 negative matrix",
+    "current-candidate independent raw SQLite source-row readback"
+  ],
+  "protocol": {
+    "name": "Foundation",
+    "version": "2026-09-20"
+  },
+  "result": {
+    "requested": 6,
+    "evaluated": 6,
+    "unresolved": 6,
+    "excluded": 0,
+    "lifecycleClosed": 0
+  }
+}

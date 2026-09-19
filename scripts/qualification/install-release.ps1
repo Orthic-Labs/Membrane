@@ -1609,14 +1609,16 @@ function Stop-QualificationHub {
       } else {
         # Graceful exit sends the holder release; a forced kill leaves the lease
         # to expire inside its TTL while the drain wait below still runs.
-        [void]$liveTray.CloseMainWindow()
+        $replace = Start-HiddenProcess $script:TrayPath @('--replace') $InstallRoot
+        Require ($replace.WaitForExit([Math]::Min(5000, $TimeoutSeconds * 1000))) 'tray replacement signal did not exit'
+        Require ($replace.ExitCode -eq 0) "tray replacement signal failed with exit code $($replace.ExitCode)"
         [void]$liveTray.WaitForExit([Math]::Min(5000, $TimeoutSeconds * 1000))
-        $trayExitMode = 'graceful_close'
+        $trayExitMode = 'graceful_replace_signal'
         $remainingTray = Get-Process -Id $trayPid -ErrorAction SilentlyContinue
         if ($remainingTray -and -not $remainingTray.HasExited) {
           $taskkill = Join-Path $env:WINDIR 'System32\taskkill.exe'
           $p = Start-HiddenProcess $taskkill @('/PID', [string]$trayPid, '/T', '/F'); [void]$p.WaitForExit()
-          $trayExitMode = 'forced_kill_after_close'
+          $trayExitMode = 'forced_kill_after_replace_signal'
         }
       }
     } else { $trayExitMode = 'already_exited' }
@@ -1660,7 +1662,8 @@ function Stop-QualificationHub {
   }
   if ($ForceTrayKill) {
     Require ($drainReason -eq 'final_holder_expired') "forced-kill drain must recover through lease expiry (final_holder_expired), observed '$drainReason'"
-  } elseif ($trayExitMode -eq 'graceful_close') {
+  } else {
+    Require ($trayExitMode -eq 'graceful_replace_signal') "graceful tray exit fell back to $trayExitMode"
     Require ($drainReason -eq 'final_holder_release') "graceful tray exit must drain through holder release (final_holder_release), observed '$drainReason'"
   }
   $remainingTray = if ($trayPid -gt 0) { Get-Process -Id $trayPid -ErrorAction SilentlyContinue } else { $null }

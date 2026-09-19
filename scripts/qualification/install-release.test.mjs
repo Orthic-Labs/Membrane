@@ -113,7 +113,8 @@ test("qualification proves current -> transition -> upgrade or repair state cont
   assert.match(lower, /expectedgeneration/);
   assert.match(lower, /forbiddengeneration/);
   assert.match(lower, /tray dashboard signal did not exit/);
-  assert.match(lower, /closing presentation first releases authenticated hub holder lease/);
+  assert.match(source, /Start-HiddenProcess \$script:TrayPath @\('--replace'\) \$InstallRoot/);
+  assert.match(lower, /graceful tray exit fell back to \$trayexitmode/);
   assert.match(lower, /final-holder daemon drain did not complete/);
   assert.match(lower, /assert-qualificationprocesstreegone/);
   assert.doesNotMatch(lower, /membrane-blueprint-|namedpipeclientstream|named pipe remained open/);
@@ -167,7 +168,6 @@ test("qualification proves installed native Adapt selected-transcript lifecycle"
     "adapt review --input",
     "review-taste --input",
     "adapt adjudicate-taste --manifest",
-    "adapt --db",
     "apply --manifest",
     "recall npm --scope workspace",
     "candidate_set_sha256",
@@ -180,6 +180,7 @@ test("qualification proves installed native Adapt selected-transcript lifecycle"
     "node = $false",
     "checkout = $false",
   ]) assert.ok(source.includes(term), term);
+  assert.doesNotMatch(lower, /adapt\s+--db/);
   assert.doesNotMatch(lower, /adapt-installed-qualification/);
   assert.match(lower, /qualificationworkspace[\s\S]*tools\\.cache\\memory\\cortex-engine.db/);
   assert.match(lower, /adapt\s*=\s*\$script:adaptevidence/);
