@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "artifact_name": "membrane-ownership.md",
+  "artifact_path": "D:\\Claude\\membrane\\tasks\\handoffs\\2026-09-20\\membrane-ownership.md",
+  "sha256": "d946135544d40b576208997aaf3d393f910f79d1b89b926ba85bad30538f6c3c",
+  "validated_at": "2026-09-19T21:58:30.887408+00:00",
+  "validator": "legion/lib/handoff/validate-handoff.py"
+}
