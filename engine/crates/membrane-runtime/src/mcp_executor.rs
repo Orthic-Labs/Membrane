@@ -2029,7 +2029,16 @@ impl NativeMcpExecutor for RuntimeMcpExecutor {
                 let Some(owner) = self.ledger.as_ref() else {
                     return error(name, "ledger_unavailable", "installed Ledger service is unavailable");
                 };
-                let deadline = arguments.get("deadlineMs").and_then(Value::as_u64).unwrap_or(2000).clamp(1,30000);
+                // `sync` is an operator-requested bulk reconcile: its single
+                // transaction must finish or roll back, so a corpus larger
+                // than the interactive cap can never converge on retry. Give
+                // it the resident-maintenance budget (600s) as both default
+                // and ceiling; reads share a reader connection and stay
+                // responsive while it runs.
+                let (default_ms, cap_ms) = if name == "membrane_ledger"
+                    && arguments.get("operation").and_then(Value::as_str) == Some("sync")
+                { (600_000, 600_000) } else { (2_000, 30_000) };
+                let deadline = arguments.get("deadlineMs").and_then(Value::as_u64).unwrap_or(default_ms).clamp(1,cap_ms);
                 let budget = crate::ledger::limits::WorkBudget::bounded(Duration::from_millis(deadline));
                 let result = if name == "membrane_source_read" { owner.read(arguments, &budget) }
                     else { owner.operation(arguments, &budget) };

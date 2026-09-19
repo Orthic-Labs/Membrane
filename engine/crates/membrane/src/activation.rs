@@ -363,6 +363,11 @@ pub struct DeactivationReceiptV1 {
 struct ServerConfig {
     command: String,
     args: Vec<String>,
+    /// Env var the host resolves for the `Authorization: Bearer` header.
+    /// Codex drops every auth field on plugin-declared MCP servers, so a
+    /// resolved `membrane` entry without this binding is the plugin's
+    /// unauthenticated projection — not a usable registration.
+    bearer_token_env_var: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -373,6 +378,8 @@ enum ClientState {
     Conflict(ServerConfig),
     /// The host's enabled native plugin owns the MCP binding; the global
     /// registration is absent (or was removed, when `removed` is true).
+    /// Only Claude can reach this state: Codex strips auth fields from
+    /// plugin-declared servers, so the Codex binding stays global.
     PluginOwned { removed: bool },
 }
 
@@ -2698,18 +2705,23 @@ fn expected_client_config(client: HarnessClient, executable: &str) -> ServerConf
         ServerConfig {
             command: installed_mcp_url(),
             args: Vec::new(),
+            bearer_token_env_var: (client == HarnessClient::Codex)
+                .then(|| MCP_TOKEN_ENV.to_string()),
         }
     } else {
         ServerConfig {
             command: executable.to_string(),
             args: vec!["stdio-mcp".to_string()],
+            bearer_token_env_var: None,
         }
     }
 }
 
 fn config_matches_expected(client: HarnessClient, config: &ServerConfig, executable: &str) -> bool {
     let expected = expected_client_config(client, executable);
-    paths_equal(&config.command, &expected.command) && config.args == expected.args
+    paths_equal(&config.command, &expected.command)
+        && config.args == expected.args
+        && config.bearer_token_env_var == expected.bearer_token_env_var
 }
 
 fn registration_command(client: HarnessClient, executable: &str) -> String {
@@ -2911,8 +2923,11 @@ fn deactivate_config_clients(executable: &str, clients: &[HarnessClient], dry_ru
 // Native plugin projection (Codex & Claude).
 //
 // When a host's native plugin surface is enabled it owns SessionStart and
-// lifecycle hooks (`hooks/hooks.json` inside the plugin payload) plus its
-// plugin-scoped MCP binding (`.mcp.json` for Codex). Activation reconciles
+// lifecycle hooks (`hooks/hooks.json` inside the plugin payload). Claude's
+// enabled plugin also owns its plugin-scoped MCP binding (the manifest's
+// env-resolved Authorization header authenticates); Codex's cannot — Codex
+// strips auth fields from plugin-declared MCP servers, so the Codex binding
+// remains a global `mcp_servers` registration. Activation reconciles
 // plugin state through the host CLI first and then re-reads host state files,
 // so receipts report what the host recorded rather than what commands ran.
 // `enabled` is the only state where the plugin projection is proven current;
@@ -3607,9 +3622,17 @@ where
     let config_clients = clients.iter().copied().filter(|client| uses_config_file(*client)).collect::<Vec<_>>();
     let mut inspections = Vec::with_capacity(command_clients.len());
     for client in command_clients {
-        // An enabled native plugin owns this host's MCP binding; the global
-        // registration must not coexist with it.
-        let plugin_owned = plugin_state_is(plugin_states, client, "enabled");
+        // Claude's enabled native plugin owns its MCP binding: the plugin
+        // manifest carries an env-resolved Authorization header the host
+        // honors. Codex strips every auth field from plugin-declared MCP
+        // servers (verified on 0.144.5: bearerTokenEnvVar,
+        // bearer_token_env_var, env_http_headers, and literal bearer_token all
+        // reach the engine as anonymous requests), so its plugin cannot own
+        // an authenticated binding — the global config.toml registration with
+        // `bearer_token_env_var` stays required, and user config wins over
+        // the plugin entry on a duplicate name.
+        let plugin_owned = client != HarnessClient::Codex
+            && plugin_state_is(plugin_states, client, "enabled");
         let detected = runner(client, &["--version".to_string()]);
         let state = if !detected.success() {
             ClientState::NotInstalled
@@ -3966,6 +3989,21 @@ fn prior_add_args(client: HarnessClient, prior: &ServerConfig) -> Vec<String> {
     if client == HarnessClient::Claude {
         values.extend(["--scope".to_string(), "user".to_string()]);
     }
+    if client == HarnessClient::Codex
+        && (prior.command.starts_with("http://") || prior.command.starts_with("https://"))
+    {
+        // An HTTP prior must be restored as an HTTP registration; the `--`
+        // form would re-add its URL as a stdio command.
+        values.extend([
+            "membrane".to_string(),
+            "--url".to_string(),
+            prior.command.clone(),
+        ]);
+        if let Some(env_var) = &prior.bearer_token_env_var {
+            values.extend(["--bearer-token-env-var".to_string(), env_var.clone()]);
+        }
+        return values;
+    }
     values.extend(["membrane".to_string(), "--".to_string(), prior.command.clone()]);
     values.extend(prior.args.iter().cloned());
     values
@@ -4012,7 +4050,16 @@ fn parse_prior_config(stdout: &str) -> Option<ServerConfig> {
                     .collect::<Option<Vec<_>>>()?,
                 None => Vec::new(),
             };
-            Some(ServerConfig { command, args })
+            let bearer_token_env_var = config
+                .get("bearer_token_env_var")
+                .or_else(|| config.get("bearerTokenEnvVar"))
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_string);
+            Some(ServerConfig {
+                command,
+                args,
+                bearer_token_env_var,
+            })
         })
         .or_else(|| parse_labeled_client_config(stdout))?;
     validate_server_config(parsed)
@@ -4032,7 +4079,18 @@ fn parse_labeled_client_config(stdout: &str) -> Option<ServerConfig> {
         .find_map(|line| line.trim().strip_prefix("Args:").map(str::trim))
         .map(|value| value.split_whitespace().map(str::to_string).collect())
         .unwrap_or_default();
-    Some(ServerConfig { command, args })
+    let bearer_token_env_var = stdout.lines().find_map(|line| {
+        line.trim()
+            .strip_prefix("bearer_token_env_var:")
+            .map(str::trim)
+            .filter(|value| *value != "-" && !value.is_empty())
+            .map(str::to_string)
+    });
+    Some(ServerConfig {
+        command,
+        args,
+        bearer_token_env_var,
+    })
 }
 
 fn validate_server_config(config: ServerConfig) -> Option<ServerConfig> {
@@ -4052,6 +4110,12 @@ fn validate_server_config(config: ServerConfig) -> Option<ServerConfig> {
 fn is_expected(client: HarnessClient, stdout: &str, executable: &str) -> bool {
     if let Some(config) = parse_prior_config(stdout) {
         return config_matches_expected(client, &config, executable);
+    }
+    if client == HarnessClient::Codex {
+        // `codex mcp get` resolves plugin-declared servers too, and Codex
+        // strips auth fields from them — an unparsed url match cannot prove
+        // the bearer binding, so only a parsed config can satisfy Codex.
+        return false;
     }
     if uses_http_transport(client) {
         let normalized = stdout.replace("\\\\", "\\");
@@ -4488,25 +4552,25 @@ mod tests {
 
     #[test]
     fn plugin_owned_surviving_entry_is_plugin_provision_not_failure() {
-        // Codex `mcp get` resolves plugin-declared servers; `mcp remove`
+        // Claude `mcp get` resolves plugin-declared servers; `mcp remove`
         // only clears user registrations. When the plugin owns the binding,
         // the entry still visible after remove is the plugin's provision —
         // not a stray global to error on.
         let membrane = Path::new(r"C:\Membrane\membrane.exe");
-        let plugin_entry = r#"{"transport":{"type":"streamable_http","url":"http://127.0.0.1:47851/mcp"}}"#;
+        let plugin_entry = "membrane:\n  Scope: user\n  Type: http\n  URL: http://127.0.0.1:47851/mcp\n  Headers: Authorization: Bearer ${MEMBRANE_BEARER_TOKEN}";
         let mut responses = VecDeque::from([
-            result(0, "codex-cli"),                                        // --version
+            result(0, "claude-cli"),                                       // --version
             result(0, plugin_entry),                                       // get: plugin provision
-            result(0, "No MCP server named 'membrane' found."),            // remove: no user entry
+            result(0, "Removed MCP server 'membrane'."),                   // remove: user entry gone
             result(0, plugin_entry),                                       // verify get: provision persists
         ]);
         let plugin_states = BTreeMap::from([(
-            HarnessClient::Codex,
-            plugin_receipt(HarnessClient::Codex, "enabled", None, false, None),
+            HarnessClient::Claude,
+            plugin_receipt(HarnessClient::Claude, "enabled", None, false, None),
         )]);
         let receipts = reconcile_clients(
             membrane,
-            &[HarnessClient::Codex],
+            &[HarnessClient::Claude],
             false,
             |_client, _args| responses.pop_front().unwrap(),
             &plugin_states,
@@ -4520,21 +4584,21 @@ mod tests {
         // A surviving entry that is neither absent-user-entry nor owned is a
         // genuine remove failure — still an error, not silently accepted.
         let membrane = Path::new(r"C:\Membrane\membrane.exe");
-        let plugin_entry = r#"{"transport":{"type":"streamable_http","url":"http://127.0.0.1:47851/mcp"}}"#;
-        let foreign = r#"{"transport":{"command":"other-tool","args":["serve"]}}"#;
+        let plugin_entry = "membrane:\n  Scope: user\n  Type: http\n  URL: http://127.0.0.1:47851/mcp\n  Headers: Authorization: Bearer ${MEMBRANE_BEARER_TOKEN}";
+        let foreign = "membrane:\n  Scope: user\n  Type: http\n  URL: http://other.example/mcp";
         let mut responses = VecDeque::from([
-            result(0, "codex-cli"),
+            result(0, "claude-cli"),
             result(0, plugin_entry),
             result(0, "Removed MCP server 'membrane'."),
             result(0, foreign),
         ]);
         let plugin_states = BTreeMap::from([(
-            HarnessClient::Codex,
-            plugin_receipt(HarnessClient::Codex, "enabled", None, false, None),
+            HarnessClient::Claude,
+            plugin_receipt(HarnessClient::Claude, "enabled", None, false, None),
         )]);
         let error = reconcile_clients(
             membrane,
-            &[HarnessClient::Codex],
+            &[HarnessClient::Claude],
             false,
             |_client, _args| responses.pop_front().unwrap(),
             &plugin_states,
@@ -4543,21 +4607,57 @@ mod tests {
         assert!(error.contains("global remove verification failed"));
     }
 
+    #[test]
+    fn codex_plugin_entry_is_replaced_by_authenticated_global() {
+        // Codex strips auth fields from plugin-declared MCP servers, so the
+        // plugin-resolved entry (url matches, bearer binding absent) is not a
+        // usable registration. Activation must replace it with the global
+        // config.toml entry carrying `bearer_token_env_var` — `mcp remove`
+        // exits 0 reporting no user entry, then `mcp add` writes it.
+        let membrane = Path::new(r"C:\Membrane\membrane.exe");
+        let plugin_entry = r#"{"transport":{"type":"streamable_http","url":"http://127.0.0.1:47851/mcp","bearer_token_env_var":null}}"#;
+        let user_entry = r#"{"transport":{"type":"streamable_http","url":"http://127.0.0.1:47851/mcp","bearer_token_env_var":"MEMBRANE_BEARER_TOKEN"}}"#;
+        let mut responses = VecDeque::from([
+            result(0, "codex-cli"),                                   // --version
+            result(0, plugin_entry),                                  // get: plugin provision
+            result(0, "No MCP server named 'membrane' found."),       // remove: no user entry
+            result(0, "Added global MCP server 'membrane'."),         // add
+            result(0, user_entry),                                    // verify get: global entry
+        ]);
+        let plugin_states = BTreeMap::from([(
+            HarnessClient::Codex,
+            plugin_receipt(HarnessClient::Codex, "enabled", None, false, None),
+        )]);
+        let receipts = reconcile_clients(
+            membrane,
+            &[HarnessClient::Codex],
+            false,
+            |_client, _args| responses.pop_front().unwrap(),
+            &plugin_states,
+        )
+        .unwrap();
+        assert_eq!(receipts[0].after, "installed");
+    }
+
+    #[test]
     fn codex_json_config_is_parsed_and_matched() {
-        let body = r#"{"transport":{"type":"streamable_http","url":"http://127.0.0.1:47851/mcp"}}"#;
+        let body = r#"{"transport":{"type":"streamable_http","url":"http://127.0.0.1:47851/mcp","bearer_token_env_var":"MEMBRANE_BEARER_TOKEN"}}"#;
         assert_eq!(
             parse_prior_config(body),
             Some(ServerConfig {
                 command: "http://127.0.0.1:47851/mcp".to_string(),
                 args: vec![],
+                bearer_token_env_var: Some("MEMBRANE_BEARER_TOKEN".to_string()),
             })
         );
         assert!(is_expected(HarnessClient::Codex, body, r"C:\Membrane\membrane.exe"));
-        #[cfg(windows)]
-        assert!(is_expected(
+        // A plugin-declared entry resolves the same URL but carries no bearer
+        // binding — Codex strips auth from it, so it must not verify.
+        let plugin_entry = r#"{"transport":{"type":"streamable_http","url":"http://127.0.0.1:47851/mcp","bearer_token_env_var":null}}"#;
+        assert!(!is_expected(
             HarnessClient::Codex,
-            "URL: http://127.0.0.1:47851/mcp",
-            r"\\?\C:\Membrane\membrane.exe"
+            plugin_entry,
+            r"C:\Membrane\membrane.exe"
         ));
     }
 
@@ -4642,6 +4742,7 @@ mod tests {
             Some(ServerConfig {
                 command: r"C:\Membrane Hub\membrane.exe".to_string(),
                 args: vec!["stdio-mcp".to_string()],
+                bearer_token_env_var: None,
             })
         );
         assert_eq!(
@@ -4723,7 +4824,7 @@ mod tests {
         assert!(error.contains("claude add failed"));
         assert!(calls.iter().any(|(client, args)| {
             *client == HarnessClient::Codex
-                && *args == prior_add_args(HarnessClient::Codex, &ServerConfig { command: "node".into(), args: vec!["old.mjs".into()] })
+                && *args == prior_add_args(HarnessClient::Codex, &ServerConfig { command: "node".into(), args: vec!["old.mjs".into()], bearer_token_env_var: None })
         }));
     }
 

@@ -50,8 +50,10 @@ test("Claude projection is installed-path bound & ships hooks", () => {
 });
 
 test("Codex projection uses verified bearer env binding & Codex event set", () => {
-  // `.mcp.json` is the Codex plugin MCP declaration; the verified bearer
-  // field is `bearerTokenEnvVar`, and no literal token may appear.
+  // `.mcp.json` is the Codex plugin MCP declaration; `bearerTokenEnvVar` is
+  // the declared bearer binding (Codex strips auth fields from plugin
+  // servers — activation keeps the authenticated config.toml registration),
+  // and no literal token may appear.
   assert.equal(codexMcp.mcpServers?.membrane?.url, "http://127.0.0.1:47851/mcp");
   assert.equal(codexMcp.mcpServers?.membrane?.bearerTokenEnvVar, "MEMBRANE_BEARER_TOKEN");
   assert.equal(codexPlugin.mcpServers, "./.mcp.json");
@@ -60,9 +62,14 @@ test("Codex projection uses verified bearer env binding & Codex event set", () =
   for (const event of codexEvents) {
     const hooks = codexHooks.hooks?.[event];
     assert.ok(Array.isArray(hooks) && hooks.length > 0, event);
-    const command = hooks[0].hooks?.[0]?.command;
-    // Codex substitutes CLAUDE_PLUGIN_ROOT for plugin hooks (compat).
-    assert.equal(command, '"${CLAUDE_PLUGIN_ROOT}/membrane-client.exe" hook', event);
+    // Codex substitutes ${PLUGIN_ROOT}/${CLAUDE_PLUGIN_ROOT} for plugin hooks
+    // and strictly parses hook stdout (deny_unknown_fields), so hook commands
+    // pin the Codex wire shape. Windows needs `commandWindows`: Codex runs
+    // hooks through the detected user shell, PowerShell rejects `"path" arg`,
+    // and powershell.exe -File is valid under cmd, PowerShell, and Git Bash.
+    const handler = hooks[0].hooks?.[0];
+    assert.equal(handler?.command, '"${PLUGIN_ROOT}/membrane-client" hook --wire=codex', event);
+    assert.equal(handler?.commandWindows, 'powershell -NoProfile -ExecutionPolicy Bypass -File "${PLUGIN_ROOT}/membrane-hook.ps1"', event);
   }
   // Host event sets only carry events the host supports.
   assert.ok(!codexHooks.hooks?.PostToolUseFailure, "Codex lacks PostToolUseFailure");
@@ -85,7 +92,10 @@ test("membrane_context example matches native schema", () => {
   assert.match(doc, /"repositoryId":"demo-repo"/);
   assert.match(doc, /"scopeId":"demo-scope"/);
   assert.match(tools, /"membrane_context" =>/);
-  assert.match(tools, /vec!\[\s*"task",\s*"taskId",\s*"sessionId",\s*"repository",\s*"caller",\s*"remainingContextCeiling"/s);
+  // PUL-050: remainingContextCeiling moved out of `required` — budgetMode
+  // (bounded_response vs host_fit) decides whether it must be supplied.
+  assert.match(tools, /vec!\[\s*"task",\s*"taskId",\s*"sessionId",\s*"repository",\s*"caller",?\s*\]/s);
+  assert.match(tools, /"remainingContextCeiling":remaining_context_ceiling\(\)/);
   assert.match(tools, /required":\["root","repositoryId","scopeId"\]/);
 });
 

@@ -104,10 +104,15 @@ cpSync(join(repo, "skills", "membrane"), join(payload, ".agents", "skills", "mem
 mkdirSync(join(payload, ".agents", "plugins"), { recursive: true });
 cpSync(join(repo, ".agents", "plugins", "marketplace.json"), join(payload, ".agents", "plugins", "marketplace.json"));
 // Codex reads the plugin root `.mcp.json` (the portable-core copy carries the
-// generic Claude-shape alias). Overlay it with the Codex manifest, whose
-// `bearerTokenEnvVar` field is the verified bearer binding, and with the
-// Codex-scoped hook event set (the shared hooks/hooks.json keeps the Claude
-// event superset; Codex resolves ${CLAUDE_PLUGIN_ROOT} for compatibility).
+// generic Claude-shape alias). Overlay it with the Codex manifest — Codex
+// strips auth fields from plugin-declared MCP servers (verified on 0.144.5:
+// bearerTokenEnvVar, bearer_token_env_var, env_http_headers, and literal
+// bearer_token all reach the engine unauthenticated), so `bearerTokenEnvVar`
+// is the declared intent for hosts that honor it while activation keeps the
+// authenticated `mcp_servers.membrane` config.toml registration — and with
+// the Codex-scoped hook event set (the shared hooks/hooks.json keeps the
+// Claude event superset; Codex resolves ${CLAUDE_PLUGIN_ROOT} for
+// compatibility).
 cpSync(join(repo, ".mcp.json"), join(payload, ".mcp.json"));
 cpSync(join(repo, "hooks", "codex-hooks.json"), join(payload, "hooks", "codex-hooks.json"));
 mkdirSync(join(payload, ".antigravity-plugin", "skills"), { recursive: true });

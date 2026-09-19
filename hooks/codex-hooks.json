@@ -1,5 +1,4 @@
 {
-  "$schema": "https://agent-plugins.org/schemas/1.0.0/hooks.schema.json",
   "hooks": {
     "SessionStart": [
       {
@@ -7,7 +6,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/membrane-client.exe\" hook",
+            "command": "\"${PLUGIN_ROOT}/membrane-client\" hook --wire=codex",
+            "commandWindows": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${PLUGIN_ROOT}/membrane-hook.ps1\"",
             "timeout": 20,
             "additionalContextLimit": 2500
           }
@@ -19,7 +19,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/membrane-client.exe\" hook",
+            "command": "\"${PLUGIN_ROOT}/membrane-client\" hook --wire=codex",
+            "commandWindows": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${PLUGIN_ROOT}/membrane-hook.ps1\"",
             "timeout": 20,
             "additionalContextLimit": 2500
           }
@@ -31,7 +32,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/membrane-client.exe\" hook",
+            "command": "\"${PLUGIN_ROOT}/membrane-client\" hook --wire=codex",
+            "commandWindows": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${PLUGIN_ROOT}/membrane-hook.ps1\"",
             "timeout": 20
           }
         ]
@@ -42,7 +44,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/membrane-client.exe\" hook",
+            "command": "\"${PLUGIN_ROOT}/membrane-client\" hook --wire=codex",
+            "commandWindows": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${PLUGIN_ROOT}/membrane-hook.ps1\"",
             "timeout": 20
           }
         ]
@@ -54,7 +57,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/membrane-client.exe\" hook",
+            "command": "\"${PLUGIN_ROOT}/membrane-client\" hook --wire=codex",
+            "commandWindows": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${PLUGIN_ROOT}/membrane-hook.ps1\"",
             "timeout": 20,
             "additionalContextLimit": 2500
           }
@@ -67,7 +71,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/membrane-client.exe\" hook",
+            "command": "\"${PLUGIN_ROOT}/membrane-client\" hook --wire=codex",
+            "commandWindows": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${PLUGIN_ROOT}/membrane-hook.ps1\"",
             "timeout": 20,
             "additionalContextLimit": 2500
           }
@@ -79,7 +84,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/membrane-client.exe\" hook",
+            "command": "\"${PLUGIN_ROOT}/membrane-client\" hook --wire=codex",
+            "commandWindows": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${PLUGIN_ROOT}/membrane-hook.ps1\"",
             "timeout": 20
           }
         ]
@@ -90,7 +96,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/membrane-client.exe\" hook",
+            "command": "\"${PLUGIN_ROOT}/membrane-client\" hook --wire=codex",
+            "commandWindows": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${PLUGIN_ROOT}/membrane-hook.ps1\"",
             "timeout": 3
           }
         ]

@@ -45,6 +45,12 @@ const HARNESS_RENEW_INTERVAL_MS: u64 = 10_000;
 /// Engine-down activation is bounded: one foreground `membrane.exe activate`
 /// attempt per client session, well under any host startup budget.
 const ACTIVATION_TIMEOUT: Duration = Duration::from_secs(90);
+/// Grace allowed for piped CLI stdin to reach EOF before the request is
+/// forwarded without it. Lease acquisition ahead of `forward_cli` already
+/// gives a writer seconds to deliver; this bound only fires on an open pipe
+/// that never produces a byte.
+const STDIN_EOF_GRACE: Duration = Duration::from_secs(2);
+const STDIN_HOOK_QUIET: Duration = Duration::from_millis(400);
 
 const CLIENT_HELP: &str = "membrane-client [stdio-mcp|hook|cli] [args…]\n\
     \n\
@@ -187,17 +193,22 @@ fn run(mode: &str) -> Result<(), String> {
             run_stdio_mcp()
         }
         "hook" => {
-            let mut body = Vec::new();
-            io::stdin()
-                .take((MAX_BODY_BYTES + 1) as u64)
-                .read_to_end(&mut body)
-                .map_err(|error| format!("read hook payload: {error}"))?;
+            let codex_wire = std::env::args()
+                .skip(2)
+                .any(|arg| arg == "--wire=codex");
+            let body = read_hook_stdin()?;
             if body.len() > MAX_BODY_BYTES {
                 return Err("hook payload exceeds transport limit".into());
             }
             let (session_id, session_end) = hook_session_identity(&body);
             let _lease = harness::hook_lease(session_id.as_deref(), session_end).map_err(|error| format!("engine_unavailable: {error}"))?;
-            forward_body("/hook", &body)
+            let (_, response) = request_engine("/hook", &body)?;
+            let response = if codex_wire {
+                codex_wire_response(&response)
+            } else {
+                response
+            };
+            write_stdout(&response)
         }
         "cli" => {
             let _lease = harness::cli_lease().map_err(|error| format!("engine_unavailable: {error}"))?;
@@ -213,14 +224,88 @@ fn run(mode: &str) -> Result<(), String> {
     }
 }
 
-fn forward_cli(args: Vec<String>) -> Result<(), String> {
-    let mut stdin = String::new();
-    if !io::stdin().is_terminal() {
-        io::stdin()
-            .take((MAX_BODY_BYTES + 1) as u64)
-            .read_to_string(&mut stdin)
-            .map_err(|error| format!("read CLI input: {error}"))?;
+/// Forwarded CLI verbs may consume piped stdin (`push prepare`,
+/// `resident-holder`, checkpoint/replay payloads). A transport spawned by a
+/// harness or CI runner inherits an open, idle pipe whose EOF never arrives;
+/// a blocking read would stall the call before any request reached the
+/// engine. Stdin therefore drains on a side thread: an already-written pipe
+/// reaches EOF immediately, while a silent pipe degrades to empty stdin
+/// after a short grace so a verb that required input surfaces its own typed
+/// error instead of an opaque hang.
+fn read_cli_stdin() -> Result<String, String> {
+    if io::stdin().is_terminal() {
+        return Ok(String::new());
     }
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::Builder::new()
+        .name("membrane-cli-stdin".into())
+        .spawn(move || {
+            let mut input = String::new();
+            let result = io::stdin()
+                .take((MAX_BODY_BYTES + 1) as u64)
+                .read_to_string(&mut input)
+                .map(|_| input);
+            let _ = tx.send(result);
+        })
+        .map_err(|error| format!("start CLI input reader: {error}"))?;
+    match rx.recv_timeout(STDIN_EOF_GRACE) {
+        Ok(Ok(input)) => Ok(input),
+        Ok(Err(error)) => Err(format!("read CLI input: {error}")),
+        Err(_) => Ok(String::new()),
+    }
+}
+
+/// Hosts invoke `hook` with the event payload on stdin but may keep the pipe
+/// open for the life of the harness session; a blocking `read_to_end` then
+/// outlives the host's hook timeout and the hook is killed before answering.
+/// Stdin drains on a side thread in chunks: the first bytes must arrive within
+/// the standard grace (a silent pipe degrades to an empty body), payload ends
+/// on EOF — reported as an empty chunk sentinel — or after a short quiet
+/// interval once bytes have flowed.
+fn read_hook_stdin() -> Result<Vec<u8>, String> {
+    if io::stdin().is_terminal() {
+        return Ok(Vec::new());
+    }
+    let (tx, rx) = std::sync::mpsc::channel::<Vec<u8>>();
+    std::thread::Builder::new()
+        .name("membrane-hook-stdin".into())
+        .spawn(move || {
+            let mut stdin = io::stdin();
+            loop {
+                let mut chunk = vec![0u8; 8192];
+                match stdin.read(&mut chunk) {
+                    Ok(0) => {
+                        let _ = tx.send(Vec::new());
+                        break;
+                    }
+                    Ok(n) => {
+                        chunk.truncate(n);
+                        if tx.send(chunk).is_err() {
+                            break;
+                        }
+                    }
+                    Err(_) => break,
+                }
+            }
+        })
+        .map_err(|error| format!("start hook input reader: {error}"))?;
+    let mut body = Vec::new();
+    match rx.recv_timeout(STDIN_EOF_GRACE) {
+        Ok(chunk) => body.extend_from_slice(&chunk),
+        Err(_) => return Ok(body),
+    }
+    while body.len() <= MAX_BODY_BYTES {
+        match rx.recv_timeout(STDIN_HOOK_QUIET) {
+            Ok(chunk) if chunk.is_empty() => break,
+            Ok(chunk) => body.extend_from_slice(&chunk),
+            Err(_) => break,
+        }
+    }
+    Ok(body)
+}
+
+fn forward_cli(args: Vec<String>) -> Result<(), String> {
+    let stdin = read_cli_stdin()?;
     let request = json!({ "args": args, "stdin": stdin }).to_string();
     if request.len() > MAX_BODY_BYTES {
         return Err("CLI request exceeds transport limit".into());
@@ -285,6 +370,59 @@ fn forward_stdin(path: &str) -> Result<(), String> {
 fn forward_body(path: &str, body: &[u8]) -> Result<(), String> {
     let (_, response) = request_engine(path, body)?;
     write_stdout(&response)
+}
+
+/// Codex validates hook stdout against per-event schemas declared with
+/// `deny_unknown_fields`: the `membraneHook` receipt extension and any
+/// event-foreign key turn a healthy response into a reported hook failure.
+/// `hook --wire=codex` re-emits only the fields each Codex wire allows; the
+/// engine's full receipt still flows to hosts that tolerate extensions.
+fn codex_wire_response(body: &[u8]) -> Vec<u8> {
+    let Ok(mut value) = serde_json::from_slice::<Value>(body) else {
+        return body.to_vec();
+    };
+    let Some(object) = value.as_object_mut() else {
+        return body.to_vec();
+    };
+    let event = object
+        .get("hookSpecificOutput")
+        .and_then(|specific| specific.get("hookEventName"))
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_owned();
+    let specific_keys: &[&str] = match event.as_str() {
+        "SessionStart" | "UserPromptSubmit" | "SubagentStart" => {
+            &["hookEventName", "additionalContext"]
+        }
+        "PreToolUse" => &[
+            "hookEventName",
+            "additionalContext",
+            "permissionDecision",
+            "permissionDecisionReason",
+            "updatedInput",
+        ],
+        "PostToolUse" => &["hookEventName", "additionalContext", "updatedMCPToolOutput"],
+        _ => &[],
+    };
+    if let Some(specific) = object
+        .get_mut("hookSpecificOutput")
+        .and_then(Value::as_object_mut)
+    {
+        specific.retain(|key, _| specific_keys.contains(&key.as_str()));
+    }
+    let allows_decision = matches!(
+        event.as_str(),
+        "UserPromptSubmit" | "PreToolUse" | "PostToolUse" | "Stop"
+    );
+    let allows_specific = !specific_keys.is_empty();
+    object.retain(|key, _| {
+        matches!(
+            key.as_str(),
+            "continue" | "stopReason" | "suppressOutput" | "systemMessage"
+        ) || (allows_decision && (key == "decision" || key == "reason"))
+            || (allows_specific && key == "hookSpecificOutput")
+    });
+    serde_json::to_vec(&value).unwrap_or_else(|_| body.to_vec())
 }
 
 fn hook_session_identity(body: &[u8]) -> (Option<String>, bool) {
@@ -434,11 +572,33 @@ mod harness {
         }
     }
     fn start_activation() -> Result<ActivationChild, String> {
-        let control = std::env::current_exe().ok().and_then(|p| p.parent().map(|p| p.join("membrane.exe")))
-            .ok_or("activation control binary not found next to client")?;
+        let control = activation_control_binary()
+            .ok_or("activation control binary not found in installed root or next to client")?;
         let mut command = Command::new(control);
         command.args(["activate", "--engine-only", "--timeout-ms", "15000"]);
         spawn_activation(command)
+    }
+    // Host plugin caches carry their own `membrane.exe` payload copy, but
+    // activation must bind the installed product: spawning the cache copy
+    // provisions a duplicate stack rooted at the cache directory. Resolve the
+    // canonical installed control first; exe-relative stays the fallback for
+    // fixture/dev layouts where no install exists or an override targets a
+    // non-default engine.
+    fn activation_control_binary() -> Option<std::path::PathBuf> {
+        if std::env::var_os("MEMBRANE_PROJECT_REGISTRY").is_none()
+            && std::env::var_os("MEMBRANE_ENDPOINT").is_none()
+            && std::env::var_os("MEMBRANE_PORT").is_none()
+        {
+            if let Ok(current) = membrane_client::default_stable_install_root() {
+                let candidate = current.join("membrane.exe");
+                if candidate.is_file() {
+                    return Some(candidate);
+                }
+            }
+        }
+        std::env::current_exe()
+            .ok()
+            .and_then(|p| p.parent().map(|p| p.join("membrane.exe")))
     }
     fn spawn_activation(mut command: Command) -> Result<ActivationChild, String> {
         let nonce = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos();
@@ -1055,6 +1215,13 @@ fn bearer_token() -> Option<String> {
             .filter(|value| !value.is_empty());
         }
     }
+    // Non-installed layouts (host plugin caches) still resolve the canonical
+    // installed credential first: the singleton engine is the only reachable
+    // authority, so an inherited env token that disagrees with it is stale —
+    // the same substitution hazard the installed branch refuses above.
+    if let Some(token) = canonical_installed_token() {
+        return Some(token);
+    }
     for name in ["MEMBRANE_BEARER_TOKEN", "MEMBRANE_API_TOKEN"] {
         if let Ok(value) = std::env::var(name) {
             if !value.trim().is_empty() {
@@ -1071,6 +1238,27 @@ fn bearer_token() -> Option<String> {
         })
         .map(|value| value.trim().to_owned())
         .filter(|value| !value.is_empty())
+}
+
+/// Clients copied into host plugin caches (`~/.claude/plugins/cache/…`,
+/// `~/.codex/plugins/cache/…`) match no `current`/`versions` exe layout, and
+/// env-scrubbed hosts (Codex hook children) carry no credential variables.
+/// The singleton engine's canonical state credential still authenticates this
+/// machine's install. Fixture/isolated endpoints (`MEMBRANE_PROJECT_REGISTRY`)
+/// and non-default endpoint overrides manage their own credentials, so
+/// canonical lookup is skipped there.
+fn canonical_installed_token() -> Option<String> {
+    if std::env::var_os("MEMBRANE_PROJECT_REGISTRY").is_some()
+        || std::env::var_os("MEMBRANE_ENDPOINT").is_some()
+        || std::env::var_os("MEMBRANE_PORT").is_some()
+    {
+        return None;
+    }
+    let current = membrane_client::default_stable_install_root().ok()?;
+    let token = current
+        .parent()?
+        .join("state/tools/.cache/memory/api-token");
+    std::fs::read_to_string(token).ok()
 }
 
 #[cfg(test)]

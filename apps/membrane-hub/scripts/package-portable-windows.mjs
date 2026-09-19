@@ -96,6 +96,11 @@ if (!existsSync(runtime)) throw new Error(`staged runtime missing: ${runtime}`);
 cpSync(runtime, join(payload, "runtime"), { recursive: true });
 // Stable installed command uses Membrane's bounded native process owner.
 writeFileSync(join(payload, "blueprint.cmd"), '@echo off\r\n"%~dp0membrane-client.exe" cli blueprint %*\r\nexit /b %ERRORLEVEL%\r\n');
+// Codex hook commands run under the detected user shell; PowerShell rejects
+// `"path" arg` invocation syntax and nested -Command quoting cannot satisfy
+// cmd, PowerShell, and Git Bash at once, so the Windows hook entry point is
+// a script file invoked through the always-present powershell.exe host.
+writeFileSync(join(payload, "membrane-hook.ps1"), '& "$PSScriptRoot\\membrane-client.exe" hook --wire=codex\r\nexit $LASTEXITCODE\r\n');
 const pluginContract = assemblePortableCore({
   outputDir: portableCore,
   pluginManifestPath: join(projectionRoot, "plugin.json"),
@@ -121,10 +126,15 @@ cpSync(join(descriptorRoot, "skills", "membrane"), join(payload, ".agents", "ski
 mkdirSync(join(payload, ".agents", "plugins"), { recursive: true });
 cpSync(join(descriptorRoot, ".agents", "plugins", "marketplace.json"), join(payload, ".agents", "plugins", "marketplace.json"));
 // Codex reads the plugin root `.mcp.json` (the portable-core copy carries the
-// generic Claude-shape alias). Overlay it with the Codex manifest, whose
-// `bearerTokenEnvVar` field is the verified bearer binding, and with the
-// Codex-scoped hook event set (the shared hooks/hooks.json keeps the Claude
-// event superset; Codex resolves ${CLAUDE_PLUGIN_ROOT} for compatibility).
+// generic Claude-shape alias). Overlay it with the Codex manifest — Codex
+// strips auth fields from plugin-declared MCP servers (verified on 0.144.5:
+// bearerTokenEnvVar, bearer_token_env_var, env_http_headers, and literal
+// bearer_token all reach the engine unauthenticated), so `bearerTokenEnvVar`
+// is the declared intent for hosts that honor it while activation keeps the
+// authenticated `mcp_servers.membrane` config.toml registration — and with
+// the Codex-scoped hook event set (the shared hooks/hooks.json keeps the
+// Claude event superset; Codex resolves ${CLAUDE_PLUGIN_ROOT} for
+// compatibility).
 cpSync(join(descriptorRoot, ".mcp.json"), join(payload, ".mcp.json"));
 cpSync(join(descriptorRoot, "hooks", "codex-hooks.json"), join(payload, "hooks", "codex-hooks.json"));
 cpSync(join(descriptorRoot, ".antigravity-plugin"), join(payload, ".antigravity-plugin"), { recursive: true });
@@ -146,7 +156,7 @@ for (const manifestName of ["plugin.json", ".claude-plugin/plugin.json", ".codex
 {
   const required = [
     "plugin.json", "mcp.json", ".mcp.json", "mcp_config.json",
-    "hooks/hooks.json", "hooks/codex-hooks.json",
+    "hooks/hooks.json", "hooks/codex-hooks.json", "membrane-hook.ps1",
     ".claude-plugin/plugin.json", ".claude-plugin/marketplace.json",
     ".codex-plugin/plugin.json",
     ".agents/plugins/marketplace.json", ".agents/skills/membrane/SKILL.md",
@@ -166,11 +176,26 @@ for (const manifestName of ["plugin.json", ".claude-plugin/plugin.json", ".codex
   // Hooks must invoke the installed client transport, never the engine binary.
   for (const hooksName of ["hooks/hooks.json", "hooks/codex-hooks.json"]) {
     const hooksJson = readFileSync(join(payload, hooksName), "utf8");
-    if (!hooksJson.includes("membrane-client")) {
+    if (!hooksJson.includes("membrane-client") && !hooksJson.includes("membrane-hook.ps1")) {
       throw new Error(`${hooksName} does not invoke membrane-client`);
     }
     if (/membrane\.exe/.test(hooksJson)) {
       throw new Error(`${hooksName} still invokes the engine binary`);
+    }
+  }
+  // Codex hook commands must carry the strict wire flag and a shell-portable
+  // Windows entry point (powershell.exe -File survives cmd, PowerShell, and
+  // Git Bash alike; bare `"path" arg` is a parse error under PowerShell).
+  const codexHooksJson = JSON.parse(readFileSync(join(payload, "hooks", "codex-hooks.json"), "utf8"));
+  for (const groups of Object.values(codexHooksJson.hooks ?? {})) {
+    for (const handler of groups.flatMap((group) => group.hooks ?? [])) {
+      if (handler.type !== "command") continue;
+      if (!String(handler.command ?? "").includes("--wire=codex")) {
+        throw new Error("codex hook command lacks --wire=codex");
+      }
+      if (!String(handler.commandWindows ?? "").includes("membrane-hook.ps1")) {
+        throw new Error("codex hook commandWindows must route through membrane-hook.ps1");
+      }
     }
   }
   // Codex plugin MCP binding must use the verified bearer env field and the
