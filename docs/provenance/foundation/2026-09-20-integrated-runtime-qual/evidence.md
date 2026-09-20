@@ -98,3 +98,36 @@ These typed outcomes are not a successful pushed-memory-to-Pull recall claim. Ex
 | CTX-043 | Exact submitted body and expected hash were returned from installed Cortex-owned memory resolution. | Fresh independent immutable raw source/admission row check and RELEASED delivery remain pending. |
 
 Requested / evaluated / unresolved / excluded: **6 / 6 / 6 / 0**. No capability reaches lifecycle closure because every affected canon requires `RELEASED` delivery and this lane is explicitly internal unsigned.
+
+## Codex missing-tool repair — c123af9f
+
+Scope: restore installed Codex hook completion, MCP discovery & invocation after restart. This is not a whole-product qualification or lifecycle-closure claim.
+
+- Source: `c123af9f0d2cdc8511d7a48217c163c3729e2709` on `main`; supersedes the incomplete standard-handle-only guard in `f4e63fbd`.
+- Cause: eight enabled Membrane hooks were untrusted; after exact-hash trust repair, Windows activation descendants retained duplicated host output handles. PowerShell/Codex waited for pipe EOF after the hook process exited.
+- Repair: explicit Windows child-handle allowlist (NUL stdin/stdout, file diagnostics), owned process handles, bounded activation lifecycle & duplicated-stdout regression. Plugin skill now names public `pull`/`push` & five subsystems.
+- Trust: supported Codex `hooks/list` plus exact `config/batchWrite` trusted hashes, scoped to reviewed `membrane@membrane` commands. Fresh readback confirmed all eight enabled & trusted; no global trust bypass.
+- Cache: supported `codex plugin remove membrane@membrane` / `add membrane@membrane --json`, followed by installed `activate --bindings-only`. Staged, installed `current`, & cached client SHA-256 all equal `e6a915ccd5008d6127e92b852b9f32edcf28490f750ecaf026b1f26e689bde82`.
+- Release generation: `sha256:fd9c4d908f3bdc9d680997a4149e33de7ccd0cb7c9d3bd90f702777e3041b2f4`.
+- Internal unsigned installer SHA-256: `9b9cfdbab2cc271340e0524c59d1e69cdd70b28357d14c6bb3fc10e51aa470b6`.
+
+### Fresh proof
+
+| Boundary | Observed result |
+|---|---|
+| Managed client tests | RightKit `7134ce32-e09b-4897-9278-653780cebfb9`: 18/18 pass, including a distinct inheritable stdout duplicate, unguarded control, & diagnostic capture. |
+| Repository checks | `pnpm test`: 32 pass, 1 intentional skip; restored checks 64/64; legal verification pass. Productization docs check pass. |
+| Installed cold PowerShell hook | Engine initially absent; stdin deliberately held open. Exit 0, output EOF & SessionStart `additionalContext` in 3.172 s; empty stderr. |
+| Actual Codex host | CLI app-server, ephemeral Luna turn, thread `01a0be67-3df9-7502-a0a5-3920f0944080`: SessionStart completed in 4356 ms, UserPromptSubmit 4437 ms, PreToolUse 408 ms. All eight Membrane hooks enabled/trusted. |
+| Native discovery & call | Model discovered `mcp__membrane__pull` via tool metadata & invoked it over configured HTTP MCP. Server inventory reported connected with `pull` & `push`. Verified enrolled caller used `repositoryId=membrane`, `scopeId=membrane`, root `D:\Claude\membrane`; bounded-response mode, 12,000 tokens, no invented H8. |
+| Pull result | Structured `context_delivery_capacity_exceeded`; no packet. Transport/discovery passed; useful context delivery did not. |
+
+An earlier probe forbade discovery tools & incorrectly reported ABSENT despite connected inventory. A second probe discovered/called Pull but invented repository/scope IDs & H8; it was refused with `repository_scope_chain_denied`. Neither is counted as valid-bound context-delivery proof. The final probe above corrected both errors.
+
+### Remaining qualification failures
+
+The canonical `release:local:win:unsigned` lane built & installed this exact candidate. Health, native MCP, resident Blueprint & one-shot checks passed. Full lane then failed graceful shutdown: expected `final_holder_release`, observed `final_holder_expired`; cleanup also reported a process already absent. Do not label this candidate's full installed lane PASS. Local evidence: `C:\Users\adrds\AppData\Local\Temp\membrane-local-windows-20260920T100909Z`.
+
+Cold-hook & actual-host diagnostic evidence: `C:\Users\adrds\.codex\tmp\membrane-installed-pipe-qualification.py` and `membrane-actual-host-qualification.json`. The running Desktop task still had its original tool inventory; Windows Desktop exposed no supported control socket for an in-place external MCP reload. A fresh Codex host proved repaired discovery/invocation; current-task refresh must be observed after reload/restart.
+
+No atom lifecycle status changed. Public RELEASED acceptance, useful Pull delivery, & reliable graceful shutdown remain open.
