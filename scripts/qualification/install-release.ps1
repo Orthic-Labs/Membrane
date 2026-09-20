@@ -576,11 +576,19 @@ function Get-ProcessTree([int]$ProcessId) {
   $root = @($all | Where-Object { [uint32]$_.ProcessId -eq [uint32]$ProcessId })
   Require ($root.Count -eq 1) "process $ProcessId is no longer present"
   $pending = New-Object 'System.Collections.Generic.Queue[uint32]'
+  $visited = New-Object 'System.Collections.Generic.HashSet[uint32]'
   $pending.Enqueue([uint32]$ProcessId)
   $rows = New-Object 'System.Collections.Generic.List[object]'
   while ($pending.Count -gt 0) {
     $parent = $pending.Dequeue()
+    if (-not $visited.Add($parent)) { continue }
+    $parentRow = @($all | Where-Object { [uint32]$_.ProcessId -eq $parent }) | Select-Object -First 1
+    Require ($null -ne $parentRow.CreationDate) "process $parent has no creation identity"
+    try { $parentCreated = [DateTime]$parentRow.CreationDate } catch { throw "process $parent has invalid creation identity" }
     foreach ($child in @($all | Where-Object { [uint32]$_.ParentProcessId -eq $parent })) {
+      Require ($null -ne $child.CreationDate) "child process $($child.ProcessId) has no creation identity"
+      try { $childCreated = [DateTime]$child.CreationDate } catch { throw "child process $($child.ProcessId) has invalid creation identity" }
+      if ($childCreated -lt $parentCreated) { continue }
       $rows.Add($child)
       $pending.Enqueue([uint32]$child.ProcessId)
     }
@@ -1544,11 +1552,15 @@ function Start-AndVerifyPreviousHub([string]$ExpectedVersion) {
   }
 }
 
-function Assert-QualificationProcessTreeGone([int[]]$ProcessIds) {
+function Assert-QualificationProcessTreeGone([object[]]$ProcessIdentities) {
   $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
   do {
     $live = @(Get-CimInstance Win32_Process -ErrorAction Stop | Where-Object {
-      $ProcessIds -contains [int]$_.ProcessId
+      $liveRow = $_
+      $match = @($ProcessIdentities | Where-Object {
+        [int]$_.ProcessId -eq [int]$liveRow.ProcessId -and [DateTime]$_.CreationDate -eq [DateTime]$liveRow.CreationDate
+      })
+      $match.Count -gt 0
     })
     if ($live.Count -eq 0) { return }
     Start-Sleep -Milliseconds 250
@@ -1632,9 +1644,22 @@ function Stop-QualificationHub {
   $ids = @($trayPid, $daemonPid, $hubPid) | Where-Object { $_ -gt 0 }
   # Snapshot owned descendants before parents exit; unrelated installed clients
   # are not members of this qualification's presentation/controller tree.
-  $ids = @($ids; foreach ($ownerId in $ids) {
-    Get-ProcessTree $ownerId | ForEach-Object { [int]$_.ProcessId }
-  }) | Sort-Object -Unique
+  $processRows = @(
+    foreach ($ownerId in $ids) { Get-ProcessTree $ownerId }
+  )
+  $processIdentities = @(
+    $seenProcessIdentities = @{}
+    foreach ($row in $processRows) {
+      Require ($null -ne $row.CreationDate) "process $($row.ProcessId) has no creation identity"
+      $creation = [DateTime]$row.CreationDate
+      $key = "{0}:{1}" -f [int]$row.ProcessId, $creation.Ticks
+      if (-not $seenProcessIdentities.ContainsKey($key)) {
+        $seenProcessIdentities[$key] = $true
+        [pscustomobject]@{ ProcessId = [int]$row.ProcessId; CreationDate = $creation; Name = [string]$row.Name }
+      }
+    }
+  )
+  $ids = @($processIdentities.ProcessId | Sort-Object -Unique)
   # Closing presentation first releases the authenticated Hub holder lease.
   # The installed tray also holds a renewable hub lease (installed_holder.rs)
   # and the daemon drains only on final-holder release or expiry, so the tray
@@ -1731,7 +1756,7 @@ function Stop-QualificationHub {
     $taskkill = Join-Path $env:WINDIR 'System32\taskkill.exe'
     $p = Start-HiddenProcess $taskkill @('/PID', [string]$trayPid, '/T', '/F'); [void]$p.WaitForExit()
   }
-  Assert-QualificationProcessTreeGone $ids
+  Assert-QualificationProcessTreeGone $processIdentities
   $script:TrayProcess = $null
   $script:DaemonProcess = $null
   $script:DashboardProcess = $null

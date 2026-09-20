@@ -246,6 +246,39 @@ Write-Output 'PASS'
   }
 });
 
+test("shutdown process cleanup matches PID plus creation identity", () => {
+  const powershell = String.raw`
+$ErrorActionPreference = 'Stop'
+$tokens = $null; $parseErrors = $null
+$ast = [System.Management.Automation.Language.Parser]::ParseFile($env:MEMBRANE_QUALIFICATION_SOURCE, [ref]$tokens, [ref]$parseErrors)
+$names = @('Get-ProcessTree','Assert-QualificationProcessTreeGone')
+foreach ($name in $names) { $node = $ast.Find({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq $name }, $true); if ($null -eq $node) { throw "$name AST node missing" }; . ([scriptblock]::Create($node.Extent.Text)) }
+function Require([bool]$Condition, [string]$Message) { if (-not $Condition) { throw $Message } }
+function Start-Sleep { param([int]$Milliseconds) }
+function Get-CimInstance {
+  param([string]$Class, [string]$Filter)
+  if ($script:Mode -eq 'reused') { return [pscustomobject]@{ ProcessId=7; CreationDate=[DateTime]::Parse('2026-09-21T04:32:24.200Z'); Name='svchost.exe' } }
+  if ($script:Mode -eq 'same') { return [pscustomobject]@{ ProcessId=7; CreationDate=[DateTime]::Parse('2026-09-21T04:32:24.100Z'); Name='membrane.exe' } }
+  return @(
+    [pscustomobject]@{ ProcessId=1; ParentProcessId=0; CreationDate=[DateTime]::Parse('2026-09-21T04:32:24Z'); Name='membrane-tray.exe' },
+    [pscustomobject]@{ ProcessId=2; ParentProcessId=1; CreationDate=[DateTime]::Parse('2026-09-21T04:32:23Z'); Name='svchost.exe' },
+    [pscustomobject]@{ ProcessId=3; ParentProcessId=1; CreationDate=[DateTime]::Parse('2026-09-21T04:32:25Z'); Name='membrane.exe' }
+  )
+}
+$TimeoutSeconds=0
+$script:Mode='reused'; Assert-QualificationProcessTreeGone @([pscustomobject]@{ProcessId=7;CreationDate=[DateTime]::Parse('2026-09-21T04:32:24.100Z')})
+$script:Mode='same'; try { Assert-QualificationProcessTreeGone @([pscustomobject]@{ProcessId=7;CreationDate=[DateTime]::Parse('2026-09-21T04:32:24.100Z')}); throw 'same identity unexpectedly passed' } catch { if ($_.Exception.Message -notmatch 'Hub process descendants remain') { throw } }
+$script:Mode='tree'; $tree=@(Get-ProcessTree 1); if (@($tree.ProcessId) -notcontains 3 -or @($tree.ProcessId) -contains 2) { throw 'process tree creation filtering failed' }
+Write-Output 'PASS'
+`;
+  const run = spawnSync("pwsh", ["-NoProfile", "-NonInteractive", "-Command", powershell], {
+    encoding: "utf8",
+    env: { ...process.env, MEMBRANE_QUALIFICATION_SOURCE: new URL("./install-release.ps1", import.meta.url).pathname.replace(/^\/(?:[A-Za-z]:)/, m => m.slice(1)) },
+  });
+  assert.equal(run.status, 0, `${run.stdout}\n${run.stderr}`);
+  assert.match(run.stdout, /PASS/);
+});
+
 test("qualification proves startup workspace migration is native, strict, atomic, & idempotent", () => {
   for (const term of [
     "PreviousMembraneWorkspaceConfig", "MEMBRANE_WORKSPACE_CONFIG", "Seed-WorkspaceV2Config",
