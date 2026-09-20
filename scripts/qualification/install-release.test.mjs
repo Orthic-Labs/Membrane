@@ -223,14 +223,14 @@ function Invoke-NativeProcess {
 }
 . ([scriptblock]::Create($fn.Extent.Text))
 $script:ActiveHubHealth = [pscustomobject]@{ installationId='install'; cortexStoreId='store'; releaseGeneration='sha256:release'; startupGeneration=7; stableInstallRoot='C:\Membrane\current' }
-$InstallRoot = 'C:\Membrane\current'; $TimeoutSeconds = 0
+$InstallRoot = 'C:\Membrane\current'; $script:ActiveHubPort = 47851; $TimeoutSeconds = 0
 $controller = @{ installationId='install'; cortexStoreId='store'; releaseGeneration='sha256:release'; startupGeneration=7; stableCurrent='C:\Membrane\current' }
-function Body([int]$Hub, [hashtable]$ResponseController = $controller) {
-  return ([ordered]@{ operation='status'; controller=$ResponseController; status=[ordered]@{ controllerActive=$true; servicesReady=$true; hubHolders=$Hub; coderightDaemonHolders=0; harnessHolders=0 } } | ConvertTo-Json -Compress -Depth 8)
+function Body([int]$Hub, [hashtable]$ResponseController = $controller, [int]$Harness = 1) {
+  return ([ordered]@{ operation='status'; controller=$ResponseController; status=[ordered]@{ controllerActive=$true; servicesReady=$true; hubHolders=$Hub; coderightDaemonHolders=0; harnessHolders=$Harness } } | ConvertTo-Json -Compress -Depth 8)
 }
 switch ($env:MEMBRANE_ISOLATION_CASE) {
   'peers-then-sole' { $script:Responses=@((Body 2),(Body 1)); $TimeoutSeconds=1; $result=Wait-ResidentHolderIsolation 'membrane.exe' 123; if ([int]$result.status.hubHolders -ne 1) { throw 'sole-holder result missing' } }
-  'peer-timeout' { $script:Responses=@((Body 2)); try { Wait-ResidentHolderIsolation 'membrane.exe' 123; throw 'peer timeout unexpectedly passed' } catch { if ($_.Exception.Message -notmatch 'final_holder_isolation_failed') { throw } } }
+  'peer-timeout' { $script:Responses=@((Body 1 $controller 2)); try { Wait-ResidentHolderIsolation 'membrane.exe' 123; throw 'peer timeout unexpectedly passed' } catch { if ($_.Exception.Message -notmatch 'final_holder_isolation_failed') { throw } } }
   'controller-replaced' { $replacement=@{ installationId='install'; cortexStoreId='store'; releaseGeneration='sha256:release'; startupGeneration=8; stableCurrent='C:\Membrane\current' }; $script:Responses=@((Body 1 $replacement)); try { Wait-ResidentHolderIsolation 'membrane.exe' 123; throw 'replacement unexpectedly passed' } catch { if ($_.Exception.Message -notmatch 'final_holder_isolation_failed') { throw } } }
   default { throw 'unknown isolation case' }
 }

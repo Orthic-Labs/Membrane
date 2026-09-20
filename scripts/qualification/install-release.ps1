@@ -1586,6 +1586,10 @@ function Wait-ResidentHolderIsolation([string]$MembraneExecutable, [int]$TrayPro
     $tray = Get-Process -Id $TrayProcessId -ErrorAction SilentlyContinue
     Require ($null -ne $tray -and -not $tray.HasExited) 'final-holder isolation lost installed tray before readiness'
     try {
+      # `membrane.exe cli resident-holder` runs through membrane-client's
+      # cli_lease(), so its own short-lived harness holder is present while
+      # status is served. The process exits before the tray signal; therefore
+      # harnessHolders=1 is probe-owned and any excess count is an external peer.
       $result = Invoke-NativeProcess $MembraneExecutable 'cli resident-holder' $request $InstallRoot
       $status = Read-NativeOutput $result.Stdout 'resident-holder isolation status'
       Require ([string]$status.operation -eq 'status') 'resident-holder isolation returned non-status operation'
@@ -1594,7 +1598,11 @@ function Wait-ResidentHolderIsolation([string]$MembraneExecutable, [int]$TrayPro
       }
       $last = [ordered]@{ controller = $status.controller; status = $status.status; observedAtUnixMs = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() }
       $s = $status.status
-      if ($s.controllerActive -eq $true -and [int]$s.hubHolders -eq 1 -and [int]$s.coderightDaemonHolders -eq 0 -and [int]$s.harnessHolders -eq 0) {
+      $probeHarnessHolders = [int]$s.harnessHolders
+      $externalHarnessHolders = [Math]::Max(0, $probeHarnessHolders - 1)
+      $last.probeHarnessHolders = $probeHarnessHolders
+      $last.externalHarnessHolders = $externalHarnessHolders
+      if ($s.controllerActive -eq $true -and [int]$s.hubHolders -eq 1 -and [int]$s.coderightDaemonHolders -eq 0 -and $probeHarnessHolders -eq 1) {
         return $last
       }
     } catch { $last = [ordered]@{ controller = $controller; error = $_.Exception.Message; observedAtUnixMs = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() } }
