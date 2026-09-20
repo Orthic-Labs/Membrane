@@ -607,9 +607,57 @@ mod harness {
             .map_err(|e| format!("activation diagnostic file: {e}"))?;
         command.stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(file);
         #[cfg(windows)] { use std::os::windows::process::CommandExt; command.creation_flags(0x0800_0000); }
+        // CREATE_NO_WINDOW and Stdio::null() set the child process' standard
+        // handles, but Windows still inherits any other inheritable handles
+        // from this client.  Codex/PowerShell supplies stdout/stderr as
+        // pipes; an activation descendant retaining those handles keeps the
+        // host pipe open after this process exits.  Clear inheritance only
+        // for the duration of CreateProcess, then restore the parent's flags
+        // so this transport can still write its own hook response.
+        #[cfg(windows)] let _std_handle_guard = StandardHandleInheritanceGuard::disable()?;
         match command.spawn() {
             Ok(child) => Ok(ActivationChild { child: Mutex::new(child), log }),
             Err(e) => { let _ = std::fs::remove_file(log); Err(format!("activate launch failed: {e}")) }
+        }
+    }
+    #[cfg(windows)]
+    struct StandardHandleInheritanceGuard {
+        handles: Vec<(windows_sys::Win32::Foundation::HANDLE, u32)>,
+    }
+    #[cfg(windows)]
+    impl StandardHandleInheritanceGuard {
+        fn disable() -> Result<Self, String> {
+            use windows_sys::Win32::Foundation::{GetHandleInformation, SetHandleInformation, HANDLE_FLAG_INHERIT, INVALID_HANDLE_VALUE};
+            use windows_sys::Win32::System::Console::{GetStdHandle, STD_ERROR_HANDLE, STD_OUTPUT_HANDLE};
+            let mut guard = Self { handles: Vec::new() };
+            for kind in [STD_OUTPUT_HANDLE, STD_ERROR_HANDLE] {
+                let handle = unsafe { GetStdHandle(kind) };
+                if handle.is_null() || handle == INVALID_HANDLE_VALUE {
+                    continue;
+                }
+                let mut flags = 0;
+                if unsafe { GetHandleInformation(handle, &mut flags) } == 0 {
+                    return Err(format!("inspect standard-handle inheritance: {}", std::io::Error::last_os_error()));
+                }
+                if flags & HANDLE_FLAG_INHERIT != 0 {
+                    if unsafe { SetHandleInformation(handle, HANDLE_FLAG_INHERIT, 0) } == 0 {
+                        return Err(format!("disable standard-handle inheritance: {}", std::io::Error::last_os_error()));
+                    }
+                    // Push immediately so an error while processing the
+                    // other stream still restores this already-mutated flag.
+                    guard.handles.push((handle, flags));
+                }
+            }
+            Ok(guard)
+        }
+    }
+    #[cfg(windows)]
+    impl Drop for StandardHandleInheritanceGuard {
+        fn drop(&mut self) {
+            use windows_sys::Win32::Foundation::{SetHandleInformation, HANDLE_FLAG_INHERIT};
+            for (handle, flags) in self.handles.drain(..) {
+                let _ = unsafe { SetHandleInformation(handle, HANDLE_FLAG_INHERIT, flags & HANDLE_FLAG_INHERIT) };
+            }
         }
     }
     #[cfg(test)]
@@ -630,6 +678,67 @@ mod harness {
         #[test]
         fn descendant() {
             if std::env::var_os("MEMBRANE_CAPTURE_DESCENDANT").is_some() { std::thread::sleep(Duration::from_secs(4)); }
+        }
+        #[test]
+        fn fixture_stdout_inheritance() {
+            if std::env::var_os("MEMBRANE_CAPTURE_STDOUT_INHERIT").is_none() { return; }
+            let mut command = Command::new(std::env::current_exe().unwrap());
+            command.args(["--exact", "harness::activation_tests::descendant", "--nocapture"])
+                .env("MEMBRANE_CAPTURE_DESCENDANT", "1");
+            if std::env::var_os("MEMBRANE_CAPTURE_STDOUT_INHERIT_CONTROL").is_some() {
+                command.stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null());
+                #[cfg(windows)] {
+                    use std::os::windows::process::CommandExt;
+                    command.creation_flags(0x0800_0000);
+                }
+                command.spawn().unwrap();
+                std::process::exit(0);
+            }
+            let child = spawn_activation(command).unwrap();
+            child.reap(std::time::Instant::now() + Duration::from_secs(5));
+            std::process::exit(0);
+        }
+        #[cfg(windows)]
+        #[test]
+        fn activation_descendant_cannot_retain_parent_stdout_or_stderr_pipes() {
+            use std::process::Stdio;
+            fn capture(control: bool) -> Duration {
+                let mut command = Command::new(std::env::current_exe().unwrap());
+                command.args(["--exact", "harness::activation_tests::fixture_stdout_inheritance", "--nocapture"])
+                    .env("MEMBRANE_CAPTURE_STDOUT_INHERIT", "1")
+                    .env_remove("MEMBRANE_CAPTURE_STDOUT_INHERIT_CONTROL")
+                    .stdout(Stdio::piped())
+                    .stderr(Stdio::piped());
+                if control {
+                    command.env("MEMBRANE_CAPTURE_STDOUT_INHERIT_CONTROL", "1");
+                }
+                let mut child = command.spawn().unwrap();
+                let stdout = child.stdout.take().unwrap();
+                let stderr = child.stderr.take().unwrap();
+                let (stdout_done_tx, stdout_done_rx) = std::sync::mpsc::channel();
+                let (stderr_done_tx, stderr_done_rx) = std::sync::mpsc::channel();
+                std::thread::spawn(move || {
+                    let mut bytes = Vec::new();
+                    let _ = std::io::Read::read_to_end(&mut std::io::BufReader::new(stdout), &mut bytes);
+                    let _ = stdout_done_tx.send(());
+                });
+                std::thread::spawn(move || {
+                    let mut bytes = Vec::new();
+                    let _ = std::io::Read::read_to_end(&mut std::io::BufReader::new(stderr), &mut bytes);
+                    let _ = stderr_done_tx.send(());
+                });
+                let began = std::time::Instant::now();
+                let status = child.wait().unwrap();
+                assert!(status.success());
+                assert!(stdout_done_rx.recv_timeout(Duration::from_secs(6)).is_ok(), "activation descendant retained stdout pipe");
+                assert!(stderr_done_rx.recv_timeout(Duration::from_secs(6)).is_ok(), "activation descendant retained stderr pipe");
+                began.elapsed()
+            }
+
+            let unguarded = capture(true);
+            assert!(unguarded >= Duration::from_secs(3), "control fixture did not retain inherited pipes: {unguarded:?}");
+            let guarded = capture(false);
+            assert!(guarded < Duration::from_secs(3), "activation descendant retained guarded pipes: {guarded:?}");
         }
         #[test]
         fn activation_exit_does_not_wait_for_descendant_stderr() {
