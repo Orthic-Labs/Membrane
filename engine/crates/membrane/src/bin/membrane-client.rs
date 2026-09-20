@@ -540,6 +540,9 @@ mod harness {
 
     // File-backed diagnostics never wait for EOF from inherited daemon handles.
     struct ActivationChild {
+        #[cfg(windows)]
+        child: Mutex<WindowsActivationChild>,
+        #[cfg(not(windows))]
         child: Mutex<std::process::Child>,
         log: std::path::PathBuf,
     }
@@ -562,6 +565,43 @@ mod harness {
             });
         }
     }
+    #[cfg(windows)]
+    struct WindowsActivationChild { process: std::os::windows::io::OwnedHandle }
+    #[cfg(windows)]
+    impl WindowsActivationChild {
+        fn try_wait(&mut self) -> std::io::Result<Option<std::process::ExitStatus>> {
+            use std::os::windows::io::AsRawHandle;
+            use windows_sys::Win32::{Foundation::{WAIT_OBJECT_0, WAIT_TIMEOUT}, System::Threading::WaitForSingleObject};
+            match unsafe { WaitForSingleObject(self.process.as_raw_handle(), 0) } {
+                WAIT_OBJECT_0 => self.exit_status().map(Some),
+                WAIT_TIMEOUT => Ok(None),
+                _ => Err(std::io::Error::last_os_error()),
+            }
+        }
+        fn exit_status(&self) -> std::io::Result<std::process::ExitStatus> {
+            use std::os::windows::{io::AsRawHandle, process::ExitStatusExt};
+            let mut code = 0;
+            if unsafe { windows_sys::Win32::System::Threading::GetExitCodeProcess(self.process.as_raw_handle(), &mut code) } == 0 {
+                return Err(std::io::Error::last_os_error());
+            }
+            Ok(std::process::ExitStatus::from_raw(code))
+        }
+        fn kill(&mut self) -> std::io::Result<()> {
+            use std::os::windows::io::AsRawHandle;
+            if unsafe { windows_sys::Win32::System::Threading::TerminateProcess(self.process.as_raw_handle(), 1) } == 0 {
+                return Err(std::io::Error::last_os_error());
+            }
+            Ok(())
+        }
+        fn wait(&mut self) -> std::io::Result<std::process::ExitStatus> {
+            use std::os::windows::io::AsRawHandle;
+            use windows_sys::Win32::{Foundation::WAIT_OBJECT_0, System::Threading::{WaitForSingleObject, INFINITE}};
+            if unsafe { WaitForSingleObject(self.process.as_raw_handle(), INFINITE) } != WAIT_OBJECT_0 {
+                return Err(std::io::Error::last_os_error());
+            }
+            self.exit_status()
+        }
+    }
     impl Drop for ActivationChild {
         fn drop(&mut self) {
             if let Ok(child) = self.child.get_mut() {
@@ -574,9 +614,7 @@ mod harness {
     fn start_activation() -> Result<ActivationChild, String> {
         let control = activation_control_binary()
             .ok_or("activation control binary not found in installed root or next to client")?;
-        let mut command = Command::new(control);
-        command.args(["activate", "--engine-only", "--timeout-ms", "15000"]);
-        spawn_activation(command)
+        spawn_activation(control, &["activate", "--engine-only", "--timeout-ms", "15000"], &[], &[])
     }
     // Host plugin caches carry their own `membrane.exe` payload copy, but
     // activation must bind the installed product: spawning the cache copy
@@ -600,64 +638,128 @@ mod harness {
             .ok()
             .and_then(|p| p.parent().map(|p| p.join("membrane.exe")))
     }
-    fn spawn_activation(mut command: Command) -> Result<ActivationChild, String> {
+    fn spawn_activation(program: std::path::PathBuf, args: &[&str], env_remove: &[&str], env_set: &[(&str, &str)]) -> Result<ActivationChild, String> {
         let nonce = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos();
         let log = std::env::temp_dir().join(format!("membrane-activation-{}-{nonce}.log", std::process::id()));
         let file = std::fs::OpenOptions::new().write(true).create_new(true).open(&log)
             .map_err(|e| format!("activation diagnostic file: {e}"))?;
-        command.stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(file);
-        #[cfg(windows)] { use std::os::windows::process::CommandExt; command.creation_flags(0x0800_0000); }
-        // CREATE_NO_WINDOW and Stdio::null() set the child process' standard
-        // handles, but Windows still inherits any other inheritable handles
-        // from this client.  Codex/PowerShell supplies stdout/stderr as
-        // pipes; an activation descendant retaining those handles keeps the
-        // host pipe open after this process exits.  Clear inheritance only
-        // for the duration of CreateProcess, then restore the parent's flags
-        // so this transport can still write its own hook response.
-        #[cfg(windows)] let _std_handle_guard = StandardHandleInheritanceGuard::disable()?;
-        match command.spawn() {
+        #[cfg(windows)] { return spawn_activation_windows(program, args, env_remove, env_set, file, log); }
+        #[cfg(not(windows))]
+        {
+            let mut command = Command::new(program);
+            command.args(args);
+            for key in env_remove { command.env_remove(key); }
+            command.envs(env_set.iter().copied());
+            command.stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(file);
+            match command.spawn() {
+                Ok(child) => Ok(ActivationChild { child: Mutex::new(child), log }),
+                Err(e) => { let _ = std::fs::remove_file(log); Err(format!("activate launch failed: {e}")) }
+            }
+        }
+    }
+    #[cfg(windows)]
+    fn spawn_activation_windows(
+        program: std::path::PathBuf,
+        args: &[&str],
+        env_remove: &[&str],
+        env_set: &[(&str, &str)],
+        stderr_file: std::fs::File,
+        log: std::path::PathBuf,
+    ) -> Result<ActivationChild, String> {
+        use std::mem::size_of;
+        use std::os::windows::{ffi::OsStrExt, io::{AsRawHandle, FromRawHandle, OwnedHandle}};
+        use windows_sys::Win32::{
+            Foundation::{CloseHandle, SetHandleInformation, HANDLE, HANDLE_FLAG_INHERIT},
+            System::Threading::{
+                CreateProcessW, DeleteProcThreadAttributeList, InitializeProcThreadAttributeList,
+                UpdateProcThreadAttribute, EXTENDED_STARTUPINFO_PRESENT, CREATE_NO_WINDOW,
+                LPPROC_THREAD_ATTRIBUTE_LIST, PROCESS_INFORMATION, PROC_THREAD_ATTRIBUTE_HANDLE_LIST,
+                STARTF_USESTDHANDLES, STARTUPINFOEXW,
+                CREATE_UNICODE_ENVIRONMENT,
+            },
+        };
+        fn wide(value: &std::ffi::OsStr) -> Vec<u16> { value.encode_wide().chain([0]).collect() }
+        fn quote(value: &str) -> String {
+            if !value.is_empty() && !value.chars().any(|c| c.is_whitespace() || c == '"') { return value.into(); }
+            let mut out = String::from("\"");
+            let mut slashes = 0;
+            for ch in value.chars() {
+                if ch == '\\' { slashes += 1; continue; }
+                if ch == '"' { out.push_str(&"\\".repeat(slashes * 2 + 1)); out.push(ch); slashes = 0; continue; }
+                out.push_str(&"\\".repeat(slashes)); out.push(ch); slashes = 0;
+            }
+            out.push_str(&"\\".repeat(slashes * 2)); out.push('"'); out
+        }
+        let mut command_line = quote(&program.to_string_lossy());
+        for arg in args { command_line.push(' '); command_line.push_str(&quote(arg)); }
+        let mut command_line = wide(std::ffi::OsStr::new(&command_line));
+        let application = wide(program.as_os_str());
+        let mut environment = Vec::<u16>::new();
+        if !env_remove.is_empty() || !env_set.is_empty() {
+            let mut values: Vec<_> = std::env::vars_os().filter(|(key, _)| {
+                let key = key.to_string_lossy();
+                !env_remove.iter().any(|name| name.eq_ignore_ascii_case(&key))
+                    && !env_set.iter().any(|(name, _)| name.eq_ignore_ascii_case(&key))
+            }).collect();
+            values.extend(env_set.iter().map(|(key, value)| (std::ffi::OsString::from(key), std::ffi::OsString::from(value))));
+            values.sort_by_key(|(key, _)| key.to_string_lossy().to_uppercase());
+            for (key, value) in values {
+                environment.extend(key.encode_wide());
+                environment.push('=' as u16);
+                environment.extend(value.encode_wide());
+                environment.push(0);
+            }
+            if environment.is_empty() { environment.push(0); }
+            environment.push(0);
+        }
+        // A handle allowlist also excludes duplicated non-standard host pipes.
+        // Clearing only STD_OUTPUT_HANDLE/STD_ERROR_HANDLE inheritance is insufficient
+        // under PowerShell. RAII closes every parent-owned handle on all error paths.
+        let result = (|| -> Result<WindowsActivationChild, String> {
+            let stdin_file = std::fs::File::open("NUL").map_err(|e| format!("open activation stdin: {e}"))?;
+            let stdout_file = std::fs::OpenOptions::new().write(true).open("NUL")
+                .map_err(|e| format!("open activation stdout: {e}"))?;
+            let handles = [stdin_file.as_raw_handle(), stdout_file.as_raw_handle(), stderr_file.as_raw_handle()];
+            unsafe {
+            for handle in handles {
+                if SetHandleInformation(handle, HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT) == 0 {
+                    return Err(format!("enable activation handle inheritance: {}", std::io::Error::last_os_error()));
+                }
+            }
+            let mut bytes = 0usize;
+            InitializeProcThreadAttributeList(std::ptr::null_mut(), 1, 0, &mut bytes);
+            if bytes == 0 { return Err(format!("size activation handle list: {}", std::io::Error::last_os_error())); }
+            let mut storage = vec![0usize; bytes.div_ceil(size_of::<usize>())];
+            let attrs = storage.as_mut_ptr() as LPPROC_THREAD_ATTRIBUTE_LIST;
+            if InitializeProcThreadAttributeList(attrs, 1, 0, &mut bytes) == 0 {
+                return Err(format!("initialize activation handle list: {}", std::io::Error::last_os_error()));
+            }
+            if UpdateProcThreadAttribute(attrs, 0, PROC_THREAD_ATTRIBUTE_HANDLE_LIST as usize, handles.as_ptr() as _, size_of::<[HANDLE; 3]>(), std::ptr::null_mut(), std::ptr::null()) == 0 {
+                let error = std::io::Error::last_os_error();
+                DeleteProcThreadAttributeList(attrs);
+                return Err(format!("set activation handle list: {error}"));
+            }
+            let mut startup: STARTUPINFOEXW = std::mem::zeroed();
+            startup.StartupInfo.cb = size_of::<STARTUPINFOEXW>() as u32;
+            startup.StartupInfo.dwFlags = STARTF_USESTDHANDLES;
+            startup.StartupInfo.hStdInput = handles[0];
+            startup.StartupInfo.hStdOutput = handles[1];
+            startup.StartupInfo.hStdError = handles[2];
+            startup.lpAttributeList = attrs;
+            let mut info: PROCESS_INFORMATION = std::mem::zeroed();
+            let flags = EXTENDED_STARTUPINFO_PRESENT | CREATE_NO_WINDOW | if environment.is_empty() { 0 } else { CREATE_UNICODE_ENVIRONMENT };
+            let created = CreateProcessW(application.as_ptr(), command_line.as_mut_ptr(), std::ptr::null(), std::ptr::null(), 1, flags, if environment.is_empty() { std::ptr::null() } else { environment.as_ptr() as _ }, std::ptr::null(), &startup.StartupInfo, &mut info);
+            let error = if created == 0 { Some(std::io::Error::last_os_error()) } else { None };
+            DeleteProcThreadAttributeList(attrs);
+            if let Some(error) = error { return Err(format!("activate launch failed: {error}")); }
+            CloseHandle(info.hThread);
+            Ok(WindowsActivationChild { process: OwnedHandle::from_raw_handle(info.hProcess) })
+            }
+        })();
+        drop(stderr_file);
+        match result {
             Ok(child) => Ok(ActivationChild { child: Mutex::new(child), log }),
-            Err(e) => { let _ = std::fs::remove_file(log); Err(format!("activate launch failed: {e}")) }
-        }
-    }
-    #[cfg(windows)]
-    struct StandardHandleInheritanceGuard {
-        handles: Vec<(windows_sys::Win32::Foundation::HANDLE, u32)>,
-    }
-    #[cfg(windows)]
-    impl StandardHandleInheritanceGuard {
-        fn disable() -> Result<Self, String> {
-            use windows_sys::Win32::Foundation::{GetHandleInformation, SetHandleInformation, HANDLE_FLAG_INHERIT, INVALID_HANDLE_VALUE};
-            use windows_sys::Win32::System::Console::{GetStdHandle, STD_ERROR_HANDLE, STD_OUTPUT_HANDLE};
-            let mut guard = Self { handles: Vec::new() };
-            for kind in [STD_OUTPUT_HANDLE, STD_ERROR_HANDLE] {
-                let handle = unsafe { GetStdHandle(kind) };
-                if handle.is_null() || handle == INVALID_HANDLE_VALUE {
-                    continue;
-                }
-                let mut flags = 0;
-                if unsafe { GetHandleInformation(handle, &mut flags) } == 0 {
-                    return Err(format!("inspect standard-handle inheritance: {}", std::io::Error::last_os_error()));
-                }
-                if flags & HANDLE_FLAG_INHERIT != 0 {
-                    if unsafe { SetHandleInformation(handle, HANDLE_FLAG_INHERIT, 0) } == 0 {
-                        return Err(format!("disable standard-handle inheritance: {}", std::io::Error::last_os_error()));
-                    }
-                    // Push immediately so an error while processing the
-                    // other stream still restores this already-mutated flag.
-                    guard.handles.push((handle, flags));
-                }
-            }
-            Ok(guard)
-        }
-    }
-    #[cfg(windows)]
-    impl Drop for StandardHandleInheritanceGuard {
-        fn drop(&mut self) {
-            use windows_sys::Win32::Foundation::{SetHandleInformation, HANDLE_FLAG_INHERIT};
-            for (handle, flags) in self.handles.drain(..) {
-                let _ = unsafe { SetHandleInformation(handle, HANDLE_FLAG_INHERIT, flags & HANDLE_FLAG_INHERIT) };
-            }
+            Err(error) => { let _ = std::fs::remove_file(&log); Err(error) }
         }
     }
     #[cfg(test)]
@@ -682,6 +784,14 @@ mod harness {
         #[test]
         fn fixture_stdout_inheritance() {
             if std::env::var_os("MEMBRANE_CAPTURE_STDOUT_INHERIT").is_none() { return; }
+            #[cfg(windows)]
+            let duplicate_stdout = unsafe {
+                use windows_sys::Win32::Foundation::{DuplicateHandle, HANDLE, DUPLICATE_SAME_ACCESS};
+                use windows_sys::Win32::System::{Console::{GetStdHandle, STD_OUTPUT_HANDLE}, Threading::GetCurrentProcess};
+                let mut duplicate: HANDLE = std::ptr::null_mut();
+                assert_ne!(DuplicateHandle(GetCurrentProcess(), GetStdHandle(STD_OUTPUT_HANDLE), GetCurrentProcess(), &mut duplicate, 0, 1, DUPLICATE_SAME_ACCESS), 0);
+                duplicate
+            };
             let mut command = Command::new(std::env::current_exe().unwrap());
             command.args(["--exact", "harness::activation_tests::descendant", "--nocapture"])
                 .env("MEMBRANE_CAPTURE_DESCENDANT", "1");
@@ -692,10 +802,12 @@ mod harness {
                     command.creation_flags(0x0800_0000);
                 }
                 command.spawn().unwrap();
+                #[cfg(windows)] unsafe { windows_sys::Win32::Foundation::CloseHandle(duplicate_stdout); }
                 std::process::exit(0);
             }
-            let child = spawn_activation(command).unwrap();
+            let child = spawn_activation(std::env::current_exe().unwrap(), &["--exact", "harness::activation_tests::descendant", "--nocapture"], &["MEMBRANE_CAPTURE_STDOUT_INHERIT_CONTROL"], &[("MEMBRANE_CAPTURE_DESCENDANT", "1")]).unwrap();
             child.reap(std::time::Instant::now() + Duration::from_secs(5));
+            #[cfg(windows)] unsafe { windows_sys::Win32::Foundation::CloseHandle(duplicate_stdout); }
             std::process::exit(0);
         }
         #[cfg(windows)]
@@ -742,10 +854,8 @@ mod harness {
         }
         #[test]
         fn activation_exit_does_not_wait_for_descendant_stderr() {
-            let mut command = Command::new(std::env::current_exe().unwrap());
-            command.args(["--exact", "harness::activation_tests::fixture", "--nocapture"]).env("MEMBRANE_CAPTURE_FIXTURE", "1");
             let began = std::time::Instant::now();
-            let child = spawn_activation(command).unwrap();
+            let child = spawn_activation(std::env::current_exe().unwrap(), &["--exact", "harness::activation_tests::fixture", "--nocapture"], &[], &[("MEMBRANE_CAPTURE_FIXTURE", "1")]).unwrap();
             let error = loop {
                 if let Some(error) = child.failure().unwrap() { break error; }
                 assert!(began.elapsed() < Duration::from_secs(3), "capture waited for descendant");

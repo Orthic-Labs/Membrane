@@ -9,16 +9,21 @@ Membrane is a local-first context service. It assembles current code, rules, dec
 
 Use it when a task needs repository-grounded context, a hash-bound source section, or durable working knowledge. Do not use it as raw memory CRUD, or to bypass repository-bound access.
 
-## Default MCP tool
+## Native Codex & Claude tools
 
-- `membrane_context` retrieves a federated context packet for one exact caller binding. Use it for repository-grounded context; do not use it for raw memory CRUD or filesystem access.
+The public native registry advertises two stable verbs:
 
-Some installations may opt into additional capability groups. Those groups are not part of default callable surface.
+- `pull` retrieves unified, grant-aware task context from Pull providers, including Blueprint, Cortex, & Ledger evidence.
+- `push` stores submitted UTF-8 body bytes as immutable Cortex source memory. Preserve body exactly; it is a durable write.
+
+Legacy `membrane_*` verbs remain accepted by the native bridge for installed compatibility but are not advertised to agents. Do not assume optional toolsets are callable: discovery is authoritative. When a host exposes a negotiated legacy capability, use its exact advertised name & schema.
 
 Context packets preserve source type, authority, & freshness. Their receipts record sources omitted because they were skipped, timed out, inaccessible, or outside budget.
 
-## Blueprint discovery
+## Five subsystems & explicit operations
 
-All explicit Membrane operations must remain available independently of Hub across Pull, Blueprint, Cortex, Ledger, Adapt & Push. Hub owns automatic background processes only. Do not require agents to start Hub for explicit graph reads, builds, refreshes or other supported operations. Bounded execution retains authorization, freshness & generation/schema checks.
+Membrane owns one planner, transport, installation identity, receipts, scheduling, & host integration. Pull owns retrieval & faithful delivery; Cortex owns durable memory; Blueprint owns repository graph evidence; Ledger owns source-bound document & skill projections; Adapt emits proposals. Public `push` writes agent-authored memory through Cortex.
 
-`membrane_blueprint` is included in default native MCP discovery so clients without custom toolset metadata can use repository graph operations. Call `architecture` first with an authorized repository/caller binding; use returned node identities with `symbol`, `references`, or `impact`. Tool discovery alone does not prove provider readiness.
+Use `pull` for combined repository context. Explicit Blueprint, Ledger, Cortex, & diagnostic operations may exist behind installed compatibility discovery; call them only after the host advertises their exact native name. A read does not build or refresh state: repository reads remain nonmutating, while `build` or `refresh` require an explicitly authorized operation.
+
+Explicit operations remain available with Hub off through harness-owned access to the installed shared engine. Tool discovery alone does not prove provider readiness.
