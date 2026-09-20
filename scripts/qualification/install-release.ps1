@@ -1556,6 +1556,54 @@ function Assert-QualificationProcessTreeGone([int[]]$ProcessIds) {
   throw "Hub process descendants remain after shutdown: $($live.Name -join ', ')"
 }
 
+function Wait-ResidentHolderIsolation([string]$MembraneExecutable, [int]$TrayProcessId) {
+  $health = $script:ActiveHubHealth
+  Require ($null -ne $health) 'final-holder isolation requires active Hub health'
+  $stableCurrent = [string]$health.stableInstallRoot
+  $startupGeneration = [uint64]$health.startupGeneration
+  foreach ($name in @('installationId', 'cortexStoreId', 'releaseGeneration')) {
+    Require (-not [string]::IsNullOrWhiteSpace([string]$health.$name)) "final-holder isolation health omitted $name"
+  }
+  Require (-not [string]::IsNullOrWhiteSpace($stableCurrent)) 'final-holder isolation health omitted stableInstallRoot'
+  Require ($startupGeneration -gt 0) 'final-holder isolation health omitted startupGeneration'
+  $controller = [ordered]@{
+    installationId = [string]$health.installationId
+    cortexStoreId = [string]$health.cortexStoreId
+    releaseGeneration = [string]$health.releaseGeneration
+    startupGeneration = $startupGeneration
+    stableCurrent = $stableCurrent
+  }
+  $request = [ordered]@{
+    schemaVersion = 1
+    operation = 'status'
+    controller = $controller
+    observedAtUnixMs = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+    lossCursor = $null
+  } | ConvertTo-Json -Compress -Depth 5
+  $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+  $last = $null
+  do {
+    $tray = Get-Process -Id $TrayProcessId -ErrorAction SilentlyContinue
+    Require ($null -ne $tray -and -not $tray.HasExited) 'final-holder isolation lost installed tray before readiness'
+    try {
+      $result = Invoke-NativeProcess $MembraneExecutable 'cli resident-holder' $request $InstallRoot
+      $status = Read-NativeOutput $result.Stdout 'resident-holder isolation status'
+      Require ([string]$status.operation -eq 'status') 'resident-holder isolation returned non-status operation'
+      foreach ($name in @('installationId', 'cortexStoreId', 'releaseGeneration', 'startupGeneration', 'stableCurrent')) {
+        Require ([string]$status.controller.$name -eq [string]$controller.$name) "resident-holder isolation controller mismatch: $name"
+      }
+      $last = [ordered]@{ controller = $status.controller; status = $status.status; observedAtUnixMs = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() }
+      $s = $status.status
+      if ($s.controllerActive -eq $true -and [int]$s.hubHolders -eq 1 -and [int]$s.coderightDaemonHolders -eq 0 -and [int]$s.harnessHolders -eq 0) {
+        return $last
+      }
+    } catch { $last = [ordered]@{ controller = $controller; error = $_.Exception.Message; observedAtUnixMs = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() } }
+    Start-Sleep -Milliseconds 250
+  } while ((Get-Date) -lt $deadline)
+  $rendered = if ($last) { $last | ConvertTo-Json -Compress -Depth 8 } else { 'none' }
+  throw "final_holder_isolation_failed: tray was not sole resident holder before release; observed=$rendered"
+}
+
 function Stop-QualificationHub {
   param(
     [string]$LogRoot = '',
@@ -1595,6 +1643,7 @@ function Stop-QualificationHub {
       }
     }
   }
+  $holderIsolation = Wait-ResidentHolderIsolation (Join-Path $InstallRoot 'membrane.exe') $trayPid
   $trayExitMode = 'not_running'
   if ($script:TrayProcess) {
     $liveTray = Get-Process -Id $trayPid -ErrorAction SilentlyContinue
@@ -1657,6 +1706,7 @@ function Stop-QualificationHub {
     trayPid = $trayPid
     daemonPid = $daemonPid
     trayExitMode = $trayExitMode
+    holderIsolation = $holderIsolation
     drainReason = $drainReason
     drainElapsedMs = $drainElapsedMs
   }

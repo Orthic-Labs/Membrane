@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import test from "node:test";
 
 const source = readFileSync(new URL("./install-release.ps1", import.meta.url), "utf8");
@@ -201,6 +202,48 @@ test("qualification lifecycle output matches platform & native-only seal consume
   }
   assert.match(source, /blueprint\s*=\s*\[ordered\]@\{[\s\S]*hubOwned\s*=\s*\(\$script:UpgradeEvidence\.Blueprint\.hubOwned\s*-eq\s*\$true\)/);
   assert.match(source, /blueprint\s*=\s*\[ordered\]@\{[\s\S]*nativeOnly\s*=\s*\(\$script:UpgradeEvidence\.Health\.nativeOnly\s*-eq\s*\$true\)/);
+});
+
+test("final-holder isolation waits for peers & rejects replaced controller", () => {
+  const powershell = String.raw`
+$ErrorActionPreference = 'Stop'
+$tokens = $null; $parseErrors = $null
+$ast = [System.Management.Automation.Language.Parser]::ParseFile($env:MEMBRANE_QUALIFICATION_SOURCE, [ref]$tokens, [ref]$parseErrors)
+$fn = $ast.Find({ param($node) $node -is [System.Management.Automation.Language.Ast] -and $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Wait-ResidentHolderIsolation' }, $true)
+if ($null -eq $fn) { throw 'Wait-ResidentHolderIsolation AST node missing' }
+function Require([bool]$Condition, [string]$Message) { if (-not $Condition) { throw $Message } }
+function Read-NativeOutput([string]$Text, [string]$Label) { return ($Text | ConvertFrom-Json) }
+function Start-Sleep { param([int]$Milliseconds) }
+function Get-Process { param([int]$Id) return [pscustomobject]@{ HasExited = $false } }
+function Invoke-NativeProcess {
+  param([string]$Executable, [string]$Arguments, [string]$InputText, [string]$WorkingDirectory)
+  $next = $script:Responses[[Math]::Min($script:ResponseIndex, $script:Responses.Count - 1)]
+  $script:ResponseIndex++
+  return [pscustomobject]@{ Stdout = $next; Stderr = ''; ExitCode = 0 }
+}
+. ([scriptblock]::Create($fn.Extent.Text))
+$script:ActiveHubHealth = [pscustomobject]@{ installationId='install'; cortexStoreId='store'; releaseGeneration='sha256:release'; startupGeneration=7; stableInstallRoot='C:\Membrane\current' }
+$InstallRoot = 'C:\Membrane\current'; $TimeoutSeconds = 0
+$controller = @{ installationId='install'; cortexStoreId='store'; releaseGeneration='sha256:release'; startupGeneration=7; stableCurrent='C:\Membrane\current' }
+function Body([int]$Hub, [hashtable]$ResponseController = $controller) {
+  return ([ordered]@{ operation='status'; controller=$ResponseController; status=[ordered]@{ controllerActive=$true; servicesReady=$true; hubHolders=$Hub; coderightDaemonHolders=0; harnessHolders=0 } } | ConvertTo-Json -Compress -Depth 8)
+}
+switch ($env:MEMBRANE_ISOLATION_CASE) {
+  'peers-then-sole' { $script:Responses=@((Body 2),(Body 1)); $TimeoutSeconds=1; $result=Wait-ResidentHolderIsolation 'membrane.exe' 123; if ([int]$result.status.hubHolders -ne 1) { throw 'sole-holder result missing' } }
+  'peer-timeout' { $script:Responses=@((Body 2)); try { Wait-ResidentHolderIsolation 'membrane.exe' 123; throw 'peer timeout unexpectedly passed' } catch { if ($_.Exception.Message -notmatch 'final_holder_isolation_failed') { throw } } }
+  'controller-replaced' { $replacement=@{ installationId='install'; cortexStoreId='store'; releaseGeneration='sha256:release'; startupGeneration=8; stableCurrent='C:\Membrane\current' }; $script:Responses=@((Body 1 $replacement)); try { Wait-ResidentHolderIsolation 'membrane.exe' 123; throw 'replacement unexpectedly passed' } catch { if ($_.Exception.Message -notmatch 'final_holder_isolation_failed') { throw } } }
+  default { throw 'unknown isolation case' }
+}
+Write-Output 'PASS'
+`;
+  for (const isolationCase of ["peers-then-sole", "peer-timeout", "controller-replaced"]) {
+    const run = spawnSync("pwsh", ["-NoProfile", "-NonInteractive", "-Command", powershell], {
+      encoding: "utf8",
+      env: { ...process.env, MEMBRANE_QUALIFICATION_SOURCE: new URL("./install-release.ps1", import.meta.url).pathname.replace(/^\/(?:[A-Za-z]:)/, m => m.slice(1)), MEMBRANE_ISOLATION_CASE: isolationCase },
+    });
+    assert.equal(run.status, 0, `${isolationCase}: ${run.stdout}\n${run.stderr}`);
+    assert.match(run.stdout, /PASS/);
+  }
 });
 
 test("qualification proves startup workspace migration is native, strict, atomic, & idempotent", () => {
