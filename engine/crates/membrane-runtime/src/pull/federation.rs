@@ -1941,6 +1941,25 @@ pub fn native_response_to_ccs(
     }
     if let Some(items) = candidates.as_array_mut() {
         for candidate in items {
+            // Native providers may omit cost metadata for otherwise valid
+            // evidence. A zero cost makes planner admission unbounded, so a
+            // 12k-token request can retain every candidate and later overflow
+            // the serialized MCP response. Derive only missing cost from the
+            // exact delivered text; preserve provider estimates when present.
+            if candidate
+                .get("estimatedTokens")
+                .and_then(Value::as_u64)
+                == Some(0)
+            {
+                let text_tokens = candidate
+                    .get("text")
+                    .and_then(Value::as_str)
+                    .and_then(|text| cortex_core::ContextTokenAccounting::count_exact(text).ok())
+                    .unwrap_or(0)
+                    .max(1)
+                    .min(u32::MAX as usize) as u64;
+                candidate["estimatedTokens"] = Value::from(text_tokens);
+            }
             if let Some(id) = candidate.get("id").and_then(Value::as_str) {
                 if let Some(receipt) = source_resolutions.get(id) {
                     candidate["sourceResolution"] = receipt.clone();
@@ -2974,6 +2993,78 @@ mod observability_tests {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn native_response_assigns_positive_cost_to_zero_estimate_without_rewriting_evidence() {
+        let candidate = |id: &str, estimated_tokens: u32, protected: bool| {
+            serde_json::from_value::<membrane_protocol::CandidateV1>(serde_json::json!({
+                "id": id,
+                "layer": 1,
+                "provider": "blueprint",
+                "sourceKind": "graph",
+                "sourceRef": format!("src/{id}.rs:1-4"),
+                "sourceHash": format!("sha256:{}", "a".repeat(64)),
+                "trustClass": "repository",
+                "instructionPolicy": "data_only",
+                "providerScore": 1.0,
+                "estimatedTokens": estimated_tokens,
+                "protected": protected,
+                "exact": true,
+                "recoverable": false,
+                "resolver": "membrane_source_read",
+                "text": format!("fn {id}() {{ return; }}"),
+            }))
+            .unwrap()
+        };
+        let response = membrane_protocol::FederationResponseV1 {
+            schema_version: membrane_protocol::FEDERATION_RESPONSE_SCHEMA_VERSION,
+            request_id: "request".into(),
+            trace_id: "trace".into(),
+            status: membrane_protocol::FederationStatus::Complete,
+            providers: Vec::new(),
+            candidates: vec![candidate("zero", 0, false), candidate("known", 7, true)],
+            warnings: Vec::new(),
+            omissions: Vec::new(),
+            diagnostics: None,
+            error: None,
+            extensions: std::collections::BTreeMap::new(),
+        };
+        let request = membrane_protocol::FederationRequestV1 {
+            schema_version: membrane_protocol::FEDERATION_REQUEST_SCHEMA_VERSION,
+            request_id: "request".into(),
+            trace_id: "trace".into(),
+            task: "describe lifecycle".into(),
+            repository_root: r"D:\repo".into(),
+            client: "test".into(),
+            session_id: "session".into(),
+            deadline_ms: 60_000,
+            max_tokens: 12_000,
+            anchors: Vec::new(),
+            scope_grant_id: None,
+            manifest_digest: None,
+            release_generation: Some("release".into()),
+            blueprint_generation: None,
+            skills_generation: None,
+            extensions: std::collections::BTreeMap::new(),
+        };
+        let freshness = membrane_protocol::FreshnessSnapshotV1 {
+            graph_state: "ready".into(),
+            generation: Some("generation".into()),
+            snapshot_id: Some("snapshot".into()),
+            base_commit: None,
+            overlay_digest: None,
+            stale: false,
+        };
+        let payload = native_response_to_ccs(&response, &request, &freshness);
+        let candidates = payload["candidates"].as_array().unwrap();
+        let zero = candidates.iter().find(|candidate| candidate["id"] == "zero").unwrap();
+        let known = candidates.iter().find(|candidate| candidate["id"] == "known").unwrap();
+        assert!(zero["estimatedTokens"].as_u64().unwrap() > 0);
+        assert_eq!(known["estimatedTokens"], 7);
+        assert_eq!(zero["text"], "fn zero() { return; }");
+        assert_eq!(known["protected"], true);
+        assert_eq!(zero["sourceRef"], "src/zero.rs:1-4");
+    }
 
     #[test]
     fn cli_and_hook_pull_preserve_cancelled_control_before_owner_binding() {

@@ -3056,6 +3056,63 @@ mod hub_transport_tests {
     }
 
     #[test]
+    fn native_refit_accounts_for_zero_cost_blueprint_locators() {
+        let mut source: Value = serde_json::from_str(&native_refit_fixture(false)).unwrap();
+        let template = source["candidates"][0].clone();
+        source["candidates"] = Value::Array((0..16).map(|index| {
+            let mut candidate = template.clone();
+            let path = format!("apps/membrane-hub/scripts/runtime-inventory-{index}.mjs");
+            candidate["id"] = json!(format!("file:{path}"));
+            candidate["sourceRef"] = json!(path);
+            candidate["sourceHash"] = json!(format!("sha256:{:064x}", index + 100));
+            candidate["text"] = json!(format!("runtime-inventory-{index}.mjs"));
+            candidate["estimatedTokens"] = json!(0);
+            candidate["sourceResolution"]["candidateId"] = candidate["id"].clone();
+            for key in ["expectedHash", "resolvedHash"] { candidate["sourceResolution"][key] = candidate["sourceHash"].clone(); }
+            for key in ["expectedPath", "resolvedPath"] { candidate["sourceResolution"][key] = candidate["sourceRef"].clone(); }
+            candidate
+        }).collect());
+        let delivery = NativeDeliveryFit { operation: "pull", repository: "membrane", scope: "membrane",
+            contract: NativeBudgetContract { mode: crate::pull::federation::PullBudgetMode::BoundedResponse,
+                ceiling: None, response_budget: 12000, cap_tokens: 12000 } };
+        let initial = plan_native_fixture(&source.to_string(), 12000);
+        assert!(!delivery.fits(&initial).unwrap(), "realistic locator metadata must overflow full wire");
+        assert!(crate::pull::federation::fit_native_plan(12000, Some(&delivery), |allowance|
+            Ok(plan_native_fixture(&source.to_string(), allowance))).is_err(), "zero cost reproduces installed failure");
+        let candidates = source["candidates"].as_array().unwrap().iter().map(|candidate| {
+            let mut candidate = candidate.clone();
+            candidate.as_object_mut().unwrap().remove("sourceResolution");
+            serde_json::from_value(candidate).unwrap()
+        }).collect();
+        let response = membrane_protocol::FederationResponseV1 {
+            schema_version: membrane_protocol::FEDERATION_RESPONSE_SCHEMA_VERSION,
+            request_id: "request".into(), trace_id: "trace".into(), status: membrane_protocol::FederationStatus::Complete,
+            providers: vec![], candidates, warnings: vec![], omissions: vec![], diagnostics: None, error: None,
+            extensions: Default::default(),
+        };
+        let request: membrane_protocol::FederationRequestV1 = serde_json::from_value(json!({
+            "schemaVersion":1,"requestId":"request","traceId":"trace","task":"lifecycle",
+            "repositoryRoot":"D:/repo","client":"test","sessionId":"session","deadlineMs":60000,"maxTokens":12000
+        })).unwrap();
+        let freshness = membrane_protocol::FreshnessSnapshotV1 { graph_state: "ready".into(),
+            generation: Some("gen-current".into()), snapshot_id: None, base_commit: None, overlay_digest: None, stale: false };
+        let normalized = crate::pull::federation::native_response_to_ccs(&response, &request, &freshness);
+        for (candidate, measured) in source["candidates"].as_array_mut().unwrap().iter_mut().zip(normalized["candidates"].as_array().unwrap()) {
+            candidate["estimatedTokens"] = measured["estimatedTokens"].clone();
+        }
+        let fitted = crate::pull::federation::fit_native_plan(12000, Some(&delivery), |allowance|
+            Ok(plan_native_fixture(&source.to_string(), allowance))).unwrap();
+        let blocks = fitted["packet"]["blocks"].as_array().unwrap();
+        assert!(!blocks.is_empty() && blocks.len() < 16);
+        assert!(!fitted["packet"]["omissions"].as_array().unwrap().is_empty());
+        for block in blocks {
+            let original = source["candidates"].as_array().unwrap().iter().find(|candidate| candidate["id"] == block["id"]).unwrap();
+            assert_eq!(block["text"], original["text"]);
+        }
+        assert!(delivery.fits(&fitted).unwrap());
+    }
+
+    #[test]
     fn native_host_fit_also_enforces_smaller_declared_response_budget() {
         use membrane_protocol::host_observation::*;
         let ceiling = RemainingContextCeilingV1 {
