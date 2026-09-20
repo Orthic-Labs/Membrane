@@ -200,7 +200,13 @@ fn fit_native_budget_response(
     contract: &NativeBudgetContract,
 ) -> Result<Value, crate::pull::recovery::RecoveryError> {
     match contract.ceiling.as_ref() {
-        Some(ceiling) => crate::pull::egress::fit_native_response(envelope, ceiling),
+        Some(ceiling) => {
+            let fitted = crate::pull::egress::fit_native_response(envelope, ceiling)?;
+            if fitted.pointer("/result/data/deliveryMeasurement/tokens").and_then(Value::as_u64)
+                .is_some_and(|tokens| tokens <= contract.response_budget) {
+                Ok(fitted)
+            } else { Err(crate::pull::recovery::RecoveryError::Limit) }
+        },
         // Host capacity is unobserved; the declared response budget bounds the
         // emitted result and `deliveryMeasurement` reports it as such.
         None => crate::pull::egress::fit_native_response_to_budget(
@@ -208,6 +214,57 @@ fn fit_native_budget_response(
             contract.response_budget,
         ),
     }
+}
+
+pub(crate) struct NativeDeliveryFit<'a> {
+    pub operation: &'a str,
+    pub repository: &'a str,
+    pub scope: &'a str,
+    contract: NativeBudgetContract,
+}
+impl NativeDeliveryFit<'_> {
+    pub(crate) fn fits(&self, federated: &Value) -> Result<bool, String> {
+        let selection: crate::pull::selection::PacketReductionSelectionV1 =
+            serde_json::from_value(federated["packetReduction"].clone()).map_err(|e| format!("invalid selection: {e}"))?;
+        for representation in &selection.plan.representations {
+            let result = native_pull_envelope(self.operation, self.repository, self.scope, federated, &selection, representation);
+            match fit_native_budget_response(self.operation, result, &self.contract) {
+                Ok(_) => return Ok(true),
+                Err(crate::pull::recovery::RecoveryError::Limit) => {},
+                Err(error) => return Err(error.to_string()),
+            }
+        }
+        Ok(false)
+    }
+}
+fn native_pull_envelope(name: &str, repository: &str, scope: &str, federated: &Value,
+    selection: &crate::pull::selection::PacketReductionSelectionV1,
+    representation: &membrane_protocol::push::PacketReductionRepresentationV1) -> Value {
+    let mut receipt = selection.selection_receipt.clone();
+    receipt.selected_representation_id = representation.id.clone();
+    receipt.selected_tokens = representation.tokens;
+    let pull_receipt = json!({
+        "fusionReceipt": federated.get("fusionReceipt").cloned().unwrap_or(Value::Null),
+        "correctiveRetrieval": federated.get("correctiveRetrieval").cloned().unwrap_or(Value::Null),
+        "publicationFence": federated.get("publicationFence").cloned().unwrap_or(Value::Null),
+        "insufficientConfidence": federated.get("insufficientConfidence").cloned().unwrap_or(Value::Null),
+        "sourceResolutionReceipts": federated.get("sourceResolutionReceipts").cloned().unwrap_or_else(|| json!([])),
+        "atomicEvidencePaths": federated.get("atomicEvidencePaths").cloned().unwrap_or_else(|| json!([])),
+        "suppressionReceipts": federated.get("suppressionReceipts").cloned().unwrap_or_else(|| json!([])),
+        "placementReceipt": federated.get("placementReceipt").cloned().unwrap_or(Value::Null),
+        "packetReduction": receipt,
+        "cachePrefixDiagnostic": federated.get("cachePrefixDiagnostic").cloned().unwrap_or(Value::Null),
+        "federationMetrics": federated.get("federationMetrics").cloned().unwrap_or(Value::Null),
+    });
+    let sufficiency_evaluated = pull_receipt.pointer("/correctiveRetrieval/sufficiency").is_some_and(|value| !value.is_null());
+    let result = success(name, json!({
+        "repositoryId":repository,"scopeId":scope,"status":federated.get("status").and_then(Value::as_str).unwrap_or("ok"),
+        "packet":representation.content,
+        "receipts":federated.get("receipts"),"pullReceipt":pull_receipt,
+        "degradationReason":federated.get("degradationReason").filter(|v| !v.is_null()).cloned().unwrap_or_else(|| json!("none")),
+        "sufficiencyEvaluated":sufficiency_evaluated,
+    }));
+    result
 }
 
 /// Two joined workers share one ingress deadline. Results retain caller order;
@@ -1892,34 +1949,20 @@ impl NativeMcpExecutor for RuntimeMcpExecutor {
                     Ok(request) => request,
                     Err(result) => return result,
                 };
-                let (status, payload) = match inherited_push_control() {
-                    Some(control) => match tokio::runtime::Handle::try_current() {
-                        Ok(handle) => crate::pull::federation::native_route_response_with_control(
-                            &request, Some(&self.store), control, &handle,
-                        ),
-                        Err(_) => crate::pull::federation::native_route_response_with_store(
-                            &request, Some(&self.store),
-                        ),
-                    },
-                    None => match tokio::runtime::Handle::try_current() {
-                        Ok(handle) => crate::pull::federation::native_route_response_with_control(
-                            &request,
-                            Some(&self.store),
-                            crate::serve::PushRequestControl {
-                                deadline: membrane_federation::deadline::Deadline::at(
-                                    ingress + Duration::from_millis(
-                                        arguments.get("deadlineMs").and_then(Value::as_u64).unwrap_or(2_000).clamp(1, 60_000),
-                                    ),
-                                ),
-                                cancellation: tokio_util::sync::CancellationToken::new(),
-                            },
-                            &handle,
-                        ),
-                        Err(_) => crate::pull::federation::native_route_response_with_store(
-                            &request, Some(&self.store),
-                        ),
+                let delivery = NativeDeliveryFit {
+                    operation: name, repository, scope,
+                    contract: match resolve_native_budget_contract(arguments, max_tokens, name) {
+                        Ok(contract) => contract, Err(error) => return error,
                     },
                 };
+                let control = inherited_push_control().unwrap_or_else(|| crate::serve::PushRequestControl {
+                    deadline: membrane_federation::deadline::Deadline::at(ingress + Duration::from_millis(
+                        arguments.get("deadlineMs").and_then(Value::as_u64).unwrap_or(2_000).clamp(1, 60_000))),
+                    cancellation: tokio_util::sync::CancellationToken::new(),
+                });
+                let (status, payload) = crate::pull::federation::native_mcp_route_response(
+                    &request, Some(&self.store), control, &delivery,
+                );
                 let (status, payload) = match (status, payload) {
                         (200, payload) => ("ok", payload),
                         (status, payload) => ("unavailable", payload),
@@ -1987,30 +2030,7 @@ impl NativeMcpExecutor for RuntimeMcpExecutor {
                     {
                         continue;
                     }
-                    let mut receipt = selection.selection_receipt.clone();
-                    receipt.selected_representation_id = representation.id.clone();
-                    receipt.selected_tokens = representation.tokens;
-                    let pull_receipt = json!({
-                        "fusionReceipt": federated.get("fusionReceipt").cloned().unwrap_or(Value::Null),
-                        "correctiveRetrieval": federated.get("correctiveRetrieval").cloned().unwrap_or(Value::Null),
-                        "publicationFence": federated.get("publicationFence").cloned().unwrap_or(Value::Null),
-                        "insufficientConfidence": federated.get("insufficientConfidence").cloned().unwrap_or(Value::Null),
-                        "sourceResolutionReceipts": federated.get("sourceResolutionReceipts").cloned().unwrap_or_else(|| json!([])),
-                        "atomicEvidencePaths": federated.get("atomicEvidencePaths").cloned().unwrap_or_else(|| json!([])),
-                        "suppressionReceipts": federated.get("suppressionReceipts").cloned().unwrap_or_else(|| json!([])),
-                        "placementReceipt": federated.get("placementReceipt").cloned().unwrap_or(Value::Null),
-                        "packetReduction": receipt,
-                        "cachePrefixDiagnostic": federated.get("cachePrefixDiagnostic").cloned().unwrap_or(Value::Null),
-                        "federationMetrics": federated.get("federationMetrics").cloned().unwrap_or(Value::Null),
-                    });
-                    let sufficiency_evaluated = pull_receipt.pointer("/correctiveRetrieval/sufficiency").is_some_and(|value| !value.is_null());
-                    let result = success(name, json!({
-                        "repositoryId":repository,"scopeId":scope,"status":federated.get("status").and_then(Value::as_str).unwrap_or(status),
-                        "packet":representation.content,
-                        "receipts":federated.get("receipts"),"pullReceipt":pull_receipt,
-                        "degradationReason":federated.get("degradationReason").filter(|v| !v.is_null()).cloned().unwrap_or_else(|| json!("none")),
-                        "sufficiencyEvaluated":sufficiency_evaluated,
-                    }));
+                    let result = native_pull_envelope(name, repository, scope, &federated, &selection, representation);
                     match fit_native_budget_response(name, result, &budget_contract) {
                         Ok(fitted) => return fitted,
                         Err(crate::pull::recovery::RecoveryError::Limit) => continue,
@@ -2960,6 +2980,106 @@ mod hub_transport_tests {
         assert_eq!(workspace_budget_shares(2, 4), vec![1, 1, 0, 0]);
         assert_eq!(workspace_budget_shares(7, 0), Vec::<usize>::new());
         assert_eq!(workspace_budget_shares(4096, 7).iter().sum::<usize>(), 4096);
+    }
+
+
+    fn native_refit_fixture(protected: bool) -> String {
+        let mut source: Value = serde_json::from_str(include_str!("../../../../schemas/registry/context-candidate-set.v1.golden.json")).unwrap();
+        source["generationId"] = json!("gen-current");
+        source["providerCeiling"]["maxEstimatedTokens"] = json!(100_000);
+        let template = source["candidates"][0].clone();
+        source["candidates"] = Value::Array((0..8).map(|index| {
+            let mut candidate = template.clone();
+            let id = format!("candidate-{index}");
+            candidate["id"] = json!(id);
+            candidate["sourceRef"] = json!(format!("src/evidence_{index}.rs:1-60"));
+            candidate["sourceHash"] = json!(format!("sha256:{:064x}", index + 100));
+            candidate["sourceKind"] = json!("graph");
+            candidate["protected"] = json!(protected);
+            candidate["text"] = json!(format!("Evidence {index}: {}", "shared engine final owner release. ".repeat(160)));
+            candidate["estimatedTokens"] = json!(cortex_core::ContextTokenAccounting::count_exact(candidate["text"].as_str().unwrap()).unwrap());
+            candidate["sourceResolution"] = json!({"schemaVersion":1,"candidateId":id,
+                "provider":"blueprint-treesitter","status":"resolved",
+                "expectedHash":candidate["sourceHash"],"resolvedHash":candidate["sourceHash"],
+                "expectedGeneration":"gen-current","resolvedGeneration":"gen-current",
+                "expectedPath":candidate["sourceRef"],"resolvedPath":candidate["sourceRef"],"resolver":"source_read"});
+            candidate
+        }).collect());
+        source.to_string()
+    }
+
+    fn plan_native_fixture(source: &str, allowance: usize) -> Value {
+        let mut payload = crate::pull::federation::envelope_from_ccs(source, crate::pull::federation::EnvelopeInput {
+            max_tokens: allowance, packet_char_budget_override: None, packet_char_budget_model: None,
+            accepted_receipt_versions: vec![2], scope_grant_present: false, consumer_resolvers: vec![],
+            scope_grant_fence: None, gateway_process_ms: 0.0,
+        }).unwrap();
+        let packet: cortex_core::planner::ContextPacketV1 = serde_json::from_value(payload["packet"].clone()).unwrap();
+        if !packet.blocks.is_empty() {
+            let selection = crate::pull::selection::select_packet_for_token_budget(&packet, 100_000,
+                &crate::pull::prep::PushPolicy::Control, None).unwrap();
+            payload["packetReduction"] = serde_json::to_value(selection).unwrap();
+        }
+        payload
+    }
+
+    #[test]
+    fn native_refit_delivers_exact_evidence_with_receipts_inside_full_wire_budget() {
+        let source = native_refit_fixture(false);
+        let delivery = NativeDeliveryFit { operation: "pull", repository: "repo", scope: "scope",
+            contract: NativeBudgetContract { mode: crate::pull::federation::PullBudgetMode::BoundedResponse,
+                ceiling: None, response_budget: 6000, cap_tokens: 6000 } };
+        let initial = plan_native_fixture(&source, 12000);
+        assert!(!delivery.fits(&initial).unwrap(), "fixture must reproduce full-wire overflow");
+        let mut passes = 0;
+        let fitted = crate::pull::federation::fit_native_plan(12000, Some(&delivery), |allowance| {
+            passes += 1;
+            Ok(plan_native_fixture(&source, allowance))
+        }).unwrap();
+        assert!(passes > 1);
+        let blocks = fitted["packet"]["blocks"].as_array().unwrap();
+        assert!(!blocks.is_empty(), "empty refusal is not useful delivery");
+        assert!(blocks.len() < initial["packet"]["blocks"].as_array().unwrap().len());
+        for block in blocks {
+            let original = initial["packet"]["blocks"].as_array().unwrap().iter().find(|original| original["id"] == block["id"]).unwrap();
+            assert_eq!(block["text"], original["text"], "refit must preserve complete evidence");
+        }
+        assert!(!fitted["packet"]["omissions"].as_array().unwrap().is_empty());
+        assert!(delivery.fits(&fitted).unwrap());
+        let selection = serde_json::from_value::<crate::pull::selection::PacketReductionSelectionV1>(fitted["packetReduction"].clone()).unwrap();
+        let envelope = native_pull_envelope("pull", "repo", "scope", &fitted, &selection, &selection.selected_representation);
+        let measured = fit_native_budget_response("pull", envelope, &delivery.contract).unwrap();
+        let tokens = cortex_core::ContextTokenAccounting::count_exact(&membrane_mcp::tool_result(measured.clone()).to_string()).unwrap();
+        assert!(tokens <= 6000);
+        assert_eq!(measured["result"]["data"]["deliveryMeasurement"]["tokens"], tokens);
+        assert_eq!(measured["result"]["data"]["receipts"], fitted["receipts"]);
+    }
+
+    #[test]
+    fn native_host_fit_also_enforces_smaller_declared_response_budget() {
+        use membrane_protocol::host_observation::*;
+        let ceiling = RemainingContextCeilingV1 {
+            schema_version: REMAINING_CONTEXT_CEILING_SCHEMA_VERSION, ceiling_id: "ceiling".into(),
+            session_id: "session".into(), task_id: ObservedFieldV1::complete("task".into()), requested_at_unix_ms: 1,
+            remaining_tokens: TokenEstimateV1::complete(EstimatorBasisV1::new("o200k_base", "1"), 10_000),
+            provenance_receipt: HostObservationProvenanceV1::new("receipt", "fixture", 1,
+                "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
+        };
+        let envelope = success("pull", json!({"packet":{"text":"evidence ".repeat(500)}}));
+        assert!(crate::pull::egress::fit_native_response(envelope.clone(), &ceiling).is_ok());
+        let contract = NativeBudgetContract { mode: crate::pull::federation::PullBudgetMode::HostFit,
+            ceiling: Some(ceiling), response_budget: 100, cap_tokens: 100 };
+        assert!(matches!(fit_native_budget_response("pull", envelope, &contract), Err(crate::pull::recovery::RecoveryError::Limit)));
+    }
+
+    #[test]
+    fn native_refit_refuses_when_protected_evidence_cannot_fit() {
+        let source = native_refit_fixture(true);
+        let delivery = NativeDeliveryFit { operation: "pull", repository: "repo", scope: "scope",
+            contract: NativeBudgetContract { mode: crate::pull::federation::PullBudgetMode::BoundedResponse,
+                ceiling: None, response_budget: 6000, cap_tokens: 6000 } };
+        let result = crate::pull::federation::fit_native_plan(12000, Some(&delivery), |allowance| Ok(plan_native_fixture(&source, allowance)));
+        assert!(result.is_err(), "protected overflow must never become success by dropping evidence");
     }
 
     #[test]

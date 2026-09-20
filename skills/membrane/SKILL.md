@@ -18,6 +18,8 @@ The public native registry advertises two stable verbs:
 
 Legacy `membrane_*` verbs remain accepted by the native bridge for installed compatibility but are not advertised to agents. Do not assume optional toolsets are callable: discovery is authoritative. When a host exposes a negotiated legacy capability, use its exact advertised name & schema.
 
+Use verified enrolled caller root, repository ID & scope ID; do not invent these bindings. For `bounded_response`, declare a response budget & omit `remainingContextCeiling` when host capacity is unknown. `host_fit` requires genuine validated host-capacity evidence.
+
 Context packets preserve source type, authority, & freshness. Their receipts record sources omitted because they were skipped, timed out, inaccessible, or outside budget.
 
 ## Five subsystems & explicit operations

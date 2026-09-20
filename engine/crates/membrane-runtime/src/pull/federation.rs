@@ -315,7 +315,7 @@ pub fn run_federate(
     // returns far faster; this ceiling only bounds the cold one-shot.
     let payload = run_federate_value(task, repo, max_tokens, packet_char_budget_override, packet_char_budget_model,
         client, session, anchors, scope_grant_id, accepted_receipt_versions, 180_000, "explicit", None, None, None, None, None,
-        BudgetFit { declared: None, response_tokens: max_tokens as u64, provenance: "caller" })?;
+        BudgetFit { declared: None, response_tokens: max_tokens as u64, provenance: "caller" }, None)?;
     crate::cli::emit_stdout(format_args!(
         "{}",
         serde_json::to_string_pretty(&payload).map_err(|e| format!("serialize: {e}"))?
@@ -375,7 +375,7 @@ pub fn hook_mode_federate_with_observation(
     run_federate_value(task.to_owned(), repo.to_path_buf(), max_tokens, None, None, client.to_owned(),
         Some(session.to_owned()), Vec::new(), None, Vec::new(), deadline_ms,
         if ceiling.is_some() { "host_observed" } else { "configured_cap" }, ceiling, None, None, None, None,
-        BudgetFit { declared: None, response_tokens: max_tokens as u64, provenance: "configured" })
+        BudgetFit { declared: None, response_tokens: max_tokens as u64, provenance: "configured" }, None)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -398,6 +398,7 @@ fn run_federate_value(
     inherited_cancellation: Option<tokio_util::sync::CancellationToken>,
     inherited_deadline: Option<membrane_federation::deadline::Deadline>,
     fit: BudgetFit,
+    delivery: Option<&crate::mcp_executor::NativeDeliveryFit<'_>>,
 ) -> Result<Value, String> {
     let inherited = crate::mcp_executor::inherited_push_control();
     let inherited_deadline = inherited_deadline.or_else(|| inherited.as_ref().map(|control| control.deadline));
@@ -463,218 +464,253 @@ fn run_federate_value(
             Ok::<_, String>((response, native.metrics_snapshot(), freshness))
         })?;
     mark_stage("native_federation", stage_started);
-    let stage_started = Instant::now();
     check_pull_live(federation_deadline, &inherited_cancellation)?;
     let ccs = native_response_to_ccs(&response, &request, &freshness);
     let provisional_requirement_map = ccs.get("requirementEvidenceMap").cloned();
     let native_receipts = collect_native_receipts(&response);
-    let mut payload = envelope_from_ccs(
-        &serde_json::to_string(&ccs)
-            .map_err(|error| format!("serialize native candidates: {error}"))?,
-        EnvelopeInput {
-            max_tokens,
-            packet_char_budget_override,
-            packet_char_budget_model,
-            accepted_receipt_versions: if accepted_receipt_versions.is_empty() {
-                vec![2]
-            } else {
-                accepted_receipt_versions
+    fit_native_plan(max_tokens, delivery, |packet_allowance| {
+        let planner_started = Instant::now();
+        check_pull_live(federation_deadline, &inherited_cancellation)?;
+        let mut payload = envelope_from_ccs(
+            &serde_json::to_string(&ccs)
+                .map_err(|error| format!("serialize native candidates: {error}"))?,
+            EnvelopeInput {
+                max_tokens: packet_allowance,
+                packet_char_budget_override,
+                packet_char_budget_model: packet_char_budget_model.clone(),
+                accepted_receipt_versions: if accepted_receipt_versions.is_empty() {
+                    vec![2]
+                } else {
+                    accepted_receipt_versions.clone()
+                },
+                scope_grant_present: scope_grant_id.is_some(),
+                consumer_resolvers: Vec::new(),
+                    scope_grant_fence: post_fusion_publication_fence_until(&admitted_grant, Some(federation_deadline))?,
+                gateway_process_ms: started.elapsed().as_secs_f64() * 1000.0,
             },
-            scope_grant_present: scope_grant_id.is_some(),
-            consumer_resolvers: Vec::new(),
-                scope_grant_fence: post_fusion_publication_fence_until(&admitted_grant, Some(federation_deadline))?,
-            gateway_process_ms: started.elapsed().as_secs_f64() * 1000.0,
-        },
-    )?;
-    mark_stage("envelope", stage_started);
-    if let Some(fields) = payload.as_object_mut() {
-        fields.insert("transport".to_owned(), Value::String("native".to_owned()));
-        fields.insert(
-            "federationMetrics".to_owned(),
-            serde_json::json!(native_metrics),
-        );
-        fields.insert("gatewayStageTimingsMs".to_owned(), Value::Object(stage_timings));
-        merge_native_receipts(fields, native_receipts);
-        let packet_omissions = fields
-            .get("packet")
-            .and_then(|packet| packet.get("omissions"))
-            .cloned()
-            .unwrap_or_else(|| Value::Array(Vec::new()));
-        fields.insert(
-            "budgetReduction".to_owned(),
-            serde_json::json!({
-                "misleadingFragmentRetained": false,
-                "omissionReasons": packet_omissions,
-                "droppedCandidateCount": fields
-                    .get("packet")
-                    .and_then(|packet| packet.get("omissions"))
-                    .and_then(Value::as_array)
-                    .map_or(0, Vec::len),
-            }),
-        );
-        let final_map = fields.get("requirementEvidenceMap").cloned();
-        let final_packet = fields.get("packet").cloned();
-        merge_bm10_accounting(fields, provisional_requirement_map.as_ref(), final_map.as_ref(), final_packet.as_ref());
-        fields.insert("budgetPolicy".to_owned(), Value::String(budget_policy.to_owned()));
-        // Pull budget contract (PUL-050/051): the emitted packet is always
-        // fitted to the effective mode. A validated request-time H8 keeps
-        // host-fit semantics — the largest complete representation under the
-        // observed ceiling is emitted, or the request refuses typed. Without
-        // one, the declared caller/configured response budget bounds the
-        // rendered block text the host injects, measured exactly under
-        // o200k_base/1 — an over-budget packet is a typed insufficiency,
-        // never a silent over-budget emission.
-        if let Some(packet_value) = fields.get("packet").cloned() {
-            if let Ok(packet) = serde_json::from_value::<cortex_core::planner::ContextPacketV1>(packet_value) {
-                if !packet.blocks.is_empty() {
-                    // The tighter applicable ceiling bounds selection: a
-                    // validated supplied H8 applies under either mode, then
-                    // the declared response budget applies on top.
-                    let selection = match ceiling.as_ref() {
-                        Some(ceiling) => {
-                            let selection = crate::pull::selection::select_packet_for_h8_with_recovery(
+        )?;
+        mark_stage_timing(&mut stage_timings, "envelope", planner_started);
+        if let Some(fields) = payload.as_object_mut() {
+            fields.insert("transport".to_owned(), Value::String("native".to_owned()));
+            fields.insert(
+                "federationMetrics".to_owned(),
+                serde_json::json!(native_metrics),
+            );
+            fields.insert("gatewayStageTimingsMs".to_owned(), Value::Object(stage_timings.clone()));
+            merge_native_receipts(fields, native_receipts.clone());
+            let packet_omissions = fields
+                .get("packet")
+                .and_then(|packet| packet.get("omissions"))
+                .cloned()
+                .unwrap_or_else(|| Value::Array(Vec::new()));
+            fields.insert(
+                "budgetReduction".to_owned(),
+                serde_json::json!({
+                    "misleadingFragmentRetained": false,
+                    "omissionReasons": packet_omissions,
+                    "droppedCandidateCount": fields
+                        .get("packet")
+                        .and_then(|packet| packet.get("omissions"))
+                        .and_then(Value::as_array)
+                        .map_or(0, Vec::len),
+                }),
+            );
+            let final_map = fields.get("requirementEvidenceMap").cloned();
+            let final_packet = fields.get("packet").cloned();
+            merge_bm10_accounting(fields, provisional_requirement_map.as_ref(), final_map.as_ref(), final_packet.as_ref());
+            fields.insert("budgetPolicy".to_owned(), Value::String(budget_policy.to_owned()));
+            // Pull budget contract (PUL-050/051): the emitted packet is always
+            // fitted to the effective mode. A validated request-time H8 keeps
+            // host-fit semantics — the largest complete representation under the
+            // observed ceiling is emitted, or the request refuses typed. Without
+            // one, the declared caller/configured response budget bounds the
+            // rendered block text the host injects, measured exactly under
+            // o200k_base/1 — an over-budget packet is a typed insufficiency,
+            // never a silent over-budget emission.
+            if let Some(packet_value) = fields.get("packet").cloned() {
+                if let Ok(packet) = serde_json::from_value::<cortex_core::planner::ContextPacketV1>(packet_value) {
+                    if !packet.blocks.is_empty() {
+                        // The tighter applicable ceiling bounds selection: a
+                        // validated supplied H8 applies under either mode, then
+                        // the declared response budget applies on top.
+                        let selection = match ceiling.as_ref() {
+                            Some(ceiling) => {
+                                let selection = crate::pull::selection::select_packet_for_h8_with_recovery(
+                                    &packet,
+                                    ceiling,
+                                    &crate::pull::prep::PushPolicy::Control,
+                                    None,
+                                )
+                                .map_err(|error| {
+                                    format!("request_time_selection_refused:{}:{error}", error.kind())
+                                })?;
+                                if selection.selected_representation.tokens > fit.response_tokens {
+                                    return Err(format!(
+                                        "request_time_selection_refused:budget_insufficient:declared response budget {} tokens; smallest fitting representation under host ceiling requires {} tokens",
+                                        fit.response_tokens, selection.selected_representation.tokens
+                                    ));
+                                }
+                                selection
+                            }
+                            None => crate::pull::selection::select_packet_for_token_budget(
                                 &packet,
-                                ceiling,
+                                fit.response_tokens,
                                 &crate::pull::prep::PushPolicy::Control,
                                 None,
                             )
                             .map_err(|error| {
                                 format!("request_time_selection_refused:{}:{error}", error.kind())
-                            })?;
-                            if selection.selected_representation.tokens > fit.response_tokens {
-                                return Err(format!(
-                                    "request_time_selection_refused:budget_insufficient:declared response budget {} tokens; smallest fitting representation under host ceiling requires {} tokens",
-                                    fit.response_tokens, selection.selected_representation.tokens
-                                ));
-                            }
-                            selection
+                            })?,
+                        };
+                        fields.insert(
+                            "packet".to_owned(),
+                            selection.selected_representation.content.clone(),
+                        );
+                        fields.insert(
+                            "packetReduction".to_owned(),
+                            serde_json::to_value(&selection).map_err(|error| {
+                                format!("serialize packet reduction selection: {error}")
+                            })?,
+                        );
+                        let rendered = rendered_block_text(&selection.selected_representation.content)
+                            .unwrap_or_default();
+                        let rendered_tokens =
+                            cortex_core::ContextTokenAccounting::count_exact(&rendered)
+                                .map_err(|error| format!("measure rendered response: {error}"))?
+                                as u64;
+                        let packet_tokens = fields
+                            .get("packet")
+                            .and_then(|packet| {
+                                crate::pull::selection::measure_packet(
+                                    packet,
+                                    &membrane_protocol::host_observation::EstimatorBasisV1::new(
+                                        "o200k_base", "1",
+                                    ),
+                                )
+                                .ok()
+                            })
+                            .unwrap_or(rendered_tokens);
+                        fields.insert(
+                            "deliveredResponse".to_owned(),
+                            serde_json::json!({
+                                "schemaVersion": 1,
+                                "renderedTokens": rendered_tokens,
+                                "packetTokens": packet_tokens,
+                                "unit": "tokens",
+                                "estimatorBasis": "o200k_base/1",
+                                "scope": "rendered_blocks",
+                                "fitsBudget": rendered_tokens <= fit.response_tokens,
+                            }),
+                        );
+                        if rendered_tokens > fit.response_tokens {
+                            return Err(format!(
+                                "request_time_selection_refused:budget_insufficient:declared response budget {} tokens; rendered evidence requires {rendered_tokens} tokens",
+                                fit.response_tokens
+                            ));
                         }
-                        None => crate::pull::selection::select_packet_for_token_budget(
-                            &packet,
-                            fit.response_tokens,
-                            &crate::pull::prep::PushPolicy::Control,
-                            None,
-                        )
-                        .map_err(|error| {
-                            format!("request_time_selection_refused:{}:{error}", error.kind())
-                        })?,
-                    };
-                    fields.insert(
-                        "packet".to_owned(),
-                        selection.selected_representation.content.clone(),
-                    );
-                    fields.insert(
-                        "packetReduction".to_owned(),
-                        serde_json::to_value(&selection).map_err(|error| {
-                            format!("serialize packet reduction selection: {error}")
-                        })?,
-                    );
-                    let rendered = rendered_block_text(&selection.selected_representation.content)
-                        .unwrap_or_default();
-                    let rendered_tokens =
-                        cortex_core::ContextTokenAccounting::count_exact(&rendered)
-                            .map_err(|error| format!("measure rendered response: {error}"))?
-                            as u64;
-                    let packet_tokens = fields
-                        .get("packet")
-                        .and_then(|packet| {
-                            crate::pull::selection::measure_packet(
-                                packet,
-                                &membrane_protocol::host_observation::EstimatorBasisV1::new(
-                                    "o200k_base", "1",
-                                ),
-                            )
-                            .ok()
-                        })
-                        .unwrap_or(rendered_tokens);
-                    fields.insert(
-                        "deliveredResponse".to_owned(),
-                        serde_json::json!({
-                            "schemaVersion": 1,
-                            "renderedTokens": rendered_tokens,
-                            "packetTokens": packet_tokens,
-                            "unit": "tokens",
-                            "estimatorBasis": "o200k_base/1",
-                            "scope": "rendered_blocks",
-                            "fitsBudget": rendered_tokens <= fit.response_tokens,
-                        }),
-                    );
-                    if rendered_tokens > fit.response_tokens {
-                        return Err(format!(
-                            "request_time_selection_refused:budget_insufficient:declared response budget {} tokens; rendered evidence requires {rendered_tokens} tokens",
-                            fit.response_tokens
-                        ));
                     }
                 }
             }
-        }
-        let resolved_mode = fit.declared.unwrap_or(if ceiling.is_some() {
-            PullBudgetMode::HostFit
-        } else {
-            PullBudgetMode::BoundedResponse
-        });
-        insert_budget_mode_fields(
-            fields,
-            resolved_mode,
-            fit.declared,
-            fit.response_tokens,
-            fit.provenance,
-            ceiling.as_ref(),
-        );
-        // PUL-033: an empty packet is a versioned insufficient_confidence
-        // result carrying the searched-lane accounting, never a bare
-        // packet-without-selection that downstream surfaces must guess at.
-        // The resident host-fit path already emits this shape; bounded
-        // responses must produce the same typed insufficiency.
-        let packet_empty = fields
-            .get("packet")
-            .and_then(|packet| packet.get("blocks"))
-            .and_then(Value::as_array)
-            .is_some_and(Vec::is_empty);
-        if packet_empty && fields.get("status").is_none() {
-            let candidate_count = ccs
-                .get("candidates")
+            let resolved_mode = fit.declared.unwrap_or(if ceiling.is_some() {
+                PullBudgetMode::HostFit
+            } else {
+                PullBudgetMode::BoundedResponse
+            });
+            insert_budget_mode_fields(
+                fields,
+                resolved_mode,
+                fit.declared,
+                fit.response_tokens,
+                fit.provenance,
+                ceiling.as_ref(),
+            );
+            // PUL-033: an empty packet is a versioned insufficient_confidence
+            // result carrying the searched-lane accounting, never a bare
+            // packet-without-selection that downstream surfaces must guess at.
+            // The resident host-fit path already emits this shape; bounded
+            // responses must produce the same typed insufficiency.
+            let packet_empty = fields
+                .get("packet")
+                .and_then(|packet| packet.get("blocks"))
                 .and_then(Value::as_array)
-                .map_or(0, Vec::len);
-            // Same accounting as the resident host-fit empty-packet path:
-            // format the typed omission records — the wire schema drops
-            // detail_id/stage, so packet.omissions would flatten every
-            // distinct cause into the same generic code.
-            let mut reasons = response
-                .omissions
-                .iter()
-                .map(|omission| {
-                    let id = omission
-                        .candidate_id
-                        .clone()
-                        .unwrap_or_else(|| omission.provider.as_str().to_owned());
-                    let reason = omission.reason.as_str();
-                    match (omission.detail_id.as_deref(), omission.stage.as_deref()) {
-                        (Some(detail), Some(stage)) => format!("{id}:{reason}({detail}@{stage})"),
-                        (Some(detail), None) => format!("{id}:{reason}({detail})"),
-                        (None, Some(stage)) => format!("{id}:{reason}(@{stage})"),
-                        (None, None) => format!("{id}:{reason}"),
-                    }
-                })
-                .collect::<Vec<_>>();
-            let total = reasons.len();
-            reasons.truncate(16);
-            fields.insert(
-                "status".to_owned(),
-                Value::String("insufficient_confidence".to_owned()),
-            );
-            fields.insert(
-                "emptyEvidenceSummary".to_owned(),
-                serde_json::json!({
-                    "candidateCount": candidate_count,
-                    "omissions": reasons,
-                    "elided": total.saturating_sub(16),
-                }),
-            );
+                .is_some_and(Vec::is_empty);
+            if packet_empty && fields.get("status").is_none() {
+                let candidate_count = ccs
+                    .get("candidates")
+                    .and_then(Value::as_array)
+                    .map_or(0, Vec::len);
+                // Same accounting as the resident host-fit empty-packet path:
+                // format the typed omission records — the wire schema drops
+                // detail_id/stage, so packet.omissions would flatten every
+                // distinct cause into the same generic code.
+                let mut reasons = response
+                    .omissions
+                    .iter()
+                    .map(|omission| {
+                        let id = omission
+                            .candidate_id
+                            .clone()
+                            .unwrap_or_else(|| omission.provider.as_str().to_owned());
+                        let reason = omission.reason.as_str();
+                        match (omission.detail_id.as_deref(), omission.stage.as_deref()) {
+                            (Some(detail), Some(stage)) => format!("{id}:{reason}({detail}@{stage})"),
+                            (Some(detail), None) => format!("{id}:{reason}({detail})"),
+                            (None, Some(stage)) => format!("{id}:{reason}(@{stage})"),
+                            (None, None) => format!("{id}:{reason}"),
+                        }
+                    })
+                    .collect::<Vec<_>>();
+                let total = reasons.len();
+                reasons.truncate(16);
+                fields.insert(
+                    "status".to_owned(),
+                    Value::String("insufficient_confidence".to_owned()),
+                );
+                fields.insert(
+                    "emptyEvidenceSummary".to_owned(),
+                    serde_json::json!({
+                        "candidateCount": candidate_count,
+                        "omissions": reasons,
+                        "elided": total.saturating_sub(16),
+                    }),
+                );
+            }
         }
+        check_pull_live(federation_deadline, &inherited_cancellation)?;
+        Ok(payload)
+    })
+}
+
+/// Fit transport framing by rerunning only the existing planner on one source
+/// snapshot. The caller rebuilds admission receipts & checks its deadline.
+pub(crate) fn fit_native_plan(
+    max_tokens: usize,
+    delivery: Option<&crate::mcp_executor::NativeDeliveryFit<'_>>,
+    mut plan: impl FnMut(usize) -> Result<Value, String>,
+) -> Result<Value, String> {
+    let mut packet_allowance = max_tokens;
+    let mut protected: Vec<(String, String)> = Vec::new();
+    for attempt in 0..16 {
+        let payload = plan(packet_allowance)?;
+        let Some(delivery) = delivery else { return Ok(payload); };
+        if payload.get("packetReduction").is_none() {
+            return if protected.is_empty() { Ok(payload) } else {
+                Err("request_time_selection_refused:budget_insufficient:protected evidence cannot fit complete MCP response".into())
+            };
+        }
+        let packet: cortex_core::planner::ContextPacketV1 = serde_json::from_value(payload["packet"].clone())
+            .map_err(|e| format!("invalid fitted packet: {e}"))?;
+        // A transport refit cannot remove or rewrite previously protected evidence.
+        if attempt == 0 {
+            protected = packet.blocks.iter().filter(|block| block.protected).map(|block| (block.id.clone(), block.text.clone())).collect();
+        } else if protected.iter().any(|(id, text)| !packet.blocks.iter().any(|block| &block.id == id && &block.text == text)) {
+            return Err("request_time_selection_refused:budget_insufficient:protected evidence cannot fit complete MCP response".into());
+        }
+        if delivery.fits(&payload)? { return Ok(payload); }
+        if packet_allowance <= 1 { break; }
+        packet_allowance = (packet_allowance / 2).max(1);
     }
-    check_pull_live(federation_deadline, &inherited_cancellation)?;
-    Ok(payload)
+    Err("request_time_selection_refused:budget_insufficient:no complete MCP response fits declared capacity".into())
 }
 
 fn check_pull_live(deadline: membrane_federation::deadline::Deadline, cancellation: &tokio_util::sync::CancellationToken) -> Result<(), String> {
@@ -730,6 +766,7 @@ pub(crate) fn native_route_response_with_control(
         Some(control.deadline),
         Some(control.cancellation),
         Some(runtime),
+        None,
     )
 }
 
@@ -745,7 +782,16 @@ pub(crate) fn native_route_response_with_deadline(
     };
     let runtime = tokio::runtime::Handle::try_current().ok();
     native_route_response_with_deadline_and_control(body, resident, deadline,
-        Some(control.map(|control| control.cancellation).unwrap_or_else(|| crate::service::lifecycle_control().cancellation_token())), runtime.as_ref())
+        Some(control.map(|control| control.cancellation).unwrap_or_else(|| crate::service::lifecycle_control().cancellation_token())), runtime.as_ref(), None)
+}
+
+pub(crate) fn native_mcp_route_response(
+    body: &str, resident: Option<&crate::MemoryStore>, control: crate::serve::PushRequestControl,
+    delivery: &crate::mcp_executor::NativeDeliveryFit<'_>,
+) -> (u16, String) {
+    let runtime = tokio::runtime::Handle::try_current().ok();
+    native_route_response_with_deadline_and_control(body, resident, Some(control.deadline),
+        Some(control.cancellation), runtime.as_ref(), Some(delivery))
 }
 
 fn native_route_response_with_deadline_and_control(
@@ -754,6 +800,7 @@ fn native_route_response_with_deadline_and_control(
     inherited_deadline: Option<membrane_federation::deadline::Deadline>,
     inherited_cancellation: Option<tokio_util::sync::CancellationToken>,
     shared_runtime: Option<&tokio::runtime::Handle>,
+    delivery: Option<&crate::mcp_executor::NativeDeliveryFit<'_>>,
 ) -> (u16, String) {
     let inherited_cancellation = inherited_cancellation.unwrap_or_else(|| crate::service::lifecycle_control().cancellation_token());
     let started = Instant::now();
@@ -901,7 +948,7 @@ fn native_route_response_with_deadline_and_control(
             client, Some(session), anchors, scope_grant_id, vec![2],
             deadline.instant().saturating_duration_since(Instant::now()).as_millis() as u64,
             "configured_cap", ceiling, resident, shared_runtime.cloned(), Some(inherited_cancellation.clone()), Some(deadline),
-            BudgetFit { declared: declared_mode, response_tokens: response_budget, provenance: response_budget_provenance });
+            BudgetFit { declared: declared_mode, response_tokens: response_budget, provenance: response_budget_provenance }, delivery);
         return match result {
             Ok(payload) => (200, payload.to_string()),
             Err(error) => {
