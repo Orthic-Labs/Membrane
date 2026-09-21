@@ -8,6 +8,15 @@ const source = readFileSync(new URL("./install-release.ps1", import.meta.url), "
 const lower = source.toLowerCase();
 const nsi = readFileSync(new URL("../../apps/membrane-hub/src-tauri/windows/installer.nsi", import.meta.url), "utf8");
 
+test("native LOCALAPPDATA preflight rejects packaged path virtualization", { skip: process.platform !== "win32" }, () => {
+  const run = spawnSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", fileURLToPath(new URL("./assert-native-localappdata.test.ps1", import.meta.url))], {
+    encoding: "utf8",
+    windowsHide: true,
+  });
+  assert.equal(run.status, 0, `${run.stdout}\n${run.stderr}`);
+  assert.match(run.stdout, /assert-native-localappdata tests passed/);
+});
+
 test("qualification receipt writes a file & rejects directory destinations", { skip: process.platform !== "win32" }, () => {
   const powershell = String.raw`
 $ErrorActionPreference = 'Stop'

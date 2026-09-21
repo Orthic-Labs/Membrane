@@ -44,6 +44,8 @@ $PSNativeCommandUseErrorActionPreference = $false
 foreach ($module in @('Microsoft.PowerShell.Security', 'Microsoft.PowerShell.Utility', 'Microsoft.PowerShell.Management')) {
   Import-Module (Join-Path $PSHOME "Modules\$module\$module.psd1") -Force -ErrorAction Stop
 }
+. (Join-Path $PSScriptRoot 'assert-native-localappdata.ps1')
+Assert-NativeLocalAppData
 Add-Type -AssemblyName System.Net.Http
 $script:HubProcess = $null
 $script:TrayProcess = $null

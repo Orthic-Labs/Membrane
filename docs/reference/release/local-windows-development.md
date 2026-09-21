@@ -5,7 +5,7 @@ Adrian authorized this temporary internal-development route on 2026-09-07.
 is `.rightkit-local-development.json`: only `Orthic-Labs/Membrane`, native Windows,
 & unsigned installer development. Remove that file to restore GitHub-only builds.
 
-From primary Membrane checkout, run one command:
+From primary Membrane checkout in native Windows desktop PowerShell, run:
 
 ```powershell
 pnpm run release:local:win:unsigned
@@ -15,6 +15,14 @@ It builds through RightKit, creates installer-bound `candidate.json` &
 `sbom.json`, runs installed `internal-unsigned` qualification, then installs
 that exact installer at stable `current`. Its final JSON names installer hash,
 qualification evidence, installed root & version.
+
+Both entry points reject redirected `LOCALAPPDATA` writes before build or
+qualification. Packaged desktop hosts can redirect new installation files into
+their private cache after uninstall, leaving junction targets unreadable. The
+preflight creates & removes one empty probe directory, then compares its native
+resolved path with expected location. Run from Windows desktop PowerShell if it
+reports redirection; preserve installer identity & canonical installation path.
+Do not change ACLs, redirect `LOCALAPPDATA`, or weaken junction validation.
 
 Build only:
 

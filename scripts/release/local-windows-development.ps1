@@ -5,6 +5,8 @@ $ErrorActionPreference = 'Stop'
 # A pwsh parent can export its module path into Windows PowerShell. Resolve
 # native Utility explicitly before final installer hashing.
 Import-Module (Join-Path $PSHOME 'Modules\Microsoft.PowerShell.Utility\Microsoft.PowerShell.Utility.psd1') -Force -ErrorAction Stop
+. (Join-Path $PSScriptRoot '..\qualification\assert-native-localappdata.ps1')
+Assert-NativeLocalAppData
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $hub = Join-Path $repo 'apps\membrane-hub'
 $package = Get-Content -Raw -LiteralPath (Join-Path $hub 'package.json') | ConvertFrom-Json
