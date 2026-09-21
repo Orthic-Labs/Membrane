@@ -175,6 +175,26 @@ fn document_change_updates_file_leaf_without_rebuild() {
 }
 
 #[test]
+fn incremental_created_binary_file_is_admitted_as_file_leaf() {
+    let root = tempdir().unwrap();
+    fs::write(root.path().join("main.rs"), "fn entry() {}\n").unwrap();
+    fs::write(root.path().join("README.md"), "docs\n").unwrap();
+    let operation = NativeBlueprintOperation;
+    execute(&operation, &request("binary-build", Operation::Build, root.path())).unwrap();
+    fs::write(root.path().join("tray.png"), [0x89, 0x50, 0x4e, 0x47, 0x00, 0x01, 0x02, 0x03]).unwrap();
+    let mut refresh = request("binary-create", Operation::Refresh, root.path());
+    refresh.input["sourceClock"] = Value::from(1u64);
+    refresh.input["eventKind"] = Value::String("create".into());
+    refresh.input["paths"] = Value::Array(vec![Value::String("tray.png".into())]);
+    let result = execute(&operation, &refresh).unwrap();
+    assert_eq!(result["refreshMode"], "incremental");
+    let path = root.path().join(".agent/graph/graph.db");
+    let connection = membrane_blueprint::store::open_store_read_only(&path).unwrap();
+    let generation = membrane_blueprint::store::load_generation(&connection).unwrap().unwrap();
+    assert!(generation.nodes.iter().any(|node| node["kind"] == "file" && node["path"] == "tray.png"));
+}
+
+#[test]
 fn cross_file_change_repairs_incoming_references_incrementally() {
     let incremental_root = tempdir().unwrap();
     let full_root = tempdir().unwrap();

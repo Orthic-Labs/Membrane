@@ -563,12 +563,15 @@ fn reconcile_resident_repositories(state: &Arc<Mutex<ResidentBlueprintState>>, s
         }
     }
     if let Ok(mut state) = state.lock() {
-        state.registry_error = build_errors.into_iter().next();
-        if let Some(error) = &state.registry_error {
+        if let Some(error) = build_errors.into_iter().next() {
             eprintln!("{}", serde_json::json!({"event":"resident_blueprint_initialization", "stage":"failed", "error": error}));
-        } else if !state.repos.is_empty() {
+            state.registry_error = Some(error);
+        } else if state.repos.len() == desired.len() {
+            state.registry_error = None;
             eprintln!("{}", serde_json::json!({"event":"resident_blueprint_initialization", "stage":"completed", "repoCount": state.repos.len()}));
         }
+        // A skipped retry is not recovery. Keep its concrete failure visible
+        // through health until every desired repository has joined.
     }
 }
 

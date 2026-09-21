@@ -484,15 +484,28 @@ pub fn build_file_facts_from_scan(
         Some(file) => file.bytes.clone(),
         None => fs::read(&absolute_path).map_err(|error| GraphError::Read { path: relative_path.clone(), message: error.to_string() })?,
     };
-    if bytes.contains(&0) { return Ok(None); }
     let text = String::from_utf8_lossy(&bytes).into_owned();
+    let language = language_for_path(&relative_path);
+    // Full builds retain non-code files as file leaves even when their bytes
+    // are binary (images, archives, etc.). Incremental facts must admit the
+    // same leaf so a newly created binary can be delta-applied. A binary with
+    // a code extension remains outside the source universe, matching scan.
+    if bytes.contains(&0) && language.is_some() { return Ok(None); }
     let file = FileRecord {
         path: relative_path.clone(), absolute_path, size: bytes.len() as u64, bytes: bytes.clone(),
         content_hash: content_digest(&bytes),
         semantic_content_hash: scanned.map(|value| value.semantic_content_hash.clone()).unwrap_or_else(|| content_digest(text.as_bytes())),
-        text: if language_for_path(&relative_path).is_some() || is_file_only(&relative_path) { Some(text.clone()) } else { None },
+        text: if language.is_some() || is_file_only(&relative_path) { Some(text.clone()) } else { None },
     };
     let surface = module_surface(&file);
+    if language.is_none() && !is_file_only(&relative_path) {
+        return Ok(Some(FileFacts {
+            file: file_node(&file, &surface), nodes: Vec::new(), edges: Vec::new(),
+            report: FileReport { path: file.path.clone(), language: None, provider: "lexical".into(),
+                precision: PrecisionTier::Lexical, parse_status: "unsupported".into(), error_node_count: 0, error: None },
+            content_digest: file.content_hash, size: file.size as i64,
+        }));
+    }
     // Path-identity context must not clone every scanned file (bytes included)
     // for each affected path: build the map over references and overlay the
     // freshly-read record for this file.
