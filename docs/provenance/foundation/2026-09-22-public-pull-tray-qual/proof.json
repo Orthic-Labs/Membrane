@@ -1,0 +1,188 @@
+{
+  "schema": "membrane.installed-public-pull-tray-evidence.v1",
+  "boundary": "internal-unsigned-windows",
+  "sourceCommit": "736aa5fcd517f90a545b9cd5f05228c2a5de1fea",
+  "releaseGeneration": "sha256:caa07153256b01fb6812d57574b03e8a03ed12e293e6042c9863be74fce663ac",
+  "installerSha256": "ec13f795aad4e8cdc679d6f53d4ff2312a4bde9efe7a0b28437d06e2fdba5cdc",
+  "installedEngineSha256": "820b90774f1d855118c3779a03f464c619bed132393f0969cc4a6b1464473ff8",
+  "installedCurrent": "C:\\Users\\adrds\\AppData\\Local\\Orthic Labs\\Membrane\\current",
+  "installedTarget": "C:\\Users\\adrds\\AppData\\Local\\Orthic Labs\\Membrane\\versions\\0.1.24",
+  "qualification": {
+    "localPath": "C:\\Users\\adrds\\AppData\\Local\\Temp\\membrane-local-windows-20260921T183317Z\\evidence.json",
+    "sha256": "74084f00382ff6c3e6b1d15fd11b795987bda0eacace56b4f98a15e77f942213",
+    "lifecycle": {
+      "install": "pass",
+      "startup": "pass",
+      "hubHealth": "pass",
+      "tray": "pass",
+      "popup": "pass",
+      "renderer": "pass",
+      "mcp17": "pass",
+      "nativeHostCutover": "pass",
+      "blueprintHubHosted": "pass",
+      "blueprintHubOffOneShot": "pass",
+      "downgrade": "not_applicable",
+      "repair": "pass",
+      "upgrade": "pass",
+      "stateContinuity": "pass",
+      "uninstall": "pass",
+      "residue": "pass",
+      "nativeOnlyProcessTree": "pass",
+      "runtimeInventory": "pass",
+      "adapt": "pass",
+      "workspaceConfigMigration": "pass",
+      "currentRootActivation": "pass",
+      "doctor": "pass",
+      "hubOffManualBlueprint": "pass",
+      "residentFileChangeRefresh": "pass",
+      "zeroInterpreterProcessTree": "pass"
+    },
+    "drains": [
+      {
+        "label": "graceful-holder-release",
+        "trayPid": 164280,
+        "daemonPid": 62060,
+        "trayExitMode": "graceful_replace_signal",
+        "holderIsolation": {
+          "controller": {
+            "installationId": "54b588bf-6aee-4eb0-92bd-a2fc5c64afad",
+            "cortexStoreId": "sha256:038c42b7457f5a69e4f841209a3dc68ba40a14fe17fce8b1d6583570d15c8942",
+            "releaseGeneration": "sha256:caa07153256b01fb6812d57574b03e8a03ed12e293e6042c9863be74fce663ac",
+            "startupGeneration": 7,
+            "stableCurrent": "C:\\Users\\adrds\\AppData\\Local\\Orthic Labs\\Membrane\\current"
+          },
+          "status": {
+            "controllerActive": true,
+            "servicesReady": true,
+            "hubHolders": 1,
+            "coderightDaemonHolders": 0,
+            "harnessHolders": 1
+          },
+          "observedAtUnixMs": 1790016997112,
+          "probeHarnessHolders": 1,
+          "externalHarnessHolders": 0
+        },
+        "drainReason": "final_holder_release",
+        "drainElapsedMs": 319
+      },
+      {
+        "label": "lease-expiry-recovery",
+        "trayPid": 274468,
+        "daemonPid": 282296,
+        "trayExitMode": "forced_kill",
+        "holderIsolation": {
+          "controller": {
+            "installationId": "54b588bf-6aee-4eb0-92bd-a2fc5c64afad",
+            "cortexStoreId": "sha256:038c42b7457f5a69e4f841209a3dc68ba40a14fe17fce8b1d6583570d15c8942",
+            "releaseGeneration": "sha256:caa07153256b01fb6812d57574b03e8a03ed12e293e6042c9863be74fce663ac",
+            "startupGeneration": 8,
+            "stableCurrent": "C:\\Users\\adrds\\AppData\\Local\\Orthic Labs\\Membrane\\current"
+          },
+          "status": {
+            "controllerActive": true,
+            "servicesReady": true,
+            "hubHolders": 1,
+            "coderightDaemonHolders": 0,
+            "harnessHolders": 1
+          },
+          "observedAtUnixMs": 1790017107469,
+          "probeHarnessHolders": 1,
+          "externalHarnessHolders": 0
+        },
+        "drainReason": "final_holder_expired",
+        "drainElapsedMs": 20957
+      }
+    ]
+  },
+  "freshCodex": {
+    "threadId": "01a0c559-d8b4-7883-b41d-a4ad0ee7b1fa",
+    "model": "gpt-5.6-luna",
+    "membraneCallCount": 2,
+    "tools": [
+      "pull",
+      "pull"
+    ],
+    "statuses": [
+      "success",
+      "success"
+    ],
+    "contextBlocks": 12,
+    "providers": [
+      "ledger"
+    ],
+    "degradation": "blueprint_stale",
+    "pullMeasurement": {
+      "basis": "o200k_base/1",
+      "bytes": 70879,
+      "hostCapacity": {
+        "coverage": "unavailable"
+      },
+      "providerBilledTokens": null,
+      "responseBudget": 24000,
+      "schemaVersion": 1,
+      "scope": "serialized_mcp_tool_result",
+      "tokens": 23925
+    },
+    "recoveryMeasurement": {
+      "basis": "o200k_base/1",
+      "bytes": 1900,
+      "hostCapacity": {
+        "coverage": "unavailable"
+      },
+      "providerBilledTokens": null,
+      "responseBudget": 24000,
+      "schemaVersion": 1,
+      "scope": "serialized_mcp_tool_result",
+      "tokens": 627
+    },
+    "returnedArgumentsMatch": true,
+    "recoveredSource": "doc://repo/worktree/docs/architecture/execution-lifecycle-boundary.md",
+    "recoveredBytes": 149,
+    "span": {
+      "endByte": 13927,
+      "endLine": 78,
+      "spanHash": "1d82fcde2c2cb85517c5747051342cd9757696af6e0614577fd80109c06daa15",
+      "startByte": 13778,
+      "startLine": 78
+    },
+    "sourceSha256": "2a6836134b884203d2bf07bd5caf3818dc584c63cf8a52cbb3c9cd0ec888a0a9",
+    "spanMatchesWorkingTreeBytes": true,
+    "rawHostEvidenceSha256": "e8d8c27a38b8a2fc4d987d1e00f380fb34ec86e91807ca611469f856b41ec53d"
+  },
+  "tray": {
+    "capture": {
+      "trayPids": [
+        290504
+      ],
+      "bounds": {
+        "Left": 2370,
+        "Top": 1260,
+        "Right": 3120,
+        "Bottom": 2040
+      },
+      "capturedAt": "2026-09-21T19:15:41.8561934+00:00"
+    },
+    "admissionCounts": {
+      "admitted": 24,
+      "withheld": 0,
+      "budgetDrops": 0
+    },
+    "pullEvents": [
+      {
+        "status": "ok",
+        "admitted": 12
+      },
+      {
+        "status": "ok",
+        "admitted": 12
+      }
+    ],
+    "counterScope": "final native Pull admission receipts; upstream provider omissions remain in Pull packet"
+  },
+  "health": {
+    "ok": true,
+    "watcherCoverage": "complete",
+    "catalogStatus": "ok",
+    "dailyAnalysis": "unavailable"
+  }
+}
