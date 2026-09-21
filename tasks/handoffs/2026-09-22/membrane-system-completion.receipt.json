@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "artifact_name": "membrane-system-completion.md",
+  "artifact_path": "D:\\Claude\\membrane\\tasks\\handoffs\\2026-09-22\\membrane-system-completion.md",
+  "sha256": "eb94099aa6393348a18833fb1722e0432ce2e6a3da1712fd42d52c5f00500815",
+  "validated_at": "2026-09-21T23:37:02.919156+00:00",
+  "validator": "legion/lib/handoff/validate-handoff.py"
+}
