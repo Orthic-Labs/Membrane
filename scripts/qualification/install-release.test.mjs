@@ -1,11 +1,51 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import test from "node:test";
 
 const source = readFileSync(new URL("./install-release.ps1", import.meta.url), "utf8");
 const lower = source.toLowerCase();
 const nsi = readFileSync(new URL("../../apps/membrane-hub/src-tauri/windows/installer.nsi", import.meta.url), "utf8");
+
+test("qualification receipt writes a file & rejects directory destinations", { skip: process.platform !== "win32" }, () => {
+  const powershell = String.raw`
+$ErrorActionPreference = 'Stop'
+foreach ($module in @('Microsoft.PowerShell.Utility', 'Microsoft.PowerShell.Management')) {
+  Import-Module (Join-Path $PSHOME "Modules\$module\$module.psd1") -Force
+}
+$tokens = $null; $parseErrors = $null
+$ast = [System.Management.Automation.Language.Parser]::ParseFile($env:MEMBRANE_QUALIFICATION_SOURCE, [ref]$tokens, [ref]$parseErrors)
+$fn = $ast.Find({ param($node) $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Write-JsonAtomic' }, $true)
+function Require([bool]$Condition, [string]$Message) { if (-not $Condition) { throw $Message } }
+. ([scriptblock]::Create($fn.Extent.Text))
+$caseDir = Join-Path ([IO.Path]::GetTempPath()) ('membrane-evidence-test-' + [guid]::NewGuid().ToString('N'))
+try {
+  $receipt = Join-Path $caseDir 'evidence.json'
+  Write-JsonAtomic $receipt @{ status = 'pass' }
+  if ((Get-Content -Raw -LiteralPath $receipt | ConvertFrom-Json).status -ne 'pass') { throw 'receipt not readable at exact path' }
+  Write-JsonAtomic $receipt @{ status = 'replaced' }
+  if ((Get-Content -Raw -LiteralPath $receipt | ConvertFrom-Json).status -ne 'replaced') { throw 'receipt replacement failed' }
+  try { Write-JsonAtomic $caseDir @{ status = 'wrong' }; throw 'directory accepted' }
+  catch { if ($_.Exception.Message -notmatch 'JSON evidence destination is a directory') { throw } }
+  if (@(Get-ChildItem -LiteralPath $caseDir).Count -ne 1) { throw 'stranded temporary receipt' }
+  Write-Output 'PASS'
+} finally {
+  if (Test-Path -LiteralPath $caseDir) {
+    $resolved = (Resolve-Path -LiteralPath $caseDir).Path
+    if (-not $resolved.StartsWith([IO.Path]::GetTempPath(), [StringComparison]::OrdinalIgnoreCase)) { throw 'test cleanup escaped temp root' }
+    Remove-Item -LiteralPath $resolved -Recurse -Force
+  }
+}
+`;
+  const run = spawnSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", powershell], {
+    encoding: "utf8",
+    env: { ...process.env, MEMBRANE_QUALIFICATION_SOURCE: fileURLToPath(new URL("./install-release.ps1", import.meta.url)) },
+    windowsHide: true,
+  });
+  assert.equal(run.status, 0, `${run.stdout}\n${run.stderr}`);
+  assert.match(run.stdout, /PASS/);
+});
 
 test("installer releases the install lock before binding & suppresses the supervisor task during extract", () => {
   // Binding-only reconciliation runs after cutover and lock release.

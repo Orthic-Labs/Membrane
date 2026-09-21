@@ -152,6 +152,7 @@ function Assert-SignedFile([string]$Path, [string]$Label, [string]$ExpectedPubli
 
 function Write-JsonAtomic([string]$Path, $Value) {
   $full = [System.IO.Path]::GetFullPath($Path)
+  Require (-not (Test-Path -LiteralPath $full -PathType Container)) "JSON evidence destination is a directory: $full"
   $parent = Split-Path -Parent $full
   if (-not (Test-Path -LiteralPath $parent)) { New-Item -ItemType Directory -Path $parent -Force | Out-Null }
   $temporary = "$full.tmp-$([guid]::NewGuid().ToString('N'))"
@@ -211,7 +212,7 @@ function Save-RuntimeLogEvidence([string]$Label) {
   # Copy every log the installed product can have written so a health failure
   # carries the runtime's own words, not only the probe's.
   $evidenceRoot = $env:RIGHT_GIT_QUALIFICATION_EVIDENCE_ROOT
-  if (-not $evidenceRoot) { $evidenceRoot = $EvidencePath }
+  if (-not $evidenceRoot) { $evidenceRoot = Split-Path -Parent ([IO.Path]::GetFullPath($EvidencePath)) }
   $target = Join-Path $evidenceRoot "runtime-logs-$Label"
   try {
     New-Item -ItemType Directory -Path $target -Force -ErrorAction Stop | Out-Null
@@ -246,7 +247,7 @@ function Invoke-Activation([string]$Root) {
   $membrane = Join-Path $Root 'membrane.exe'
   Require (Test-Path -LiteralPath $membrane -PathType Leaf) "installed membrane.exe is missing at $membrane"
   $evidenceRoot = $env:RIGHT_GIT_QUALIFICATION_EVIDENCE_ROOT
-  if (-not $evidenceRoot) { $evidenceRoot = $EvidencePath }
+  if (-not $evidenceRoot) { $evidenceRoot = Split-Path -Parent ([IO.Path]::GetFullPath($EvidencePath)) }
   $activationTimeoutMs = 90000
   $processExitBoundMs = 5000
   $captureRoot = Join-Path ([IO.Path]::GetTempPath()) "membrane-activation-$([guid]::NewGuid().ToString('N'))"
@@ -350,7 +351,7 @@ function Invoke-ActivationDryRun([string]$Root) {
   $output = if ([string]::IsNullOrEmpty($dryRun.Stderr)) { [string]$dryRun.Stdout } else { "$($dryRun.Stdout)`r`n$($dryRun.Stderr)" }
   $exit = $dryRun.ExitCode
   $evidenceRoot = $env:RIGHT_GIT_QUALIFICATION_EVIDENCE_ROOT
-  if (-not $evidenceRoot) { $evidenceRoot = $EvidencePath }
+  if (-not $evidenceRoot) { $evidenceRoot = Split-Path -Parent ([IO.Path]::GetFullPath($EvidencePath)) }
   try {
     New-Item -ItemType Directory -Path $evidenceRoot -Force -ErrorAction Stop | Out-Null
     $output | Set-Content -LiteralPath (Join-Path $evidenceRoot 'activation-dry-run.log') -Encoding utf8
@@ -368,7 +369,7 @@ function Save-InstallerFailureEvidence([string]$InstallerPath, [string]$Version,
   # newest such log into evidence instead of extracting and re-running an
   # embedded payload; the installer no longer carries one.
   $evidenceRoot = $env:RIGHT_GIT_QUALIFICATION_EVIDENCE_ROOT
-  if (-not $evidenceRoot) { $evidenceRoot = $EvidencePath }
+  if (-not $evidenceRoot) { $evidenceRoot = Split-Path -Parent ([IO.Path]::GetFullPath($EvidencePath)) }
   $logPath = Join-Path $evidenceRoot 'installer-failure.log'
   $jsonPath = Join-Path $evidenceRoot 'installer-failure.json'
   try {

@@ -3056,6 +3056,39 @@ mod hub_transport_tests {
     }
 
     #[test]
+    fn native_refit_does_not_accept_empty_retry_after_useful_overflow() {
+        let source = native_refit_fixture(false);
+        let delivery = NativeDeliveryFit { operation: "pull", repository: "repo", scope: "scope",
+            contract: NativeBudgetContract { mode: crate::pull::federation::PullBudgetMode::BoundedResponse,
+                ceiling: None, response_budget: 100, cap_tokens: 100 } };
+        let mut attempts = 0;
+        let mut saw_empty = false;
+        let result = crate::pull::federation::fit_native_plan(12000, Some(&delivery), |allowance| {
+            attempts += 1;
+            let payload = plan_native_fixture(&source, allowance);
+            let blocks = payload["packet"]["blocks"].as_array().unwrap();
+            if attempts == 1 { assert!(!blocks.is_empty()); }
+            saw_empty |= blocks.is_empty();
+            Ok(payload)
+        });
+        assert!(attempts >= 2);
+        assert!(saw_empty, "real planner must exhaust evidence at smaller allowance");
+        let error = result.expect_err("empty retry cannot erase useful overflow");
+        assert!(error.contains("budget_insufficient"), "{error}");
+    }
+
+    #[test]
+    fn native_refit_preserves_genuinely_empty_initial_result() {
+        let delivery = NativeDeliveryFit { operation: "pull", repository: "repo", scope: "scope",
+            contract: NativeBudgetContract { mode: crate::pull::federation::PullBudgetMode::BoundedResponse,
+                ceiling: None, response_budget: 12000, cap_tokens: 12000 } };
+        let result = crate::pull::federation::fit_native_plan(12000, Some(&delivery), |_allowance| {
+            Ok(json!({"packet": null, "status": "insufficient_confidence"}))
+        }).unwrap();
+        assert!(result["packet"].is_null());
+    }
+
+    #[test]
     fn native_refit_accounts_for_zero_cost_blueprint_locators() {
         let mut source: Value = serde_json::from_str(&native_refit_fixture(false)).unwrap();
         let template = source["candidates"][0].clone();

@@ -747,8 +747,12 @@ pub(crate) fn fit_native_plan(
         };
         let Some(delivery) = delivery else { return Ok(payload); };
         if payload.get("packetReduction").is_none() {
-            return if !protected_baseline_captured || protected.is_empty() { Ok(payload) } else {
+            // A captured baseline means earlier evidence exceeded capacity.
+            // Replanning it away cannot turn that into insufficient confidence.
+            return if !protected_baseline_captured { Ok(payload) } else if !protected.is_empty() {
                 Err("request_time_selection_refused:budget_insufficient:protected evidence cannot fit complete MCP response".into())
+            } else {
+                Err("request_time_selection_refused:budget_insufficient:no complete MCP response fits declared capacity".into())
             };
         }
         let packet: cortex_core::planner::ContextPacketV1 = serde_json::from_value(payload["packet"].clone())

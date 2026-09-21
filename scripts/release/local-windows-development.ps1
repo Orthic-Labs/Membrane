@@ -2,6 +2,9 @@
 param()
 
 $ErrorActionPreference = 'Stop'
+# A pwsh parent can export its module path into Windows PowerShell. Resolve
+# native Utility explicitly before final installer hashing.
+Import-Module (Join-Path $PSHOME 'Modules\Microsoft.PowerShell.Utility\Microsoft.PowerShell.Utility.psd1') -Force -ErrorAction Stop
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $hub = Join-Path $repo 'apps\membrane-hub'
 $package = Get-Content -Raw -LiteralPath (Join-Path $hub 'package.json') | ConvertFrom-Json
@@ -9,7 +12,8 @@ $bundle = Join-Path $hub 'src-tauri\target\x86_64-pc-windows-msvc\release\bundle
 $installer = Join-Path $bundle "Membrane_Hub_$($package.version)_x64-setup.exe"
 $manifest = Join-Path $bundle 'candidate.json'
 $sbom = Join-Path $bundle 'sbom.json'
-$evidence = Join-Path ([IO.Path]::GetTempPath()) "membrane-local-windows-$([DateTime]::UtcNow.ToString('yyyyMMddTHHmmssZ'))"
+$evidenceRoot = Join-Path ([IO.Path]::GetTempPath()) "membrane-local-windows-$([DateTime]::UtcNow.ToString('yyyyMMddTHHmmssZ'))"
+$evidence = Join-Path $evidenceRoot 'evidence.json'
 $installRoot = Join-Path $env:LOCALAPPDATA 'Orthic Labs\Membrane\current'
 
 Push-Location $repo
