@@ -215,9 +215,15 @@ impl InstallationRegistryV1 {
 /// paths compare case-insensitively.
 fn paths_equal_loose(left: &str, right: &str) -> bool {
     let strip = |value: &str| {
-        value
+        let value = value
             .strip_prefix(r"\\?\")
-            .unwrap_or(value)
+            .unwrap_or(value);
+        let value = if cfg!(windows) {
+            value.replace('/', "\\")
+        } else {
+            value.to_owned()
+        };
+        value
             .trim_end_matches(['\\', '/'])
             .to_owned()
     };
@@ -1237,5 +1243,24 @@ mod tests {
                 .code(),
             "installation_grant_denied"
         );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_root_matching_accepts_separator_and_device_prefix_variants() {
+        assert!(paths_equal_loose(
+            r"D:\Claude\membrane\",
+            r"\\?\d:/claude/membrane"
+        ));
+        assert!(!paths_equal_loose(
+            r"D:\Claude\membrane",
+            r"D:/Claude/membrane-other"
+        ));
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn unix_root_matching_preserves_separator_semantics() {
+        assert!(!paths_equal_loose(r"D:\Claude\membrane", r"D:/Claude/membrane"));
     }
 }

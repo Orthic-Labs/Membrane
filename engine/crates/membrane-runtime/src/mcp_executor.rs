@@ -237,6 +237,27 @@ impl NativeDeliveryFit<'_> {
         Ok(false)
     }
 }
+fn native_non_delivery_envelope(name: &str, repository: &str, scope: &str, federated: &Value) -> Value {
+    success(name, json!({
+        "repositoryId": repository, "scopeId": scope,
+        "status": federated.get("status").cloned().unwrap_or_else(|| json!("insufficient_confidence")),
+        "packet": Value::Null,
+        "receipts": federated.get("receipts").cloned().unwrap_or_else(|| json!([])),
+        "emptyEvidenceSummary": federated.get("emptyEvidenceSummary").cloned().unwrap_or(Value::Null),
+        "pullReceipt": {
+            "providerDiagnostics": federated.get("providerDiagnostics").cloned().unwrap_or_else(|| json!([])),
+            "fusionReceipt": federated.get("fusionReceipt").cloned().unwrap_or(Value::Null),
+            "correctiveRetrieval": federated.get("correctiveRetrieval").cloned().unwrap_or(Value::Null),
+            "publicationFence": federated.get("publicationFence").cloned().unwrap_or(Value::Null),
+            "insufficientConfidence": federated.get("insufficientConfidence").cloned().unwrap_or(Value::Null),
+            "suppressionReceipts": federated.get("suppressionReceipts").cloned().unwrap_or_else(|| json!([])),
+            "federationMetrics": federated.get("federationMetrics").cloned().unwrap_or(Value::Null),
+        },
+        "degradationReason": federated.get("degradationReason").filter(|v| !v.is_null()).cloned().unwrap_or_else(|| json!("none")),
+        "sufficiencyEvaluated": federated.get("insufficientConfidence").is_some(),
+    }))
+}
+
 fn native_pull_envelope(name: &str, repository: &str, scope: &str, federated: &Value,
     selection: &crate::pull::selection::PacketReductionSelectionV1,
     representation: &membrane_protocol::push::PacketReductionRepresentationV1,
@@ -2066,21 +2087,7 @@ impl NativeMcpExecutor for RuntimeMcpExecutor {
                     Err(result) => return result,
                 };
                 if matches!(federated.get("status").and_then(Value::as_str), Some("insufficient_confidence" | "unchanged_context")) {
-                    let result = success(name, json!({
-                        "repositoryId": repository, "scopeId": scope,
-                        "status": federated.get("status").cloned().unwrap_or_else(|| json!("insufficient_confidence")),
-                        "packet": Value::Null,
-                        "pullReceipt": {
-                            "fusionReceipt": federated.get("fusionReceipt").cloned().unwrap_or(Value::Null),
-                            "correctiveRetrieval": federated.get("correctiveRetrieval").cloned().unwrap_or(Value::Null),
-                            "publicationFence": federated.get("publicationFence").cloned().unwrap_or(Value::Null),
-                            "insufficientConfidence": federated.get("insufficientConfidence").cloned().unwrap_or(Value::Null),
-                            "suppressionReceipts": federated.get("suppressionReceipts").cloned().unwrap_or_else(|| json!([])),
-                            "federationMetrics": federated.get("federationMetrics").cloned().unwrap_or(Value::Null),
-                        },
-                        "degradationReason": federated.get("degradationReason").filter(|v| !v.is_null()).cloned().unwrap_or_else(|| json!("none")),
-                        "sufficiencyEvaluated": federated.get("insufficientConfidence").is_some(),
-                    }));
+                    let result = native_non_delivery_envelope(name, repository, scope, &federated);
                     return fit_native_budget_response(name, result, &budget_contract)
                         .unwrap_or_else(|failure| error(name, "context_delivery_invalid", failure.to_string()));
                 }
@@ -3155,6 +3162,21 @@ mod hub_transport_tests {
         assert!(saw_empty, "real planner must exhaust evidence at smaller allowance");
         let error = result.expect_err("empty retry cannot erase useful overflow");
         assert!(error.contains("budget_insufficient"), "{error}");
+    }
+
+    #[test]
+    fn native_non_delivery_preserves_rejection_accounting_within_wire_budget() {
+        let receipts = json!([{"id":"stale-source","decision":"rejected","reason":"blueprint_stale","provider":"blueprint"}]);
+        let federated = json!({"status":"insufficient_confidence","receipts":receipts,
+            "emptyEvidenceSummary":{"candidateCount":1},"degradationReason":"blueprint_stale"});
+        let envelope = native_non_delivery_envelope("pull", "repo", "scope", &federated);
+        let contract = NativeBudgetContract { mode: crate::pull::federation::PullBudgetMode::BoundedResponse,
+            ceiling: None, response_budget: 12000, cap_tokens: 12000 };
+        let fitted = fit_native_budget_response("pull", envelope, &contract).unwrap();
+        assert_eq!(fitted["result"]["data"]["receipts"], receipts);
+        assert_eq!(fitted["result"]["data"]["emptyEvidenceSummary"]["candidateCount"], 1);
+        assert!(fitted["result"]["data"]["packet"].is_null());
+        assert!(fitted["result"]["data"]["deliveryMeasurement"]["tokens"].as_u64().unwrap() <= 12000);
     }
 
     #[test]

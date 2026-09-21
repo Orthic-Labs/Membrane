@@ -130,6 +130,10 @@ pub(crate) struct LedgerService {
     read_db: Option<LedgerDb>,
     catalog: crate::catalog::ContextCatalog,
     operation: Mutex<()>,
+    /// TEMP scope and erasure tables belong to one SQLite connection. Serialize
+    /// read transactions so concurrent lanes cannot overwrite each other's
+    /// per-request scope between installation and query execution.
+    read_operation: Mutex<()>,
 }
 struct ResetProgress<'a>(&'a LedgerDb);
 impl Drop for ResetProgress<'_> {
@@ -173,7 +177,7 @@ impl LedgerService {
             .path()
             .map(|path| LedgerDb::open_reader(path))
             .transpose()?;
-        Ok(Self { db, read_db, catalog, operation: Mutex::new(()) })
+        Ok(Self { db, read_db, catalog, operation: Mutex::new(()), read_operation: Mutex::new(()) })
     }
 
     /// True when the owner-layer objects (`diagnostics::SCHEMA` and
@@ -255,6 +259,14 @@ impl LedgerService {
         work: impl FnOnce(&LedgerDb) -> Result<T, String>) -> Result<T, String>
     {
         caller.authorize(action)?;
+        let _read_operation = loop {
+            budget.check()?;
+            match self.read_operation.try_lock() {
+                Ok(guard) => break guard,
+                Err(TryLockError::Poisoned(_)) => return Err("ledger_owner_unavailable".into()),
+                Err(TryLockError::WouldBlock) => std::thread::sleep(Duration::from_millis(1)),
+            }
+        };
         let db = self.read_db();
         let observed = budget.clone();
         let _ = db.lock().progress_handler(1000, Some(move || observed.interrupted()));
@@ -977,10 +989,58 @@ mod tests {
         drop(writer);
     }
 
-    /// A persisted `ledger_fts` activation survives an owner open only while
-    /// the receipt that authorized it remains trusted by this build; a stale
-    /// or receipt-less activation degrades to `shadow` rather than running an
-    /// unqualified retrieval lane.
+    #[test]
+    fn concurrent_scoped_reads_serialize_temp_scope_installation() {
+        let _env = env_lock();
+        let dir = tempfile::tempdir().unwrap();
+        let (workspace, repository) = enrolled_workspace(&dir);
+        let caller = caller(&workspace, &repository);
+        let service = Arc::new(LedgerService::in_memory());
+        let (entered_tx, entered_rx) = std::sync::mpsc::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        let (second_enter_tx, second_enter_rx) = std::sync::mpsc::channel();
+        let worker_service = Arc::clone(&service);
+        let first_caller = caller.clone();
+        let first = std::thread::spawn(move || {
+            let budget = WorkBudget::bounded(Duration::from_secs(5));
+            worker_service.run_read(&first_caller, "context", &budget, |db| {
+                let conn = db.lock();
+                conn.execute_batch("CREATE TEMP TABLE IF NOT EXISTS ledger_query_scope (doc_id TEXT NOT NULL, start_byte INTEGER NOT NULL, end_byte INTEGER NOT NULL, PRIMARY KEY(doc_id,start_byte,end_byte)); DELETE FROM ledger_query_scope;")
+                    .unwrap();
+                conn.execute("INSERT INTO ledger_query_scope VALUES ('first', 1, 10)", [])
+                    .unwrap();
+                drop(conn);
+                entered_tx.send(()).unwrap();
+                release_rx.recv_timeout(Duration::from_secs(3)).unwrap();
+                let value: String = db.lock().query_row("SELECT doc_id FROM ledger_query_scope", [], |row| row.get(0)).unwrap();
+                assert_eq!(value, "first", "second scoped read must not clobber first read");
+                Ok(())
+            }).unwrap();
+        });
+        entered_rx.recv_timeout(Duration::from_secs(1)).unwrap();
+        let second_caller = caller.clone();
+        let worker_service = Arc::clone(&service);
+        let worker = std::thread::spawn(move || {
+            let budget = WorkBudget::bounded(Duration::from_secs(5));
+            worker_service.run_read(&second_caller, "context", &budget, |db| {
+                let conn = db.lock();
+                conn.execute_batch("CREATE TEMP TABLE IF NOT EXISTS ledger_query_scope (doc_id TEXT NOT NULL, start_byte INTEGER NOT NULL, end_byte INTEGER NOT NULL, PRIMARY KEY(doc_id,start_byte,end_byte)); DELETE FROM ledger_query_scope;")
+                    .unwrap();
+                conn.execute("INSERT INTO ledger_query_scope VALUES ('second', 20, 30)", [])
+                    .unwrap();
+                second_enter_tx.send(()).unwrap();
+                Ok(())
+            }).unwrap();
+        });
+        assert!(second_enter_rx.recv_timeout(Duration::from_millis(100)).is_err(),
+            "second run_read must wait while first owns shared TEMP scope");
+        release_tx.send(()).unwrap();
+        first.join().unwrap();
+        worker.join().unwrap();
+    }
+
+    /// A stale activation cannot authorize retrieval: replace it with this
+    /// build's qualified receipt, or degrade to shadow when none is shipped.
     #[test]
     fn stale_fts_activation_degrades_at_open() {
         let _env = env_lock();
@@ -998,10 +1058,13 @@ mod tests {
         let catalog = crate::catalog::ContextCatalog::open(dir.path().join("catalog.db")).unwrap();
         let db = LedgerDb::open(&index_path).unwrap();
         let _service = LedgerService::with_catalog(db, catalog).unwrap();
-        assert_eq!(
-            index::recall_mode(&_service.db).unwrap(),
-            index::LedgerRecallMode::Shadow,
-            "untrusted persisted activation must degrade to shadow at open"
-        );
+        if let Some(receipt) = qualification::qualified_fts_activation() {
+            assert_eq!(index::recall_mode(&_service.db).unwrap(), index::LedgerRecallMode::LedgerFts);
+            assert_eq!(index::activation_receipt(&_service.db).unwrap().as_deref(),
+                Some(receipt.receipt_sha256.as_str()), "activation must bind current qualified receipt");
+        } else {
+            assert_eq!(index::recall_mode(&_service.db).unwrap(), index::LedgerRecallMode::Shadow,
+                "untrusted persisted activation must degrade without qualified replacement");
+        }
     }
 }

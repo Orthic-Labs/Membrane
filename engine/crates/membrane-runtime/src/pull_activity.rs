@@ -99,10 +99,12 @@ mod tests {
         let catalog = crate::catalog::ContextCatalog::open_in_memory();
         let mut conn = catalog.lock();
         persist_result(&mut conn, &json!({"result":{"kind":"success","data":{
-            "status":"insufficient_confidence","packet":null,"degradationReason":"blueprint_stale"
+            "status":"insufficient_confidence","packet":null,"degradationReason":"blueprint_stale",
+            "receipts":[{"id":"stale","decision":"rejected","reason":"blueprint_stale","provider":"blueprint"}]
         }}}), "request-2").unwrap();
         let report = crate::admission_producer::build_admission_report_from(&conn, 24).unwrap();
-        assert_eq!(report.decisions_total, 0);
+        assert_eq!(report.decisions_total, 1);
+        assert_eq!(report.omissions_total, 1);
         assert_eq!(report.last_pull_status.as_deref(), Some("insufficient_confidence"));
         assert_eq!(report.last_pull_reason.as_deref(), Some("blueprint_stale"));
     }
