@@ -308,3 +308,85 @@ async fn degraded_freshness_leaves_grant_free_dispatch_unpinned() {
         membrane_protocol::FederationProviderStatusV1::Partial
     ));
 }
+
+struct StaleGraphSource;
+
+impl ContextualBlueprintSource for StaleGraphSource {
+    fn query_with_context<'life0, 'life1, 'async_trait>(
+        &'life0 self,
+        source: &'life1 SourceQuery,
+        _deadline: Instant,
+        _cancellation: tokio_util::sync::CancellationToken,
+    ) -> Pin<Box<dyn Future<Output = SourceResult<BlueprintResult>> + Send + 'async_trait>>
+    where
+        'life0: 'async_trait,
+        'life1: 'async_trait,
+        Self: 'async_trait,
+    {
+        let generation = source.generation.clone().expect("graph generation is pinned");
+        Box::pin(async move {
+            Ok(SourceResponse {
+                value: BlueprintResult {
+                    generation: generation.clone(),
+                    candidates: vec![serde_json::from_value(serde_json::json!({
+                        "id": "stale-node", "layer": 3, "sourceKind": "graph",
+                        "sourceRef": "src/lib.rs", "sourceHash": "xxh128:cccccccccccccccccccccccccccccccc",
+                        "trustClass": "repository", "instructionPolicy": "data_only",
+                        "providerScore": 0.9, "estimatedTokens": 3, "protected": false,
+                        "exact": true, "recoverable": true, "resolver": "blueprint",
+                        "text": "sealed stale graph evidence"
+                    })).expect("candidate fixture")],
+                    payload: None,
+                },
+                generation: Some(generation),
+                complete: true,
+                warnings: Vec::new(),
+            })
+        })
+    }
+
+    fn resolve_symbol_with_context<'life0, 'life1, 'life2, 'async_trait>(
+        &'life0 self,
+        _source: &'life1 SourceQuery,
+        _symbol: &'life2 str,
+        _deadline: Instant,
+        _cancellation: tokio_util::sync::CancellationToken,
+    ) -> Pin<Box<dyn Future<Output = SourceResult<BlueprintResult>> + Send + 'async_trait>>
+    where
+        'life0: 'async_trait,
+        'life1: 'async_trait,
+        'life2: 'async_trait,
+        Self: 'async_trait,
+    {
+        Box::pin(async { Err(membrane_provider_sdk::ProviderError::MissingSource("resolve")) })
+    }
+}
+
+#[tokio::test]
+async fn stale_snapshot_emits_generation_bound_source_resolution() {
+    let provider = BlueprintProvider::with_contextual_source_pair(
+        Arc::new(membrane_federation::blueprint_client::BlueprintClient::new(Arc::new(
+            NativeApi { request: Mutex::new(None) },
+        ))),
+        Arc::new(StaleGraphSource),
+    );
+    let generation = "xxh128:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+    let output = provider
+        .provide(&ProviderContext::new(
+            "request-1", "/repo", "repo-1", "stale graph", "session-1", "claude",
+            Vec::new(), None, Some("sha256:release".to_owned()), FreshnessSnapshotV1 {
+                graph_state: "stale_snapshot".to_owned(), generation: Some(generation.to_owned()),
+                snapshot_id: Some("snapshot-1".to_owned()), base_commit: Some("commit-1".to_owned()),
+                overlay_digest: None, stale: true,
+            }, Instant::now() + Duration::from_secs(30), tokio_util::sync::CancellationToken::new(),
+            "trace-1", membrane_provider_sdk::SourceSet::default(),
+        ))
+        .await
+        .expect("stale graph answers");
+    let receipts = output.extensions.get("sourceResolutions").and_then(|value| value.as_array()).expect("stale receipt extension");
+    assert_eq!(receipts.len(), 1);
+    assert_eq!(receipts[0]["expectedGeneration"], generation);
+    assert_eq!(receipts[0]["resolvedGeneration"], generation);
+    assert_eq!(receipts[0]["expectedHash"], "xxh128:cccccccccccccccccccccccccccccccc");
+    assert_eq!(output.candidates.len(), 1);
+}

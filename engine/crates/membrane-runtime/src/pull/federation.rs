@@ -1976,8 +1976,23 @@ pub fn native_response_to_ccs(
 ) -> Value {
     let mut candidates =
         serde_json::to_value(&response.candidates).unwrap_or_else(|_| Value::Array(Vec::new()));
+    if freshness.stale {
+        mark_stale_blueprint_candidates(&mut candidates);
+    }
     let mut source_resolutions = std::collections::BTreeMap::new();
     let mut atomic_evidence_paths = Vec::new();
+    // Source-resolution receipts are bound to the provider's content
+    // generation (Blueprint's graph identity), while release generation is
+    // the Membrane build identity.  CCS generationId and overlayIdentity must
+    // use the former when a Blueprint lane answered; using freshness's release
+    // fallback makes an internally coherent stale receipt look mismatched.
+    let source_generation = response
+        .providers
+        .iter()
+        .find(|provider| provider.provider == membrane_protocol::ProviderId::Blueprint)
+        .and_then(|provider| provider.generation.clone())
+        .or_else(|| freshness.generation.clone())
+        .or_else(|| request.release_generation.clone());
     for provider in &response.providers {
         if let Some(items) = provider
             .extensions
@@ -2031,13 +2046,7 @@ pub fn native_response_to_ccs(
         .iter()
         .enumerate()
         .map(|(index, omission)| {
-            let reason = if omission.provider == membrane_protocol::ProviderId::Blueprint
-                && omission.reason == membrane_protocol::ReasonCode::GenerationIncoherent
-            {
-                "blueprint_stale"
-            } else {
-                omission.reason.as_str()
-            };
+            let reason = omission.reason.as_str();
             let mut value = serde_json::json!({
                 // A provider-level omission carries no candidate id, so this
                 // read `omission:0`, `omission:1` and so on — which says a
@@ -2089,14 +2098,6 @@ pub fn native_response_to_ccs(
             .cloned()
             .unwrap_or_default()
             .into_iter()
-            .map(|mut warning| {
-                if warning.get("provider").and_then(Value::as_str) == Some("blueprint")
-                    && warning.get("reason").and_then(Value::as_str) == Some("generation_incoherent")
-                {
-                    warning["reason"] = Value::String("blueprint_stale".to_owned());
-                }
-                warning
-            })
             .collect::<Vec<_>>();
         let status_complete = output
             .get("status")
@@ -2264,10 +2265,10 @@ pub fn native_response_to_ccs(
         "task": request.task,
         "mode": "native",
         "provider": "federation",
-        "generationId": freshness.generation.clone().or_else(|| request.release_generation.clone()).unwrap_or_default(),
+        "generationId": source_generation.clone().unwrap_or_default(),
         "atomicEvidencePaths": atomic_evidence_paths,
         "freshness": {
-            "revision": freshness.generation.clone().or_else(|| request.release_generation.clone()).unwrap_or_default(),
+            "revision": source_generation.clone().unwrap_or_default(),
             "indexedAt": freshness.snapshot_id.clone().unwrap_or_default(),
             "stale": freshness.stale,
             "snapshotId": freshness.snapshot_id.clone(),
@@ -2276,7 +2277,7 @@ pub fn native_response_to_ccs(
             "overlayIdentity": freshness.overlay_digest.as_ref().map(|digest| serde_json::json!({
                 "sessionId": request.session_id,
                 "worktreePath": request.repository_root,
-                "generationId": freshness.generation.clone().or_else(|| request.release_generation.clone()).unwrap_or_default(),
+                "generationId": source_generation.clone().unwrap_or_default(),
                 "overlayDigest": digest,
             })),
         },
@@ -3554,5 +3555,103 @@ mod tests {
             .iter()
             .any(|omission| omission["reason"] == "temporal_scope_rejected"));
         assert_eq!(payload["completeness"]["state"], "lower_bound");
+    }
+
+    #[test]
+    fn stale_marks_only_blueprint_graph_candidates() {
+        let mut candidates = serde_json::json!([
+            {"provider":"blueprint","sourceKind":"graph","freshnessClass":"current"},
+            {"provider":"cortex","sourceKind":"vector","freshnessClass":"current"}
+        ]);
+        super::mark_stale_blueprint_candidates(&mut candidates);
+        assert_eq!(candidates[0]["freshnessClass"], "stale_snapshot");
+        assert_eq!(candidates[1]["freshnessClass"], "current");
+    }
+
+    #[test]
+    fn native_projection_binds_ccs_to_blueprint_generation_before_resolution_gate() {
+        let graph_generation = "xxh128:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+        let release_generation = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        let source_hash = "xxh128:cccccccccccccccccccccccccccccccc";
+        let overlay_digest = "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd";
+        let receipt = serde_json::json!({
+            "schemaVersion": 1, "candidateId": "node-1", "provider": "blueprint",
+            "status": "resolved", "expectedHash": source_hash, "resolvedHash": source_hash,
+            "expectedGeneration": graph_generation, "resolvedGeneration": graph_generation,
+            "expectedPath": "src/lib.rs", "resolvedPath": "src/lib.rs",
+            "resolver": "blueprint graph resolve --node node-1",
+            "overlayIdentity": {"sessionId": "session-1", "worktreePath": "repo",
+                "generationId": graph_generation, "overlayDigest": overlay_digest}
+        });
+        let candidate = serde_json::json!({
+            "id": "node-1", "layer": 3, "provider": "blueprint", "sourceKind": "graph",
+            "sourceRef": "src/lib.rs", "sourceHash": source_hash, "trustClass": "repository",
+            "instructionPolicy": "data_only", "providerScore": 0.9, "scoreComponents": {},
+            "baseCommit": "commit-1", "overlayDigest": overlay_digest,
+            "freshnessClass": "stale_snapshot", "snapshotId": "snapshot-1",
+            "estimatedTokens": 4, "protected": false, "exact": true, "recoverable": true,
+            "resolver": "blueprint graph resolve --node node-1", "text": "stale graph evidence"
+        });
+        let response_value = serde_json::json!({
+            "schemaVersion": 1, "requestId": "request-1", "traceId": "trace-1", "status": "partial",
+            "providers": [{"schemaVersion": 1, "provider": "blueprint", "status": "complete",
+                "generation": graph_generation, "candidates": [candidate.clone()], "warnings": [], "omissions": [],
+                "sourceResolutions": [receipt.clone()]}],
+            "candidates": [candidate], "warnings": [], "omissions": [], "extensions": {}
+        });
+        let request = native_request("task", Path::new("repo"), 256, 1000,
+            release_generation.to_owned(), "test", "session-1", Vec::new(), None, None);
+        let freshness = membrane_protocol::FreshnessSnapshotV1 {
+            graph_state: "stale_snapshot".to_owned(), generation: Some(release_generation.to_owned()),
+            snapshot_id: Some("snapshot-1".to_owned()), base_commit: Some("commit-1".to_owned()),
+            overlay_digest: Some(overlay_digest.to_owned()), stale: true,
+        };
+        let response: membrane_protocol::FederationResponseV1 = serde_json::from_value(response_value.clone()).unwrap();
+        let projected = native_response_to_ccs(&response, &request, &freshness);
+        assert_eq!(projected["generationId"], graph_generation);
+        let mut gated = projected.clone();
+        let receipts = crate::source_resolution::gate_source_resolutions(&mut gated);
+        assert_eq!(receipts[0].status, membrane_protocol::SourceResolutionStatusV1::Resolved);
+        assert_eq!(gated["candidates"].as_array().unwrap().len(), 1);
+        let planned = envelope_from_ccs(&serde_json::to_string(&projected).unwrap(), EnvelopeInput {
+            max_tokens: 256, packet_char_budget_override: None, packet_char_budget_model: None,
+            accepted_receipt_versions: vec![2], scope_grant_present: false, consumer_resolvers: Vec::new(),
+            scope_grant_fence: None, gateway_process_ms: 0.0,
+        }).unwrap();
+        assert!(planned["packet"]["blocks"].as_array().unwrap().iter().any(|block| block["id"] == "node-1"));
+
+        let mut mismatched_value = response_value;
+        mismatched_value["providers"][0]["sourceResolutions"][0]["resolvedGeneration"] = serde_json::json!(release_generation);
+        let mismatched: membrane_protocol::FederationResponseV1 = serde_json::from_value(mismatched_value).unwrap();
+        let mut mismatched_projected = native_response_to_ccs(&mismatched, &request, &freshness);
+        let mismatched_receipts = crate::source_resolution::gate_source_resolutions(&mut mismatched_projected);
+        assert_eq!(mismatched_receipts[0].status, membrane_protocol::SourceResolutionStatusV1::GenerationMismatch);
+        assert!(mismatched_projected["candidates"].as_array().unwrap().is_empty());
+    }
+
+}
+
+fn mark_stale_blueprint_candidates(candidates: &mut Value) {
+    let Some(items) = candidates.as_array_mut() else {
+        return;
+    };
+    for candidate in items {
+        let Some(object) = candidate.as_object_mut() else {
+            continue;
+        };
+        if object.get("provider").and_then(Value::as_str) != Some("blueprint") {
+            continue;
+        }
+        let source_kind = object
+            .get("sourceKind")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_ascii_lowercase();
+        if matches!(source_kind.as_str(), "graph" | "vector") {
+            object.insert(
+                "freshnessClass".to_owned(),
+                Value::String("stale_snapshot".to_owned()),
+            );
+        }
     }
 }

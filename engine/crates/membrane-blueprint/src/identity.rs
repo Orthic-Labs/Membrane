@@ -94,7 +94,7 @@ pub fn git_source_observation(root: impl AsRef<Path>) -> Option<GitSourceObserva
     let head = String::from_utf8_lossy(&head_output.stdout).trim().to_ascii_lowercase();
     if head.len() < 40 || head.len() > 64 || !head.bytes().all(|b| b.is_ascii_hexdigit()) { return None; }
     let output = crate::hidden_command("git")
-        .args(["status", "--porcelain=v1", "-z", "--untracked-files=all", "--", ".", ":(exclude).agent", ":(exclude).agent/**", ":(exclude)docs/product.md", ":(exclude)docs/architecture.md"])
+        .args(["status", "--porcelain=v1", "-z", "--untracked-files=all", "--", ".", ":(exclude).agent", ":(exclude).agent/**", ":(exclude)docs/product.md", ":(exclude)docs/architecture.md", ":(exclude)docs/product/README.md", ":(exclude)docs/architecture/membrane.md"])
         .current_dir(root)
         .stdin(Stdio::null())
         .stderr(Stdio::null())

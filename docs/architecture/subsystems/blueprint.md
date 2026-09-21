@@ -168,7 +168,7 @@ Acceptance must prove zero full constructions for ordinary valid-graph operation
 
 ## INV-007 — Context & status reads never construct or refresh
 
-Context, recall, query, freshness, status & explorer read paths use published graph data & honestly report freshness, age, pending changes or unavailable evidence. They never construct graphs or silently initiate repair/refresh. Refresh belongs to authorized resident maintenance or an explicit update operation. Stale Blueprint evidence must not block unrelated subsystem retrieval; Membrane's planner retains final admission authority.
+Context, recall, query, freshness, status & explorer read paths use published graph data & honestly report freshness, age, pending changes or unavailable evidence. They never construct graphs or silently initiate repair/refresh. Refresh belongs to authorized resident maintenance or an explicit update operation. Existing valid graph evidence remains available to Pull even when stale, with its actual generation & freshness preserved. Staleness alone must neither exclude Blueprint nor block unrelated subsystem retrieval. This does not waive authorization, schema compatibility, generation integrity, exact source-resolution checks or an explicitly requested current-evidence requirement. Hub-owned automatic refresh & stale-graph availability require independent acceptance; Membrane's planner retains final admission authority.
 
 ## INV-008 — One logical writer per repository generation
 

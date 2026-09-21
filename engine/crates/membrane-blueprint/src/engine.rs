@@ -208,7 +208,9 @@ fn incremental_refresh_with_repair(
     root: &Path,
     db_path: &Path,
 ) -> Result<Value, BlueprintError> {
-    let pending = request.input.get("paths").and_then(Value::as_array).cloned().unwrap_or_default();
+    let mut pending = request.input.get("paths").and_then(Value::as_array).cloned().unwrap_or_default();
+    let head_marker = pending.iter().any(|path| path.as_str() == Some(".git/HEAD"));
+    if head_marker { pending.clear(); }
     let unsupported = |reason: &str| {
         let mut error = BlueprintError::new("blueprint_incremental_unsupported", reason);
         error.details = Some(json!({"preservedGeneration": true, "pendingChanges": pending.clone()}));
@@ -254,7 +256,7 @@ fn incremental_refresh_with_repair(
     if event_kind != EventKind::Rename { paths.sort(); }
     if paths.is_empty() {
         if !changed.is_empty() {
-            if request.method == Operation::Build {
+            if matches!(request.method, Operation::Build | Operation::Refresh) {
                 paths = changed.iter().cloned().collect();
             } else {
                 let mut error = unsupported("source changes require an explicit event set");
@@ -262,12 +264,48 @@ fn incremental_refresh_with_repair(
                 return Err(error);
             }
         } else {
+            let observation = crate::git_source_observation::git_source_observation(&root.to_string_lossy())
+                .map(|value| json!({
+                    "sourceClock": request.input.get("sourceClock"),
+                    "eventKind": request.input.get("eventKind"),
+                    "paths": request.input.get("paths"),
+                    "head": value.head,
+                    "dirty": value.dirty,
+                    "statusDigest": value.status_digest,
+                    "sealedAtUnixMs": now_unix_ms(),
+                }));
+            let metadata_changed = observation.as_ref().is_some_and(|live| {
+                current_observation.as_ref().map(|sealed| {
+                    sealed.get("head") != live.get("head")
+                        || sealed.get("dirty") != live.get("dirty")
+                        || sealed.get("statusDigest") != live.get("statusDigest")
+                }).unwrap_or(true)
+            });
+            if !metadata_changed {
+                return bounded_generation_response(request, json!({
+                    "schemaVersion":1,"operation":request.method.as_str(),"state":"fresh","refreshMode":"incremental_noop",
+                    "generationId":current.generation_id,"repoRoot":root.to_string_lossy(),"storePath":db_path.to_string_lossy(),
+                    "sourceHash":current.source_hash,"complete":current.complete,"truncationReasons":current.truncation_reasons,
+                    "counts":{"nodes":current.nodes.len(),"edges":current.edges.len(),"files":current.files.len()},
+                    "sourceObservation":current_observation.clone().unwrap_or(Value::Null)
+                }));
+            }
+            let observation = observation.ok_or_else(|| unsupported("git source observation unavailable"))?;
+            let source_clock = request.input.get("sourceClock").and_then(Value::as_u64)
+                .and_then(|clock| i64::try_from(clock).ok()).unwrap_or(0);
+            let mut connection = open_store(db_path)?;
+            delta_store::apply_source_observation(&mut connection, &observation, source_clock)
+                .map_err(|error| delta_error(context, error))?;
+            let status = post_apply_status(db_path)?;
             return bounded_generation_response(request, json!({
-                "schemaVersion":1,"operation":request.method.as_str(),"state":"fresh","refreshMode":"incremental_noop",
-                "generationId":current.generation_id,"repoRoot":root.to_string_lossy(),"storePath":db_path.to_string_lossy(),
-                "sourceHash":current.source_hash,"complete":current.complete,"truncationReasons":current.truncation_reasons,
-                "counts":{"nodes":current.nodes.len(),"edges":current.edges.len(),"files":current.files.len()},
-                "sourceObservation":current_observation.clone().unwrap_or(Value::Null)
+                "schemaVersion": 1, "operation": request.method.as_str(), "state": "fresh",
+                "refreshMode": "metadata", "generationId": status.generation_id,
+                "repoRoot": root.to_string_lossy(), "storePath": db_path.to_string_lossy(),
+                "sourceHash": status.source_hash, "complete": status.complete,
+                "truncationReasons": status.truncation_reasons,
+                "counts": {"nodes": status.nodes, "edges": status.edges, "files": status.files},
+                "invalidatedPaths": [], "reusedFiles": status.files,
+                "sourceObservation": status.source_observation,
             }));
         }
     }

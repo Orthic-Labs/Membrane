@@ -158,6 +158,8 @@ pub fn git_source_observation(root: &str) -> Option<GitSourceObservation> {
             ":(exclude).agent/**",
             ":(exclude)docs/product.md",
             ":(exclude)docs/architecture.md",
+            ":(exclude)docs/product/README.md",
+            ":(exclude)docs/architecture/membrane.md",
         ],
     )?;
     let digest = xxh3_128(&status);
@@ -187,6 +189,8 @@ pub fn git_worktree_fingerprint_bounded(root: &str, timeout: Duration) -> Option
             ":(exclude).agent/**",
             ":(exclude)docs/product.md",
             ":(exclude)docs/architecture.md",
+            ":(exclude)docs/product/README.md",
+            ":(exclude)docs/architecture/membrane.md",
         ],
         timeout,
     )?;

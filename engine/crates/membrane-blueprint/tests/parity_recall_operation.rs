@@ -77,13 +77,14 @@ fn recall_produces_candidate_set_and_circuit_paths() {
     assert_eq!(result["orientation"]["action"], "allow");
 }
 
-/// (b) stale-source suppression: a candidate/path reachable only through a
-/// node whose source path is marked stale must be suppressed from BOTH
+/// (b) stale-source observation: a candidate/path reachable through a node
+/// whose source path is marked stale remains available in BOTH
 /// `candidateSet.candidates` and `recallCircuit.paths`, with a typed
-/// `stale_source_suppressed` omission recorded — mirroring legacy
+/// `stale_source_observed` omission recorded while stale evidence remains
+/// available to Pull with explicit stale freshness.
 /// `suppressRows`/`staleRow` acting on both views independently.
 #[test]
-fn stale_source_is_suppressed_from_candidates_and_paths() {
+fn stale_source_remains_available_in_candidates_and_paths() {
     let generation = GraphGeneration {
         schema_version: 1, provider: "test".into(), provider_version: "1".into(), generation_id: "gen-recall".into(),
         source_hash: "hash".into(), repo_root: "/repo".into(), complete: true,
@@ -106,14 +107,37 @@ fn stale_source_is_suppressed_from_candidates_and_paths() {
 
     let candidates = result["candidateSet"]["candidates"].as_array().unwrap();
     assert!(candidates.iter().any(|c| c["id"] == "symbol:fresh"), "fresh candidate must survive suppression");
-    assert!(!candidates.iter().any(|c| c["id"] == "symbol:stale"), "stale-source candidate must be suppressed");
+    let stale_candidate = candidates.iter().find(|c| c["id"] == "symbol:stale").expect("stale-source candidate remains available");
+    assert_eq!(stale_candidate["freshnessClass"], "stale");
 
     let paths = result["recallCircuit"]["paths"].as_array().unwrap();
-    assert!(!paths.iter().any(|p| p["terminalId"] == "symbol:stale"), "stale-source path must be suppressed from recallCircuit.paths");
+    let stale_path = paths.iter().find(|p| p["terminalId"] == "symbol:stale").expect("stale-source path remains available");
+    assert_eq!(stale_path["freshness"], "stale");
     assert!(paths.iter().any(|p| p["terminalId"] == "symbol:fresh"), "fresh path must remain in recallCircuit.paths");
 
     let circuit_omissions = result["recallCircuit"]["omissions"].as_array().unwrap();
-    assert!(circuit_omissions.iter().any(|o| o["reason"] == "stale_source_suppressed"), "suppression must be recorded as a typed omission");
+    assert!(circuit_omissions.iter().any(|o| o["reason"] == "stale_source_observed"), "stale observation must be recorded as a typed omission");
+}
+
+#[test]
+fn whole_generation_stale_keeps_candidates_and_paths_with_stale_freshness() {
+    let generation = GraphGeneration {
+        schema_version: 1, provider: "test".into(), provider_version: "1".into(), generation_id: "gen-recall".into(),
+        source_hash: "hash".into(), repo_root: "/repo".into(), complete: true,
+        nodes: vec![node("symbol:seed", "src/seed.rs", "seed", "seed"), node("symbol:target", "src/target.rs", "target", "target")],
+        edges: vec![edge("edge:seed->target", "symbol:seed", "symbol:target", "EXACT_RESOLUTION")],
+        files: vec![], truncation_reasons: vec![],
+    };
+    let mut request = BlueprintRequest::new("q", Operation::Recall, "/repo");
+    request.generation = Some("gen-recall".into());
+    request.input["seed"] = json!("symbol:seed");
+    request.input["staleWholeGeneration"] = json!(true);
+    let result = execute_query(&generation, &request, &context(&request)).unwrap();
+    assert_eq!(result["freshness"], "stale");
+    assert_eq!(result["candidateSet"]["freshness"], "stale");
+    let target = result["candidateSet"]["candidates"].as_array().unwrap().iter().find(|candidate| candidate["id"] == "symbol:target").expect("target candidate remains available");
+    assert_eq!(target["freshnessClass"], "stale");
+    assert_eq!(result["recallCircuit"]["paths"][0]["freshness"], "stale");
 }
 
 /// (c) BPT-026 non-compensatory ranking: a shallow (1-hop) but weak-tier

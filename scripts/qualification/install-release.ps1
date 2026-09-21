@@ -535,12 +535,25 @@ function Assert-BlueprintResident([string]$Root, [string]$WorkspaceRoot) {
   Require ([string]$recallPayload.generationId -eq $watchGeneration) 'native Blueprint recall returned a different graph generation'
   Require ([string]$recallPayload.state -eq 'complete' -and $null -ne $recallPayload.candidateSet -and $null -ne $recallPayload.resolution) 'native Blueprint recall omitted complete graph resolution'
   Require (@($recallPayload.nodes).Count -gt 0 -and [string]$recall.Stdout -match [regex]::Escape($watchMarker)) 'native Blueprint recall did not recover watched symbol'
+  # Commit-only changes do not alter watched source bytes. Resident maintenance
+  # must still reseal source identity without a read initiating refresh.
+  $commitOnly = Invoke-NativeProcess $script:GitPath ('-C "{0}" -c user.name=Membrane-Qualification -c user.email=qualification@membrane.invalid commit --quiet --allow-empty -m "qualification head-only advance"' -f $WorkspaceRoot) '' $WorkspaceRoot
+  $headOnly = Invoke-NativeProcess $script:GitPath ('-C "{0}" rev-parse HEAD' -f $WorkspaceRoot) '' $WorkspaceRoot
+  $expectedHead = ([string]$headOnly.Stdout).Trim()
+  $commitDeadline = (Get-Date).AddSeconds([Math]::Max($TimeoutSeconds, 300))
+  $commitPayload = $null
+  do {
+    Start-Sleep -Milliseconds 500
+    $observed = (Invoke-BlueprintOneShot $Root $WorkspaceRoot).Payload
+    if ([string]$observed.state -eq 'fresh' -and [string]$observed.sourceObservation.head -eq $expectedHead) { $commitPayload = $observed; break }
+  } while ((Get-Date) -lt $commitDeadline)
+  Require ($null -ne $commitPayload) 'Blueprint watcher did not reconcile commit-only HEAD advancement'
   $mismatchGeneration = 'xxh128:' + [string]::new('0', 32)
   $mismatch = Invoke-NativeProcessAllowFailure $membrane ("cli blueprint findings.get --repo-root $(Quote-NativeArgument $WorkspaceRoot) --generation $mismatchGeneration") '' $Root
   $mismatchPayload = if (-not [string]::IsNullOrWhiteSpace($mismatch.Stdout)) { Read-NativeOutput $mismatch.Stdout 'native Blueprint generation mismatch' } else { $null }
   $mismatchCode = if ($mismatchPayload.error.code) { [string]$mismatchPayload.error.code } elseif ($mismatchPayload.result.error.code) { [string]$mismatchPayload.result.error.code } else { [string]$mismatch.Stderr }
   Require ($mismatch.ExitCode -ne 0 -and $mismatchCode -match '(?i)generation_mismatch|stale_blocked') "native Blueprint generation mismatch did not fail closed: exit=$($mismatch.ExitCode) response=$mismatchCode"
-  return [ordered]@{ transport = 'membrane.exe cli blueprint'; status = 'pass'; enrollment = 'native'; graph = $freshnessState; generation = $graphGeneration; watcher = 'hub-health-and-freshness'; watcherMutation = 'pass'; watcherGeneration = $watchGeneration; watcherQuery = 'pass'; findings = 'generation_mismatch'; recall = 'success'; generationMismatch = 'pass'; hubOwned = $true }
+  return [ordered]@{ transport = 'membrane.exe cli blueprint'; status = 'pass'; enrollment = 'native'; graph = $freshnessState; generation = $graphGeneration; watcher = 'hub-health-and-freshness'; watcherMutation = 'pass'; watcherGeneration = $watchGeneration; watcherQuery = 'pass'; watcherCommitOnly = 'pass'; watcherCommitHead = $expectedHead; findings = 'generation_mismatch'; recall = 'success'; generationMismatch = 'pass'; hubOwned = $true }
 }
 
 function Invoke-BlueprintOneShot([string]$Root, [string]$WorkspaceRoot) {

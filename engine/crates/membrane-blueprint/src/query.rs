@@ -377,18 +377,9 @@ fn atomic_path_value(path: &AtomicPath) -> Value {
 /// existing consumers of the V1 shape are unaffected): `recallCircuit`
 /// (paths/state/omissions/policy, mirroring legacy `RecallCircuit`) and
 /// `orientation` (mirroring legacy `recallOrientation`'s action/reason
-/// verdict). Stale-source suppression: legacy's `staleRow`/
-/// `staleSourcePolicy`/`suppressRows` are driven by a freshness *receipt*
-/// this native layer is never handed (no field on `BlueprintRequest`/
-/// `RequestContext` carries one -- freshness/receipts belong to a
-/// different subsystem per `docs/agent-rules.md`'s "Keep provider
-/// authority and freshness distinct" invariant). Suppression is instead
-/// driven by two optional request inputs a freshness-owning caller can
-/// supply: `staleSourcePaths` (array of stale-relative-to-current-worktree
-/// paths) and `staleWholeGeneration` (bool, mirrors legacy's
-/// `suppression.mode === "whole_generation"`). Absent, no suppression is
-/// applied -- existing callers/tests that never set these fields see
-/// unchanged behavior.
+/// verdict). The freshness owner supplies `staleSourcePaths` or
+/// `staleWholeGeneration`; these annotate sealed graph evidence without
+/// excluding it. Explicit requested-generation mismatch remains fail-closed.
 fn recall_op(generation: &GraphGeneration, request: &BlueprintRequest, context: &RequestContext, limits: Limits) -> Result<Value, BlueprintError> {
     let raw = request.input.get("seed").or_else(|| request.input.get("target")).or_else(|| request.input.get("nodeId")).or_else(|| request.input.get("task")).and_then(Value::as_str).unwrap_or("");
     let task_text = request.input.get("task").and_then(Value::as_str).or_else(|| request.input.get("query").and_then(Value::as_str)).filter(|t| !t.is_empty()).unwrap_or(raw);
@@ -459,8 +450,7 @@ fn recall_op(generation: &GraphGeneration, request: &BlueprintRequest, context: 
     let mut circuit = recall_circuit::execute_recall_circuit_with_totals(&graph, &resolution.seeds, &policy, &generation.generation_id, total_seen, total_edges);
     circuit.omissions.append(&mut policy_omissions);
 
-    // Stale-source suppression (see doc comment above for why this is
-    // input-driven rather than receipt-driven at this layer).
+    // Stale-source annotations preserve access to the sealed graph.
     let stale_paths: BTreeSet<String> = request.input.get("staleSourcePaths").and_then(Value::as_array).into_iter().flatten()
         .filter_map(|v| v.as_str()).map(|p| p.replace('\\', "/")).collect();
     let whole_generation_stale = request.input.get("staleWholeGeneration").and_then(Value::as_bool).unwrap_or(false);
@@ -469,33 +459,18 @@ fn recall_op(generation: &GraphGeneration, request: &BlueprintRequest, context: 
         if stale_paths.is_empty() { return false; }
         node_ids.iter().any(|id| graph.nodes.get(id).and_then(|n| n.get("path")).and_then(Value::as_str).is_some_and(|p| stale_paths.contains(&p.replace('\\', "/"))))
     };
-    let before_suppression = circuit.paths.len();
-    if whole_generation_stale || !stale_paths.is_empty() {
-        circuit.paths.retain(|path| !is_stale(&path.node_ids));
-        let suppressed = before_suppression - circuit.paths.len();
-        if suppressed > 0 || whole_generation_stale {
-            circuit.omissions.push(json!({"reason":"stale_source_suppressed","lane":"evidence_path","count":suppressed}));
-        }
-        if circuit.paths.is_empty() && before_suppression > 0 { circuit.state = "abstained"; }
+    let stale_path_count = circuit.paths.iter().filter(|path| is_stale(&path.node_ids)).count();
+    if stale_path_count > 0 || whole_generation_stale {
+        circuit.omissions.push(json!({"reason":"stale_source_observed","lane":"evidence_path","count":stale_path_count}));
     }
 
     // Preserve the existing V1 fields (`nodes`/`edges`/`depths`/
-    // `candidateSet`) sourced from the graph the circuit actually reached
-    // (post stale-suppression: a node that appears only via a suppressed
-    // path is still reachable structurally, so it is not pulled from
-    // `nodes`/`edges`/`candidateSet` here -- only `recallCircuit.paths`
-    // drops the suppressed path itself, exactly mirroring legacy's
-    // `suppressRows` acting on `candidateSet.candidates`/`recallCircuit.paths`
-    // as two independently-filtered views over the same underlying graph).
+    // `candidateSet`) sourced from the graph the circuit actually reached. A
+    // node that appears via a stale path remains reachable structurally, so it
+    // is still included in the graph projection and candidate set.
     let candidate_ids: Vec<String> = allowed_nodes.iter().cloned().collect();
     let candidate_nodes: Vec<&GraphNode> = candidate_ids.iter().filter_map(|id| nodes_by_id.get(id.as_str()).copied()).collect();
-    let filtered_candidate_nodes: Vec<&GraphNode> = if whole_generation_stale {
-        Vec::new()
-    } else if stale_paths.is_empty() {
-        candidate_nodes
-    } else {
-        candidate_nodes.into_iter().filter(|n| !n.path.as_deref().is_some_and(|p| stale_paths.contains(&p.replace('\\', "/")))).collect()
-    };
+    let filtered_candidate_nodes: Vec<&GraphNode> = candidate_nodes;
     // The request's candidate bound gates the emitted set itself: a wide
     // traversal legitimately reaches more nodes than maxCandidates, and an
     // oversized candidateSet makes the federation client reject the whole
@@ -507,7 +482,20 @@ fn recall_op(generation: &GraphGeneration, request: &BlueprintRequest, context: 
         .collect();
     let candidates_truncated = emitted_candidates.len() < filtered_candidate_nodes.len();
     let mut candidate_omissions = circuit.omissions.clone();
-    let set = candidate_set("complete", emitted_candidates.into_iter(), Some(candidate_ids.len()), candidates_truncated || !candidate_omissions.is_empty(), std::mem::take(&mut candidate_omissions));
+    let mut set = candidate_set("complete", emitted_candidates.into_iter(), Some(candidate_ids.len()), candidates_truncated || !candidate_omissions.is_empty(), std::mem::take(&mut candidate_omissions));
+    if whole_generation_stale || !stale_paths.is_empty() {
+        if let Some(set_object) = set.as_object_mut() {
+            set_object.insert("freshness".into(), json!("stale"));
+            if let Some(candidates) = set_object.get_mut("candidates").and_then(Value::as_array_mut) {
+                for candidate in candidates {
+                    let stale_candidate = whole_generation_stale || candidate.get("sourceRef").and_then(Value::as_str).is_some_and(|path| stale_paths.contains(path));
+                    if stale_candidate {
+                        if let Some(candidate) = candidate.as_object_mut() { candidate.insert("freshnessClass".into(), json!("stale")); }
+                    }
+                }
+            }
+        }
+    }
 
     let values: Vec<Value> = candidate_ids.iter().filter_map(|id| nodes_by_id.get(id.as_str()).map(|n| node_value(n))).take(limits.nodes).collect();
     let edges_json: Vec<Value> = edge_rows.iter().map(edge_value).collect();
@@ -547,7 +535,10 @@ fn recall_op(generation: &GraphGeneration, request: &BlueprintRequest, context: 
     let mut path_bytes = 0usize;
     let mut circuit_paths_json = Vec::new();
     for path in &circuit.paths {
-        let value = atomic_path_value(path);
+        let mut value = atomic_path_value(path);
+        if whole_generation_stale || is_stale(&path.node_ids) {
+            if let Some(object) = value.as_object_mut() { object.insert("freshness".into(), json!("stale")); }
+        }
         let encoded = serde_json::to_vec(&value).map(|bytes| bytes.len()).unwrap_or(path_budget);
         if path_bytes.saturating_add(encoded) > path_budget { break; }
         path_bytes = path_bytes.saturating_add(encoded);
@@ -559,19 +550,22 @@ fn recall_op(generation: &GraphGeneration, request: &BlueprintRequest, context: 
         circuit.state = "partial";
     }
     let path_count = circuit_paths_json.len();
-    let recall_circuit_json = json!({
+    let mut recall_circuit_json = json!({
         "schemaVersion": 1, "kind": "RecallCircuit", "id": circuit.id, "generationId": circuit.generation_id,
         "policy": circuit.policy_family, "paths": circuit_paths_json, "omissions": circuit.omissions, "state": circuit.state,
         "seeds": resolution.seeds.iter().map(|s| json!({"id": s.id, "exactness": s.exactness, "reason": s.reason, "evidence": s.evidence})).collect::<Vec<_>>(),
     });
+    if whole_generation_stale || !stale_paths.is_empty() {
+        recall_circuit_json["freshness"] = json!("stale");
+    }
 
     // Orientation, mirroring legacy `recallOrientation`'s decision order:
     // whole-generation suppression blocks, partial suppression continues
     // (admitted but incomplete), zero evidence is a noop, otherwise allow.
     let (action, reason_code, reason_text) = if whole_generation_stale {
-        ("block", "stale_generation_withheld", "Stale-source enumeration is incomplete, so every source-backed row is withheld.")
+        ("block", "stale_generation_withheld", "Stale-source enumeration is incomplete; source-backed rows remain available with stale freshness.")
     } else if !stale_paths.is_empty() {
-        ("continue", "recalled_stale", "Recall served under a generation that predates current worktree changes; suppressed sources are on the receipt.")
+        ("continue", "recalled_stale", "Recall served under a generation that predates current worktree changes; stale sources are marked on the receipt.")
     } else if candidate_count == 0 && path_count == 0 {
         ("noop", "no_candidates", "Recall resolved no evidence paths for this task.")
     } else {
@@ -592,6 +586,9 @@ fn recall_op(generation: &GraphGeneration, request: &BlueprintRequest, context: 
         ("omissions".into(), json!(circuit.omissions)), ("candidateSet".into(), set),
         ("recallCircuit".into(), recall_circuit_json), ("orientation".into(), orientation),
     ]));
+    if whole_generation_stale || !stale_paths.is_empty() {
+        result["freshness"] = json!("stale");
+    }
     fit_envelope_bytes(&mut result, limits.bytes, request);
     Ok(result)
 }
@@ -714,7 +711,15 @@ fn fit_envelope_bytes(result: &mut Value, budget: usize, request: &BlueprintRequ
             return;
         }
         if let Some(omissions) = result["omissions"].as_array_mut() {
-            omissions.push(json!({"reason": "byte_ceiling", "field": path, "count": omitted}));
+            // Repeated halving must not grow the receipt faster than the
+            // payload shrinks. Preserve total cuts per field in one entry.
+            if let Some(existing) = omissions.iter_mut().find(|entry| {
+                entry["reason"] == "byte_ceiling" && entry["field"] == path
+            }) {
+                existing["count"] = json!(existing["count"].as_u64().unwrap_or(0) + omitted as u64);
+            } else {
+                omissions.push(json!({"reason": "byte_ceiling", "field": path, "count": omitted}));
+            }
         }
         if path == "candidateSet.candidates" {
             let kept = result["candidateSet"]["candidates"].as_array().map_or(0, Vec::len);

@@ -236,4 +236,24 @@ mod tests {
         for (field, status) in [("provider", SourceResolutionStatusV1::MissingProvider), ("generationId", SourceResolutionStatusV1::MissingGeneration)] { let mut value = set(Value::Null); value.as_object_mut().unwrap().remove(field); assert_eq!(gate_source_resolutions(&mut value)[0].status, status); }
         let schema: Value = serde_json::from_str(include_str!("../../../../schemas/source-resolution-receipt.v1.schema.json")).unwrap(); assert_eq!(schema.pointer("/properties/status/enum").unwrap(), &json!(["resolved","unresolved","hash_mismatch","generation_mismatch","path_mismatch","resolver_unavailable","missing_identity","missing_provider","missing_hash","missing_generation","missing_path"])); assert!(schema.pointer("/properties/provider/minLength").is_none()); assert_eq!(schema.pointer("/allOf/0/then/properties/resolver/minLength"), Some(&json!(1)));
     }
+
+    #[test]
+    fn overlay_identity_uses_graph_generation_and_rejects_release_generation() {
+        let graph_generation = "xxh128:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+        let release_generation = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        let receipt = json!({"schemaVersion":1,"candidateId":"node-1","provider":"blueprint","status":"resolved",
+            "expectedHash":hash(),"resolvedHash":hash(),"expectedGeneration":graph_generation,
+            "resolvedGeneration":graph_generation,"expectedPath":"src/lib.rs","resolvedPath":"src/lib.rs",
+            "resolver":"blueprint graph resolve --node node-1",
+            "overlayIdentity":{"sessionId":"session-1","worktreePath":"repo","generationId":graph_generation,"overlayDigest":"sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"}});
+        let mut coherent = set(receipt.clone());
+        coherent["generationId"] = json!(graph_generation);
+        coherent["freshness"] = json!({"overlayIdentity":{"sessionId":"session-1","worktreePath":"repo","generationId":graph_generation,"overlayDigest":"sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"}});
+        assert_eq!(gate_source_resolutions(&mut coherent)[0].status, SourceResolutionStatusV1::Resolved);
+        let mut mixed = set(receipt);
+        mixed["generationId"] = json!(graph_generation);
+        mixed["freshness"] = json!({"overlayIdentity":{"sessionId":"session-1","worktreePath":"repo","generationId":release_generation,"overlayDigest":"sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"}});
+        assert_eq!(gate_source_resolutions(&mut mixed)[0].status, SourceResolutionStatusV1::GenerationMismatch);
+        assert!(mixed["candidates"].as_array().unwrap().is_empty());
+    }
 }

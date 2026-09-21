@@ -490,6 +490,8 @@ pub fn changed_paths_since_generation(
     };
     let mut paths = BTreeMap::new();
     for path in committed.into_iter().chain(worktree).chain(untracked) {
+        let name = path.rsplit('/').next().unwrap_or(&path);
+        if crate::graph::is_canonical_ignored_file(&path, name) { continue; }
         paths.insert(path, ());
     }
     ChangedPathsObservation { complete: true, paths: paths.into_keys().collect(), reason: None }
@@ -551,6 +553,8 @@ pub fn changed_paths_for_freshness_bounded(
     };
     let mut paths = BTreeMap::new();
     for path in committed.into_iter().chain(worktree).chain(untracked) {
+        let name = path.rsplit('/').next().unwrap_or(&path);
+        if crate::graph::is_canonical_ignored_file(&path, name) { continue; }
         paths.insert(path, ());
     }
     crate::freshness_receipt::ChangedPaths::complete(paths.into_keys().collect())

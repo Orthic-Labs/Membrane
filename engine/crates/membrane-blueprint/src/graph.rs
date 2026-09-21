@@ -532,6 +532,29 @@ pub fn resolve_file_facts_edges(
     facts: &mut FileFacts,
     functions: &HashMap<String, Vec<&GraphNode>>,
 ) {
+    // The incremental resolver index also carries file identity. Stored
+    // unresolved IMPORTS facts have no source bytes left to rebuild, so use
+    // their original specifier/path evidence against that post-change file
+    // set before resolving calls.
+    for edge in &mut facts.edges {
+        if edge.kind != "IMPORTS" || edge.target.is_some() { continue; }
+        let Some(specifier) = edge.evidence.first()
+            .and_then(|evidence| evidence.get("specifier").or_else(|| evidence.get("callName")))
+            .and_then(Value::as_str)
+        else { continue; };
+        let Some(source) = edge.evidence.first().and_then(|evidence| evidence.get("path")).and_then(Value::as_str) else { continue; };
+        let Some(target) = crate::module_resolution::resolve_import_with(source, specifier, |path| {
+            functions.contains_key(&format!("{FILE_INDEX_PREFIX}{path}"))
+        }) else { continue; };
+        edge.target = Some(format!("file:{target}"));
+        edge.evidence.iter_mut().for_each(|evidence| {
+            if let Some(object) = evidence.as_object_mut() {
+                object.insert("resolved".into(), Value::Bool(true));
+                object.insert("confidenceTier".into(), Value::String(ConfidenceTier::ExactResolution.as_str().into()));
+                object.insert("confidence".into(), Value::from(ConfidenceTier::ExactResolution.score()));
+            }
+        });
+    }
     for edge in &mut facts.edges {
         if edge.kind == "CALLS" {
             edge.target = None;
@@ -930,8 +953,18 @@ pub fn symbol_index<'a, I>(nodes: I) -> HashMap<String, Vec<&'a GraphNode>>
 where
     I: Iterator<Item = &'a GraphNode>,
 {
-    nodes.filter(|n| n.kind == "symbol").filter_map(|n| n.name.clone().map(|name| (name, n))).fold(HashMap::new(), |mut m, (k,v)| { m.entry(k).or_default().push(v); m })
+    nodes.filter_map(|node| {
+        if node.kind == "symbol" {
+            node.name.clone().map(|name| (name, node))
+        } else if node.kind == "file" {
+            node.path.clone().map(|path| (format!("{FILE_INDEX_PREFIX}{path}"), node))
+        } else {
+            None
+        }
+    }).fold(HashMap::new(), |mut m, (k,v)| { m.entry(k).or_default().push(v); m })
 }
+
+const FILE_INDEX_PREFIX: &str = "\0file:";
 
 fn resolve_edges_with_index(mut edges: Vec<GraphEdge>, functions: &HashMap<String, Vec<&GraphNode>>) -> Vec<GraphEdge> {
     for edge in &mut edges {

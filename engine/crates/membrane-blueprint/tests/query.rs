@@ -221,8 +221,9 @@ fn recall_response_fits_request_byte_bound_with_honest_cuts() {
     request.input["seed"] = json!("symbol:src/m0.rs::f0");
     request.input["maxDepth"] = json!(48);
     request.input["maxBytes"] = json!(4096);
+    request.input["staleSourcePaths"] = json!(["src/m1.rs"]);
     let result = execute_query(&generation, &request, &context(&request)).unwrap();
-    let wrapped = membrane_blueprint::BlueprintResponse::success("q", Some(id), result.clone());
+    let wrapped = membrane_blueprint::BlueprintResponse::success("q", Some(id.clone()), result.clone());
     assert!(
         serde_json::to_vec(&wrapped).unwrap().len() <= 4096,
         "wrapped response must fit the requested byte bound, got {} bytes",
@@ -236,6 +237,15 @@ fn recall_response_fits_request_byte_bound_with_honest_cuts() {
     assert!(
         result["candidateSet"]["candidates"].as_array().map_or(0, Vec::len) >= 1,
         "delivered candidates must survive presentational cuts"
+    );
+
+    request.input["staleSourcePaths"] = json!([]);
+    request.input["staleWholeGeneration"] = json!(true);
+    let whole_result = execute_query(&generation, &request, &context(&request)).unwrap();
+    let whole_wrapped = membrane_blueprint::BlueprintResponse::success("q", Some(id), whole_result);
+    assert!(
+        serde_json::to_vec(&whole_wrapped).unwrap().len() <= 4096,
+        "whole-generation stale response must fit the requested byte bound"
     );
 }
 

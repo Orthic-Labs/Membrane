@@ -21,12 +21,6 @@ const BLUEPRINT_FRAME_BYTES: usize = 16 * 1024;
 const BLUEPRINT_REQUEST_TIMEOUT: Duration = Duration::from_secs(2);
 const FIRST_AFTER_IDLE_THRESHOLD: Duration = Duration::from_secs(5 * 60);
 
-/// Commits the sealed generation may lag HEAD before the graph is called stale.
-///
-/// Plan 1.2: staleness is "behind HEAD by more than N", default 1. Treating any
-/// difference as stale made an actively-committed worktree permanently alarmed.
-const MAX_GENERATION_COMMIT_LAG: u32 = 1;
-
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FreshnessEpoch {
@@ -415,17 +409,10 @@ fn classify(
                 false,
                 vec!["commit_epoch_missing".to_string()],
             )
-        } else if epoch.head_commit != epoch.base_commit
-            && epoch
-                .commit_distance
-                .is_none_or(|distance| distance > MAX_GENERATION_COMMIT_LAG)
-        {
-            // Plan 1.2: stale means the generation is behind HEAD by more than
-            // MAX_GENERATION_COMMIT_LAG commits — not merely "different from
-            // HEAD". A single commit past the sealed generation is the normal
-            // steady state of an active worktree and used to trip a permanent
-            // alarm. An unmeasurable distance stays stale: unknown lag is not
-            // evidence of freshness.
+        } else if epoch.head_commit != epoch.base_commit {
+            // Report the sealed source basis honestly, including one-commit
+            // drift. Stale graph availability is an admission concern; hiding
+            // lag here cannot substitute for authorized background refresh.
             (
                 GraphState::StaleSnapshot,
                 ReindexState::Idle,
@@ -1165,19 +1152,16 @@ mod tests {
     }
 
     #[test]
-    fn generation_one_commit_behind_head_is_not_stale() {
-        // Plan 1.2: stale means behind HEAD by MORE than MAX_GENERATION_COMMIT_LAG.
-        // A single commit past the sealed generation is the ordinary steady
-        // state of an active worktree, and treating it as stale is exactly the
-        // always-on alarm Phase 1 removes.
+    fn generation_one_commit_behind_head_is_stale_but_usable() {
         let verdict = classify(epoch_behind_head(Some(1)), Vec::new(), 1, BTreeMap::new());
-        assert_eq!(verdict.graph_state, GraphState::Clean);
+        assert_eq!(verdict.graph_state, GraphState::StaleSnapshot);
+        assert!(verdict.providers.blueprint.usable);
     }
 
     #[test]
-    fn generation_further_behind_head_than_the_lag_budget_is_stale() {
+    fn generation_multiple_commits_behind_head_is_stale() {
         let verdict = classify(
-            epoch_behind_head(Some(MAX_GENERATION_COMMIT_LAG + 1)),
+            epoch_behind_head(Some(2)),
             Vec::new(),
             1,
             BTreeMap::new(),

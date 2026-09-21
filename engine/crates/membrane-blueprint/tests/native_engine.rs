@@ -312,8 +312,9 @@ fn empty_refresh_discovers_source_changes_instead_of_reporting_fresh() {
     let operation = NativeBlueprintOperation;
     execute(&operation, &request("initial", Operation::Build, root.path())).unwrap();
     fs::write(root.path().join("main.rs"), "fn changed() {}\n").unwrap();
-    let error = execute(&operation, &request("discover", Operation::Refresh, root.path())).unwrap_err();
-    assert!(error.starts_with("blueprint_incremental_unsupported:"));
+    let result = execute(&operation, &request("discover", Operation::Refresh, root.path())).unwrap();
+    assert_eq!(result["refreshMode"], "incremental");
+    assert!(result["invalidatedPaths"].as_array().unwrap().iter().any(|path| path == "main.rs"));
 }
 
 fn git(root: &std::path::Path, args: &[&str]) {
@@ -324,6 +325,56 @@ fn git(root: &std::path::Path, args: &[&str]) {
         .status()
         .expect("git invocation failed");
     assert!(status.success(), "git {:?} failed", args);
+}
+
+fn git_repo_with_source() -> tempfile::TempDir {
+    let root = tempdir().unwrap();
+    git(root.path(), &["init", "--quiet"]);
+    git(root.path(), &["config", "user.email", "test@example.invalid"]);
+    git(root.path(), &["config", "user.name", "Freshness Test"]);
+    fs::write(root.path().join(".gitignore"), ".agent/\n").unwrap();
+    fs::write(root.path().join("main.rs"), "fn entry() {}\n").unwrap();
+    git(root.path(), &["add", ".gitignore", "main.rs"]);
+    git(root.path(), &["commit", "--quiet", "-m", "seed"]);
+    root
+}
+
+#[test]
+fn head_only_refresh_reseals_metadata_without_reextracting_facts() {
+    let root = git_repo_with_source();
+    let operation = NativeBlueprintOperation;
+    let built = execute(&operation, &request("head-build", Operation::Build, root.path())).unwrap();
+    let source_hash = built["sourceHash"].clone();
+    let generation = built["generationId"].clone();
+    git(root.path(), &["commit", "--allow-empty", "--quiet", "-m", "head-only"]);
+    let mut refresh = request("head-refresh", Operation::Refresh, root.path());
+    refresh.input["sourceClock"] = Value::from(1u64);
+    refresh.input["eventKind"] = Value::String("modify".into());
+    refresh.input["paths"] = Value::Array(vec![Value::String(".git/HEAD".into())]);
+    let result = execute(&operation, &refresh).unwrap();
+    assert_eq!(result["refreshMode"], "metadata");
+    assert_eq!(result["sourceHash"], source_hash);
+    assert_ne!(result["generationId"], generation);
+    assert_eq!(result["sourceObservation"]["dirty"], false);
+}
+
+#[test]
+fn head_refresh_discovers_committed_source_edit_before_metadata_reseal() {
+    let root = git_repo_with_source();
+    let operation = NativeBlueprintOperation;
+    let built = execute(&operation, &request("edit-build", Operation::Build, root.path())).unwrap();
+    let source_hash = built["sourceHash"].clone();
+    fs::write(root.path().join("main.rs"), "fn changed() {}\n").unwrap();
+    git(root.path(), &["add", "main.rs"]);
+    git(root.path(), &["commit", "--quiet", "-m", "source-edit"]);
+    let mut refresh = request("edit-refresh", Operation::Refresh, root.path());
+    refresh.input["sourceClock"] = Value::from(1u64);
+    refresh.input["eventKind"] = Value::String("modify".into());
+    refresh.input["paths"] = Value::Array(vec![Value::String(".git/HEAD".into())]);
+    let result = execute(&operation, &refresh).unwrap();
+    assert_eq!(result["refreshMode"], "incremental");
+    assert_ne!(result["sourceHash"], source_hash);
+    assert!(result["invalidatedPaths"].as_array().unwrap().iter().any(|path| path == "main.rs"));
 }
 
 #[test]
@@ -346,7 +397,7 @@ fn status_observes_live_source_without_full_construction_receipt() {
 
     // Clean worktree: live observation matches the sealed basis.
     let result = execute(&operation, &request("status", Operation::Status, root.path())).unwrap();
-    assert_eq!(result["state"], "fresh");
+    assert_eq!(result["state"], "fresh", "unexpected clean status: {}", result);
     assert_eq!(result["freshnessReceipt"]["freshness"], "fresh");
     assert_eq!(result["freshnessReceipt"]["observationMode"], "live_observation");
     assert_eq!(result["freshnessReceipt"]["liveSourceObserved"], true);

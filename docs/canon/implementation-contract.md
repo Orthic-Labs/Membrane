@@ -46,6 +46,10 @@ Excluded optimizations must not become implicit dependencies of committed capabi
 
 Operational event storage (CTX-032) stays distinct from authored knowledge & continues supporting existing daemon/review consumers. Adapt lineage (ADP-042) describes evidence-to-proposal/outcome history, not repository semantics. ADP-075 must expose empty workload, missing bindings, blocked/failed work & unavailable outcome joins honestly.
 
+## Blueprint availability & freshness
+
+Existing valid Blueprint graph evidence remains available to Pull even when stale, labelled with its actual generation & freshness. Staleness alone is not an exclusion. Authorization, schema compatibility, generation integrity, exact source-resolution checks & explicit current-evidence requirements remain enforced. Hub/CodeRight-owned watchers or explicit build/refresh operations maintain freshness; Pull reads never update graphs. Qualify stale-graph delivery independently from automatic refresh after edits, commits & restart.
+
 ## Pull budget contract
 
 PUL-050 supports two explicit modes across native, HTTP & stdio projections:

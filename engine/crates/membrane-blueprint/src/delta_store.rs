@@ -589,6 +589,26 @@ pub enum ApplyFileDeltaError {
     Cancelled,
 }
 
+/// Reseal repository identity when source bytes are unchanged. Commit-only
+/// HEAD changes use this path, so no file facts or provider rows are rebuilt.
+pub fn apply_source_observation(
+    conn: &mut Connection,
+    observation: &Value,
+    applied_clock: i64,
+) -> Result<(), ApplyFileDeltaError> {
+    let tx = conn.transaction()?;
+    let applied_clock = applied_clock.max(read_clock(&tx, "applied_clock", 0)?);
+    let mut manifest = read_manifest(&tx)?.ok_or_else(|| ApplyFileDeltaError::Store("generation envelope is missing manifest".into()))?;
+    let root_digest = root_digest_tx(&tx)?;
+    reseal_generation_identity_delta(&mut manifest, Some(observation), root_digest.as_deref(), applied_clock)
+        .map_err(ApplyFileDeltaError::Store)?;
+    crate::store_delta::write_manifest(&tx, &manifest)?;
+    write_source_observation(&tx, observation)?;
+    set_clock(&tx, "applied_clock", applied_clock)?;
+    tx.commit()?;
+    Ok(())
+}
+
 /// Native port of `applyFileDelta` for structural (non-document) deltas.
 /// See the module docs for the exact behavioral contract and deviations.
 pub fn apply_file_delta(

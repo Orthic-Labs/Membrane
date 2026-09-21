@@ -395,6 +395,8 @@ pub struct NativeWatcher {
     ignore: RepoIgnore,
     native_queue: Arc<Mutex<NativeEventQueue>>,
     last_snapshot_at: Option<Instant>,
+    last_git_head_probe_at: Option<Instant>,
+    previous_git_head: Option<String>,
     _native_watcher: RecommendedWatcher,
 }
 
@@ -419,7 +421,8 @@ impl NativeWatcher {
         }).map_err(|error| WatchError::Native(error.to_string()))?;
         let mut native_watcher = native_watcher;
         native_watcher.watch(&root, RecursiveMode::Recursive).map_err(|error| WatchError::Native(error.to_string()))?;
-        let mut watcher = Self { config, previous: initial, source_clock: 0, applied_clock: 0, gap: None, closed: false, sequence: 0, clock: Arc::new(SteadyClock::new()), sink: None, ignore: RepoIgnore::for_root(&root), native_queue: queue, last_snapshot_at: Some(Instant::now()), _native_watcher: native_watcher };
+        let previous_git_head = crate::git_source_observation::git_base_commit(&root.to_string_lossy());
+        let mut watcher = Self { config, previous: initial, source_clock: 0, applied_clock: 0, gap: None, closed: false, sequence: 0, clock: Arc::new(SteadyClock::new()), sink: None, ignore: RepoIgnore::for_root(&root), native_queue: queue, last_snapshot_at: Some(Instant::now()), last_git_head_probe_at: None, previous_git_head, _native_watcher: native_watcher };
         watcher.emit("started", None);
         Ok(watcher)
     }
@@ -579,8 +582,44 @@ impl NativeWatcher {
             return Err(WatchError::Snapshot(SnapshotError::Cancelled));
         }
         let (native_events_observed, native_events) = self.take_native_events()?;
-        if native_events_observed {
-            return self.publish_native_events(native_events, schedule_rebuild);
+        let now = Instant::now();
+        let probe_due = self.last_git_head_probe_at.is_none_or(|at| {
+            now.duration_since(at) >= Duration::from_millis(self.config.snapshot_interval_ms)
+        });
+        let should_probe_git_head = probe_due;
+        let current_git_head = if should_probe_git_head {
+            self.last_git_head_probe_at = Some(now);
+            crate::git_source_observation::git_base_commit_bounded(
+                &self.config.root.to_string_lossy(),
+                Duration::from_millis(100),
+            )
+        } else {
+            self.previous_git_head.clone()
+        };
+        let git_head_changed = current_git_head.is_some() && current_git_head != self.previous_git_head;
+        let mut native_events = native_events;
+        if git_head_changed {
+            native_events.push(WatchEvent {
+                kind: EventKind::Modify,
+                path: ".git/HEAD".into(),
+                rename_to: None,
+                source_clock: self.source_clock.saturating_add(native_events.len() as u64 + 1),
+            });
+        }
+        // Notifications for ignored/generated paths are still observations,
+        // but they do not identify a source event. Keep the snapshot drift
+        // backstop active when filtering removed every queued event; otherwise
+        // an unrelated `.agent`/directory notification can suppress the
+        // reconciliation that discovers a missed source edit.
+        let snapshot_due = force_snapshot || self.last_snapshot_at.is_none_or(|at| {
+            at.elapsed() >= Duration::from_millis(self.config.snapshot_interval_ms)
+        });
+        if (native_events_observed || git_head_changed) && !native_events.is_empty() && (!snapshot_due || git_head_changed) {
+            let result = self.publish_native_events(native_events, schedule_rebuild);
+            if result.is_ok() && git_head_changed {
+                self.previous_git_head = current_git_head;
+            }
+            return result;
         }
         // A full snapshot reads and digests every source file; on a quiet
         // native queue it is the drift backstop, not the per-tick path.
@@ -745,5 +784,70 @@ mod tests {
             rename_to: None,
             source_clock: 5,
         }));
+    }
+
+    #[test]
+    fn ignored_native_event_does_not_suppress_snapshot_drift_backstop() {
+        let root = tempfile::tempdir().unwrap();
+        let source = root.path().join("src.rs");
+        fs::write(&source, "fn first() {}\n").unwrap();
+        let mut watcher = NativeWatcher::start(SnapshotConfig::new(root.path())).unwrap();
+        // Isolate the queued ignored notification from notify's own source
+        // event so this exercises the snapshot reconciliation path directly.
+        watcher._native_watcher.unwatch(root.path()).unwrap();
+        fs::write(&source, "fn second() {}\n").unwrap();
+        watcher.native_queue.lock().unwrap().enqueue(WatchEvent {
+            kind: EventKind::Modify,
+            path: ".agent".into(),
+            rename_to: None,
+            source_clock: 0,
+        }, watcher.config.max_events);
+        let mut refreshed = Vec::new();
+        watcher.poll(|event| {
+            refreshed.push(event.path.clone());
+            Ok(())
+        }).unwrap();
+        assert_eq!(refreshed, vec!["src.rs"]);
+    }
+
+    #[test]
+    fn empty_git_commit_emits_bounded_head_refresh_event() {
+        let root = tempfile::tempdir().unwrap();
+        let run = |args: &[&str]| {
+            let status = std::process::Command::new("git").arg("-C").arg(root.path()).args(args).status().unwrap();
+            assert!(status.success(), "git {:?}", args);
+        };
+        run(&["init", "--quiet"]);
+        run(&["config", "user.email", "watch@example.invalid"]);
+        run(&["config", "user.name", "Watch Test"]);
+        fs::write(root.path().join("src.rs"), "fn first() {}\n").unwrap();
+        run(&["add", "src.rs"]);
+        run(&["commit", "--quiet", "-m", "seed"]);
+        let mut watcher = NativeWatcher::start(SnapshotConfig::new(root.path()).snapshot_interval_ms(60_000)).unwrap();
+        watcher._native_watcher.unwatch(root.path()).unwrap();
+        run(&["commit", "--allow-empty", "--quiet", "-m", "head-only"]);
+        let mut events = Vec::new();
+        watcher.poll(|event| { events.push((event.kind, event.path.clone())); Ok(()) }).unwrap();
+        assert!(events.iter().any(|(kind, path)| *kind == EventKind::Modify && path == ".git/HEAD"));
+    }
+
+    #[test]
+    fn due_snapshot_reconciles_despite_continuous_native_events() {
+        let root = tempfile::tempdir().unwrap();
+        let source = root.path().join("src.rs");
+        fs::write(&source, "fn first() {}\n").unwrap();
+        let mut watcher = NativeWatcher::start(SnapshotConfig::new(root.path()).snapshot_interval_ms(5_000)).unwrap();
+        watcher._native_watcher.unwatch(root.path()).unwrap();
+        watcher.last_snapshot_at = Some(Instant::now() - Duration::from_secs(10));
+        fs::write(&source, "fn second() {}\n").unwrap();
+        watcher.native_queue.lock().unwrap().enqueue(WatchEvent {
+            kind: EventKind::Modify,
+            path: "src.rs".into(),
+            rename_to: None,
+            source_clock: 0,
+        }, watcher.config.max_events);
+        let mut refreshed = Vec::new();
+        watcher.poll(|event| { refreshed.push(event.path.clone()); Ok(()) }).unwrap();
+        assert_eq!(refreshed, vec!["src.rs"]);
     }
 }

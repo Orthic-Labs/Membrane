@@ -596,6 +596,16 @@ pub fn import_specifiers_in_files(ext: &str, text: &str) -> Vec<String> {
 /// files)`: relative specifiers only, first candidate present in the file
 /// map wins (no ambiguity signal — see module doc scope note above).
 pub fn resolve_import_in_files(source: &str, specifier: &str, files: &BTreeMap<String, &FileRecord>) -> Option<String> {
+    resolve_import_with(source, specifier, |path| files.contains_key(path))
+}
+
+/// Resolve an import using a caller-owned path predicate. This keeps
+/// incremental repair on its existing index without materializing or cloning
+/// the complete repository file set for each affected file.
+pub fn resolve_import_with<F>(source: &str, specifier: &str, contains_path: F) -> Option<String>
+where
+    F: Fn(&str) -> bool,
+{
     if !specifier.starts_with('.') && !source.ends_with(".rs") && !source.ends_with(".py") {
         return None;
     }
@@ -626,7 +636,7 @@ pub fn resolve_import_in_files(source: &str, specifier: &str, files: &BTreeMap<S
             candidates.push(format!("{base}/index.{ext}"));
         }
     }
-    candidates.into_iter().find(|p| files.contains_key(p))
+    candidates.into_iter().find(|p| contains_path(p))
 }
 
 // Normalize repository-relative paths used by the graph's in-memory file map.

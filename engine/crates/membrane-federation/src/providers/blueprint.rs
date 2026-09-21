@@ -171,44 +171,42 @@ impl BlueprintProvider {
                 .extensions
                 .insert("atomicEvidencePaths".to_owned(), paths);
         }
-        if !context.freshness.stale {
-            let overlay_identity = context.freshness.overlay_digest.as_ref().map(|digest| {
-                OverlayIdentityV1 {
-                    session_id: context.session_id.clone(),
-                    worktree_path: context.repository_root.clone(),
-                    generation_id: generation.clone(),
-                    overlay_digest: digest.clone(),
-                }
-            });
-            let resolutions = output
-                .candidates
-                .iter()
-                .filter(|candidate| {
-                    matches!(candidate.source_kind.to_ascii_lowercase().as_str(), "graph" | "vector")
-                })
-                .map(|candidate| {
-                    SourceResolutionReceiptV1 {
-                        schema_version: 1,
-                        candidate_id: candidate.id.clone(),
-                        provider: ProviderId::Blueprint.as_str().to_owned(),
-                        status: SourceResolutionStatusV1::Resolved,
-                        expected_hash: candidate.source_hash.clone(),
-                        resolved_hash: Some(candidate.source_hash.clone()),
-                        expected_generation: generation.clone(),
-                        resolved_generation: Some(generation.clone()),
-                        expected_path: candidate.source_ref.clone(),
-                        resolved_path: Some(candidate.source_ref.clone()),
-                        resolver: candidate.resolver.clone(),
-                        overlay_identity: overlay_identity.clone(),
-                    }
-                })
-                .collect::<Vec<_>>();
-            if !resolutions.is_empty() {
-                output.extensions.insert(
-                    "sourceResolutions".to_owned(),
-                    serde_json::to_value(resolutions).unwrap_or(serde_json::Value::Null),
-                );
+        let overlay_identity = context.freshness.overlay_digest.as_ref().map(|digest| {
+            OverlayIdentityV1 {
+                session_id: context.session_id.clone(),
+                worktree_path: context.repository_root.clone(),
+                generation_id: generation.clone(),
+                overlay_digest: digest.clone(),
             }
+        });
+        let resolutions = output
+            .candidates
+            .iter()
+            .filter(|candidate| {
+                matches!(candidate.source_kind.to_ascii_lowercase().as_str(), "graph" | "vector")
+            })
+            .map(|candidate| {
+                SourceResolutionReceiptV1 {
+                    schema_version: 1,
+                    candidate_id: candidate.id.clone(),
+                    provider: ProviderId::Blueprint.as_str().to_owned(),
+                    status: SourceResolutionStatusV1::Resolved,
+                    expected_hash: candidate.source_hash.clone(),
+                    resolved_hash: Some(candidate.source_hash.clone()),
+                    expected_generation: generation.clone(),
+                    resolved_generation: Some(generation.clone()),
+                    expected_path: candidate.source_ref.clone(),
+                    resolved_path: Some(candidate.source_ref.clone()),
+                    resolver: candidate.resolver.clone(),
+                    overlay_identity: overlay_identity.clone(),
+                }
+            })
+            .collect::<Vec<_>>();
+        if !resolutions.is_empty() {
+            output.extensions.insert(
+                "sourceResolutions".to_owned(),
+                serde_json::to_value(resolutions).unwrap_or(serde_json::Value::Null),
+            );
         }
         if output.candidates.is_empty() && output.warnings.is_empty() {
             output.status = FederationProviderStatusV1::Partial;
