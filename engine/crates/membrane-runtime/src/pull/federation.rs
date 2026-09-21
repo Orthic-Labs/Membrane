@@ -541,14 +541,15 @@ fn run_federate_value(
                                     &crate::pull::prep::PushPolicy::Control,
                                     None,
                                 )
-                                .map_err(|error| {
-                                    format!("request_time_selection_refused:{}:{error}", error.kind())
-                                })?;
+                                .map_err(|error| NativePlanError::from_selection(error, &packet))?;
                                 if selection.selected_representation.tokens > fit.response_tokens {
-                                    return Err(format!(
-                                        "request_time_selection_refused:budget_insufficient:declared response budget {} tokens; smallest fitting representation under host ceiling requires {} tokens",
-                                        fit.response_tokens, selection.selected_representation.tokens
-                                    ));
+                                    return Err(NativePlanError::Capacity {
+                                        protected: packet_protected_blocks(&packet),
+                                        reason: format!(
+                                            "request_time_selection_refused:budget_insufficient:declared response budget {} tokens; smallest fitting representation under host ceiling requires {} tokens",
+                                            fit.response_tokens, selection.selected_representation.tokens
+                                        ),
+                                    });
                                 }
                                 selection
                             }
@@ -558,9 +559,7 @@ fn run_federate_value(
                                 &crate::pull::prep::PushPolicy::Control,
                                 None,
                             )
-                            .map_err(|error| {
-                                format!("request_time_selection_refused:{}:{error}", error.kind())
-                            })?,
+                            .map_err(|error| NativePlanError::from_selection(error, &packet))?,
                         };
                         fields.insert(
                             "packet".to_owned(),
@@ -606,7 +605,7 @@ fn run_federate_value(
                             return Err(format!(
                                 "request_time_selection_refused:budget_insufficient:declared response budget {} tokens; rendered evidence requires {rendered_tokens} tokens",
                                 fit.response_tokens
-                            ));
+                            ).into());
                         }
                     }
                 }
@@ -681,28 +680,84 @@ fn run_federate_value(
     })
 }
 
+#[derive(Debug)]
+pub(crate) enum NativePlanError {
+    Capacity { protected: Vec<(String, String)>, reason: String },
+    Fatal(String),
+}
+
+impl NativePlanError {
+    pub(crate) fn from_selection(
+        error: crate::pull::selection::PacketReductionRequestError,
+        packet: &cortex_core::planner::ContextPacketV1,
+    ) -> Self {
+        let reason = format!("request_time_selection_refused:{}:{error}", error.kind());
+        match error {
+            crate::pull::selection::PacketReductionRequestError::Selection(
+                membrane_protocol::push::PacketReductionSelectionError::NoRepresentationFits { .. },
+            ) => Self::Capacity { protected: packet_protected_blocks(packet), reason },
+            _ => Self::Fatal(reason),
+        }
+    }
+}
+
+impl From<String> for NativePlanError {
+    fn from(error: String) -> Self {
+        Self::Fatal(error)
+    }
+}
+
+fn packet_protected_blocks(packet: &cortex_core::planner::ContextPacketV1) -> Vec<(String, String)> {
+    packet
+        .blocks
+        .iter()
+        .filter(|block| block.protected)
+        .map(|block| (block.id.clone(), block.text.clone()))
+        .collect()
+}
+
 /// Fit transport framing by rerunning only the existing planner on one source
 /// snapshot. The caller rebuilds admission receipts & checks its deadline.
 pub(crate) fn fit_native_plan(
     max_tokens: usize,
     delivery: Option<&crate::mcp_executor::NativeDeliveryFit<'_>>,
-    mut plan: impl FnMut(usize) -> Result<Value, String>,
+    mut plan: impl FnMut(usize) -> Result<Value, NativePlanError>,
 ) -> Result<Value, String> {
     let mut packet_allowance = max_tokens;
     let mut protected: Vec<(String, String)> = Vec::new();
-    for attempt in 0..16 {
-        let payload = plan(packet_allowance)?;
+    let mut protected_baseline_captured = false;
+    for _attempt in 0..16 {
+        let payload = match plan(packet_allowance) {
+            Ok(payload) => payload,
+            Err(NativePlanError::Capacity { protected: retry_protected, reason }) => {
+                if delivery.is_none() {
+                    return Err(reason);
+                }
+                if !protected_baseline_captured {
+                    protected = retry_protected;
+                    protected_baseline_captured = true;
+                } else if protected != retry_protected {
+                    return Err("request_time_selection_refused:budget_insufficient:protected evidence changed during transport refit".into());
+                }
+                if packet_allowance <= 1 { break; }
+                packet_allowance = (packet_allowance / 2).max(1);
+                continue;
+            }
+            Err(NativePlanError::Fatal(error)) => return Err(error),
+        };
         let Some(delivery) = delivery else { return Ok(payload); };
         if payload.get("packetReduction").is_none() {
-            return if protected.is_empty() { Ok(payload) } else {
+            return if !protected_baseline_captured || protected.is_empty() { Ok(payload) } else {
                 Err("request_time_selection_refused:budget_insufficient:protected evidence cannot fit complete MCP response".into())
             };
         }
         let packet: cortex_core::planner::ContextPacketV1 = serde_json::from_value(payload["packet"].clone())
             .map_err(|e| format!("invalid fitted packet: {e}"))?;
         // A transport refit cannot remove or rewrite previously protected evidence.
-        if attempt == 0 {
-            protected = packet.blocks.iter().filter(|block| block.protected).map(|block| (block.id.clone(), block.text.clone())).collect();
+        let current_protected = packet_protected_blocks(&packet);
+        if !protected_baseline_captured {
+            protected = current_protected;
+            protected_baseline_captured = true;
         } else if protected.iter().any(|(id, text)| !packet.blocks.iter().any(|block| &block.id == id && &block.text == text)) {
             return Err("request_time_selection_refused:budget_insufficient:protected evidence cannot fit complete MCP response".into());
         }
@@ -2993,6 +3048,17 @@ mod observability_tests {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn fit_native_plan_propagates_non_capacity_failure_without_retry() {
+        let mut attempts = 0;
+        let result = fit_native_plan(12_000, None, |_allowance| {
+            attempts += 1;
+            Err(NativePlanError::Fatal("planner failed".into()))
+        });
+        assert_eq!(result.unwrap_err(), "planner failed");
+        assert_eq!(attempts, 1);
+    }
 
     #[test]
     fn native_response_assigns_positive_cost_to_zero_estimate_without_rewriting_evidence() {

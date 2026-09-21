@@ -746,15 +746,13 @@ fn deactivate_with_residency(
         wait_for_tree_release(&version_root, options.timeout)?;
     }
 
-    let mut clients = deactivate_clients(&membrane_client, &options.clients, options.dry_run, run_client)?;
-    // Detach native plugin projections we own (bounded to `membrane@membrane`
-    // bound to this install root). Installed payloads & marketplace pointers
-    // remain so re-activation is cheap; uninstall owns full removal.
-    let plugin_states =
-        deactivate_host_plugins(&install_root, &options.clients, options.dry_run, run_client)?;
-    for receipt in &mut clients {
-        receipt.plugin = plugin_states.get(&receipt.client).cloned();
-    }
+    let clients = deactivate_bindings_in_order(
+        &install_root,
+        &membrane_client,
+        &options.clients,
+        options.dry_run,
+        run_client,
+    )?;
     let claude_hooks_matched = remove_claude_hooks(&install_root, options.dry_run)?;
     let _ = remove_codex_hooks(&install_root, options.dry_run)?;
     let user_path_present = remove_user_path(&install_root, options.dry_run)?;
@@ -3786,6 +3784,56 @@ where
     Ok(receipts)
 }
 
+fn deactivate_bindings_in_order<F>(
+    install_root: &Path,
+    membrane_client: &Path,
+    clients: &[HarnessClient],
+    dry_run: bool,
+    mut runner: F,
+) -> Result<Vec<ClientActivationReceipt>, String>
+where
+    F: FnMut(HarnessClient, &[String]) -> CommandResult,
+{
+    deactivate_bindings_in_order_with(
+        &mut runner,
+        |runner| deactivate_host_plugins(install_root, clients, dry_run, runner),
+        |runner| deactivate_clients(membrane_client, clients, dry_run, runner),
+    )
+}
+
+fn deactivate_bindings_in_order_with<F, P, C>(
+    runner: &mut F,
+    mut detach_plugins: P,
+    mut detach_clients: C,
+) -> Result<Vec<ClientActivationReceipt>, String>
+where
+    P: FnMut(&mut F) -> Result<BTreeMap<HarnessClient, PluginActivationReceipt>, String>,
+    C: FnMut(&mut F) -> Result<Vec<ClientActivationReceipt>, String>,
+{
+    // Native plugin projections own plugin-scoped MCP. Detach them before
+    // removing global bindings so `mcp get` cannot resolve the plugin entry
+    // after global removal and report a false verification failure.
+    let plugin_states = detach_plugins(runner)?;
+    if let Some((client, state)) = plugin_states
+        .iter()
+        .find(|(_, state)| state.state == "action_required")
+    {
+        return Err(format!(
+            "{} plugin deactivation failed: {}",
+            client.as_str(),
+            state
+                .detail
+                .as_deref()
+                .unwrap_or("host plugin remains enabled")
+        ));
+    }
+    let mut client_receipts = detach_clients(runner)?;
+    for receipt in &mut client_receipts {
+        receipt.plugin = plugin_states.get(&receipt.client).cloned();
+    }
+    Ok(client_receipts)
+}
+
 fn deactivate_clients<F>(
     membrane: &Path,
     clients: &[HarnessClient],
@@ -4764,7 +4812,7 @@ mod tests {
     #[test]
     fn registration_ports_native_cli_add_and_verification_flow() {
         let membrane = Path::new(r"C:\Membrane\membrane.exe");
-        let expected = r#"{"transport":{"type":"streamable_http","url":"http://127.0.0.1:47851/mcp"}}"#;
+        let expected = r#"{"transport":{"type":"streamable_http","url":"http://127.0.0.1:47851/mcp","bearer_token_env_var":"MEMBRANE_BEARER_TOKEN"}}"#;
         let mut responses = VecDeque::from([
             result(0, "codex-cli"),
             result(1, ""),
@@ -4795,7 +4843,7 @@ mod tests {
     fn later_failure_restores_prior_binding() {
         let membrane = Path::new(r"C:\Membrane\membrane.exe");
         let prior = r#"{"transport":{"command":"node","args":["old.mjs"]}}"#;
-        let expected = r#"{"transport":{"type":"streamable_http","url":"http://127.0.0.1:47851/mcp"}}"#;
+        let expected = r#"{"transport":{"type":"streamable_http","url":"http://127.0.0.1:47851/mcp","bearer_token_env_var":"MEMBRANE_BEARER_TOKEN"}}"#;
         let mut responses = VecDeque::from([
             result(0, "codex-cli"),
             result(0, prior),
@@ -4893,7 +4941,7 @@ mod tests {
     #[test]
     fn deactivation_removes_only_exact_owned_client_binding() {
         let membrane = Path::new(r"C:\Membrane\current\membrane.exe");
-        let exact = r#"{"transport":{"type":"streamable_http","url":"http://127.0.0.1:47851/mcp"}}"#;
+        let exact = r#"{"transport":{"type":"streamable_http","url":"http://127.0.0.1:47851/mcp","bearer_token_env_var":"MEMBRANE_BEARER_TOKEN"}}"#;
         let foreign = r#"{"transport":{"type":"streamable_http","url":"http://127.0.0.1:47852/mcp"}}"#;
         let mut responses = VecDeque::from([
             result(0, "codex-cli"),
@@ -4929,7 +4977,7 @@ mod tests {
     #[test]
     fn deactivation_dry_run_plans_owned_binding_without_remove() {
         let membrane = Path::new(r"C:\Membrane\current\membrane.exe");
-        let exact = r#"{"transport":{"type":"streamable_http","url":"http://127.0.0.1:47851/mcp"}}"#;
+        let exact = r#"{"transport":{"type":"streamable_http","url":"http://127.0.0.1:47851/mcp","bearer_token_env_var":"MEMBRANE_BEARER_TOKEN"}}"#;
         let mut responses = VecDeque::from([result(0, "codex-cli"), result(0, exact)]);
         let mut calls = Vec::new();
         let receipts = deactivate_clients(
@@ -4946,6 +4994,59 @@ mod tests {
         assert_eq!(receipts[0].after, "owned");
         assert!(!receipts[0].changed);
         assert_eq!(calls.len(), 2);
+    }
+
+    #[test]
+    fn deactivation_binding_seam_runs_plugin_phase_before_client_phase() {
+        use std::cell::{Cell, RefCell};
+        // Model Codex's plugin projection surviving global MCP removal. The
+        // production seam must detach plugin state before client verification.
+        let plugin_enabled = Cell::new(true);
+        let global_entry = Cell::new(true);
+        let events = RefCell::new(Vec::new());
+        let exact = r#"{"transport":{"type":"streamable_http","url":"http://127.0.0.1:47851/mcp","bearer_token_env_var":"MEMBRANE_BEARER_TOKEN"}}"#;
+        let mut mock_runner = |_client, args: &[String]| {
+            if args == ["--version".to_string()] {
+                return result(0, "codex-cli");
+            }
+            if args == remove_args(HarnessClient::Codex) {
+                events.borrow_mut().push("mcp-remove");
+                global_entry.set(false);
+                return result(0, "removed");
+            }
+            events.borrow_mut().push("mcp-get");
+            if plugin_enabled.get() || global_entry.get() {
+                result(0, exact)
+            } else {
+                result(1, "not found")
+            }
+        };
+        let receipts = deactivate_bindings_in_order_with(
+            &mut mock_runner,
+            |_runner| {
+                events.borrow_mut().push("plugin-remove");
+                plugin_enabled.set(false);
+                Ok(BTreeMap::from([(
+                    HarnessClient::Codex,
+                    plugin_receipt(HarnessClient::Codex, "detached", None, true, None),
+                )]))
+            },
+            |runner| {
+                deactivate_clients(
+                    Path::new(r"C:\Membrane\current\membrane-client.exe"),
+                    &[HarnessClient::Codex],
+                    false,
+                    runner,
+                )
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            events.into_inner(),
+            ["plugin-remove", "mcp-get", "mcp-remove", "mcp-get"]
+        );
+        assert_eq!(receipts[0].after, "removed");
+        assert_eq!(receipts[0].plugin.as_ref().unwrap().state, "detached");
     }
 
     #[test]

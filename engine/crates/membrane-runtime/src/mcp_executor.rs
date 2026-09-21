@@ -3113,6 +3113,49 @@ mod hub_transport_tests {
     }
 
     #[test]
+    fn native_refit_retries_actual_packet_selection_refusal() {
+        let source: Value = serde_json::from_str(&native_refit_fixture(false)).unwrap();
+        let response_budget = 6000;
+        let delivery = NativeDeliveryFit { operation: "pull", repository: "repo", scope: "scope",
+            contract: NativeBudgetContract { mode: crate::pull::federation::PullBudgetMode::BoundedResponse,
+                ceiling: None, response_budget, cap_tokens: response_budget } };
+        let mut attempts = 0;
+        let mut first_selection_refused = false;
+        let fitted = crate::pull::federation::fit_native_plan(12_000, Some(&delivery), |allowance| {
+            attempts += 1;
+            let mut payload = crate::pull::federation::envelope_from_ccs(&source.to_string(), crate::pull::federation::EnvelopeInput {
+                max_tokens: allowance, packet_char_budget_override: None, packet_char_budget_model: None,
+                accepted_receipt_versions: vec![2], scope_grant_present: false, consumer_resolvers: vec![],
+                scope_grant_fence: None, gateway_process_ms: 0.0,
+            })?;
+            let packet: cortex_core::planner::ContextPacketV1 = serde_json::from_value(payload["packet"].clone()).unwrap();
+            let selection = match crate::pull::selection::select_packet_for_token_budget(&packet, response_budget,
+                &crate::pull::prep::PushPolicy::Control, None) {
+                Ok(selection) => selection,
+                Err(error) => {
+                    first_selection_refused |= attempts == 1 && matches!(error,
+                        crate::pull::selection::PacketReductionRequestError::Selection(
+                            membrane_protocol::push::PacketReductionSelectionError::NoRepresentationFits { .. }));
+                    return Err(crate::pull::federation::NativePlanError::from_selection(error, &packet));
+                }
+            };
+            payload["packet"] = selection.selected_representation.content.clone();
+            payload["packetReduction"] = serde_json::to_value(selection).unwrap();
+            Ok(payload)
+        }).unwrap();
+        assert!(first_selection_refused, "fixture must exercise initial serialized packet overflow");
+        assert!(attempts > 1);
+        let blocks = fitted["packet"]["blocks"].as_array().unwrap();
+        assert!(!blocks.is_empty() && blocks.len() < 8);
+        assert!(!fitted["packet"]["omissions"].as_array().unwrap().is_empty());
+        for block in blocks {
+            let original = source["candidates"].as_array().unwrap().iter().find(|candidate| candidate["id"] == block["id"]).unwrap();
+            assert_eq!(block["text"], original["text"]);
+        }
+        assert!(delivery.fits(&fitted).unwrap());
+    }
+
+    #[test]
     fn native_host_fit_also_enforces_smaller_declared_response_budget() {
         use membrane_protocol::host_observation::*;
         let ceiling = RemainingContextCeilingV1 {
@@ -3135,7 +3178,21 @@ mod hub_transport_tests {
         let delivery = NativeDeliveryFit { operation: "pull", repository: "repo", scope: "scope",
             contract: NativeBudgetContract { mode: crate::pull::federation::PullBudgetMode::BoundedResponse,
                 ceiling: None, response_budget: 6000, cap_tokens: 6000 } };
-        let result = crate::pull::federation::fit_native_plan(12000, Some(&delivery), |allowance| Ok(plan_native_fixture(&source, allowance)));
+        let mut selection_refused = false;
+        let result = crate::pull::federation::fit_native_plan(12000, Some(&delivery), |allowance| {
+            let mut payload = plan_native_fixture(&source, allowance);
+            let packet = serde_json::from_value(payload["packet"].clone()).unwrap();
+            let selection = crate::pull::selection::select_packet_for_token_budget(
+                &packet, 6000, &crate::pull::prep::PushPolicy::Control, None,
+            ).map_err(|error| {
+                selection_refused = true;
+                crate::pull::federation::NativePlanError::from_selection(error, &packet)
+            })?;
+            payload["packet"] = selection.selected_representation.content.clone();
+            payload["packetReduction"] = serde_json::to_value(selection).unwrap();
+            Ok(payload)
+        });
+        assert!(selection_refused, "protected floor must overflow initial selection");
         assert!(result.is_err(), "protected overflow must never become success by dropping evidence");
     }
 
