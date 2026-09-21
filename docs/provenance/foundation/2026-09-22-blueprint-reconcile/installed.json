@@ -1,0 +1,36 @@
+{
+  "sourceCommit": "542f0464344d97a718152de651a5fbedc90dded2",
+  "receiptPath": "C:\\Users\\adrds\\AppData\\Local\\Temp\\membrane-local-windows-20260921T214747Z\\evidence.json",
+  "receiptSha256": "4765ff1cc4844ca775290e1616f3d62231be6e2f92d38fb885048477564c14d4",
+  "generatedAt": "2026-09-21T22:17:08.6050561Z",
+  "profile": "internal-unsigned",
+  "certification": "unsigned-functional",
+  "artifact": {
+    "path": "D:\\Claude\\membrane\\apps\\membrane-hub\\src-tauri\\target\\x86_64-pc-windows-msvc\\release\\bundle\\nsis\\Membrane_Hub_0.1.24_x64-setup.exe",
+    "version": "v0.1.24",
+    "sha256": "5af7463b274cbeb712073eca2c93e33c6216873387f876f22d33dac8ffbaefd0",
+    "authenticode": "NotSigned",
+    "signerSubject": "",
+    "signerThumbprint": "",
+    "timestampSubject": "",
+    "timestampThumbprint": ""
+  },
+  "releaseGeneration": "29012b9d9e12b08fe87877f8e74b86699bdf495a95c0c42c8461428c25c0fd95",
+  "blueprint": {
+    "transport": "membrane.exe cli blueprint",
+    "status": "pass",
+    "enrollment": "native",
+    "graph": "fresh",
+    "generation": "xxh128:afb0d6abc6e3ad16b26def9ea0af9007",
+    "watcher": "hub-health-and-freshness",
+    "watcherMutation": "pass",
+    "watcherGeneration": "xxh128:0034cd3d1622e9d03a7d201a5dbe691f",
+    "watcherQuery": "pass",
+    "watcherCommitOnly": "pass",
+    "watcherCommitHead": "65ed3a4adabc009f5417711ba9f9b4c7ea1ae1ff",
+    "findings": "generation_mismatch",
+    "recall": "success",
+    "generationMismatch": "pass",
+    "hubOwned": true
+  }
+}
