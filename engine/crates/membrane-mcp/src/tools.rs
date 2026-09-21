@@ -73,9 +73,37 @@ fn remaining_context_ceiling() -> Value {
 
 fn schema(name: &str) -> Value {
     if name == "pull" {
-        let mut value = schema("membrane_context");
-        value["description"] = json!("Retrieve unified, grant-aware context from Pull providers, including Blueprint, Cortex, and Ledger evidence.");
-        return value;
+        let mut context = schema("membrane_context");
+        context["properties"]["operation"] = json!({"type":"string","enum":["context"]});
+        let mut source = schema("membrane_source_read");
+        source["properties"]["operation"] = json!({"type":"string","enum":["source_read"]});
+        // Source recovery uses the same caller, repository, scope grant, and
+        // response-budget contract as Pull context. Keep those fields in the
+        // advertised source branch so clients can discover one typed route.
+        if let (Some(source_properties), Some(context_properties)) = (
+            source.get_mut("properties").and_then(Value::as_object_mut),
+            context.get("properties").and_then(Value::as_object),
+        ) {
+            for field in [
+                "sessionId", "taskId", "requestId", "scopeGrantId", "budget",
+                "budgetTokens", "budgetMode", "responseBudget", "responseBudgetTokens",
+                "remainingContextCeiling", "deadlineMs", "taskGrantLevel",
+            ] {
+                if let Some(value) = context_properties.get(field) {
+                    source_properties.insert(field.to_owned(), value.clone());
+                }
+            }
+            source["additionalProperties"] = json!(false);
+        }
+        source["required"].as_array_mut().unwrap().push(json!("operation"));
+        let mut properties = context["properties"].as_object().unwrap().clone();
+        properties.extend(source["properties"].as_object().unwrap().clone());
+        properties.insert("operation".into(), json!({"type":"string","enum":["context","source_read"]}));
+        return json!({
+            "type":"object", "properties":properties,
+            "oneOf": [context, source],
+            "description": "Retrieve unified Pull context or recover one exact authorized Ledger source span. Omit operation, or use context, for ordinary context retrieval; use source_read for exact recovery."
+        });
     }
     if name == "push" {
         // Durable-memory write only (MEM-068): every advertised field is one
@@ -406,6 +434,23 @@ mod tool_result_tests {
     use super::*;
 
     #[test]
+    fn public_pull_exposes_typed_context_and_source_read_branches() {
+        let context = json!({
+            "task":"find evidence", "taskId":"task", "sessionId":"session",
+            "repository":"repo", "caller":{"root":"C:/repo","repositoryId":"repo","scopeId":"scope"}
+        });
+        validate_arguments("pull", &context).expect("legacy context shape remains valid");
+        let mut source = json!({
+            "operation":"source_read", "repository":"repo",
+            "caller":{"root":"C:/repo","repositoryId":"repo","scopeId":"scope"},
+            "sourceRef":"docs/readme.md", "anchorId":"anchor",
+            "expectedContentHash":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        });
+        validate_arguments("pull", &source).expect("typed source-read shape is valid");
+        source["selector"] = json!({"kind":"bytes"});
+        assert!(validate_arguments("pull", &source).is_err(), "arbitrary selectors must fail closed");
+    }
+    #[test]
     fn public_registry_exposes_only_pull_and_push() {
         let registry = definitions();
         let names = registry
@@ -500,7 +545,31 @@ pub fn validate_arguments(name: &str, arguments: &Value) -> Result<(), String> {
     {
         return Err("Push text exceeds 1048576 UTF-8 bytes".into());
     }
-    validate_shape(&schema(name), arguments, 0)?;
+
+    if name == "pull" {
+        let operation = arguments.get("operation").and_then(Value::as_str).unwrap_or("context");
+        let required = if operation == "source_read" {
+            ["repository", "caller", "sourceRef", "anchorId", "expectedContentHash"]
+                .as_slice()
+        } else if operation == "context" {
+            ["task", "taskId", "sessionId", "repository", "caller"].as_slice()
+        } else {
+            return Err("pull operation must be context or source_read".into());
+        };
+        for field in required {
+            if arguments.get(*field).is_none_or(Value::is_null) {
+                return Err(format!("pull {operation} requires {field}"));
+            }
+        }
+        if operation == "source_read" && arguments.get("task").is_some() {
+            return Err("pull source_read does not accept context task".into());
+        }
+        let pull_schema = schema("pull");
+        let branches = pull_schema["oneOf"].as_array().expect("pull schema branches");
+        validate_shape(if operation == "source_read" { &branches[1] } else { &branches[0] }, arguments, 0)?;
+    } else {
+        validate_shape(&schema(name), arguments, 0)?;
+    }
     if name == "membrane_memory" {
         match arguments["operation"].as_str().unwrap_or("") {
             "get" if arguments.get("id").and_then(Value::as_str).is_none_or(str::is_empty)

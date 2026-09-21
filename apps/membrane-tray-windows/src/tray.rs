@@ -1,6 +1,6 @@
 //! Native Windows notification-area icon.
 //!
-//! Embed approved Membrane artwork at shell-native DPI sizes.
+//! Embed approved transparent Membrane artwork at shell-native DPI sizes.
 //! Lifecycle state remains visible in a small badge, tooltip & popover verdicts.
 //! Raster size follows current system DPI: 16, 20, 24, or 32 px.
 
@@ -31,7 +31,7 @@ impl Status {
 
     pub const fn label(self) -> &'static str {
         match self {
-            Self::Running => "Running",
+            Self::Running => "Engine running",
             Self::Starting => "Starting",
             Self::Stopping => "Stopping",
             Self::Offline => "Offline",
@@ -40,13 +40,6 @@ impl Status {
         }
     }
 
-    const fn tint(self) -> [u8; 4] {
-        match self {
-            Self::Running => [63, 217, 139, 255],
-            Self::Starting | Self::Stopping => [240, 178, 60, 255],
-            Self::Offline | Self::Restarting | Self::CrashLoop => [255, 107, 115, 255],
-        }
-    }
 }
 
 pub fn icon_size_for_scale(scale: f64) -> u32 {
@@ -62,34 +55,15 @@ pub fn icon_size_for_scale(scale: f64) -> u32 {
 }
 
 fn artwork(size: u32) -> image::RgbaImage {
-    let png: &[u8] = match size {
-        16 => include_bytes!("../../membrane-hub/assets/Membrane-Icon-Pack/Windows/PNG/Membrane-16x16.png"),
-        20 => include_bytes!("../../membrane-hub/assets/Membrane-Icon-Pack/Windows/PNG/Membrane-20x20.png"),
-        24 => include_bytes!("../../membrane-hub/assets/Membrane-Icon-Pack/Windows/PNG/Membrane-24x24.png"),
-        _ => include_bytes!("../../membrane-hub/assets/Membrane-Icon-Pack/Windows/PNG/Membrane-32x32.png"),
-    };
-    image::load_from_memory_with_format(png, image::ImageFormat::Png)
+    const PNG: &[u8] = include_bytes!("../../membrane-hub/assets/tray/membrane-source@2x.png");
+    image::load_from_memory_with_format(PNG, image::ImageFormat::Png)
         .expect("embedded Membrane icon pack must decode")
+        .resize_exact(size, size, image::imageops::FilterType::Lanczos3)
         .to_rgba8()
 }
 
-fn badged_artwork(status: Status, size: u32) -> image::RgbaImage {
-    let mut pixels = artwork(size);
-    let size = pixels.width();
-    let radius = (size / 8) as i32;
-    let center = size as i32 - radius - 1;
-    for y in center - radius..=center + radius {
-        for x in center - radius..=center + radius {
-            if (x - center).pow(2) + (y - center).pow(2) <= radius.pow(2) {
-                pixels.put_pixel(x as u32, y as u32, image::Rgba(status.tint()));
-            }
-        }
-    }
-    pixels
-}
-
-pub fn app_icon(status: Status, size: u32) -> Icon {
-    let pixels = badged_artwork(status, size);
+pub fn app_icon(_status: Status, size: u32) -> Icon {
+    let pixels = artwork(size);
     let (width, height) = pixels.dimensions();
     Icon::from_rgba(pixels.into_raw(), width, height).expect("Membrane icon dimensions are valid")
 }
@@ -179,23 +153,17 @@ mod tests {
     }
 
     #[test]
-    fn approved_artwork_preserves_shape_color_and_native_dimensions() {
+    fn approved_artwork_is_transparent_and_native_sized() {
         for size in [16, 20, 24, 32] {
             let pixels = artwork(size);
             assert_eq!(pixels.dimensions(), (size, size));
             assert!(pixels.pixels().any(|pixel| pixel[3] == 0), "transparent silhouette required");
-            assert!(pixels.pixels().any(|pixel| pixel[3] > 0 && pixel[2] > pixel[1]),
-                "approved purple artwork must not become a green status square");
+            assert!(pixels.pixels().any(|pixel| pixel[3] > 0 && pixel[0] > 200 && pixel[1] > 200 && pixel[2] > 200),
+                "approved white glyph must retain its source shape");
+            assert!(pixels.pixels().any(|pixel| pixel[3] == 0),
+                "transparent source background must remain transparent");
             for status in [Status::Running, Status::Starting, Status::Stopping,
                 Status::Offline, Status::Restarting, Status::CrashLoop] {
-                let badged = badged_artwork(status, size);
-                let center = size - size / 8 - 1;
-                assert_eq!(badged.get_pixel(center, center).0, status.tint());
-                for (x, y, pixel) in pixels.enumerate_pixels() {
-                    if x < size - size / 4 - 1 || y < size - size / 4 - 1 {
-                        assert_eq!(badged.get_pixel(x, y), pixel, "status must preserve main artwork");
-                    }
-                }
                 let _ = app_icon(status, size);
             }
         }

@@ -887,6 +887,7 @@ fn apply_observation(
     popover.set_withheld(observation.withheld.clone().into());
     popover.set_budget(observation.budget.clone().into());
     popover.set_snapshot_observed(observation.snapshot_observed.clone().into());
+    popover.set_last_pull(observation.last_pull.clone().into());
     popover.set_can_restart(
         matches!(
             observation.state,
@@ -909,26 +910,29 @@ fn apply_demo_state(popover: &TrayPopover, state: supervisor::State) {
         supervisor::State::CrashLoop => "daemon_crash_loop",
     };
     popover.set_reason(reason.into());
-    popover.set_observed("observed now".into());
+    popover.set_observed("now".into());
     popover.set_generation("generation 3".into());
     match state {
         supervisor::State::Running => {
             popover.set_admitted("128".into());
             popover.set_withheld("4".into());
             popover.set_budget("0".into());
-            popover.set_snapshot_observed("fixture · observed now".into());
+            popover.set_snapshot_observed("fixture · now".into());
+            popover.set_last_pull("Evidence delivered · fixture · now".into());
         }
         supervisor::State::CrashLoop => {
             popover.set_admitted("Unknown · daemon_crash_loop".into());
             popover.set_withheld("Unknown · daemon_crash_loop".into());
             popover.set_budget("Unknown · daemon_crash_loop".into());
             popover.set_snapshot_observed("Unknown · daemon_crash_loop".into());
+            popover.set_last_pull("Unknown · daemon_crash_loop".into());
         }
         _ => {
             popover.set_admitted("Unknown · snapshot_unavailable".into());
             popover.set_withheld("Unknown · snapshot_unavailable".into());
             popover.set_budget("Unknown · snapshot_unavailable".into());
             popover.set_snapshot_observed("Unknown · snapshot_unavailable".into());
+            popover.set_last_pull("Unknown · snapshot_unavailable".into());
         }
     }
     popover.set_can_restart(!matches!(
@@ -1035,10 +1039,10 @@ fn format_observed(observed_ms: u64) -> String {
     let now = supervisor::now_unix_ms();
     let age = now.saturating_sub(observed_ms);
     if age < 1_000 {
-        "observed now".to_owned()
+        "now".to_owned()
     } else if age < 60_000 {
-        format!("observed {}s ago", age / 1_000)
+        format!("{}s ago", age / 1_000)
     } else {
-        format!("observed {}m ago", age / 60_000)
+        format!("{}m ago", age / 60_000)
     }
 }

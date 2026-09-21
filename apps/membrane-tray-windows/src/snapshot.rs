@@ -38,6 +38,7 @@ pub struct SnapshotValues {
     pub withheld: String,
     pub budget: String,
     pub observed: String,
+    pub last_pull: String,
 }
 
 impl SnapshotValues {
@@ -48,6 +49,7 @@ impl SnapshotValues {
             withheld: value.clone(),
             budget: value,
             observed: format!("Unknown · {reason}"),
+            last_pull: format!("Unknown · {reason}"),
         }
     }
 }
@@ -220,7 +222,17 @@ fn fetch_snapshot(endpoint: &str, api_token: &str) -> Result<SnapshotValues, &'s
     let admission = snapshot.admission.ok_or("snapshot_admission_unavailable")?;
     if admission.schema_version != HUB_ADMISSION_SCHEMA_VERSION { return Err("snapshot_admission_schema_unsupported"); }
     let admitted = admission.decisions_total.checked_sub(admission.omissions_total).ok_or("snapshot_admission_invalid")?;
-    Ok(SnapshotValues { admitted: admitted.to_string(), withheld: admission.omissions_total.to_string(), budget: admission.budget_pressure_total.to_string(), observed: format_observed(admission.window_hours, snapshot.observed_at_unix_ms) })
+    Ok(SnapshotValues {
+        admitted: admitted.to_string(),
+        withheld: admission.omissions_total.to_string(),
+        budget: admission.budget_pressure_total.to_string(),
+        observed: format_observed(admission.window_hours, snapshot.observed_at_unix_ms),
+        last_pull: format_last_pull(
+            admission.last_pull_status.as_deref(),
+            admission.last_pull_reason.as_deref(),
+            admission.last_pull_observed_at_unix_ms,
+        ),
+    })
 }
 
 fn get_json(endpoint: &str, api_token: &str, path: &str) -> Result<(u16, Vec<u8>), &'static str> {
@@ -333,7 +345,36 @@ fn format_observed(window_hours: u32, observed_at_ms: u64) -> String {
     } else {
         format!("{}m ago", age / 60_000)
     };
-    format!("window {window_hours}h · observed {age_label}")
+    format!("window {window_hours}h · {age_label}")
+}
+
+fn format_last_pull(status: Option<&str>, reason: Option<&str>, observed_at_ms: Option<u64>) -> String {
+    if status.is_none() {
+        return "No Pull recorded".to_owned();
+    }
+    let label = match status {
+        Some("ok") => "Evidence delivered",
+        Some("empty") | Some("insufficient_confidence") => "No context delivered",
+        Some("unavailable") | Some("error") => "Context unavailable",
+        None => "No Pull recorded",
+        Some(_) => "Context unavailable",
+    };
+    let reason = match (status, reason.filter(|value| !value.is_empty())) {
+        (Some("unavailable") | Some("error"), Some("timeout")) => " · timeout".to_owned(),
+        (Some("unavailable") | Some("error"), Some("unauthorized")) => " · auth".to_owned(),
+        (Some("unavailable") | Some("error"), Some("snapshot_unavailable")) => " · unavailable".to_owned(),
+        _ => String::new(),
+    };
+    let age = observed_at_ms.map(|value| format!(" · {}", format_pull_age(value))).unwrap_or_default();
+    format!("{label}{reason}{age}")
+}
+
+fn format_pull_age(observed_at_ms: u64) -> String {
+    let now = now_unix_ms();
+    let age = now.saturating_sub(observed_at_ms);
+    if age < 1_000 { "now".to_owned() }
+    else if age < 60_000 { format!("{}s ago", age / 1_000) }
+    else { format!("{}m ago", age / 60_000) }
 }
 
 #[cfg(test)]
@@ -341,6 +382,14 @@ mod tests {
     use super::*;
     use std::net::TcpListener;
     use std::thread;
+
+    #[test]
+    fn empty_pull_is_not_reported_as_delivered_evidence() {
+        assert_eq!(
+            format_last_pull(Some("empty"), None, None),
+            "No context delivered"
+        );
+    }
 
     fn fixture_health() -> serde_json::Value {
         serde_json::json!({

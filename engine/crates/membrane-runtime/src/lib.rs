@@ -11,6 +11,7 @@ mod blueprint_security_qualification;
 pub mod adapt_effectiveness;
 pub mod adapt_efficiency;
 pub mod admission_producer;
+pub(crate) mod pull_activity;
 pub mod agent_adapter_producer;
 pub mod agent_adapter_view;
 pub mod authorization;

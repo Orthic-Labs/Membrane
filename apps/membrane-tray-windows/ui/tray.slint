@@ -1,38 +1,6 @@
 // Windows-native tray popover. Same compact ledger grammar as CodexBar:
 // subject, verdict, evidence, observed, then action rows.
 
-component VerdictGlyph inherits Rectangle {
-    in property <string> kind: "hollow-square";
-    in property <color> tint: #8a8598;
-    width: 14px;
-    height: 14px;
-    background: transparent;
-
-    Rectangle {
-        x: 1px;
-        y: 1px;
-        width: 12px;
-        height: 12px;
-        background: root.kind == "filled-square" ? root.tint : transparent;
-        border-width: root.kind == "hollow-square" || root.kind == "half-square" ? 1px : 0px;
-        border-color: root.tint;
-    }
-    Rectangle {
-        x: 2px;
-        y: 2px;
-        width: root.kind == "half-square" ? 5px : 0px;
-        height: root.kind == "half-square" ? 10px : 0px;
-        background: root.tint;
-    }
-    Rectangle {
-        x: 1px;
-        y: 6px;
-        width: root.kind == "dash" ? 12px : 0px;
-        height: root.kind == "dash" ? 2px : 0px;
-        background: root.tint;
-    }
-}
-
 component StatRow inherits Rectangle {
     in property <string> label;
     in property <string> value;
@@ -236,10 +204,10 @@ export component TrayPopover inherits Window {
     callback pointer-up();
     callback pointer-cancel();
 
-    in property <string> current-state: "Running";
+    in property <string> current-state: "Engine running";
     in property <string> state-kind: "filled-square";
     in property <string> reason: "daemon_ready";
-    in property <string> observed: "observed now";
+    in property <string> observed: "now";
     in property <string> generation: "generation 1";
     in property <string> pid: "PID —";
     in property <string> endpoint: "endpoint —";
@@ -247,6 +215,7 @@ export component TrayPopover inherits Window {
     in property <string> withheld: "Unknown · snapshot_unavailable";
     in property <string> budget: "Unknown · snapshot_unavailable";
     in property <string> snapshot-observed: "Unknown · snapshot_unavailable";
+    in property <string> last-pull: "Unknown · snapshot_unavailable";
     in property <bool> can-restart: false;
     in property <bool> first-run: false;
     in property <bool> login-enabled: false;
@@ -296,7 +265,7 @@ export component TrayPopover inherits Window {
             y: 9px;
             width: 24px;
             height: 24px;
-            source: @image-url("../../membrane-hub/assets/Membrane-Icon-Pack/Windows/PNG/Membrane-32x32.png");
+            source: @image-url("../../membrane-hub/assets/tray/membrane-source@2x.png");
             image-fit: contain;
         }
 
@@ -326,20 +295,10 @@ export component TrayPopover inherits Window {
             }
         }
 
-        VerdictGlyph {
-            x: 168px;
-            y: 16px;
-            kind: root.state-kind;
-            tint: root.state-kind == "filled-square"
-                ? #3fd98b
-                : root.state-kind == "half-square" ? #f0b23c
-                : root.state-kind == "hollow-square" ? #ff6b73
-                : #8a8598;
-        }
         Text {
-            x: 186px;
+            x: 168px;
             y: 10px;
-            width: 98px;
+            width: 116px;
             height: 26px;
             text: root.current-state;
             color: root.state-kind == "filled-square"
@@ -369,11 +328,11 @@ export component TrayPopover inherits Window {
 
         StatRow { x: 16px; y: 66px; label: "Admitted"; value: root.admitted; }
         StatRow { x: 16px; y: 90px; label: "Withheld"; value: root.withheld; }
-        StatRow { x: 16px; y: 114px; label: "Budget"; value: root.budget; }
+        StatRow { x: 16px; y: 114px; label: "Budget drops"; value: root.budget; }
 
-        EvidenceLine { x: 16px; y: 141px; label: "Reason"; value: root.reason; emphasis: true; }
-        EvidenceLine { x: 16px; y: 163px; label: "Observed"; value: root.observed; }
-        EvidenceLine { x: 16px; y: 185px; label: "Snapshot"; value: root.snapshot-observed; }
+        EvidenceLine { x: 16px; y: 141px; label: "Last Pull"; value: root.last-pull; emphasis: true; }
+        EvidenceLine { x: 16px; y: 163px; label: "State since"; value: root.observed; }
+        EvidenceLine { x: 16px; y: 185px; label: "Updated"; value: root.snapshot-observed; }
 
         Rectangle { x: 16px; y: 211px; width: 268px; height: 1px; background: #3b3548; }
 

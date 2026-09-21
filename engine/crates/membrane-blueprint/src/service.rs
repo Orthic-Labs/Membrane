@@ -721,9 +721,10 @@ impl NativeService {
         let (mut watchers, operation, mut pending_refreshes) = {
             let Ok(mut inner) = self.inner.lock() else { return ServiceStatus::Unavailable; };
             if inner.status != ServiceStatus::Running { return inner.status; }
-            inner.status = ServiceStatus::Degraded;
-            inner.state = Some(LifecycleState::Stale);
-            inner.detail = Some("watcher_refresh_in_progress".into());
+            // Polling is synchronous, so publishing an intermediate degraded
+            // state here makes a concurrent status read report a failure even
+            // when every refresh completes. Keep the last known ready state
+            // visible until poll results establish a typed failure below.
             inner.active_cancellation = Some(cancellation.clone());
             (std::mem::take(&mut inner.watchers), self.operation.clone(), std::mem::take(&mut inner.pending_refreshes))
         };
@@ -1155,6 +1156,26 @@ mod lifecycle_qualification_tests {
         }
     }
 
+    struct BlockingRefreshOperation {
+        entered: std::sync::mpsc::Sender<()>,
+        release: Arc<Mutex<std::sync::mpsc::Receiver<()>>>,
+    }
+
+    impl BlueprintOperation for BlockingRefreshOperation {
+        fn execute(&self, request: &BlueprintRequest, context: &RequestContext) -> Result<Value, BlueprintError> {
+            if matches!(request.method, Operation::Refresh) {
+                self.entered.send(()).expect("supervise test is listening");
+                self.release
+                    .lock()
+                    .expect("release channel lock")
+                    .recv_timeout(Duration::from_secs(5))
+                    .expect("supervise test releases refresh");
+            }
+            context.check()?;
+            Ok(json!({"operation": request.method.as_str(), "generationId": "supervised-generation", "complete": true}))
+        }
+    }
+
     fn service() -> (NativeService, tempfile::TempDir) {
         let root = tempfile::tempdir().expect("qualification workspace");
         let service = NativeService::from_operation(
@@ -1234,5 +1255,36 @@ mod lifecycle_qualification_tests {
         assert_eq!(responses[1].request_id.as_deref(), Some("dedup-b"));
         assert_eq!(responses[0].result, responses[1].result);
         service.release_holder(HolderKind::Hub).unwrap();
+    }
+
+    #[test]
+    fn supervise_keeps_last_ready_state_visible_until_poll_finishes() {
+        let root = tempfile::tempdir().expect("qualification workspace");
+        let (entered_tx, entered_rx) = std::sync::mpsc::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        let watcher = SnapshotConfig::new(root.path())
+            .debounce_ms(0)
+            .snapshot_interval_ms(60_000);
+        let service = Arc::new(NativeService::from_operation(
+            BlockingRefreshOperation {
+                entered: entered_tx,
+                release: Arc::new(Mutex::new(release_rx)),
+            },
+            ServiceConfig::new(root.path()).with_watcher(watcher),
+        ));
+        service.acquire_holder(HolderKind::Hub).expect("start service");
+        std::fs::write(root.path().join("changed.md"), "changed").expect("write watcher event");
+        let worker = {
+            let service = Arc::clone(&service);
+            std::thread::spawn(move || service.supervise())
+        };
+        entered_rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("watcher refresh reaches operation");
+        assert_eq!(service.status(), ServiceStatus::Running);
+        release_tx.send(()).expect("refresh operation is waiting");
+        assert_eq!(worker.join().expect("supervise join"), ServiceStatus::Running);
+        assert_eq!(service.status(), ServiceStatus::Running);
+        service.release_holder(HolderKind::Hub).expect("stop service");
     }
 }

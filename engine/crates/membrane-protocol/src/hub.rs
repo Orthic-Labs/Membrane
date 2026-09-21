@@ -196,6 +196,12 @@ pub struct HubAdmissionV1 {
     pub omissions_by_reason: Vec<AdmissionReasonCountV1>,
     pub budget_pressure_total: u64,
     pub budget_pressure_by_reason: Vec<AdmissionReasonCountV1>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_pull_status: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_pull_reason: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_pull_observed_at_unix_ms: Option<u64>,
 }
 
 #[cfg(test)]
@@ -240,6 +246,9 @@ mod tests {
                 reason: "budget_exhausted".into(),
                 count: 2,
             }],
+            last_pull_status: None,
+            last_pull_reason: None,
+            last_pull_observed_at_unix_ms: None,
         };
         let encoded = serde_json::to_value(&admission).unwrap();
         assert_eq!(encoded["schemaVersion"], 1);

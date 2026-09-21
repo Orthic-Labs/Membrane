@@ -544,6 +544,14 @@ pub fn plan(input: &PlannerInput) -> Result<PlannerOutput, PlannerError> {
         || input.candidate_set.provider.ends_with("-unsupported");
     let fallback_only =
         freshness_stale || provider_unsupported || release_degradation_reason.is_some();
+    // Blueprint freshness is scoped to Blueprint-owned graph evidence. A stale
+    // Blueprint observation must not quarantine independently authoritative
+    // Ledger/Cortex candidates that carry their own provider identity and
+    // freshness. Release-generation or capability failures remain global
+    // fallback gates because they invalidate the shared admission basis.
+    let blueprint_only_fallback = freshness_stale
+        && release_degradation_reason.is_none()
+        && !provider_unsupported;
     let (fallback_mode, degradation_reason) = if provider_unsupported {
         (
             FallbackMode::NonGraphSourcesOnly,
@@ -790,7 +798,7 @@ pub fn plan(input: &PlannerInput) -> Result<PlannerOutput, PlannerError> {
         })
         .take(IDENTITY_LANE_BLOCKS)
     {
-        if fallback_only && !(cand.protected || cand.source_kind == "portable_text_fallback") {
+        if fallback_quarantines_candidate(cand, fallback_only, blueprint_only_fallback) {
             continue;
         }
         let cost = cand.estimated_tokens;
@@ -819,7 +827,7 @@ pub fn plan(input: &PlannerInput) -> Result<PlannerOutput, PlannerError> {
             if admitted.len() >= MAX_PACKET_BLOCKS {
                 continue; // pass 2 emits the packet_block_limit receipt
             }
-            if fallback_only && !(cand.protected || cand.source_kind == "portable_text_fallback") {
+            if fallback_quarantines_candidate(cand, fallback_only, blueprint_only_fallback) {
                 continue; // pass 2 emits the fallback_quarantine receipt
             }
             let cost = cand.estimated_tokens;
@@ -841,9 +849,7 @@ pub fn plan(input: &PlannerInput) -> Result<PlannerOutput, PlannerError> {
         if lane_admitted.contains(&cand.id) {
             continue;
         }
-        let is_anchor = cand.protected;
-        let is_portable_fallback = cand.source_kind == "portable_text_fallback";
-        if fallback_only && !(is_anchor || is_portable_fallback) {
+        if fallback_quarantines_candidate(cand, fallback_only, blueprint_only_fallback) {
             decisions.push((
                 cand.clone(),
                 "rejected".into(),
@@ -1070,6 +1076,21 @@ pub fn plan(input: &PlannerInput) -> Result<PlannerOutput, PlannerError> {
         release_generation_status: input.candidate_set.freshness.release_generation_status,
         structured_event,
     })
+}
+
+fn fallback_quarantines_candidate(
+    candidate: &CandidateV1,
+    fallback_only: bool,
+    blueprint_only_fallback: bool,
+) -> bool {
+    if !fallback_only || candidate.protected || candidate.source_kind == "portable_text_fallback" {
+        return false;
+    }
+    // A stale Blueprint graph is a provider-local loss of freshness. Keep
+    // independent Ledger/Cortex evidence eligible while still quarantining
+    // Blueprint-owned graph candidates and candidates without provider
+    // identity. Other fallback causes retain the original global quarantine.
+    !blueprint_only_fallback || !matches!(candidate.provider.as_deref(), Some("ledger" | "cortex"))
 }
 
 fn release_generation_degradation(freshness: &FreshnessV1) -> Option<DegradationReason> {
@@ -1979,6 +2000,48 @@ mod tests {
         assert!(out.source_generation.is_none());
         // The protected anchor still admits even under fallback quarantine.
         assert_eq!(out.packet.blocks.len(), 1);
+    }
+
+    #[test]
+    fn stale_blueprint_quarantine_preserves_independent_ledger_and_cortex() {
+        let mut blueprint = candidate("blueprint:src", "repo_code", 20, 0.99, false);
+        blueprint.provider = Some("blueprint".into());
+        let mut ledger = candidate("ledger:guide", "document", 20, 0.7, false);
+        ledger.provider = Some("ledger".into());
+        let mut cortex = candidate("cortex:memory", "document", 20, 0.6, false);
+        cortex.provider = Some("cortex".into());
+        let mut input = empty_planner_input(vec![blueprint, ledger, cortex]);
+        input.candidate_set.freshness.stale = true;
+
+        let out = plan(&input).unwrap();
+
+        assert!(out.packet.blocks.iter().any(|block| block.provider == "ledger"));
+        assert!(out.packet.blocks.iter().any(|block| block.provider == "cortex"));
+        assert!(!out.packet.blocks.iter().any(|block| block.provider == "blueprint"));
+        assert!(out.receipts.iter().any(|receipt| {
+            receipt.id == "blueprint:src"
+                && receipt.decision == "rejected"
+                && receipt.reason == "fallback_quarantine"
+        }));
+        assert_eq!(out.provider_status, ProviderStatus::Stale);
+        assert_eq!(out.fallback_mode, FallbackMode::PortableTextOnly);
+    }
+
+    #[test]
+    fn stale_blueprint_requirement_remains_unsatisfied_when_no_independent_evidence_exists() {
+        let mut blueprint = candidate("blueprint:required", "repo_code", 20, 0.99, false);
+        blueprint.provider = Some("blueprint".into());
+        let mut input = empty_planner_input(vec![blueprint]);
+        input.candidate_set.freshness.stale = true;
+
+        let out = plan(&input).unwrap();
+
+        assert!(out.packet.blocks.is_empty());
+        assert!(out.receipts.iter().any(|receipt| {
+            receipt.id == "blueprint:required"
+                && receipt.decision == "rejected"
+                && receipt.reason == "fallback_quarantine"
+        }));
     }
 
     #[test]

@@ -15,13 +15,13 @@ repository, root, and scope of each request.
 
 ## Behavioral contract
 
-- `membrane_context` routes through the loopback `/federate` endpoint, never raw recall.
+- Public `pull` defaults to context retrieval through the shared planner; `operation: source_read` recovers an exact Ledger source through the same public tool.
 - Knowledge and feedback proposals require durable persistence with readback;
   unavailable persistence is a tool error unless explicit advisory policy is selected.
 - Scratchpads are ephemeral, non-searchable, non-authoritative, and never consolidated.
 - Temporal supersession requires an explicit single-valued predicate policy.
 - Checkpoints are A0 session orientation state, never durable knowledge.
-- Source reads require a hash-bound DocReadV1 reference.
+- Source reads preserve returned caller, ticket, generation, hash & span bindings. Complete MCP responses fit the declared response budget; host-fit also requires valid request-time H8.
 
 ## Platform status
 

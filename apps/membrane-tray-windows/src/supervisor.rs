@@ -91,7 +91,7 @@ impl State {
         match self {
             Self::Stopped => "Offline",
             Self::Starting => "Starting",
-            Self::Running => "Running",
+            Self::Running => "Engine running",
             Self::Draining => "Stopping",
             Self::Backoff => "Restarting",
             Self::CrashLoop => "Crash loop",
@@ -175,6 +175,7 @@ pub struct Observation {
     pub withheld: String,
     pub budget: String,
     pub snapshot_observed: String,
+    pub last_pull: String,
     /// (pid, creation_time_ticks) fingerprint of the current daemon process.
     /// Combined with `generation`, this lets a caller that persisted the
     /// triple across an abrupt tray relaunch tell a survived daemon apart
@@ -196,6 +197,7 @@ impl Default for Observation {
             withheld: "Unknown · snapshot_unavailable".into(),
             budget: "Unknown · snapshot_unavailable".into(),
             snapshot_observed: "Unknown · snapshot_unavailable".into(),
+            last_pull: "Unknown · snapshot_unavailable".into(),
             process_identity: None,
         }
     }
@@ -765,6 +767,7 @@ impl Supervisor {
                 self.observation.withheld = update.values.withheld;
                 self.observation.budget = update.values.budget;
                 self.observation.snapshot_observed = update.values.observed;
+                self.observation.last_pull = update.values.last_pull;
                 if let Some(remote) = update.resident_holder.as_ref() {
                     self.attachment_seen = true;
                     self.note_remote_holder(remote);
@@ -1103,6 +1106,7 @@ impl Supervisor {
         self.observation.withheld = unknown.withheld;
         self.observation.budget = unknown.budget;
         self.observation.snapshot_observed = unknown.observed;
+        self.observation.last_pull = unknown.last_pull;
         self.observation.process_identity = None;
         // Installed mode never stores a process. Keep this explicit so future
         // attachment changes cannot accidentally turn tray into an owner.

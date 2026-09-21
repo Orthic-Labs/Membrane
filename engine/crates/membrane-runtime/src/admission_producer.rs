@@ -19,6 +19,7 @@
 
 use crate::hub_readonly_db::{now_unix_ms, open_readonly_catalog, REASON_MISSING_INPUT};
 use membrane_protocol::{AdmissionReasonCountV1, HubAdmissionV1, HUB_ADMISSION_SCHEMA_VERSION};
+use rusqlite::OptionalExtension;
 
 const WINDOW_HOURS: u32 = 24;
 const BUDGET_REASONS: [&str; 2] = ["budget_exhausted", "packet_block_limit"];
@@ -82,6 +83,13 @@ pub(crate) fn build_admission_report_from(
         omissions_by_reason.push(AdmissionReasonCountV1 { reason, count });
     }
 
+    let last_pull = conn.query_row(
+        "SELECT provider_status, degradation_reason, ts_unix FROM retrieval_events
+         WHERE mode = 'native_pull' ORDER BY id DESC LIMIT 1",
+        [],
+        |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, i64>(2)?)),
+    ).optional().ok()?;
+
     Some(HubAdmissionV1 {
         schema_version: HUB_ADMISSION_SCHEMA_VERSION,
         window_hours,
@@ -90,6 +98,9 @@ pub(crate) fn build_admission_report_from(
         omissions_by_reason,
         budget_pressure_total,
         budget_pressure_by_reason,
+        last_pull_status: last_pull.as_ref().map(|row| row.0.clone()),
+        last_pull_reason: last_pull.as_ref().map(|row| row.1.clone()),
+        last_pull_observed_at_unix_ms: last_pull.map(|row| (row.2.max(0) as u64).saturating_mul(1000)),
     })
 }
 

@@ -48,7 +48,8 @@ fn pull_schema_covers_blueprint_cortex_and_ledger_evidence() {
     // PUL-050: remainingContextCeiling is required-by-contract only under
     // host_fit; bounded_response admits unknown host capacity, so H8 cannot
     // sit in the blanket `required` array.
-    assert_eq!(pull["inputSchema"]["required"], json!(["task", "taskId", "sessionId", "repository", "caller"]));
+    assert_eq!(pull["inputSchema"]["oneOf"][0]["required"], json!(["task", "taskId", "sessionId", "repository", "caller"]));
+    assert_eq!(pull["inputSchema"]["oneOf"][1]["required"], json!(["repository", "caller", "sourceRef", "anchorId", "expectedContentHash", "operation"]));
     assert_eq!(pull["inputSchema"]["properties"]["budgetMode"]["enum"], json!(["bounded_response", "host_fit"]));
     assert_eq!(pull["inputSchema"]["properties"]["consumerCapabilities"]["properties"]["resolvers"]["items"]["enum"], json!(["membrane_source_read", "membrane_memory_read"]));
     // bounded_response: no H8, declares only the response budget.

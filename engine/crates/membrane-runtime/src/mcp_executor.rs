@@ -227,7 +227,7 @@ impl NativeDeliveryFit<'_> {
         let selection: crate::pull::selection::PacketReductionSelectionV1 =
             serde_json::from_value(federated["packetReduction"].clone()).map_err(|e| format!("invalid selection: {e}"))?;
         for representation in &selection.plan.representations {
-            let result = native_pull_envelope(self.operation, self.repository, self.scope, federated, &selection, representation);
+            let result = native_pull_envelope(self.operation, self.repository, self.scope, federated, &selection, representation, self.operation == "pull");
             match fit_native_budget_response(self.operation, result, &self.contract) {
                 Ok(_) => return Ok(true),
                 Err(crate::pull::recovery::RecoveryError::Limit) => {},
@@ -239,7 +239,8 @@ impl NativeDeliveryFit<'_> {
 }
 fn native_pull_envelope(name: &str, repository: &str, scope: &str, federated: &Value,
     selection: &crate::pull::selection::PacketReductionSelectionV1,
-    representation: &membrane_protocol::push::PacketReductionRepresentationV1) -> Value {
+    representation: &membrane_protocol::push::PacketReductionRepresentationV1,
+    public_resolver: bool) -> Value {
     let mut receipt = selection.selection_receipt.clone();
     receipt.selected_representation_id = representation.id.clone();
     receipt.selected_tokens = representation.tokens;
@@ -257,14 +258,39 @@ fn native_pull_envelope(name: &str, repository: &str, scope: &str, federated: &V
         "federationMetrics": federated.get("federationMetrics").cloned().unwrap_or(Value::Null),
     });
     let sufficiency_evaluated = pull_receipt.pointer("/correctiveRetrieval/sufficiency").is_some_and(|value| !value.is_null());
-    let result = success(name, json!({
+    let mut packet = representation.content.clone();
+    if public_resolver {
+        rewrite_public_pull_resolvers(&mut packet, repository);
+    }
+    let result = success(if public_resolver { "pull" } else { name }, json!({
         "repositoryId":repository,"scopeId":scope,"status":federated.get("status").and_then(Value::as_str).unwrap_or("ok"),
-        "packet":representation.content,
+        "packet":packet,
         "receipts":federated.get("receipts"),"pullReceipt":pull_receipt,
         "degradationReason":federated.get("degradationReason").filter(|v| !v.is_null()).cloned().unwrap_or_else(|| json!("none")),
         "sufficiencyEvaluated":sufficiency_evaluated,
     }));
     result
+}
+
+fn rewrite_public_pull_resolvers(value: &mut Value, _repository: &str) {
+    match value {
+        Value::Array(items) => items.iter_mut().for_each(|item| rewrite_public_pull_resolvers(item, _repository)),
+        Value::Object(object) => {
+            // Only project a complete owner-issued resolver. Never invent
+            // tickets, anchors, caller identity, or authority for a bare name.
+            let projected = object.get("resolver").and_then(Value::as_str)
+                .and_then(|text| serde_json::from_str::<Value>(text).ok())
+                .and_then(|mut resolver| {
+                    if resolver.get("tool").and_then(Value::as_str) != Some("membrane_source_read") { return None; }
+                    resolver.get_mut("arguments")?.as_object_mut()?.insert("operation".into(), json!("source_read"));
+                    resolver["tool"] = json!("pull");
+                    Some(Value::String(resolver.to_string()))
+                });
+            if let Some(resolver) = projected { object.insert("resolver".into(), resolver); }
+            object.values_mut().for_each(|item| rewrite_public_pull_resolvers(item, _repository));
+        }
+        _ => {}
+    }
 }
 
 /// Two joined workers share one ingress deadline. Results retain caller order;
@@ -1292,10 +1318,47 @@ impl NativeMcpExecutor for RuntimeMcpExecutor {
         // Public Pull is the unified retrieval verb. Reuse the established
         // planner path, then bind its canonical envelope to the public name.
         if name == "pull" {
-            let mut result = self.execute("membrane_context", arguments);
+            let source_read = arguments.get("operation").and_then(Value::as_str) == Some("source_read");
+            let mut result = if source_read {
+                // Exact recovery is a Ledger-owned read. Keep it on the
+                // existing ticket/hash/generation/scope gate and do not send
+                // it through context admission or federation.
+                if arguments.get("remainingContextCeiling").is_some_and(|v| !v.is_null())
+                    || arguments.get("budgetMode").and_then(Value::as_str) == Some("host_fit") {
+                    let session = arguments.get("sessionId").and_then(Value::as_str).unwrap_or("");
+                    let task = arguments.get("taskId").and_then(Value::as_str).unwrap_or("");
+                    if let Err(failure) = crate::pull::selection::parse_request_time_h8(arguments, session, task) {
+                        return error(name, "context_capacity_invalid", failure.to_string());
+                    }
+                }
+                let max_tokens = arguments.get("budgetTokens").and_then(Value::as_u64)
+                    .map(|tokens| tokens.clamp(1, 1_000_000) as usize).unwrap_or(5 * 1024);
+                let contract = match resolve_native_budget_contract(arguments, max_tokens, name) {
+                    Ok(contract) => contract,
+                    Err(result) => return result,
+                };
+                let mut source = self.execute("membrane_source_read", arguments);
+                source["operation"] = json!("pull");
+                if source.pointer("/result/kind").and_then(Value::as_str) == Some("success") {
+                    match fit_native_budget_response(name, source, &contract) {
+                        Ok(fitted) => fitted,
+                        Err(crate::pull::recovery::RecoveryError::Limit) => {
+                            return error(name, "context_delivery_capacity_exceeded", "exact source span does not fit declared response capacity");
+                        }
+                        Err(failure) => return error(name, "context_delivery_invalid", failure.to_string()),
+                    }
+                } else { source }
+            } else {
+                let mut context_arguments = arguments.clone();
+                if let Some(object) = context_arguments.as_object_mut() {
+                    object.insert("_publicPull".into(), Value::Bool(true));
+                }
+                self.execute("membrane_context", &context_arguments)
+            };
             if let Some(object) = result.as_object_mut() {
                 object.insert("operation".into(), Value::String("pull".into()));
             }
+            crate::pull_activity::record_native_pull(arguments, &result);
             return result;
         }
         // Public Push is agent-to-Cortex durable memory admission. It has no
@@ -1494,6 +1557,7 @@ impl NativeMcpExecutor for RuntimeMcpExecutor {
                 }
             }
             "membrane_context" => {
+                let name = if arguments.get("_publicPull").and_then(Value::as_bool) == Some(true) { "pull" } else { name };
                 let task = arguments
                     .get("task")
                     .and_then(Value::as_str)
@@ -1950,7 +2014,7 @@ impl NativeMcpExecutor for RuntimeMcpExecutor {
                     Err(result) => return result,
                 };
                 let delivery = NativeDeliveryFit {
-                    operation: name, repository, scope,
+                    operation: if arguments.get("_publicPull").and_then(Value::as_bool) == Some(true) { "pull" } else { name }, repository, scope,
                     contract: match resolve_native_budget_contract(arguments, max_tokens, name) {
                         Ok(contract) => contract, Err(error) => return error,
                     },
@@ -2030,7 +2094,8 @@ impl NativeMcpExecutor for RuntimeMcpExecutor {
                     {
                         continue;
                     }
-                    let result = native_pull_envelope(name, repository, scope, &federated, &selection, representation);
+                    let result = native_pull_envelope(name, repository, scope, &federated, &selection, representation,
+                        arguments.get("_publicPull").and_then(Value::as_bool).unwrap_or(false));
                     match fit_native_budget_response(name, result, &budget_contract) {
                         Ok(fitted) => return fitted,
                         Err(crate::pull::recovery::RecoveryError::Limit) => continue,
@@ -2983,6 +3048,21 @@ mod hub_transport_tests {
     }
 
 
+    #[test]
+    fn public_pull_rewrites_ledger_json_resolver_without_losing_ticket_binding() {
+        let mut packet = json!({"blocks":[{"resolver": serde_json::json!({
+            "tool":"membrane_source_read",
+            "arguments":{"sourceRef":"docs/a.md","anchorId":"node","expectedContentHash":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","ledgerTicket":"ticket","ledgerGeneration":7}
+        }).to_string()}]});
+        rewrite_public_pull_resolvers(&mut packet, "repo");
+        let resolver = packet["blocks"][0]["resolver"].as_str().expect("resolver string");
+        let resolver: Value = serde_json::from_str(resolver).expect("resolver JSON");
+        assert_eq!(resolver["tool"], "pull");
+        assert_eq!(resolver["arguments"]["operation"], "source_read");
+        assert_eq!(resolver["arguments"]["ledgerTicket"], "ticket");
+        assert_eq!(resolver["arguments"]["ledgerGeneration"], 7);
+    }
+
     fn native_refit_fixture(protected: bool) -> String {
         let mut source: Value = serde_json::from_str(include_str!("../../../../schemas/registry/context-candidate-set.v1.golden.json")).unwrap();
         source["generationId"] = json!("gen-current");
@@ -3047,7 +3127,7 @@ mod hub_transport_tests {
         assert!(!fitted["packet"]["omissions"].as_array().unwrap().is_empty());
         assert!(delivery.fits(&fitted).unwrap());
         let selection = serde_json::from_value::<crate::pull::selection::PacketReductionSelectionV1>(fitted["packetReduction"].clone()).unwrap();
-        let envelope = native_pull_envelope("pull", "repo", "scope", &fitted, &selection, &selection.selected_representation);
+        let envelope = native_pull_envelope("pull", "repo", "scope", &fitted, &selection, &selection.selected_representation, true);
         let measured = fit_native_budget_response("pull", envelope, &delivery.contract).unwrap();
         let tokens = cortex_core::ContextTokenAccounting::count_exact(&membrane_mcp::tool_result(measured.clone()).to_string()).unwrap();
         assert!(tokens <= 6000);
@@ -3566,6 +3646,90 @@ mod hub_transport_tests {
             "working_context_page_limit_invalid",
             "{invalid_limit}"
         );
+    }
+
+    static AUTHORIZATION_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    struct PublicEnvGuard { previous: Option<std::ffi::OsString>, _lock: std::sync::MutexGuard<'static, ()> }
+    impl Drop for PublicEnvGuard {
+        fn drop(&mut self) {
+            match &self.previous {
+                Some(value) => std::env::set_var("MEMBRANE_PROJECT_REGISTRY", value),
+                None => std::env::remove_var("MEMBRANE_PROJECT_REGISTRY"),
+            }
+        }
+    }
+
+    fn public_source_fixture() -> (tempfile::TempDir, RuntimeMcpExecutor, Value, String, PublicEnvGuard) {
+        let root = tempfile::tempdir().expect("source fixture tempdir");
+        let markdown = "# Note\n\nexact Ledger source\n";
+        std::fs::write(root.path().join("note.md"), markdown).expect("source fixture");
+        let registry = root.path().join("project-registry.json");
+        let mut bindings = serde_json::Map::new();
+        bindings.insert(root.path().to_string_lossy().to_string(), json!({
+            "repository_id":"repo","scope_id":"scope","grant_policy":{"level":"read-only"},"token_grant":{"generation":1}
+        }));
+        std::fs::write(&registry, json!({"schema_version":2,"bindings":bindings}).to_string()).expect("registry");
+        let lock = AUTHORIZATION_TEST_LOCK.lock().expect("authorization test lock");
+        let previous = std::env::var_os("MEMBRANE_PROJECT_REGISTRY");
+        std::env::set_var("MEMBRANE_PROJECT_REGISTRY", &registry);
+        let env_guard = PublicEnvGuard { previous, _lock: lock };
+        let outline = crate::ledger::outline::build_outline(
+            "doc://repo/worktree/note.md", markdown, "comrak-0.54.0",
+        );
+        let store = MemoryStore::open(crate::MemDb::open_in_memory());
+        let diagnostics = DiagnosticsService::with_data_root(root.path().to_path_buf()).expect("diagnostics");
+        let executor = RuntimeMcpExecutor::with_store(store, diagnostics);
+        let caller = json!({"root":root.path(),"repositoryId":"repo","scopeId":"scope"});
+        (root, executor, caller, outline.content_hash, env_guard)
+    }
+
+    #[test]
+    fn public_pull_source_read_returns_exact_known_section() {
+        let (_root, executor, caller, content_hash, _env) = public_source_fixture();
+        let result = executor.execute("pull", &json!({
+            "operation":"source_read","repository":"repo","caller":caller,
+            "sourceRef":"doc://repo/worktree/note.md","anchorId":"sec:note:1",
+            "expectedContentHash":content_hash,"sessionId":"session","taskId":"task",
+            "responseBudgetTokens":12000
+        }));
+        assert_eq!(result["operation"], "pull", "{result}");
+        assert_eq!(result["result"]["kind"], "success", "{result}");
+        assert_eq!(result["result"]["data"]["section"]["content"], "# Note\n\nexact Ledger source\n", "{result}");
+    }
+
+    #[test]
+    fn public_pull_source_read_rejects_stale_hash_and_scope_escape() {
+        let (_root, executor, caller, _content_hash, _env) = public_source_fixture();
+        let base = json!({"operation":"source_read","repository":"repo","caller":caller,
+            "sourceRef":"doc://repo/worktree/note.md","anchorId":"sec:note:1",
+            "expectedContentHash":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "responseBudgetTokens":12000});
+        let stale = executor.execute("pull", &base);
+        assert_eq!(stale["result"]["code"], "source_read_hash_mismatch", "{stale}");
+        let mut escaped = base;
+        escaped["sourceRef"] = json!("doc://repo/worktree/../note.md");
+        let denied = executor.execute("pull", &escaped);
+        assert_eq!(denied["result"]["code"], "source_read_scope_denied", "{denied}");
+    }
+
+    #[test]
+    fn public_pull_source_read_refuses_budget_and_invalid_h8_coverage() {
+        let (_root, executor, caller, content_hash, _env) = public_source_fixture();
+        let base = json!({"operation":"source_read","repository":"repo","caller":caller,
+            "sourceRef":"doc://repo/worktree/note.md","anchorId":"sec:note:1",
+            "expectedContentHash":content_hash,"sessionId":"session","taskId":"task"});
+        let mut tiny = base.clone();
+        tiny["responseBudgetTokens"] = json!(1);
+        assert_eq!(executor.execute("pull", &tiny)["result"]["code"], "context_delivery_capacity_exceeded");
+        let mut invalid_h8 = base;
+        invalid_h8["budgetMode"] = json!("host_fit");
+        invalid_h8["remainingContextCeiling"] = json!({
+            "schemaVersion":1,"ceilingId":"ceiling","sessionId":"session",
+            "taskId":{"value":"task","coverage":"partial"},"requestedAtUnixMs":1,
+            "remainingTokens":{"estimate":{"value":12000,"coverage":"complete"}},
+            "provenanceReceipt":{"observedAtUnixMs":1}
+        });
+        assert_eq!(executor.execute("pull", &invalid_h8)["result"]["code"], "context_capacity_invalid");
     }
 }
 
