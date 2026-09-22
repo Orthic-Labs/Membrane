@@ -11,7 +11,7 @@ narrative overview; this file carries the source-derived facts.
 
 ## Public surface
 
-- **MCP server** — two tools over stdio:
+- **MCP server** — two tools over thin stdio and authenticated loopback MCP:
 
 | `pull` |
 | `push` |
@@ -26,12 +26,11 @@ narrative overview; this file carries the source-derived facts.
 - `cursor_windsurf`
 - `generic_mcp`
 
-## Six axes
+## Five subsystems
 
-| Axis | Responsibility |
+| Subsystem | Responsibility |
 |---|---|
 | **Pull** | Retrieves, admits, fuses, faithfully reduces, and publishes task-relevant evidence. |
-| **Push** | Writes agent-authored durable-memory records through Cortex; former reduction APIs remain only for live legacy consumers. |
 | **Cortex** | Owns governed durable-memory admission, lifecycle, and retrieval; it is not a resident service authority. |
 | **Blueprint** | Owns repository truth, evidence generations, and drift/change observation. |
 | **Ledger** | Navigates indexed document sections with hash-bound references. |

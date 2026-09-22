@@ -306,7 +306,7 @@ pub fn inspect_proposals(store: &MemoryStore, scope: &str, limit: usize) -> Resu
 /// fallback for stores whose path sits outside the conventional
 /// `<workspace>/tools/...` layout. An in-memory store has no root — the
 /// learner lane then reports typed unobserved rather than guessing.
-fn learner_workspace_root(store: &MemoryStore) -> Option<PathBuf> {
+pub(crate) fn learner_workspace_root(store: &MemoryStore) -> Option<PathBuf> {
     store
         .db()
         .event_db_path()
@@ -325,6 +325,18 @@ fn learner_workspace_root(store: &MemoryStore) -> Option<PathBuf> {
                 .map(PathBuf::from)
                 .filter(|value| !value.as_os_str().is_empty())
         })
+}
+
+pub(crate) fn learner_proposals_path(store: &MemoryStore) -> Option<PathBuf> {
+    let root = learner_workspace_root(store)?;
+    Some(
+        std::env::var_os(crate::background_review::BACKGROUND_REVIEW_PROPOSALS_PATH_ENV)
+            .filter(|value| !value.is_empty())
+            .map(PathBuf::from)
+            .unwrap_or_else(|| {
+                root.join(crate::background_review::DEFAULT_PROPOSALS_RELATIVE_PATH)
+            }),
+    )
 }
 
 /// Bounded tail read of a JSONL sidecar. Oversized/unreadable files are
@@ -366,12 +378,8 @@ fn learner_lane(store: &MemoryStore, provider_configured: bool) -> Value {
         .unwrap_or_else(|| {
             root.join(crate::background_review::DEFAULT_OBSERVATIONS_RELATIVE_PATH)
         });
-    let proposals_path = std::env::var_os(crate::background_review::BACKGROUND_REVIEW_PROPOSALS_PATH_ENV)
-        .filter(|value| !value.is_empty())
-        .map(PathBuf::from)
-        .unwrap_or_else(|| {
-            root.join(crate::background_review::DEFAULT_PROPOSALS_RELATIVE_PATH)
-        });
+    let proposals_path = learner_proposals_path(store)
+        .unwrap_or_else(|| root.join(crate::background_review::DEFAULT_PROPOSALS_RELATIVE_PATH));
     let snapshot_path = crate::background_review_input::input_path(&root);
 
     let snapshot = std::fs::metadata(&snapshot_path).ok();
@@ -567,7 +575,9 @@ pub fn status(store: &MemoryStore, scope: &str, session: Option<&str>) -> Result
     } else {
         "unavailable"
     };
-    let workload = if observations.events.is_empty() {
+    let workload = if !observations.available {
+        "unavailable"
+    } else if observations.events.is_empty() {
         "empty"
     } else {
         "observed"
@@ -580,10 +590,29 @@ pub fn status(store: &MemoryStore, scope: &str, session: Option<&str>) -> Result
         .and_then(|event| event.payload.get("missing_fields"))
         .cloned()
         .unwrap_or(json!([]));
-    let missing_outcome_joins = observations
+    let outcome_join_ids = outcome_joins
         .events
-        .len()
-        .saturating_sub(outcome_joins.events.len());
+        .iter()
+        .filter_map(|event| event.payload.get("coverage_receipt").and_then(Value::as_str))
+        .collect::<std::collections::BTreeSet<_>>();
+    let joined_outcomes = observations
+        .events
+        .iter()
+        .filter(|event| outcome_join_ids.contains(event.event_id.as_str()))
+        .count();
+    let joins_exact = observations.available
+        && outcome_joins.available
+        && !observations.truncated
+        && !outcome_joins.truncated;
+    let missing_outcome_joins =
+        joins_exact.then(|| observations.events.len().saturating_sub(joined_outcomes));
+    let outcome_join_state = if !observations.available || !outcome_joins.available {
+        "unavailable"
+    } else if observations.truncated || outcome_joins.truncated {
+        "truncated"
+    } else {
+        "available"
+    };
     // Configuration is not connectivity, and last activity is not current health.
     Ok(
         json!({"contract":"adapt.live-status.v1", "installation_id":store.installation_id(),
@@ -595,6 +624,7 @@ pub fn status(store: &MemoryStore, scope: &str, session: Option<&str>) -> Result
             "insights":{"supported":true,"evidence_stream":stream_state,"workload":workload,
                 "coverage_windows_seen":observations.events.len(),"coverage_truncated":observations.truncated,
                 "outcome_joins_seen":outcome_joins.events.len(),"missing_outcome_joins":missing_outcome_joins,
+                "outcome_joins":{"state":outcome_join_state,"joined":joined_outcomes,"unjoined":missing_outcome_joins},
                 "last_coverage_state":coverage_state,"last_coverage_missing_fields":coverage_missing,
                 "last_receipt":latest(&observations),"producer_reachable":null,
                 "reason":if observations.events.is_empty(){"producer_progress_unavailable"}else{"host_submitted_window_only"}},
@@ -946,5 +976,79 @@ impl crate::background_review::BackgroundSemanticReviewProvider
             }
             _ => self.cortex.execute(request),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn status_reports_unavailable_streams_without_implying_empty_workload() {
+        let store = MemoryStore::new();
+        let status = status(&store, "scope", None).unwrap();
+        let insights = &status["lanes"]["insights"];
+        assert_eq!(insights["workload"], "unavailable");
+        assert_eq!(insights["outcome_joins"]["state"], "unavailable");
+        assert_eq!(insights["missing_outcome_joins"], Value::Null);
+        assert_eq!(insights["outcome_joins"]["unjoined"], Value::Null);
+        assert_eq!(status["lanes"]["effectiveness"]["qualified"], false);
+    }
+
+    #[test]
+    fn status_counts_exact_outcome_joins_by_receipt_identity() {
+        let store = MemoryStore::new();
+        let first = journal(
+            &store,
+            "scope",
+            "adapt.detector_coverage",
+            "cov-1",
+            json!({"state":"ran"}),
+        )
+        .unwrap();
+        journal(
+            &store,
+            "scope",
+            "adapt.detector_coverage",
+            "cov-2",
+            json!({"state":"ran"}),
+        )
+        .unwrap();
+        journal(
+            &store,
+            "scope",
+            "adapt.outcome_join",
+            "join-1",
+            json!({"coverage_receipt":first["receipt_id"]}),
+        )
+        .unwrap();
+        let status = status(&store, "scope", None).unwrap();
+        let insights = &status["lanes"]["insights"];
+        assert_eq!(insights["outcome_joins"]["state"], "available");
+        assert_eq!(insights["outcome_joins"]["joined"], 1);
+        assert_eq!(insights["outcome_joins"]["unjoined"], 1);
+        assert_eq!(insights["missing_outcome_joins"], 1);
+        assert_eq!(insights["workload"], "observed");
+    }
+
+    #[test]
+    fn status_reports_truncated_join_page_without_missing_count() {
+        let store = MemoryStore::new();
+        for index in 0..129 {
+            journal(
+                &store,
+                "scope",
+                "adapt.detector_coverage",
+                &format!("cov-{index}"),
+                json!({"state":"ran"}),
+            )
+            .unwrap();
+        }
+        let status = status(&store, "scope", None).unwrap();
+        let insights = &status["lanes"]["insights"];
+        assert_eq!(insights["coverage_truncated"], true);
+        assert_eq!(insights["outcome_joins"]["state"], "truncated");
+        assert_eq!(insights["missing_outcome_joins"], Value::Null);
+        assert_eq!(insights["outcome_joins"]["unjoined"], Value::Null);
     }
 }

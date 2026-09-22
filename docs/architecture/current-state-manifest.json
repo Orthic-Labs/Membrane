@@ -18,7 +18,6 @@
   "productTruth": {
     "axes": [
       "pull",
-      "push",
       "cortex",
       "blueprint",
       "ledger",
@@ -29,11 +28,6 @@
         "id": "pull",
         "label": "Pull",
         "description": "Retrieves, admits, fuses, faithfully reduces, and publishes task-relevant evidence."
-      },
-      {
-        "id": "push",
-        "label": "Push",
-        "description": "Writes agent-authored durable-memory records through Cortex; former reduction APIs remain only for live legacy consumers."
       },
       {
         "id": "cortex",

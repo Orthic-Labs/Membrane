@@ -137,7 +137,114 @@ fn measured_packet_content(mut packet: ContextPacketV1, basis: &membrane_protoco
         content_tokens = content_tokens.saturating_add(measured);
     }
     packet.budget.admitted_tokens = content_tokens;
-    serde_json::to_value(packet).map_err(|e| PacketReductionRequestError::ContentSerialization(e.to_string()))
+    let encoded = serde_json::to_value(packet)
+        .map_err(|error| PacketReductionRequestError::ContentSerialization(error.to_string()))?;
+    let mut packet: membrane_protocol::ContextPacketV1 = serde_json::from_value(encoded)
+        .map_err(|error| PacketReductionRequestError::ContentSerialization(error.to_string()))?;
+    packet.provider_accounting.clear();
+    for block in &mut packet.blocks {
+        let (class, mode, lane, selected, rendered, chars) = if !block.text.is_empty() {
+            (membrane_protocol::DeliveryClass::Rendered, Some(membrane_protocol::DeliveryMode::Inline), membrane_protocol::BudgetLaneKind::Rendered,
+             block.selected_tokens.unwrap_or(0), block.rendered_tokens.unwrap_or(0),
+             u32::try_from(block.text.chars().count()).map_err(|error| PacketReductionRequestError::ContentSerialization(error.to_string()))?)
+        } else if !block.resolver.is_empty() {
+            (membrane_protocol::DeliveryClass::ResolverBacked, Some(membrane_protocol::DeliveryMode::Reference), membrane_protocol::BudgetLaneKind::ResolverBacked, 0, 0, 0)
+        } else {
+            (membrane_protocol::DeliveryClass::MetadataOnly, None, membrane_protocol::BudgetLaneKind::MetadataOnly, 0, 0, 0)
+        };
+        block.delivery_stage = Some(membrane_protocol::DeliveryStage::Finalized);
+        block.delivery_class = Some(class);
+        block.delivery_mode = mode;
+        block.lane = Some(lane);
+        block.selected_tokens = Some(selected);
+        block.rendered_tokens = Some(rendered);
+        block.delivered_chars = Some(chars);
+        let reason = block.drop_reason.unwrap_or(membrane_protocol::DropReason::None);
+        let accounting = packet.provider_accounting.entry(block.provider.clone()).or_insert(membrane_protocol::ProviderAccountingV1 {
+            delivery_stage: membrane_protocol::DeliveryStage::Finalized,
+            selected_tokens: 0,
+            rendered_tokens: 0,
+            delivered_chars: 0,
+            drop_reason: reason,
+        });
+        accounting.selected_tokens = accounting.selected_tokens.saturating_add(selected);
+        accounting.rendered_tokens = accounting.rendered_tokens.saturating_add(rendered);
+        accounting.delivered_chars = accounting.delivered_chars.saturating_add(chars);
+        if accounting.drop_reason != reason { accounting.drop_reason = membrane_protocol::DropReason::Multiple; }
+    }
+    let reconciliation = membrane_core::reconcile::reconcile(&packet);
+    packet.reconciliation = Some(serde_json::from_value(
+        serde_json::to_value(reconciliation)
+            .map_err(|error| PacketReductionRequestError::ContentSerialization(error.to_string()))?
+    ).map_err(|error| PacketReductionRequestError::ContentSerialization(error.to_string()))?);
+    serde_json::to_value(packet)
+        .map_err(|error| PacketReductionRequestError::ContentSerialization(error.to_string()))
+}
+
+pub(crate) fn finalize_receipts(fields: &mut serde_json::Map<String, Value>, selected_packet: &Value) {
+    const COPIED: &[&str] = &[
+        "deliveryStage",
+        "deliveryClass",
+        "selectedTokens",
+        "allottedTokens",
+        "renderedTokens",
+        "deliveredChars",
+        "dropReason",
+    ];
+    let delivered: std::collections::BTreeMap<&str, &Value> = selected_packet
+        .get("blocks")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|block| {
+            block
+                .get("id")
+                .and_then(Value::as_str)
+                .map(|id| (id, block))
+        })
+        .collect();
+    let Some(receipts) = fields.get_mut("receipts").and_then(Value::as_array_mut) else {
+        return;
+    };
+    for receipt in receipts.iter_mut().filter_map(Value::as_object_mut) {
+        let Some(id) = receipt
+            .get("id")
+            .and_then(Value::as_str)
+            .map(str::to_owned)
+        else {
+            continue;
+        };
+        if let Some(block) = delivered.get(id.as_str()) {
+            for key in COPIED {
+                if let Some(value) = block.get(*key) {
+                    receipt.insert((*key).to_owned(), value.clone());
+                }
+            }
+        } else {
+            receipt.insert(
+                "deliveryStage".to_owned(),
+                Value::String("finalized".to_owned()),
+            );
+            receipt.insert(
+                "deliveryClass".to_owned(),
+                Value::String("metadata_only".to_owned()),
+            );
+            receipt.insert("selectedTokens".to_owned(), Value::from(0u64));
+            receipt.remove("allottedTokens");
+            receipt.insert("renderedTokens".to_owned(), Value::from(0u64));
+            receipt.insert("deliveredChars".to_owned(), Value::from(0u64));
+            let preserved = receipt
+                .get("dropReason")
+                .and_then(Value::as_str)
+                .is_some_and(|reason| reason != "none");
+            if !preserved {
+                receipt.insert(
+                    "dropReason".to_owned(),
+                    Value::String("not_selected".to_owned()),
+                );
+            }
+        }
+    }
 }
 
 pub fn select_packet_for_h8(packet: &ContextPacketV1, ceiling: &RemainingContextCeilingV1) -> Result<PacketReductionSelectionV1, PacketReductionRequestError> {
@@ -204,4 +311,189 @@ pub fn select_packet_for_token_budget(packet: &ContextPacketV1, budget_tokens: u
         estimator_basis:plan.estimator_basis.clone(), decision:"selected".into(),
     };
     Ok(PacketReductionSelectionV1 { plan, selected_representation:selected, selection_receipt:receipt })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn block_json(id: &str, provider: &str, text: &str, resolver: &str) -> Value {
+        json!({
+            "id": id,
+            "layer": 0,
+            "provider": provider,
+            "sourceKind": "doc",
+            "sourceRef": format!("src/{id}"),
+            "sourceHash": format!("sha256:{}", "0".repeat(64)),
+            "trustClass": "trusted",
+            "instructionPolicy": "data_only",
+            "priority": 0,
+            "estimatedTokens": 1,
+            "protected": false,
+            "recoverable": true,
+            "resolver": resolver,
+            "text": text,
+        })
+    }
+
+    fn packet_json(blocks: Vec<Value>) -> Value {
+        json!({
+            "schemaVersion": 1,
+            "traceId": "t1",
+            "task": "task",
+            "mode": "mode",
+            "budget": {"maxTokens": 100000, "admittedTokens": 0},
+            "allocations": {},
+            "blocks": blocks,
+            "omissions": [],
+        })
+    }
+
+    #[test]
+    fn measured_packet_content_finalizes_rendered_accounting() {
+        let packet: ContextPacketV1 = serde_json::from_value(packet_json(vec![
+            block_json("b1", "alpha", "alpha rendered text", "resolve-a"),
+            block_json("b2", "beta", "beta rendered text body", "resolve-b"),
+        ]))
+        .unwrap();
+        let basis = membrane_protocol::host_observation::EstimatorBasisV1::new("o200k_base", "1");
+        let plan = build_packet_reduction_plan(&packet, basis.clone()).unwrap();
+        let selected = plan
+            .representations
+            .iter()
+            .find(|representation| representation.id == "full")
+            .unwrap();
+        let finalized = &selected.content;
+        let blocks = finalized["blocks"].as_array().unwrap();
+        assert_eq!(blocks.len(), 2);
+        for (block, text) in blocks
+            .iter()
+            .zip(["alpha rendered text", "beta rendered text body"])
+        {
+            let measured = cortex_core::ContextTokenAccounting::count_exact(text).unwrap() as u64;
+            assert_eq!(block["deliveryStage"], json!("finalized"));
+            assert_eq!(block["deliveryClass"], json!("rendered"));
+            assert_eq!(block["deliveryMode"], json!("inline"));
+            assert_eq!(block["lane"], json!("rendered"));
+            assert_eq!(
+                block["deliveredChars"],
+                json!(u64::try_from(text.chars().count()).unwrap())
+            );
+            assert_eq!(block["selectedTokens"], json!(measured));
+            assert_eq!(block["renderedTokens"], json!(measured));
+        }
+        let accounting = finalized["providerAccounting"].as_object().unwrap();
+        assert_eq!(accounting.len(), 2);
+        for (provider, text) in
+            [("alpha", "alpha rendered text"), ("beta", "beta rendered text body")]
+        {
+            let measured = cortex_core::ContextTokenAccounting::count_exact(text).unwrap() as u64;
+            let entry = &accounting[provider];
+            assert_eq!(entry["deliveryStage"], json!("finalized"));
+            assert_eq!(entry["selectedTokens"], json!(measured));
+            assert_eq!(entry["renderedTokens"], json!(measured));
+            assert_eq!(
+                entry["deliveredChars"],
+                json!(u64::try_from(text.chars().count()).unwrap())
+            );
+            assert_eq!(entry["dropReason"], json!("none"));
+        }
+        assert!(finalized["reconciliation"].is_object());
+        let protocol: membrane_protocol::ContextPacketV1 =
+            serde_json::from_value(finalized.clone()).unwrap();
+        let cortex: ContextPacketV1 = serde_json::from_value(finalized.clone()).unwrap();
+        assert_eq!(protocol.blocks.len(), 2);
+        assert_eq!(cortex.blocks.len(), 2);
+        assert_eq!(measure_packet(finalized, &basis).unwrap(), selected.tokens);
+    }
+
+    #[test]
+    fn measured_packet_content_preserves_nonrendered_semantics() {
+        let mut metadata = block_json("m1", "beta", "", "");
+        metadata["dropReason"] = json!("missing_resolver");
+        let packet: ContextPacketV1 = serde_json::from_value(packet_json(vec![
+            block_json("r1", "alpha", "", "resolve-handle"),
+            metadata,
+        ]))
+        .unwrap();
+        let basis = membrane_protocol::host_observation::EstimatorBasisV1::new("o200k_base", "1");
+        let finalized = measured_packet_content(packet, &basis).unwrap();
+        let blocks = finalized["blocks"].as_array().unwrap();
+        let resolver_backed = &blocks[0];
+        assert_eq!(resolver_backed["deliveryStage"], json!("finalized"));
+        assert_eq!(resolver_backed["deliveryClass"], json!("resolver_backed"));
+        assert_eq!(resolver_backed["deliveryMode"], json!("reference"));
+        assert_eq!(resolver_backed["lane"], json!("resolver_backed"));
+        assert_eq!(resolver_backed["selectedTokens"], json!(0));
+        assert_eq!(resolver_backed["renderedTokens"], json!(0));
+        assert_eq!(resolver_backed["deliveredChars"], json!(0));
+        let metadata_only = &blocks[1];
+        assert_eq!(metadata_only["deliveryStage"], json!("finalized"));
+        assert_eq!(metadata_only["deliveryClass"], json!("metadata_only"));
+        assert!(metadata_only.get("deliveryMode").is_none());
+        assert_eq!(metadata_only["lane"], json!("metadata_only"));
+        assert_eq!(metadata_only["selectedTokens"], json!(0));
+        assert_eq!(metadata_only["renderedTokens"], json!(0));
+        assert_eq!(metadata_only["deliveredChars"], json!(0));
+        assert_eq!(metadata_only["dropReason"], json!("missing_resolver"));
+        let accounting = finalized["providerAccounting"].as_object().unwrap();
+        assert_eq!(accounting["alpha"]["dropReason"], json!("none"));
+        assert_eq!(accounting["beta"]["dropReason"], json!("missing_resolver"));
+    }
+
+    #[test]
+    fn finalize_receipts_reconciles_selected_and_omitted_ids() {
+        let selected_packet = json!({
+            "blocks": [{
+                "id": "b1",
+                "deliveryStage": "finalized",
+                "deliveryClass": "rendered",
+                "selectedTokens": 10,
+                "allottedTokens": 10,
+                "renderedTokens": 10,
+                "deliveredChars": 40,
+                "dropReason": "none",
+                "lane": "rendered",
+                "deliveryMode": "inline",
+            }],
+        });
+        let mut fields = serde_json::Map::new();
+        fields.insert(
+            "receipts".to_owned(),
+            json!([
+                {"id": "b1", "decision": "admitted", "deliveryStage": "planned", "allottedTokens": 7},
+                {"id": "absent-admitted", "decision": "admitted", "allottedTokens": 5, "dropReason": "none"},
+                {"id": "absent-rejected", "decision": "rejected", "allottedTokens": 3, "dropReason": "missing_resolver"},
+            ]),
+        );
+        finalize_receipts(&mut fields, &selected_packet);
+        let receipts = fields["receipts"].as_array().unwrap();
+        let selected = receipts[0].as_object().unwrap();
+        assert_eq!(selected["deliveryStage"], json!("finalized"));
+        assert_eq!(selected["deliveryClass"], json!("rendered"));
+        assert_eq!(selected["selectedTokens"], json!(10));
+        assert_eq!(selected["allottedTokens"], json!(10));
+        assert_eq!(selected["renderedTokens"], json!(10));
+        assert_eq!(selected["deliveredChars"], json!(40));
+        assert_eq!(selected["dropReason"], json!("none"));
+        assert!(!selected.contains_key("lane"));
+        assert!(!selected.contains_key("deliveryMode"));
+        let omitted = receipts[1].as_object().unwrap();
+        assert_eq!(omitted["deliveryStage"], json!("finalized"));
+        assert_eq!(omitted["deliveryClass"], json!("metadata_only"));
+        assert_eq!(omitted["selectedTokens"], json!(0));
+        assert!(!omitted.contains_key("allottedTokens"));
+        assert_eq!(omitted["renderedTokens"], json!(0));
+        assert_eq!(omitted["deliveredChars"], json!(0));
+        assert_eq!(omitted["dropReason"], json!("not_selected"));
+        let rejected = receipts[2].as_object().unwrap();
+        assert_eq!(rejected["deliveryStage"], json!("finalized"));
+        assert_eq!(rejected["deliveryClass"], json!("metadata_only"));
+        assert_eq!(rejected["selectedTokens"], json!(0));
+        assert!(!rejected.contains_key("allottedTokens"));
+        assert_eq!(rejected["renderedTokens"], json!(0));
+        assert_eq!(rejected["deliveredChars"], json!(0));
+        assert_eq!(rejected["dropReason"], json!("missing_resolver"));
+    }
 }

@@ -11,9 +11,9 @@ lives in `docs/architecture/membrane.md` and Blueprint truth semantics live in `
 
 | Component | Source of truth | Role |
 |---|---|---|
-| MCP server | `engine/crates/membrane-mcp/` | two native tools over stdio and authenticated Hub loopback transport |
+| MCP server | `engine/crates/membrane-mcp/` | two public tools over thin stdio and authenticated loopback MCP transport |
 | Client adapters | `docs/membrane/capability-matrix.v1.json` | seven host adapters, per-host honest capability levels |
-| Federation gateway | loopback `POST /federate` | parallel provider fan-out behind the context tool |
+| Federation gateway | loopback `POST /federate` | parallel provider fan-out behind public Pull |
 | Cortex durable memory | `engine/` | governed durable-memory store, lifecycle, and retrieval; no resident service authority |
 | Native tray | `apps/membrane-tray-windows/`, `apps/membrane-tray-macos/` | visible resident lifecycle authority & daemon supervisor |
 | Headless daemon | `engine/crates/membrane/` | tray-owned resident runtime executor & local service endpoint |
@@ -22,7 +22,7 @@ lives in `docs/architecture/membrane.md` and Blueprint truth semantics live in `
 
 ## Interfaces
 
-- `membrane_context` and the other one MCP tools are the client contract;
+- `pull` and `push` are the public MCP client contract;
   provider internals never leak into adapters.
 - The federation gateway is the only route from tools to memory/recall providers.
 - The cross-provider budget (MBR-608) reconciles every receipt's selected

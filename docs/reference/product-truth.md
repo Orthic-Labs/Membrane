@@ -18,12 +18,11 @@ Do not hand-edit; regenerate instead. `--check` fails if this file is stale.
 - `cursor_windsurf`
 - `generic_mcp`
 
-## Six axes
+## Five subsystems
 
-| Axis | ID | Responsibility |
+| Subsystem | ID | Responsibility |
 |---|---|---|
 | **Pull** | `pull` | Retrieves, admits, fuses, faithfully reduces, and publishes task-relevant evidence. |
-| **Push** | `push` | Writes agent-authored durable-memory records through Cortex; former reduction APIs remain only for live legacy consumers. |
 | **Cortex** | `cortex` | Owns governed durable-memory admission, lifecycle, and retrieval; it is not a resident service authority. |
 | **Blueprint** | `blueprint` | Owns repository truth, evidence generations, and drift/change observation. |
 | **Ledger** | `ledger` | Navigates indexed document sections with hash-bound references. |

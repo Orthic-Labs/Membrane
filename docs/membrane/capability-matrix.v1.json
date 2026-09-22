@@ -48,11 +48,6 @@
       "description": "Retrieves, admits, fuses, faithfully reduces, and publishes task-relevant evidence."
     },
     {
-      "id": "push",
-      "label": "Push",
-      "description": "Writes agent-authored durable-memory records through Cortex; former reduction APIs remain only for live legacy consumers."
-    },
-    {
       "id": "cortex",
       "label": "Cortex",
       "description": "Owns governed durable-memory admission, lifecycle, and retrieval; it is not a resident service authority."

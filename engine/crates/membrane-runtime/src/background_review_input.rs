@@ -258,7 +258,7 @@ fn publish_stream_window(
             foreground_active,
             observed_at_unix_ms: observed_at,
         },
-        job_kind: BackgroundReviewJobKindV1::CortexMemoryCandidateExtraction,
+        job_kind: BackgroundReviewJobKindV1::AdaptBehavioralReview,
         foreground_memory_state: foreground_memory_state(
             &store.db().clone(),
             stream,
@@ -527,7 +527,7 @@ mod tests {
         assert_eq!(snapshot.task_id.as_deref(), Some(TASK));
         assert_eq!(
             snapshot.job_kind,
-            BackgroundReviewJobKindV1::CortexMemoryCandidateExtraction
+            BackgroundReviewJobKindV1::AdaptBehavioralReview
         );
         snapshot.activity.validate().unwrap();
         snapshot.foreground_memory_state.validate().unwrap();
@@ -565,7 +565,7 @@ mod tests {
         }
         assert_eq!(raw["schemaVersion"], 1);
         assert_eq!(raw["activity"]["schemaVersion"], 1);
-        assert_eq!(raw["jobKind"], "cortex_memory_candidate_extraction");
+        assert_eq!(raw["jobKind"], "adapt_behavioral_review");
     }
 
     #[test]

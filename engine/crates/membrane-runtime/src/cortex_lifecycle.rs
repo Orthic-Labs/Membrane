@@ -1660,10 +1660,11 @@ pub fn drain_background_proposals(
                     adapt.validate().map_err(|_| {
                         fail("proposal_emission_text_required", "invalid adapt proposal record")
                     })?;
+                    let scope = crate::scope::normalize_scope(&adapt.scope_id);
                     propose(
                         store,
                         repository,
-                        &adapt.scope_id,
+                        &scope,
                         &json!({
                             "text": adapt.summary,
                             "kind": "adapt_review",
@@ -1671,6 +1672,9 @@ pub fn drain_background_proposals(
                             "epistemicClass": "inferred",
                             "adaptProposalId": adapt.proposal_id,
                             "findingClass": adapt.finding_class.as_str(),
+                            "sessionId": adapt.session_id,
+                            "fromSeq": adapt.first_seq,
+                            "toSeq": adapt.last_seq.saturating_add(1),
                             "sourceEventIds": adapt.evidence.source_event_ids,
                             "sourceContentHashes": adapt.evidence.source_content_hashes,
                             "jobId": record.get("jobId"),
@@ -1699,6 +1703,35 @@ pub fn drain_background_proposals(
         "considered":considered,"proposed":proposed,"failed":failures.len(),
         "proposalIds":proposal_ids,"failures":failures,
         "complete":consumed >= total_lines}))
+}
+
+pub(crate) fn drain_installation_background_proposals(
+    store: &MemoryStore,
+    limit: usize,
+) -> Result<Value> {
+    if limit == 0 {
+        return Err(fail("memory_envelope_invalid", "drain limit must be greater than zero"));
+    }
+    let Some(root) = crate::adapt_service::learner_workspace_root(store) else {
+        return Err(fail(
+            "background_proposal_root_unavailable",
+            "background proposal workspace root is unavailable",
+        ));
+    };
+    let Some(path) = crate::adapt_service::learner_proposals_path(store) else {
+        return Err(fail(
+            "background_proposal_root_unavailable",
+            "background proposal workspace root is unavailable",
+        ));
+    };
+    if !path.is_file() {
+        return Err(fail(
+            "background_proposal_queue_absent",
+            "background proposal queue is absent",
+        ));
+    }
+    let repository = membrane_federation::root::canonical_repository_id(&root);
+    drain_background_proposals(store, &repository, &path, limit)
 }
 
 #[cfg(test)]
@@ -2665,6 +2698,119 @@ mod tests {
         }
         assert_eq!(proposal_status(&reopened,"repo","scope",&id).unwrap()["reviewState"], "pending");
     }
+
+    static DRAIN_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    struct DrainEnvGuard {
+        saved: Vec<(&'static str, Option<std::ffi::OsString>)>,
+        _guard: std::sync::MutexGuard<'static, ()>,
+    }
+    impl DrainEnvGuard {
+        fn cleared() -> Self {
+            let guard = DRAIN_ENV_LOCK.lock().unwrap_or_else(|error| error.into_inner());
+            let names = [
+                "WORKSPACE_ROOT",
+                crate::background_review::BACKGROUND_REVIEW_PROPOSALS_PATH_ENV,
+            ];
+            let saved = names
+                .iter()
+                .map(|name| (*name, std::env::var_os(name)))
+                .collect::<Vec<_>>();
+            for name in names {
+                std::env::remove_var(name);
+            }
+            Self { saved, _guard: guard }
+        }
+    }
+    impl Drop for DrainEnvGuard {
+        fn drop(&mut self) {
+            for (name, value) in self.saved.iter() {
+                match value {
+                    Some(value) => std::env::set_var(name, value),
+                    None => std::env::remove_var(name),
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn drain_installation_reports_root_unavailable_for_in_memory_store() {
+        let _env = DrainEnvGuard::cleared();
+        let store = MemoryStore::new();
+        let error = drain_installation_background_proposals(&store, 8).unwrap_err();
+        assert_eq!(error.code, "background_proposal_root_unavailable");
+    }
+
+    #[test]
+    fn drain_installation_reports_queue_absent_for_workspace_without_queue() {
+        let _env = DrainEnvGuard::cleared();
+        let workspace = tempfile::tempdir().unwrap();
+        let tools = workspace.path().join("tools").join("state");
+        std::fs::create_dir_all(&tools).unwrap();
+        let store = MemoryStore::try_open(
+            crate::MemDb::open(&tools.join("cortex.db")).unwrap(),
+        )
+        .unwrap();
+        let error = drain_installation_background_proposals(&store, 8).unwrap_err();
+        assert_eq!(error.code, "background_proposal_queue_absent");
+    }
+
+    #[test]
+    fn drain_adapt_proposal_normalizes_scope_and_seeds_review_window() {
+        let s = Sandbox::new();
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("proposals.jsonl");
+        let input = membrane_adapt::learner::AdaptLearnerInputV1 {
+            job_id: "job-adapt-1".into(),
+            session_id: "session-adapt-1".into(),
+            scope_id: "d--claude-membrane".into(),
+            cursor_last_seq: 3,
+            events: (4..=7)
+                .map(|seq| membrane_adapt::learner::LearnerEventV1 {
+                    event_id: format!("e{seq}"),
+                    seq,
+                    event_type: "adapt.typed_probe".into(),
+                    scope_id: "d--claude-membrane".into(),
+                    content_hash: "h-shared".into(),
+                    occurred_at_ms: 0,
+                    payload: json!({}),
+                })
+                .collect(),
+        };
+        let result = membrane_adapt::learner::run_adapt_behavioral_review(&input);
+        assert_eq!(result.proposals.len(), 1, "{result:?}");
+        let record = json!({"schemaVersion":1,"jobId":"job-adapt-1","kind":"adapt_proposal",
+            "proposal":serde_json::to_value(&result.proposals[0]).unwrap()});
+        std::fs::write(&path, format!("{record}\n")).unwrap();
+        let drained = drain_background_proposals(&s.store, "repo", &path, 10).unwrap();
+        assert_eq!(drained["proposed"], 1, "{drained}");
+        assert_eq!(drained["failed"], 0, "{drained}");
+        let id = drained["proposalIds"][0].as_str().unwrap();
+        assert_eq!(
+            proposal_status(&s.store, "repo", "D--claude-membrane", id).unwrap()["reviewState"],
+            "pending"
+        );
+        let emission_json: String = s
+            .store
+            .db()
+            .lock_events()
+            .query_row(
+                "SELECT emission_json FROM membrane_knowledge_proposal WHERE proposal_id=?1",
+                params![id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let emission: Value = serde_json::from_str(&emission_json).unwrap();
+        assert_eq!(emission["sessionId"], "session-adapt-1");
+        assert_eq!(emission["fromSeq"], 4);
+        assert_eq!(emission["toSeq"], 8);
+        assert_eq!(
+            crate::background_review_input::durable_reviewed_through_seq(
+                s.store.db(),
+                "session-adapt-1"
+            ),
+            Some(7)
+        );
+    }
 }
 
 /// Supervised by serve::run, never a standalone service. The owner supplies the
@@ -2679,8 +2825,23 @@ impl AdmissionRecoveryWorker {
         let (stop, stopped) = std::sync::mpsc::channel();
         let thread = std::thread::Builder::new().name("cortex-admission-recovery".into()).spawn(move || {
             let mut previously_unavailable = false;
+            let mut previously_drain_unavailable = false;
             loop {
                 if stopped.try_recv().is_ok() { break; }
+                match drain_installation_background_proposals(&store, 8) {
+                    Ok(summary) => {
+                        if summary["considered"].as_u64().unwrap_or(0) > 0 || previously_drain_unavailable {
+                            eprintln!("cortex-lifecycle {summary}");
+                        }
+                        previously_drain_unavailable = false;
+                    }
+                    Err(error) => {
+                        if !previously_drain_unavailable {
+                            eprintln!("cortex-lifecycle {}", json!({"operation":"background_proposal_drain","status":"unavailable","code":error.code}));
+                        }
+                        previously_drain_unavailable = true;
+                    }
+                }
                 match recover_pending(&store, 4) {
                     Ok(summary) => {
                         if summary["considered"].as_u64().unwrap_or(0) > 0 || previously_unavailable {

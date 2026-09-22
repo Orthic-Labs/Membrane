@@ -35,7 +35,7 @@ const MANIFEST = join(REPO_ROOT, "docs", "architecture", "current-state-manifest
 const MCP_FIXTURE = join(REPO_ROOT, "migration", "native-rust", "fixtures", "mcp-conformance.v1.json");
 
 const TRUTH_SCHEMA = "membrane.product-truth.v1";
-const AXIS_IDS = ["pull", "push", "cortex", "blueprint", "ledger", "adapt"];
+const AXIS_IDS = ["pull", "cortex", "blueprint", "ledger", "adapt"];
 
 // Number words the README prose may use for the tool count claim.
 const NUMBER_WORDS = { two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12 };
@@ -48,11 +48,11 @@ function canonicalJson(value) {
   return JSON.stringify(value);
 }
 
-/** Validate the canonical six-axis and runtime-boundary declarations. */
+/** Validate the canonical five-subsystem and runtime-boundary declarations. */
 function capabilityDeclarations(matrix) {
   const axes = matrix.axes;
   if (!Array.isArray(axes) || axes.length !== AXIS_IDS.length) {
-    throw new Error(`capability matrix must declare exactly six axes: ${AXIS_IDS.join(", ")}`);
+    throw new Error(`capability matrix must declare exactly five subsystems: ${AXIS_IDS.join(", ")}`);
   }
   const ids = axes.map((axis) => axis?.id);
   if (ids.some((id, index) => id !== AXIS_IDS[index])) {
@@ -185,9 +185,9 @@ function renderTruthDoc(truth) {
     "",
     adapterLines,
     "",
-    "## Six axes",
+    "## Five subsystems",
     "",
-    "| Axis | ID | Responsibility |",
+    "| Subsystem | ID | Responsibility |",
     "|---|---|---|",
     axisLines,
     "",

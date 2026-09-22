@@ -41,7 +41,7 @@ function adapterLines(truth) {
 
 function axisTable(truth) {
   return [
-    "| Axis | Responsibility |",
+    "| Subsystem | Responsibility |",
     "|---|---|",
     ...truth.axisDefinitions.map(({ label, description }) => `| **${label}** | ${description} |`),
   ];
@@ -66,7 +66,7 @@ export function renderProductDoc(truth, platforms) {
     "",
     "## Public surface",
     "",
-    `- **MCP server** — ${countWord(truth.toolCount)} tools over stdio:`,
+    `- **MCP server** — ${countWord(truth.toolCount)} tools over thin stdio and authenticated loopback MCP:`,
     "",
     toolTable(truth),
     "",
@@ -74,7 +74,7 @@ export function renderProductDoc(truth, platforms) {
     "",
     adapterLines(truth),
     "",
-    "## Six axes",
+    "## Five subsystems",
     "",
     ...axisTable(truth),
     "",
@@ -105,9 +105,9 @@ export function renderArchitectureDoc(truth, platforms) {
     "",
     "| Component | Source of truth | Role |",
     "|---|---|---|",
-    `| MCP server | \`engine/crates/membrane-mcp/\` | ${countWord(truth.toolCount)} native tools over stdio and authenticated Hub loopback transport |`,
+    `| MCP server | \`engine/crates/membrane-mcp/\` | ${countWord(truth.toolCount)} public tools over thin stdio and authenticated loopback MCP transport |`,
     `| Client adapters | \`docs/membrane/capability-matrix.v1.json\` | ${countWord(truth.adapterCount)} host adapters, per-host honest capability levels |`,
-    "| Federation gateway | loopback `POST /federate` | parallel provider fan-out behind the context tool |",
+    "| Federation gateway | loopback `POST /federate` | parallel provider fan-out behind public Pull |",
     "| Cortex durable memory | `engine/` | governed durable-memory store, lifecycle, and retrieval; no resident service authority |",
     "| Native tray | `apps/membrane-tray-windows/`, `apps/membrane-tray-macos/` | visible resident lifecycle authority & daemon supervisor |",
     "| Headless daemon | `engine/crates/membrane/` | tray-owned resident runtime executor & local service endpoint |",
@@ -116,7 +116,7 @@ export function renderArchitectureDoc(truth, platforms) {
     "",
     "## Interfaces",
     "",
-    `- \`membrane_context\` and the other ${countWord(truth.toolCount - 1)} MCP tools are the client contract;`,
+    "- `pull` and `push` are the public MCP client contract;",
     "  provider internals never leak into adapters.",
     "- The federation gateway is the only route from tools to memory/recall providers.",
     "- The cross-provider budget (MBR-608) reconciles every receipt's selected",

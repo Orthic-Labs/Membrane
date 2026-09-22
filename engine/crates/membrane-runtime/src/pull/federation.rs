@@ -565,6 +565,10 @@ fn run_federate_value(
                             "packet".to_owned(),
                             selection.selected_representation.content.clone(),
                         );
+                        crate::pull::packet_selection::finalize_receipts(
+                            fields,
+                            &selection.selected_representation.content,
+                        );
                         fields.insert(
                             "packetReduction".to_owned(),
                             serde_json::to_value(&selection).map_err(|error| {
@@ -1215,6 +1219,8 @@ fn native_route_response_with_deadline_and_control(
                 "droppedCandidateCount": candidate_count,
             }));
             merge_native_receipts(fields, native_receipts);
+            let selected_packet = fields.get("packet").cloned().unwrap_or(Value::Null);
+            crate::pull::packet_selection::finalize_receipts(fields, &selected_packet);
             let final_map = fields.get("requirementEvidenceMap").cloned();
             let final_packet = fields.get("packet").cloned();
             merge_bm10_accounting(fields, provisional_coverage.as_ref(), final_map.as_ref(), final_packet.as_ref());
@@ -1275,6 +1281,8 @@ fn native_route_response_with_deadline_and_control(
                 "droppedCandidateCount": 0,
             }));
             merge_native_receipts(fields, native_receipts);
+            let selected_packet = fields.get("packet").cloned().unwrap_or(Value::Null);
+            crate::pull::packet_selection::finalize_receipts(fields, &selected_packet);
             let final_map = fields.get("requirementEvidenceMap").cloned();
             let final_packet = fields.get("packet").cloned();
             merge_bm10_accounting(fields, provisional_coverage.as_ref(), final_map.as_ref(), final_packet.as_ref());
@@ -1319,6 +1327,7 @@ fn native_route_response_with_deadline_and_control(
         );
         fields.insert("gatewayStageTimingsMs".to_owned(), Value::Object(stage_timings.clone()));
         merge_native_receipts(fields, native_receipts);
+        crate::pull::packet_selection::finalize_receipts(fields, &selected_content);
         fields.insert(
             "packetReduction".to_owned(),
             serde_json::to_value(&selection)
@@ -2413,10 +2422,10 @@ pub fn envelope_from_ccs(stdout: &str, input: EnvelopeInput) -> Result<Value, St
         trace_id_override: None,
         scope_grant_present: input.scope_grant_present,
         consumer_resolvers: input.consumer_resolvers,
-        // PUL-026: reserved-lane retirement stays behind the `None` rollback
-        // control until evidence-class coverage & allocation qualification
-        // evidence exists; composition may then pass `Some(vec![])`.
-        reserved_lanes: None,
+        // PUL-026: normal production has retired memory/skill lane
+        // reservations; `None` remains available only to explicit planner
+        // callers as the isolated migration rollback control.
+        reserved_lanes: Some(Vec::new()),
     };
     let planner_started = Instant::now();
     let out = match plan(&planner_input) {
@@ -3329,6 +3338,46 @@ mod tests {
         assert!(!serialized.contains("single source of truth"));
         assert!(diagnostic["blockDigests"].is_array());
         assert_eq!(payload["sourceResolutionReceipts"].as_array().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn production_selection_retires_legacy_reserved_lanes() {
+        let mut source: Value = serde_json::from_str(include_str!("../../../../../schemas/registry/context-candidate-set.v1.golden.json")).unwrap();
+        source["candidates"][1]["scoreComponents"]["structural"] = serde_json::json!(0.35);
+        let ccs = serde_json::to_string(&source).unwrap();
+        let payload = envelope_from_ccs(
+            &ccs,
+            EnvelopeInput {
+                max_tokens: 4096,
+                packet_char_budget_override: None,
+                packet_char_budget_model: None,
+                accepted_receipt_versions: vec![2],
+                scope_grant_present: false,
+                consumer_resolvers: Vec::new(),
+                scope_grant_fence: None,
+                gateway_process_ms: 0.0,
+            },
+        )
+        .expect("golden CCS plans");
+        let receipts = payload["receipts"].as_array().unwrap();
+        let memory = receipts
+            .iter()
+            .find(|receipt| receipt["id"] == "cand-memory-lesson")
+            .expect("memory receipt");
+        assert_eq!(memory["decision"], "admitted", "{receipts:?}");
+        assert_eq!(memory["reason"], "within_global_budget", "{receipts:?}");
+        assert!(
+            receipts.iter().all(|receipt| receipt["reason"] != "within_reserved_lane"),
+            "{receipts:?}"
+        );
+        let block_ids: Vec<&str> = payload["packet"]["blocks"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|block| block["id"].as_str())
+            .collect();
+        assert!(block_ids.contains(&"cand-blueprint-types"), "{block_ids:?}");
+        assert!(block_ids.contains(&"cand-memory-lesson"), "{block_ids:?}");
     }
 
     #[test]
